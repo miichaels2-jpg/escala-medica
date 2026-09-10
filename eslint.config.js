@@ -5,17 +5,24 @@ import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginUnusedImports from "eslint-plugin-unused-imports";
 
 export default [
+  // 1. Pastas ignoradas globalmente
+  {
+    ignores: ["src/lib/**/*", "src/components/ui/**/*", "dist/**/*", "node_modules/**/*"],
+  },
+
+  // 2. Configurações recomendadas base
+  pluginJs.configs.recommended,
+  pluginReact.configs.flat.recommended,
+
+  // 3. Regras e escopo do projeto
   {
     files: [
-      "src/components/**/*.{js,mjs,cjs,jsx}",
-      "src/pages/**/*.{js,mjs,cjs,jsx}",
-      "src/Layout.jsx",
+      "src/**/*.{js,mjs,cjs,jsx}", // Cobre App.jsx, main.jsx, Layout.jsx, pages e components
     ],
-    ignores: ["src/lib/**/*", "src/components/ui/**/*"],
-    ...pluginJs.configs.recommended,
-    ...pluginReact.configs.flat.recommended,
     languageOptions: {
-      globals: globals.browser,
+      globals: {
+        ...globals.browser,
+      },
       parserOptions: {
         ecmaVersion: 2022,
         sourceType: "module",
@@ -37,7 +44,9 @@ export default [
     rules: {
       "no-unused-vars": "off",
       "react/jsx-uses-vars": "error",
-      "react/jsx-uses-react": "error",
+      "react/jsx-uses-react": "off", // Desnecessário no React 17+
+      "react/react-in-jsx-scope": "off", // Permite JSX sem importar React explicitamente
+      "react/prop-types": "off",
       "unused-imports/no-unused-imports": "error",
       "unused-imports/no-unused-vars": [
         "warn",
@@ -48,13 +57,12 @@ export default [
           argsIgnorePattern: "^_",
         },
       ],
-      "react/prop-types": "off",
-      "react/react-in-jsx-scope": "off",
       "react/no-unknown-property": [
         "error",
         { ignore: ["cmdk-input-wrapper", "toast-close"] },
       ],
       "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
     },
   },
 ];

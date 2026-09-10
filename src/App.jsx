@@ -24,7 +24,7 @@ import Trocas from '@/pages/Trocas';
 import MobilePreview from '@/pages/MobilePreview';
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
@@ -40,14 +40,18 @@ const AuthenticatedApp = () => {
 
   return (
     <Routes>
+      {/* 1. Rotas Públicas */}
+      <Route path="/" element={<Login />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/mobile-preview" element={<MobilePreview />} />
-      <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
+
+      {/* 2. Rotas Protegidas (se deslogado, vai para /) */}
+      <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/" />} />}>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/escalas" element={<Escalas />} />
           <Route path="/corpo-clinico" element={<CorpoClinico />} />
           <Route path="/setores" element={<Setores />} />
@@ -58,6 +62,8 @@ const AuthenticatedApp = () => {
           <Route path="/configuracoes" element={<Configuracoes />} />
         </Route>
       </Route>
+
+      {/* 3. Não encontrada */}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
@@ -74,7 +80,7 @@ function App() {
         <Toaster />
       </QueryClientProvider>
     </AuthProvider>
-  )
+  );
 }
 
-export default App
+export default App;
