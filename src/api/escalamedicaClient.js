@@ -215,7 +215,7 @@ const defaultState = {
     { id: 'sale_venda', name: 'Vendas', type: 'venda', monthly: 1490, quarterly: 3970, annual: 14900, active: true },
     { id: 'sale_aluguel', name: 'Aluguel', type: 'aluguel', monthly: 890, quarterly: 2390, annual: 9600, active: true },
     { id: 'sale_pacote', name: 'Pacote Mensal', type: 'pacote', monthly: 2490, quarterly: 6700, annual: 25000, active: true },
-    { id: 'sale_premium', name: 'Plano Premium', type: 'plano', monthly: 3990, quarterly: 10700, annual: 42000, active: true }
+    { id: 'sale_premium', name: 'Plano Premium', type: 'premium', monthly: 3990, quarterly: 10700, annual: 42000, active: true }
   ]
 };
 
@@ -773,20 +773,11 @@ const mockBase44 = {
   }
 };
 
+// REMOVIDO: Login automático que estava causando o problema
+// O site agora sobe na página de login sem carregar usuário automaticamente
+
 const appId = appParams?.appId || 'demo-app-local';
 const token = appParams?.token || 'demo-token-local';
 const base44 = mockBase44;
-
-if (typeof window !== 'undefined' && appId && token) {
-  const store = getDemoState();
-  store.token = token;
-  if (!store.currentUser) {
-    const demoUser = store.users.find((u) => u.role === 'admin') || store.users[0];
-    if (demoUser) {
-      store.currentUser = { ...demoUser, data: demoUser.data || {} };
-    }
-  }
-  saveStore(store);
-}
 
 export { base44 };

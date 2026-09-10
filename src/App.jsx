@@ -22,12 +22,10 @@ import Configuracoes from '@/pages/Configuracoes';
 import MinhaEscala from '@/pages/MinhaEscala';
 import Trocas from '@/pages/Trocas';
 import MobilePreview from '@/pages/MobilePreview';
-// Add page imports here
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
 
-  // Show loading spinner while checking app public settings or auth
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
@@ -40,17 +38,13 @@ const AuthenticatedApp = () => {
     return <UserNotRegisteredError />;
   }
 
-  // Render the main app
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/home" element={<Login />} />
-      <Route path="/contato" element={<Login />} />
-      <Route path="/escala-medica" element={<Login />} />
-      <Route path="/mobile-preview" element={<MobilePreview />} />
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/mobile-preview" element={<MobilePreview />} />
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
@@ -69,9 +63,7 @@ const AuthenticatedApp = () => {
   );
 };
 
-
 function App() {
-
   return (
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
