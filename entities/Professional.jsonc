@@ -1,0 +1,177 @@
+{
+  "name": "Professional",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "document": {
+      "type": "string",
+      "description": "CRM, Coren ou outro registro profissional"
+    },
+    "document_uf": {
+      "type": "string",
+      "description": "UF do conselho (ex: SP)"
+    },
+    "specialty": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "medico",
+        "enfermeiro",
+        "tecnico",
+        "outro"
+      ],
+      "default": "medico"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string",
+      "format": "email"
+    },
+    "hourly_rate": {
+      "type": "number",
+      "description": "Valor hora para faturamento"
+    },
+    "shift_preference": {
+      "type": "string",
+      "enum": [
+        "diurno",
+        "noturno",
+        "qualquer"
+      ],
+      "default": "qualquer"
+    },
+    "schedule_pattern": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "12x36",
+        "24x72",
+        "24x78",
+        "12x60",
+        "7x7",
+        "5x2",
+        "custom"
+      ],
+      "description": "Padrão de geração da escala; manual permite configurar tudo livremente"
+    },
+    "schedule_start_time": {
+      "type": "string",
+      "description": "Horário de início do plantão configurado pelo gestor"
+    },
+    "schedule_end_time": {
+      "type": "string",
+      "description": "Horário de fim do plantão configurado pelo gestor"
+    },
+    "schedule_reference_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Primeiro dia usado para calcular ciclos como 12x36 e 24x72"
+    },
+    "schedule_days": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Dias da semana selecionados para geração automática da escala"
+    },
+    "default_sector_id": {
+      "type": "string",
+      "description": "Setor padrão para a escala do profissional"
+    },
+    "schedule_month": {
+      "type": "string",
+      "description": "Mês alvo para geração automática da escala (AAAA-MM)"
+    },
+    "schedule_custom_config": {
+      "type": "string",
+      "description": "Texto livre do padrão personalizado configurado pelo gestor"
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Permissões de acesso concedidas para este profissional no sistema"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativo",
+        "inativo",
+        "ferias"
+      ],
+      "default": "ativo"
+    },
+    "company_id": {
+      "type": "string"
+    },
+    "unit_id": {
+      "type": "string",
+      "description": "Hospital/unidade onde o profissional atua"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "ID do usu\u00e1rio vinculado, se houver"
+    }
+  },
+  "required": [
+    "name",
+    "company_id"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    },
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    }
+  }
+}

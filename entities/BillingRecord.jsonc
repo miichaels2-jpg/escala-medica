@@ -1,0 +1,109 @@
+{
+  "name": "BillingRecord",
+  "type": "object",
+  "properties": {
+    "professional_id": {
+      "type": "string"
+    },
+    "professional_name": {
+      "type": "string"
+    },
+    "shift_id": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "hours": {
+      "type": "number"
+    },
+    "shift_type": {
+      "type": "string",
+      "enum": [
+        "diurno",
+        "noturno",
+        "intermediario"
+      ]
+    },
+    "sector_name": {
+      "type": "string"
+    },
+    "value": {
+      "type": "number",
+      "description": "Valor a pagar/receber"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "faturado",
+        "pago",
+        "impresso"
+      ],
+      "default": "pendente"
+    },
+    "company_id": {
+      "type": "string"
+    },
+    "unit_id": {
+      "type": "string",
+      "description": "Hospital/unidade do pagamento"
+    }
+  },
+  "required": [
+    "professional_id",
+    "date",
+    "company_id"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    },
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    }
+  }
+}

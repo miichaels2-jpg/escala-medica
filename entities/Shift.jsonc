@@ -1,0 +1,120 @@
+{
+  "name": "Shift",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "start_time": {
+      "type": "string",
+      "description": "HH:mm"
+    },
+    "end_time": {
+      "type": "string",
+      "description": "HH:mm"
+    },
+    "duration_hours": {
+      "type": "number",
+      "default": 12
+    },
+    "shift_type": {
+      "type": "string",
+      "enum": [
+        "diurno",
+        "noturno",
+        "intermediario"
+      ],
+      "default": "diurno"
+    },
+    "sector_id": {
+      "type": "string"
+    },
+    "sector_name": {
+      "type": "string"
+    },
+    "professional_id": {
+      "type": "string"
+    },
+    "professional_name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "vago",
+        "pendente",
+        "confirmado",
+        "cancelado"
+      ],
+      "default": "vago"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "company_id": {
+      "type": "string"
+    },
+    "unit_id": {
+      "type": "string",
+      "description": "Hospital/unidade à qual o plantão pertence"
+    }
+  },
+  "required": [
+    "date",
+    "start_time",
+    "end_time",
+    "sector_id",
+    "company_id"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    },
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    }
+  }
+}

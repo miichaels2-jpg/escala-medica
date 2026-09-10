@@ -1,0 +1,41 @@
+{
+  "properties": {
+    "role": {
+      "type": "string",
+      "description": "The role of the user in the app",
+      "enum": [
+        "admin",
+        "user"
+      ]
+    },
+    "data": {
+      "type": "object",
+      "description": "App-specific user metadata and permissions",
+      "properties": {
+        "company_id": {
+          "type": "string"
+        },
+        "app_role": {
+          "type": "string"
+        },
+        "professional_id": {
+          "type": "string"
+        },
+        "professional_role": {
+          "type": "string"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "role"
+  ],
+  "name": "User",
+  "type": "object"
+}

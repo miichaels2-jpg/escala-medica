@@ -1,0 +1,90 @@
+{
+  "name": "Sector",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "specialty": {
+      "type": "string",
+      "description": "Especialidade m\u00e9dica (ex: Cl\u00ednica M\u00e9dica, UTI, Pediatria)"
+    },
+    "unit": {
+      "type": "string",
+      "description": "Unidade/Ala (ex: Emerg\u00eancia Adulto, Enfermaria)"
+    },
+    "min_staff": {
+      "type": "number",
+      "default": 1
+    },
+    "color": {
+      "type": "string",
+      "description": "Cor para destaque visual (hex)"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    },
+    "company_id": {
+      "type": "string"
+    },
+    "unit_id": {
+      "type": "string",
+      "description": "Hospital/unidade à qual o setor pertence"
+    }
+  },
+  "required": [
+    "name",
+    "company_id"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    },
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.company_id": "{{user.data.company_id}}"
+        }
+      ]
+    }
+  }
+}
