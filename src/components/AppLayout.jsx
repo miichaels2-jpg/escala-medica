@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 
 const navItems = [
-  { to: '/', label: 'Painel', icon: BarChart2 },
+  { to: '/dashboard', label: 'Painel', icon: BarChart2 },
   { to: '/escalas', label: 'Escalas e plantões', icon: Calendar },
   { to: '/trocas', label: 'Trocas de plantão', icon: Repeat },
   { to: '/corpo-clinico', label: 'Cadastro de profissional', icon: Users },
@@ -21,14 +21,14 @@ const navItems = [
 ];
 
 const professionalNavItems = [
-  { to: '/', label: 'Painel', icon: BarChart2 },
+  { to: '/dashboard', label: 'Painel', icon: BarChart2 },
   { to: '/escalas', label: 'Minha escala', icon: Calendar },
   { to: '/trocas', label: 'Trocas', icon: Repeat },
   { to: '/minha-escala', label: 'Agenda pessoal', icon: Stethoscope },
 ];
 
 const pageTitles = {
-  '/': 'Painel',
+  '/dashboard': 'Painel',
   '/escalas': 'Gestão de escalas',
   '/trocas': 'Trocas de plantão',
   '/corpo-clinico': 'Cadastro de profissional',
@@ -79,11 +79,10 @@ export default function AppLayout() {
   const isAdmin = user?.role === 'admin';
   const isManager = isAdmin || user?.data?.app_role === 'manager' || user?.data?.app_role === 'gestor';
   const userPermissions = Array.isArray(user?.data?.permissions) ? user.data.permissions : [];
-  const roleLabel = isManager ? 'Gestor' : 'Profissional';
   const navList = (isManager ? navItems : professionalNavItems).filter((item) => {
     if (isManager) return true;
     const permissionMap = {
-      '/': 'dashboard',
+      '/dashboard': 'dashboard',
       '/escalas': 'escalas',
       '/trocas': 'trocas',
       '/minha-escala': 'escalas',
@@ -147,7 +146,7 @@ export default function AppLayout() {
             <NavLink
               key={item.to}
               to={item.to}
-              end={item.to === '/'}
+              end={item.to === '/dashboard'}
               onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -185,7 +184,7 @@ export default function AppLayout() {
   }
 
   return (
-<div className="flex h-screen bg-slate-50 dark:bg-[#0d1320] overflow-hidden">
+    <div className="flex h-screen bg-slate-50 dark:bg-[#0d1320] overflow-hidden">
       {/* Desktop sidebar */}
       <aside className={`relative hidden md:flex flex-col bg-[#111827] dark:bg-[#0b1220] flex-shrink-0 border-r border-slate-800 transition-all duration-200 ${sidebarCollapsed ? 'w-[72px]' : 'w-64'}`}>
         <SidebarContent />
@@ -272,40 +271,40 @@ export default function AppLayout() {
               </div>
             )}
             <div className="relative z-[60]">
-            <button
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="flex items-center gap-2.5 hover:bg-slate-50 rounded-lg p-1 pr-2 transition-colors dark:hover:bg-slate-800"
-            >
-              <div className="w-9 h-9 rounded-full bg-sky-100 flex items-center justify-center text-sm font-semibold text-sky-700 dark:bg-sky-900 dark:text-sky-200">
-                {getInitials(user?.full_name || user?.email)}
-              </div>
-              <div className="text-left hidden sm:block">
-                <div className="text-sm font-semibold text-slate-800 leading-tight dark:text-slate-100">
-                  {user?.full_name || user?.email}
+              <button
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="flex items-center gap-2.5 hover:bg-slate-50 rounded-lg p-1 pr-2 transition-colors dark:hover:bg-slate-800"
+              >
+                <div className="w-9 h-9 rounded-full bg-sky-100 flex items-center justify-center text-sm font-semibold text-sky-700 dark:bg-sky-900 dark:text-sky-200">
+                  {getInitials(user?.full_name || user?.email)}
                 </div>
-                {selectedUnit && <div className="text-xs text-slate-500 dark:text-slate-400">{selectedUnit.name}</div>}
-              </div>
-              <ChevronDown className="w-4 h-4 text-slate-400 hidden sm:block dark:text-slate-300" />
-            </button>
-            {menuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                <div className="absolute right-0 top-12 z-50 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-1 dark:border-slate-700 dark:bg-slate-900">
-                  <button
-                    onClick={() => { setMenuOpen(false); navigate('/configuracoes'); }}
-                    className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                  >
-                    Configurações
-                  </button>
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-slate-800"
-                  >
-                    Sair da conta
-                  </button>
+                <div className="text-left hidden sm:block">
+                  <div className="text-sm font-semibold text-slate-800 leading-tight dark:text-slate-100">
+                    {user?.full_name || user?.email}
+                  </div>
+                  {selectedUnit && <div className="text-xs text-slate-500 dark:text-slate-400">{selectedUnit.name}</div>}
                 </div>
-              </>
-            )}
+                <ChevronDown className="w-4 h-4 text-slate-400 hidden sm:block dark:text-slate-300" />
+              </button>
+              {menuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                  <div className="absolute right-0 top-12 z-50 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-1 dark:border-slate-700 dark:bg-slate-900">
+                    <button
+                      onClick={() => { setMenuOpen(false); navigate('/configuracoes'); }}
+                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      Configurações
+                    </button>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-slate-800"
+                    >
+                      Sair da conta
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </header>
