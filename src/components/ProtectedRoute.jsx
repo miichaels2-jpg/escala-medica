@@ -10,7 +10,7 @@ const DefaultFallback = () => (
 );
 
 const routePermissions = {
-  '/': 'dashboard',
+  '/dashboard': 'dashboard',
   '/escalas': 'escalas',
   '/trocas': 'trocas',
   '/corpo-clinico': 'corpo_clinico',
@@ -49,8 +49,9 @@ export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthe
   const userPermissions = Array.isArray(user?.data?.permissions) ? user.data.permissions : [];
   const isManager = user?.role === 'admin' || user?.data?.app_role === 'manager' || user?.data?.app_role === 'gestor';
 
+  // Se o usuário não tiver permissão nesta rota específica, redireciona para /escalas ou dashboard
   if (requiredPermission && !isManager && userPermissions.length > 0 && !userPermissions.includes(requiredPermission)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/escalas" replace />;
   }
 
   return <Outlet />;

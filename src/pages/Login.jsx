@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogIn, Mail, Lock, Loader2, ShieldCheck, ArrowRight, CalendarClock, Stethoscope, BarChart3, Phone, MapPin, Sparkles, UserRound, Building2, Download, MessageCircleMore } from "lucide-react";
+import { LogIn, Mail, Lock, Loader2, ShieldCheck, ArrowRight, CalendarClock, Stethoscope, BarChart3, MapPin, Sparkles, UserRound, Building2, Download, MessageCircleMore } from "lucide-react";
 import GoogleIcon from "@/components/GoogleIcon";
-import { safeReturnTo } from "@/lib/authReturnTo";
 
 const floatingBubbles = [
   { icon: ShieldCheck, label: 'Cobertura 24h', tone: 'sky', position: 'card-top-left' },
@@ -57,19 +57,14 @@ const plans = [
   },
 ];
 
-const salesMetrics = [
-  { label: 'Faturamento mensal', value: 'R$ 148,6k', trend: '+18% vs. mês anterior' },
-  { label: 'Cobertura ativa', value: '97,4%', trend: '+12 pontos' },
-  { label: 'Tempo médio de escala', value: '11 min', trend: '-42%' },
-];
-
 export default function Login() {
   const [username, setUsername] = useState("mdevils");
   const [password, setPassword] = useState("Bomberman12.");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState('pro');
-  const returnTo = safeReturnTo();
+  const navigate = useNavigate();
+  const { checkUserAuth } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -77,7 +72,10 @@ export default function Login() {
     setLoading(true);
     try {
       await base44.auth.loginViaUsernamePassword(username, password);
-      window.location.href = returnTo;
+      // Sincroniza o usuário no AuthContext antes de navegar
+      await checkUserAuth();
+      // Redireciona diretamente para o painel restrito
+      navigate('/dashboard');
     } catch (err) {
       setError(err.message || "Usuário ou senha inválidos.");
     } finally {
@@ -86,7 +84,7 @@ export default function Login() {
   };
 
   const handleGoogle = () => {
-    base44.auth.loginWithProvider("google", returnTo);
+    base44.auth.loginWithProvider("google", `${window.location.origin}/dashboard`);
   };
 
   const handleAppDownload = () => {
@@ -218,7 +216,7 @@ export default function Login() {
             <div className="home-visual-shell relative mx-auto w-full max-w-lg">
               {floatingBubbles.map(({ icon: Icon, label, tone, position }) => (
                 <div key={label} className={`floating-card floating-card-${tone} ${position}`}>
-                  <Icon className={`h-4 w-4 text-${tone === 'sky' ? 'sky' : tone === 'violet' ? 'violet' : tone === 'emerald' ? 'emerald' : 'amber'}-600`} />
+                  <Icon className="h-4 w-4" />
                   {label}
                 </div>
               ))}
@@ -234,7 +232,12 @@ export default function Login() {
                   </div>
                 </div>
 
-                <Button variant="outline" className="mb-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50">
+                <Button 
+                  type="button"
+                  variant="outline" 
+                  onClick={handleGoogle} 
+                  className="mb-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
                   <GoogleIcon className="h-5 w-5" />
                   Continuar com Google
                 </Button>
@@ -260,7 +263,6 @@ export default function Login() {
                         id="username"
                         type="text"
                         autoComplete="username"
-                        autoFocus
                         placeholder="mdevils"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
@@ -355,12 +357,12 @@ export default function Login() {
 
             <div className="grid gap-6 md:grid-cols-3">
               {[
-                { title: '1. Planeje', text: 'Crie escalas com cobertura e especialidade por unidade, setor e turno.', accent: 'sky' },
-                { title: '2. Confirme', text: 'Profissionais recebem plantões, validam presença e acompanham tudo pelo app.', accent: 'violet' },
-                { title: '3. Controle', text: 'Acompanhe faturamento, repasses e indicadores em um painel enxuto e claro.', accent: 'emerald' }
+                { title: '1. Planeje', text: 'Crie escalas com cobertura e especialidade por unidade, setor e turno.' },
+                { title: '2. Confirme', text: 'Profissionais recebem plantões, validam presença e acompanham tudo pelo app.' },
+                { title: '3. Controle', text: 'Acompanhe faturamento, repasses e indicadores em um painel enxuto e claro.' }
               ].map((item) => (
                 <div key={item.title} className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
-                  <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-${item.accent}-500/10 text-${item.accent}-300 font-black`}>
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500/10 text-sky-300 font-black">
                     {item.title.split('.')[0]}
                   </div>
                   <h3 className="text-xl font-black text-white">{item.title}</h3>
@@ -400,7 +402,7 @@ export default function Login() {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <h3 className={`text-xl font-black ${plan.highlight ? 'text-white' : isSelected ? 'text-slate-900' : 'text-slate-900'}`}>{plan.name}</h3>
+                    <h3 className={`text-xl font-black ${plan.highlight ? 'text-white' : 'text-slate-900'}`}>{plan.name}</h3>
                     <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
                       plan.highlight ? 'bg-white/15 text-sky-100' : 'bg-sky-100 text-sky-700'
                     }`}>
@@ -473,126 +475,6 @@ export default function Login() {
             </div>
           </div>
         </section>
-
-        <section className="bg-slate-50 py-20">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="mb-12 text-center">
-              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">
-                <Stethoscope className="h-3.5 w-3.5" />
-                App mobile
-              </div>
-              <h2 className="mt-5 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
-                A experiência do app no celular, pensando em Android e iPhone.
-              </h2>
-            </div>
-
-            <div className="grid gap-8 lg:grid-cols-2">
-              <div className="flex justify-center">
-                <div className="device-shell android-shell">
-                  <div className="device-notch" />
-                  <div className="device-screen">
-                    <div className="device-topbar">
-                      <span className="device-chip">9:41</span>
-                      <div className="device-icons">
-                        <span />
-                        <span />
-                        <span />
-                      </div>
-                    </div>
-                    <div className="device-card large">
-                      <p>Escala do dia</p>
-                      <h3>Dr. André</h3>
-                      <span>Plantão: 08h às 18h</span>
-                    </div>
-                    <div className="device-grid">
-                      <div className="device-card small">
-                        <p>Vagas</p>
-                        <strong>18</strong>
-                      </div>
-                      <div className="device-card small accent">
-                        <p>Faturamento</p>
-                        <strong>R$ 9,6k</strong>
-                      </div>
-                    </div>
-                    <div className="device-list">
-                      <div className="device-item">
-                        <span className="dot green" />
-                        <div>
-                          <strong>Pré-agenda</strong>
-                          <small>12 pacientes</small>
-                        </div>
-                      </div>
-                      <div className="device-item">
-                        <span className="dot blue" />
-                        <div>
-                          <strong>Troca</strong>
-                          <small>3 solicitações</small>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="device-nav">
-                      <span className="active" />
-                      <span />
-                      <span />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-center">
-                <div className="device-shell ios-shell">
-                  <div className="device-camera" />
-                  <div className="device-screen ios-screen">
-                    <div className="device-topbar ios-topbar">
-                      <span>Hoje</span>
-                      <span>9:41</span>
-                    </div>
-                    <div className="device-card ios-card">
-                      <div className="ios-header">
-                        <span>Equipe</span>
-                        <span className="ios-badge">+3</span>
-                      </div>
-                      <div className="ios-person">
-                        <div className="avatar" />
-                        <div>
-                          <strong>Dra. Marina</strong>
-                          <small>Cardiologia</small>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="device-grid ios-grid">
-                      <div className="device-card ios-small">
-                        <p>Meta</p>
-                        <strong>94%</strong>
-                      </div>
-                      <div className="device-card ios-small">
-                        <p>Trocas</p>
-                        <strong>08</strong>
-                      </div>
-                    </div>
-                    <div className="device-list ios-list">
-                      <div className="device-item">
-                        <span className="dot purple" />
-                        <div>
-                          <strong>Agenda</strong>
-                          <small>4 atendimentos</small>
-                        </div>
-                      </div>
-                      <div className="device-item">
-                        <span className="dot orange" />
-                        <div>
-                          <strong>Financeiro</strong>
-                          <small>R$ 12,8k</small>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
 
         <section id="contato" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
           <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">

@@ -40,7 +40,7 @@ export const AuthProvider = ({ children }) => {
         const currentUser = await base44.auth.me();
         setUser(currentUser);
         setIsAuthenticated(Boolean(currentUser));
-      } catch (error) {
+      } catch {
         setUser(null);
         setIsAuthenticated(false);
       }
@@ -64,22 +64,24 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(Boolean(currentUser));
       setAuthChecked(true);
       setIsLoadingAuth(false);
-    } catch (error) {
+      return currentUser;
+    } catch {
       setUser(null);
       setIsAuthenticated(false);
       setAuthChecked(true);
       setIsLoadingAuth(false);
+      return null;
     }
   };
 
   const logout = (shouldRedirect = true) => {
     setUser(null);
     setIsAuthenticated(false);
-    base44.auth.logout(shouldRedirect ? window.location.href : false);
+    base44.auth.logout(shouldRedirect ? window.location.origin : false);
   };
 
   const navigateToLogin = () => {
-    base44.auth.redirectToLogin(window.location.href);
+    window.location.href = '/login';
   };
 
   return (
