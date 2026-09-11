@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { base44 } from '@/api/base44Client';
+import { base44, supabase } from '@/api/base44Client';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,8 @@ import {
   User, 
   CheckCircle2, 
   PlusCircle,
-  Share2
+  Share2,
+  RotateCcw
 } from 'lucide-react';
 
 const ALL_PERMISSIONS = [
@@ -58,6 +59,17 @@ const DEFAULT_SECTORS = [
   { id: 'sec_clinica_medica', name: 'Enfermaria / Clínica Médica', specialty: 'Clínica Médica' }
 ];
 
+// Helper: Gera a senha padrão (DDMMAAAA + primeira letra minúscula do nome)
+function computeDefaultPassword(birthDateStr, fullName) {
+  if (!birthDateStr) return '123456';
+  // birthDateStr no input type="date" vem como YYYY-MM-DD
+  const parts = birthDateStr.split('-');
+  if (parts.length !== 3) return '123456';
+  const [yyyy, mm, dd] = parts;
+  const initial = (fullName || 'p').trim().charAt(0).toLowerCase();
+  return `${dd}${mm}${yyyy}${initial}`;
+}
+
 export default function CorpoClinico() {
   const { user, company } = useAppData();
   const [professionals, setProfessionals] = useState([]);
@@ -67,7 +79,7 @@ export default function CorpoClinico() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   
-  // Alerta na tela de Copiado com Sucesso
+  // Alerta Toast
   const [toastMessage, setToastMessage] = useState('');
 
   // Modal para criar nova especialidade
@@ -79,6 +91,7 @@ export default function CorpoClinico() {
   const [editingId, setEditingId] = useState(null);
   const [name, setName] = useState('');
   const [cpf, setCpf] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [specialty, setSpecialty] = useState('');
   const [section, setSection] = useState('');
   const [document, setDocument] = useState('');
@@ -164,10 +177,66 @@ export default function CorpoClinico() {
     }
   };
 
+  // Atualização em tempo real da senha padrão quando altera Data de Nascimento ou Nome (se for novo)
+  const handleBirthDateChange = (newDate) => {
+    setBirthDate(newDate);
+    if (!editingId) {
+      setPassword(computeDefaultPassword(newDate, name));
+    }
+  };
+
+  const handleNameChange = (newName) => {
+    setName(newName);
+    if (!editingId && birthDate) {
+      setPassword(computeDefaultPassword(birthDate, newName));
+    }
+  };
+
+  // Ação explícita: Botão "Reiniciar Senha"
+  const handleResetPassword = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    if (!birthDate) {
+      alert('Preencha a Data de Nascimento para gerar a senha padrão!');
+      return;
+    }
+
+    const defaultPass = computeDefaultPassword(birthDate, name);
+    setPassword(defaultPass);
+
+    // Se já estiver editando um profissional existente, atualiza de imediato no Supabase
+    if (editingId && email) {
+      try {
+        const userEmail = email.toLowerCase().trim();
+        const existingUsers = await base44.entities.User.filter({ email: userEmail });
+        if (existingUsers.length > 0) {
+          const userRecord = existingUsers[0];
+          await supabase
+            .from('users')
+            .update({
+              password: defaultPass,
+              data: { ...(userRecord.data || {}), must_change_password: true },
+              updated_date: new Date().toISOString()
+            })
+            .eq('id', userRecord.id);
+        }
+      } catch (err) {
+        console.error('Erro ao resetar senha no banco:', err);
+      }
+    }
+
+    setToastMessage(`Senha reiniciada para: ${defaultPass}`);
+    setTimeout(() => setToastMessage(''), 4000);
+  };
+
   const openNewModal = () => {
     setEditingId(null);
     setName('');
     setCpf('');
+    setBirthDate('');
     setSpecialty(specialties[0]?.name || 'Clínica Médica');
     setSection('');
     setDocument('');
@@ -194,6 +263,7 @@ export default function CorpoClinico() {
     setEditingId(prof.id);
     setName(prof.name || '');
     setCpf(prof.cpf || '');
+    setBirthDate(prof.birth_date || '');
     setSpecialty(prof.specialty || prof.category || 'Clínica Médica');
     setSection(prof.section || prof.role || '');
     setDocument(prof.document || '');
@@ -274,7 +344,6 @@ export default function CorpoClinico() {
     }
   };
 
-  // Copiar dados com proteção contra recarregamento e aviso na tela
   const handleCopyAccess = (e) => {
     if (e) {
       e.preventDefault();
@@ -283,15 +352,13 @@ export default function CorpoClinico() {
 
     const host = window.location.origin;
     const userDisplay = username || (email ? email.split('@')[0] : 'usuario');
-    const passDisplay = password || '123456';
+    const passDisplay = password || (birthDate ? computeDefaultPassword(birthDate, name) : '123456');
 
-    const textToCopy = `*ScaleMedic - Seus dados de acesso*\n\nOlá, ${name || 'Profissional'}!\nVocê foi cadastrado no sistema da equipe.\n\n👤 *Usuário / Apelido:* ${userDisplay}\n🔑 *Senha:* ${passDisplay}\n🔗 *Acesso:* ${host}/login\n\nPor favor, faça o login para acompanhar sua escala.`;
+    const textToCopy = `*ScaleMedic - Seus dados de acesso*\n\nOlá, ${name || 'Profissional'}!\nVocê foi cadastrado no sistema da escala hospitalar.\n\n👤 *Usuário / Apelido:* ${userDisplay}\n🔑 *Senha Provisória:* ${passDisplay}\n🔗 *Acesso:* ${host}/login\n\n⚠️ *Atenção:* Ao acessar o aplicativo de escala, é obrigatório trocar a senha. A nova senha deve ter no mínimo 7 e no máximo 20 caracteres (formato livre: letras, números, símbolos ou acentos).`;
 
     const triggerSuccess = () => {
       setToastMessage('Copiado com sucesso!');
-      setTimeout(() => {
-        setToastMessage('');
-      }, 3000);
+      setTimeout(() => setToastMessage(''), 3000);
     };
 
     if (navigator.clipboard && window.isSecureContext) {
@@ -347,6 +414,7 @@ export default function CorpoClinico() {
       };
 
       if (cpf) profPayload.cpf = cpf;
+      if (birthDate) profPayload.birth_date = birthDate;
       if (section) profPayload.section = section;
 
       let profRecord;
@@ -357,9 +425,10 @@ export default function CorpoClinico() {
           profRecord = await base44.entities.Professional.create(profPayload);
         }
       } catch (err) {
-        if (err.message && (err.message.includes('section') || err.message.includes('cpf'))) {
+        if (err.message && (err.message.includes('section') || err.message.includes('cpf') || err.message.includes('birth_date'))) {
           delete profPayload.section;
           delete profPayload.cpf;
+          delete profPayload.birth_date;
           if (editingId) {
             profRecord = await base44.entities.Professional.update(editingId, profPayload);
           } else {
@@ -370,9 +439,9 @@ export default function CorpoClinico() {
         }
       }
 
-      // Salva usuário de login
+      // Salva usuário com flag de troca de senha no 1º login
       const userNick = (username || (email ? email.split('@')[0] : name.toLowerCase().replace(/\s+/g, ''))).trim();
-      const userPass = (password || '123456').trim();
+      const finalPass = password || (birthDate ? computeDefaultPassword(birthDate, name) : '123456');
       const userEmail = (email || `${userNick}@scalemedic.local`).toLowerCase().trim();
 
       const finalPermissions = isManager ? ALL_PERMISSIONS.map((p) => p.id) : permissions;
@@ -380,30 +449,31 @@ export default function CorpoClinico() {
         company_id: companyId,
         selected_unit_id: unitId,
         app_role: isManager ? 'manager' : 'professional',
-        permissions: finalPermissions
+        permissions: finalPermissions,
+        must_change_password: !editingId || password === computeDefaultPassword(birthDate, name)
       };
 
       const existingUsers = await base44.entities.User.filter({ email: userEmail });
       if (existingUsers.length > 0) {
         await base44.entities.User.update(existingUsers[0].id, {
           username: userNick,
-          password: userPass,
+          password: finalPass,
           full_name: name,
           role: isManager ? 'admin' : 'user',
-          data: userData
+          data: { ...(existingUsers[0].data || {}), ...userData }
         });
       } else {
         await base44.entities.User.create({
           email: userEmail,
           username: userNick,
-          password: userPass,
+          password: finalPass,
           full_name: name,
           role: isManager ? 'admin' : 'user',
           data: userData
         });
       }
 
-      // Geração Automática da Grade do Mês
+      // Geração da Grade Mensal
       if (autoGenerateShifts && profRecord?.id) {
         const [yearStr, monthStr] = monthReference.split('-');
         const year = parseInt(yearStr, 10);
@@ -447,10 +517,8 @@ export default function CorpoClinico() {
             );
 
             if (conflict) {
-              const conflictUnit = units.find((u) => u.id === conflict.unit_id)?.name || 'outra unidade hospitalar';
-              alert(
-                `Aviso: No dia ${dateStr}, o profissional ${name} já possui plantão na unidade "${conflictUnit}". O plantão não foi sobreposto.`
-              );
+              const conflictUnit = units.find((u) => u.id === conflict.unit_id)?.name || 'outra unidade';
+              alert(`Aviso: No dia ${dateStr}, o profissional ${name} já possui plantão na unidade "${conflictUnit}".`);
               continue;
             }
 
@@ -487,7 +555,7 @@ export default function CorpoClinico() {
 
   return (
     <div className="p-4 md:p-8 space-y-6 relative">
-      {/* Notificação Toast na tela: "Copiado com sucesso!" */}
+      {/* Notificação Toast na tela */}
       {toastMessage && (
         <div className="fixed top-6 right-6 z-[9999] flex items-center gap-2 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300 font-medium text-sm">
           <CheckCircle2 className="w-5 h-5 text-emerald-100" />
@@ -495,7 +563,7 @@ export default function CorpoClinico() {
         </div>
       )}
 
-      {/* Top Banner */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Corpo Clínico & Escalas</h1>
@@ -513,7 +581,7 @@ export default function CorpoClinico() {
         </div>
       </div>
 
-      {/* Grid de Profissionais */}
+      {/* Lista de Profissionais */}
       {loading ? (
         <div className="flex justify-center p-16">
           <Loader2 className="w-8 h-8 animate-spin text-sky-600" />
@@ -555,6 +623,9 @@ export default function CorpoClinico() {
                     </div>
                     {prof.cpf && (
                       <div className="text-slate-500">CPF: <span className="font-mono">{prof.cpf}</span> | Doc: {prof.document || 'N/A'}</div>
+                    )}
+                    {prof.birth_date && (
+                      <div className="text-slate-500">Nascimento: {prof.birth_date.split('-').reverse().join('/')}</div>
                     )}
                     <div className="flex items-center gap-2">
                       <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -598,14 +669,23 @@ export default function CorpoClinico() {
 
           <form onSubmit={handleSave} className="space-y-5 py-2">
             {/* Dados Pessoais & Documentos */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Label className="text-xs font-semibold">Nome completo</Label>
-                <Input required value={name} onChange={(e) => setName(e.target.value)} />
+                <Input required value={name} onChange={(e) => handleNameChange(e.target.value)} />
               </div>
               <div>
                 <Label className="text-xs font-semibold">CPF do Profissional</Label>
                 <Input required placeholder="000.000.000-00" value={cpf} onChange={(e) => setCpf(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs font-semibold">Data de Nascimento</Label>
+                <Input 
+                  type="date" 
+                  required 
+                  value={birthDate} 
+                  onChange={(e) => handleBirthDateChange(e.target.value)} 
+                />
               </div>
 
               {/* Seletor de Especialidade */}
@@ -642,33 +722,46 @@ export default function CorpoClinico() {
                 <Label className="text-xs font-semibold">Registro / Conselho (CRM / COREN)</Label>
                 <Input required value={document} onChange={(e) => setDocument(e.target.value)} />
               </div>
-              <div>
+              <div className="md:col-span-3">
                 <Label className="text-xs font-semibold">Telefone / WhatsApp</Label>
                 <Input placeholder="(00) 00000-0000" value={phone} onChange={(e) => setPhone(e.target.value)} />
               </div>
             </div>
 
-            {/* Credenciais de Acesso */}
+            {/* Credenciais de Acesso & Reiniciar Senha */}
             <div className="p-4 bg-sky-50/50 dark:bg-sky-950/20 rounded-xl border border-sky-200 dark:border-sky-800 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                    <User className="w-4 h-4 text-sky-600" /> Acesso ao Sistema (Login & Senha)
+                    <User className="w-4 h-4 text-sky-600" /> Acesso ao Sistema (Login & Senha Padrão)
                   </h4>
                   <p className="text-xs text-slate-500">
-                    O profissional poderá acessar usando o nome/apelido ou e-mail com a senha definida aqui.
+                    Senha padrão calculada: <b>Data de Nascimento + 1ª letra do nome</b> (Ex: 02051993m).
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCopyAccess}
-                  className="text-xs font-medium gap-1.5 bg-white dark:bg-slate-900 border-sky-300 text-sky-700 hover:bg-sky-50"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  Copiar Acesso para WhatsApp
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetPassword}
+                    className="text-xs font-medium gap-1.5 bg-amber-50 dark:bg-slate-900 border-amber-300 text-amber-800 hover:bg-amber-100"
+                    title="Reinicia para a senha padrão da data de nascimento"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                    Reiniciar Senha
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyAccess}
+                    className="text-xs font-medium gap-1.5 bg-white dark:bg-slate-900 border-sky-300 text-sky-700 hover:bg-sky-50"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    Copiar WhatsApp
+                  </Button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -682,17 +775,17 @@ export default function CorpoClinico() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-semibold">Senha Inicial</Label>
+                  <Label className="text-xs font-semibold">Senha Inicial / Provisória</Label>
                   <Input
                     required
                     type="text"
-                    placeholder="Ex: 123456"
+                    placeholder="Ex: 02051993m"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-semibold">E-mail (opcional para recuperação)</Label>
+                  <Label className="text-xs font-semibold">E-mail (para login e recuperação)</Label>
                   <Input
                     type="email"
                     placeholder="medico@hospital.com"
