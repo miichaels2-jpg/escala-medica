@@ -81,7 +81,6 @@ export default function Login() {
     }
   };
 
-  // Abre janela pop-up dedicada para autenticação Google
   const handleGoogle = () => {
     const width = 500;
     const height = 620;
@@ -89,38 +88,27 @@ export default function Login() {
     const top = window.screenY + (window.outerHeight - height) / 2;
     const returnUrl = `${window.location.origin}/dashboard`;
 
-    // Abre pop-up imediato no clique para evitar bloqueio do navegador
-    const popup = window.open(
-      "about:blank",
-      "google-auth-popup",
-      `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
-    );
+    if (typeof base44.auth.getOAuthUrl === 'function') {
+      const oauthUrl = base44.auth.getOAuthUrl('google', returnUrl);
+      const popup = window.open(
+        oauthUrl,
+        "google-auth-popup",
+        `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
+      );
 
-    try {
-      if (typeof base44.auth.getOAuthUrl === 'function') {
-        const oauthUrl = base44.auth.getOAuthUrl('google', returnUrl);
-        if (popup) popup.location.href = oauthUrl;
-      } else {
-        // Fallback para API do Base44 ou SDK direto
-        const target = `/api/auth/oauth/google?returnTo=${encodeURIComponent(returnUrl)}`;
-        if (popup) popup.location.href = target;
-      }
-    } catch {
-      if (popup) popup.close();
-      base44.auth.loginWithProvider("google", returnUrl);
+      const interval = setInterval(async () => {
+        if (!popup || popup.closed) {
+          clearInterval(interval);
+          const loggedUser = await checkUserAuth();
+          if (loggedUser) {
+            navigate('/dashboard');
+          }
+        }
+      }, 1000);
       return;
     }
 
-    // Monitora fechamento do pop-up para atualizar estado
-    const interval = setInterval(async () => {
-      if (!popup || popup.closed) {
-        clearInterval(interval);
-        const loggedUser = await checkUserAuth();
-        if (loggedUser) {
-          navigate('/dashboard');
-        }
-      }
-    }, 1000);
+    base44.auth.loginWithProvider("google", returnUrl);
   };
 
   const handleAppDownload = () => {
