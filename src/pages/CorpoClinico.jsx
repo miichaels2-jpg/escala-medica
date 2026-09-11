@@ -19,9 +19,7 @@ import {
   Clock, 
   Mail, 
   Phone, 
-  Lock, 
   User, 
-  Copy, 
   Check, 
   PlusCircle,
   Share2
@@ -49,6 +47,15 @@ const HOSPITAL_SCHEDULE_PATTERNS = [
   { id: '6x1_TARDE', label: '6x1 Tarde (13:00 às 19:00)', pattern: '6x1', start: '13:00', end: '19:00', hours: 6 },
   { id: '6x1_NOITE', label: '6x1 Noite (19:00 às 01:00)', pattern: '6x1', start: '19:00', end: '01:00', hours: 6 },
   { id: 'CUSTOM', label: 'Horário Personalizado', pattern: 'custom', start: '07:00', end: '19:00', hours: 12 }
+];
+
+const DEFAULT_SECTORS = [
+  { id: 'sec_uti_adulto', name: 'UTI Adulto', specialty: 'Medicina Intensiva' },
+  { id: 'sec_emergencia', name: 'Emergência / Pronto-Socorro', specialty: 'Emergência' },
+  { id: 'sec_bloco_cirurgico', name: 'Bloco Cirúrgico', specialty: 'Cirurgia Geral' },
+  { id: 'sec_cardiologia', name: 'Cardiologia / UCO', specialty: 'Cardiologia' },
+  { id: 'sec_pediatria', name: 'Pediatria e Pronto Atendimento', specialty: 'Pediatria' },
+  { id: 'sec_clinica_medica', name: 'Enfermaria / Clínica Médica', specialty: 'Clínica Médica' }
 ];
 
 export default function CorpoClinico() {
@@ -113,10 +120,11 @@ export default function CorpoClinico() {
         base44.entities.Specialty ? base44.entities.Specialty.filter({ company_id: companyId }, 'name', 100) : []
       ]);
       setProfessionals(profs || []);
-      setSectors(secs || []);
+      setSectors((secs && secs.length > 0) ? secs : DEFAULT_SECTORS);
       setSpecialties(specs || []);
     } catch (e) {
       console.error('Erro ao buscar dados:', e);
+      setSectors(DEFAULT_SECTORS);
     } finally {
       setLoading(false);
     }
@@ -164,7 +172,7 @@ export default function CorpoClinico() {
     setEmail('');
     setPhone('');
     setUsername('');
-    setPassword('Mudar@123');
+    setPassword('123456');
     setUnitId(units[0]?.id || 'unit_h1');
     setIsManager(false);
     setPermissions(['painel', 'escalas', 'trocas']);
@@ -175,7 +183,7 @@ export default function CorpoClinico() {
     setStartTime('07:00');
     setEndTime('19:00');
     setDurationHours(12);
-    setDefaultSectorId(sectors[0]?.id || '');
+    setDefaultSectorId(sectors[0]?.id || DEFAULT_SECTORS[0].id);
     setAutoGenerateShifts(true);
     setDialogOpen(true);
   };
@@ -184,7 +192,7 @@ export default function CorpoClinico() {
     setEditingId(prof.id);
     setName(prof.name || '');
     setCpf(prof.cpf || '');
-    setSpecialty(prof.specialty || prof.category || '');
+    setSpecialty(prof.specialty || prof.category || 'Clínica Médica');
     setSection(prof.section || prof.role || '');
     setDocument(prof.document || '');
     setEmail(prof.email || '');
@@ -198,25 +206,24 @@ export default function CorpoClinico() {
       : managerRole ? ALL_PERMISSIONS.map(p => p.id) : ['painel', 'escalas', 'trocas']
     );
 
-    // Busca credenciais vinculadas na tabela de usuários
     try {
       const usersFound = await base44.entities.User.filter({ email: (prof.email || '').toLowerCase().trim() });
       if (usersFound.length > 0) {
         setUsername(usersFound[0].username || '');
-        setPassword(usersFound[0].password || '');
+        setPassword(usersFound[0].password || '123456');
       } else {
         setUsername(prof.email ? prof.email.split('@')[0] : '');
-        setPassword('Mudar@123');
+        setPassword('123456');
       }
     } catch {
       setUsername(prof.email ? prof.email.split('@')[0] : '');
-      setPassword('Mudar@123');
+      setPassword('123456');
     }
 
     setSchedulePattern(prof.schedule_pattern || '12x36');
     setStartTime(prof.schedule_start_time || '07:00');
     setEndTime(prof.schedule_end_time || '19:00');
-    setDefaultSectorId(prof.default_sector_id || sectors[0]?.id || '');
+    setDefaultSectorId(prof.default_sector_id || sectors[0]?.id || DEFAULT_SECTORS[0].id);
     setAutoGenerateShifts(false);
 
     const matchingPreset = HOSPITAL_SCHEDULE_PATTERNS.find(
@@ -227,7 +234,6 @@ export default function CorpoClinico() {
     setDialogOpen(true);
   };
 
-  // Criar nova especialidade no banco
   const handleCreateSpecialty = async () => {
     if (!newSpecialtyName.trim()) return;
     setSavingSpecialty(true);
@@ -247,7 +253,25 @@ export default function CorpoClinico() {
     }
   };
 
-  // Copiar dados para enviar pelo WhatsApp
+  const handleCreateSectorPrompt = async () => {
+    const nomeSetor = prompt('Digite o nome do novo setor hospitalar:');
+    if (nomeSetor && nomeSetor.trim()) {
+      try {
+        const novo = await base44.entities.Sector.create({
+          company_id: companyId,
+          unit_id: unitId || units[0]?.id || 'unit_h1',
+          name: nomeSetor.trim(),
+          specialty: specialty || 'Geral',
+          active: true
+        });
+        setSectors((prev) => [...prev, novo]);
+        setDefaultSectorId(novo.id);
+      } catch (err) {
+        alert('Erro ao cadastrar setor: ' + err.message);
+      }
+    }
+  };
+
   const handleCopyAccess = () => {
     const text = `*ScaleMedic - Seus dados de acesso*\n\nOlá, ${name}!\nVocê foi cadastrado no sistema do hospital.\n\n👤 *Usuário / Apelido:* ${username || email.split('@')[0]}\n🔑 *Senha:* ${password}\n🔗 *Acesso:* ${window.location.origin}/login\n\nPor favor, acesse o sistema para visualizar sua escala e plantões.`;
     navigator.clipboard.writeText(text);
@@ -260,15 +284,16 @@ export default function CorpoClinico() {
     setSaving(true);
 
     try {
+      const finalRole = isManager ? 'Diretor Médico / Gestor' : (section ? `${specialty} - ${section}` : specialty);
+
+      // Payload compatível com schema resiliente
       const profPayload = {
         company_id: companyId,
-        unit_id: unitId,
+        unit_id: unitId || units[0]?.id,
         name,
-        cpf,
         specialty,
         category: specialty,
-        section,
-        role: isManager ? 'Diretor Médico / Gestor' : section || specialty,
+        role: finalRole,
         document,
         email,
         phone,
@@ -280,16 +305,34 @@ export default function CorpoClinico() {
         default_sector_id: defaultSectorId
       };
 
+      if (cpf) profPayload.cpf = cpf;
+      if (section) profPayload.section = section;
+
       let profRecord;
-      if (editingId) {
-        profRecord = await base44.entities.Professional.update(editingId, profPayload);
-      } else {
-        profRecord = await base44.entities.Professional.create(profPayload);
+      try {
+        if (editingId) {
+          profRecord = await base44.entities.Professional.update(editingId, profPayload);
+        } else {
+          profRecord = await base44.entities.Professional.create(profPayload);
+        }
+      } catch (err) {
+        // Fallback automático caso 'section' ou 'cpf' ainda não estejam no cache do PostgREST
+        if (err.message && (err.message.includes('section') || err.message.includes('cpf'))) {
+          delete profPayload.section;
+          delete profPayload.cpf;
+          if (editingId) {
+            profRecord = await base44.entities.Professional.update(editingId, profPayload);
+          } else {
+            profRecord = await base44.entities.Professional.create(profPayload);
+          }
+        } else {
+          throw err;
+        }
       }
 
-      // Salva / Atualiza o Usuário com nome/apelido e senha definidos
+      // Salva / Atualiza usuário e credenciais
       const userNick = (username || (email ? email.split('@')[0] : name.toLowerCase().replace(/\s+/g, ''))).trim();
-      const userPass = (password || 'Mudar@123').trim();
+      const userPass = (password || '123456').trim();
       const userEmail = (email || `${userNick}@scalemedic.local`).toLowerCase().trim();
 
       const finalPermissions = isManager ? ALL_PERMISSIONS.map((p) => p.id) : permissions;
@@ -321,12 +364,12 @@ export default function CorpoClinico() {
       }
 
       // Geração Automática da Grade do Mês com Trava de Conflito Multi-Unidades
-      if (autoGenerateShifts && defaultSectorId && profRecord?.id) {
+      if (autoGenerateShifts && profRecord?.id) {
         const [yearStr, monthStr] = monthReference.split('-');
         const year = parseInt(yearStr, 10);
         const month = parseInt(monthStr, 10) - 1;
         const totalDays = new Date(year, month + 1, 0).getDate();
-        const sectorObj = sectors.find((s) => s.id === defaultSectorId);
+        const sectorObj = sectors.find((s) => s.id === defaultSectorId) || DEFAULT_SECTORS[0];
 
         const existingShifts = await base44.entities.Shift.filter({
           company_id: companyId,
@@ -373,8 +416,8 @@ export default function CorpoClinico() {
 
             shiftsToCreate.push({
               company_id: companyId,
-              unit_id: unitId,
-              sector_id: defaultSectorId,
+              unit_id: unitId || units[0]?.id,
+              sector_id: defaultSectorId || sectorObj.id,
               sector_name: sectorObj?.name || 'Geral',
               professional_id: profRecord.id,
               professional_name: name,
@@ -691,13 +734,25 @@ export default function CorpoClinico() {
                   </Select>
                 </div>
 
+                {/* Setor Padrão com Fallback e Botão de Criar Novo Setor */}
                 <div>
-                  <Label className="text-xs font-semibold">Setor Padrão</Label>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label className="text-xs font-semibold">Setor Padrão</Label>
+                    <button
+                      type="button"
+                      onClick={handleCreateSectorPrompt}
+                      className="text-[11px] text-sky-600 hover:underline flex items-center gap-1 font-medium"
+                    >
+                      <PlusCircle className="w-3 h-3" /> Criar novo setor
+                    </button>
+                  </div>
                   <Select value={defaultSectorId} onValueChange={setDefaultSectorId}>
                     <SelectTrigger><SelectValue placeholder="Selecione o setor..." /></SelectTrigger>
                     <SelectContent>
                       {sectors.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name} {s.specialty ? `(${s.specialty})` : ''}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
