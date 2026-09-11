@@ -58,8 +58,8 @@ const plans = [
 ];
 
 export default function Login() {
-  const [username, setUsername] = useState("mdevils");
-  const [password, setPassword] = useState("Bomberman12.");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState('pro');
@@ -72,9 +72,7 @@ export default function Login() {
     setLoading(true);
     try {
       await base44.auth.loginViaUsernamePassword(username, password);
-      // Sincroniza o usuário no AuthContext antes de navegar
       await checkUserAuth();
-      // Redireciona diretamente para o painel restrito
       navigate('/dashboard');
     } catch (err) {
       setError(err.message || "Usuário ou senha inválidos.");
@@ -83,8 +81,46 @@ export default function Login() {
     }
   };
 
+  // Abre janela pop-up dedicada para autenticação Google
   const handleGoogle = () => {
-    base44.auth.loginWithProvider("google", `${window.location.origin}/dashboard`);
+    const width = 500;
+    const height = 620;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    const returnUrl = `${window.location.origin}/dashboard`;
+
+    // Abre pop-up imediato no clique para evitar bloqueio do navegador
+    const popup = window.open(
+      "about:blank",
+      "google-auth-popup",
+      `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
+    );
+
+    try {
+      if (typeof base44.auth.getOAuthUrl === 'function') {
+        const oauthUrl = base44.auth.getOAuthUrl('google', returnUrl);
+        if (popup) popup.location.href = oauthUrl;
+      } else {
+        // Fallback para API do Base44 ou SDK direto
+        const target = `/api/auth/oauth/google?returnTo=${encodeURIComponent(returnUrl)}`;
+        if (popup) popup.location.href = target;
+      }
+    } catch {
+      if (popup) popup.close();
+      base44.auth.loginWithProvider("google", returnUrl);
+      return;
+    }
+
+    // Monitora fechamento do pop-up para atualizar estado
+    const interval = setInterval(async () => {
+      if (!popup || popup.closed) {
+        clearInterval(interval);
+        const loggedUser = await checkUserAuth();
+        if (loggedUser) {
+          navigate('/dashboard');
+        }
+      }
+    }, 1000);
   };
 
   const handleAppDownload = () => {
@@ -96,9 +132,13 @@ export default function Login() {
       ? "https://play.google.com/store/apps"
       : isIOS
         ? "https://www.apple.com/br/app-store/"
-        : "https://www.scalemedic.com.br/";
+        : "#contato";
 
-    window.open(targetUrl, "_blank", "noopener,noreferrer");
+    if (targetUrl.startsWith("#")) {
+      document.querySelector(targetUrl)?.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      window.open(targetUrl, "_blank", "noopener,noreferrer");
+    }
   };
 
   const handleWhatsAppQuote = () => {
@@ -254,19 +294,20 @@ export default function Login() {
                   </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="username" className="text-sm font-medium text-slate-700">Usuário</Label>
                     <div className="relative">
                       <UserRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       <Input
                         id="username"
+                        name="username_field"
                         type="text"
-                        autoComplete="username"
-                        placeholder="mdevils"
+                        autoComplete="off"
+                        placeholder="Digite seu usuário ou e-mail"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10 text-slate-900"
+                        className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10 text-slate-900 placeholder:text-slate-400"
                         required
                       />
                     </div>
@@ -283,12 +324,13 @@ export default function Login() {
                       <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       <Input
                         id="password"
+                        name="password_field"
                         type="password"
-                        autoComplete="current-password"
+                        autoComplete="new-password"
                         placeholder="••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10 text-slate-900"
+                        className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10 text-slate-900 placeholder:text-slate-400"
                         required
                       />
                     </div>
