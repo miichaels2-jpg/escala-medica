@@ -62,7 +62,6 @@ const DEFAULT_SECTORS = [
 // Helper: Gera a senha padrão (DDMMAAAA + primeira letra minúscula do nome)
 function computeDefaultPassword(birthDateStr, fullName) {
   if (!birthDateStr) return '123456';
-  // birthDateStr no input type="date" vem como YYYY-MM-DD
   const parts = birthDateStr.split('-');
   if (parts.length !== 3) return '123456';
   const [yyyy, mm, dd] = parts;
@@ -177,7 +176,6 @@ export default function CorpoClinico() {
     }
   };
 
-  // Atualização em tempo real da senha padrão quando altera Data de Nascimento ou Nome (se for novo)
   const handleBirthDateChange = (newDate) => {
     setBirthDate(newDate);
     if (!editingId) {
@@ -192,7 +190,6 @@ export default function CorpoClinico() {
     }
   };
 
-  // Ação explícita: Botão "Reiniciar Senha"
   const handleResetPassword = async (e) => {
     if (e) {
       e.preventDefault();
@@ -207,7 +204,6 @@ export default function CorpoClinico() {
     const defaultPass = computeDefaultPassword(birthDate, name);
     setPassword(defaultPass);
 
-    // Se já estiver editando um profissional existente, atualiza de imediato no Supabase
     if (editingId && email) {
       try {
         const userEmail = email.toLowerCase().trim();
@@ -285,11 +281,11 @@ export default function CorpoClinico() {
         setPassword(usersFound[0].password || '123456');
       } else {
         setUsername(prof.email ? prof.email.split('@')[0] : '');
-        setPassword('123456');
+        setPassword(prof.birth_date ? computeDefaultPassword(prof.birth_date, prof.name) : '123456');
       }
     } catch {
       setUsername(prof.email ? prof.email.split('@')[0] : '');
-      setPassword('123456');
+      setPassword(prof.birth_date ? computeDefaultPassword(prof.birth_date, prof.name) : '123456');
     }
 
     setSchedulePattern(prof.schedule_pattern || '12x36');
@@ -606,7 +602,7 @@ export default function CorpoClinico() {
                     <div>
                       <h3 className="font-bold text-base text-slate-900 dark:text-white">{prof.name}</h3>
                       <p className="text-xs text-sky-600 font-semibold uppercase tracking-wide">
-                        {prof.specialty} {prof.section ? `• Seção: ${prof.section}` : ''}
+                        {prof.specialty || prof.category || 'Clínica Geral'} {prof.section ? `• Seção: ${prof.section}` : ''}
                       </p>
                     </div>
                     {isGestor && (
@@ -621,12 +617,13 @@ export default function CorpoClinico() {
                       <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <span className="font-medium text-slate-700 dark:text-slate-300">{unitName}</span>
                     </div>
-                    {prof.cpf && (
-                      <div className="text-slate-500">CPF: <span className="font-mono">{prof.cpf}</span> | Doc: {prof.document || 'N/A'}</div>
-                    )}
-                    {prof.birth_date && (
-                      <div className="text-slate-500">Nascimento: {prof.birth_date.split('-').reverse().join('/')}</div>
-                    )}
+                    
+                    {/* Linha com CPF e Data de Nascimento */}
+                    <div className="flex flex-wrap gap-x-3 text-slate-500">
+                      {prof.cpf && <span>CPF: <b className="font-mono text-slate-700 dark:text-slate-300">{prof.cpf}</b></span>}
+                      {prof.birth_date && <span>Nascimento: <b className="text-slate-700 dark:text-slate-300">{prof.birth_date.split('-').reverse().join('/')}</b></span>}
+                    </div>
+
                     <div className="flex items-center gap-2">
                       <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <span>
