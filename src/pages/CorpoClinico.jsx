@@ -1,290 +1,442 @@
-import { useEffect, useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Pencil, Trash2, Search, Phone, Mail, Download, Grid3X3, List, BriefcaseMedical } from 'lucide-react';
-import ProfessionalFormDialog from '@/components/professionals/ProfessionalFormDialog';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
+import { UserCheck, ShieldCheck, Calendar, Building2, Plus, Edit2, Loader2, AlertCircle } from 'lucide-react';
 
-const categoryLabel = { 
-  medico: 'Médico', 
-  enfermeiro: 'Enfermeiro', 
-  tecnico: 'Técnico', 
-  auxiliar: 'Auxiliar', 
-  administrativo: 'Administrativo', 
-  outro: 'Outro' 
-};
-
-const statusBadge = {
-  ativo: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border dark:border-emerald-800/50',
-  ferias: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 dark:border dark:border-amber-800/50',
-  inativo: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 dark:border dark:border-slate-700',
-};
-
-function getInitials(name) {
-  if (!name) return '?';
-  const p = name.trim().split(' ');
-  return p.length === 1 ? p[0].slice(0, 2).toUpperCase() : (p[0][0] + p[p.length - 1][0]).toUpperCase();
-}
-
-function exportProfessionalsCsv(list) {
-  const rows = [
-    ['Nome', 'Categoria', 'Cargo', 'Especialidade', 'Telefone', 'E-mail', 'Status', 'Valor hora', 'Setor']
-  ];
-
-  list.forEach((p) => {
-    rows.push([
-      p.name || '',
-      categoryLabel[p.category] || p.category || '',
-      p.role || '',
-      p.specialty || '',
-      p.phone || '',
-      p.email || '',
-      p.status || '',
-      p.hourly_rate ? Number(p.hourly_rate).toFixed(2) : '',
-      p.default_sector_id || ''
-    ]);
-  });
-
-  const csv = rows.map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'cadastro-profissionais.csv';
-  link.click();
-  URL.revokeObjectURL(url);
-}
+const ALL_PERMISSIONS = [
+  { id: 'painel', label: 'Painel' },
+  { id: 'escalas', label: 'Escalas' },
+  { id: 'trocas', label: 'Trocas' },
+  { id: 'corpo-clinico', label: 'Corpo Clínico' },
+  { id: 'relatorios', label: 'Relatórios' },
+  { id: 'faturamento', label: 'Faturamento' },
+  { id: 'configuracoes', label: 'Configurações' }
+];
 
 export default function CorpoClinico() {
-  const { user, company, loading } = useAppData();
+  const { user, company } = useAppData();
   const [professionals, setProfessionals] = useState([]);
   const [sectors, setSectors] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState('cards');
-  const companyId = user?.data?.company_id || company?.id;
-  const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id;
+  const [saving, setSaving] = useState(false);
 
-  const load = async () => {
+  // Form State
+  const [editingId, setEditingId] = useState(null);
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState('medico');
+  const [specialty, setSpecialty] = useState('');
+  const [document, setDocument] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [unitId, setUnitId] = useState('');
+  const [isManager, setIsManager] = useState(false);
+  const [permissions, setPermissions] = useState(['painel', 'escalas', 'trocas']);
+  
+  // Regra de Escala Automática
+  const [schedulePattern, setSchedulePattern] = useState('12x36');
+  const [monthReference, setMonthReference] = useState('2026-09');
+  const [cycleStartDate, setCycleStartDate] = useState('2026-09-01');
+  const [startTime, setStartTime] = useState('07:00');
+  const [endTime, setEndTime] = useState('19:00');
+  const [defaultSectorId, setDefaultSectorId] = useState('');
+  const [autoGenerateShifts, setAutoGenerateShifts] = useState(true);
+
+  const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
+  const units = company?.units || [
+    { id: 'unit_h1', name: 'Hospital Santa Clara' },
+    { id: 'unit_h2', name: 'Hospital Vida & Saúde Dois' }
+  ];
+
+  const loadData = async () => {
+    setLoading(true);
     try {
-      const filterQuery = {};
-      if (companyId) filterQuery.company_id = companyId;
-      if (unitId) filterQuery.unit_id = unitId;
-
-      const [professionalResult, sectorResult] = await Promise.all([
-        base44.entities.Professional.filter(filterQuery, '-created_date', 300),
-        base44.entities.Sector.filter(companyId ? { company_id: companyId } : {}, '-created_date', 200)
+      const [profs, secs] = await Promise.all([
+        base44.entities.Professional.filter({ company_id: companyId }, '-created_date', 300),
+        base44.entities.Sector.filter({ company_id: companyId }, 'name', 100)
       ]);
-
-      // Se filtrou por unidade e não retornou registros, busca todos da empresa para garantir que apareçam em qualquer domínio
-      if (professionalResult.length === 0 && companyId) {
-        const fallbackProfessionals = await base44.entities.Professional.filter(
-          { company_id: companyId },
-          '-created_date',
-          300
-        );
-        setProfessionals(fallbackProfessionals);
-      } else {
-        setProfessionals(professionalResult);
-      }
-
-      setSectors(sectorResult);
-    } catch (err) {
-      console.error('Erro ao buscar dados do corpo clínico:', err);
+      setProfessionals(profs);
+      setSectors(secs);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
   };
 
-  useEffect(() => { 
-    if (!loading) load(); 
-  }, [loading, companyId, unitId]);
+  useEffect(() => {
+    loadData();
+  }, [companyId]);
 
-  const filtered = useMemo(() => professionals.filter((p) =>
-    !search || 
-    (p.name || '').toLowerCase().includes(search.toLowerCase()) || 
-    (p.document || '').includes(search) || 
-    (p.role || '').toLowerCase().includes(search.toLowerCase()) || 
-    (p.specialty || '').toLowerCase().includes(search.toLowerCase())
-  ), [professionals, search]);
-
-  const handleDelete = async (id) => {
-    if (!confirm('Excluir este profissional?')) return;
-    await base44.entities.Professional.delete(id);
-    load();
+  const handleToggleManager = (checked) => {
+    setIsManager(checked);
+    if (checked) {
+      setPermissions(ALL_PERMISSIONS.map((p) => p.id));
+    } else {
+      setPermissions(['painel', 'escalas', 'trocas']);
+    }
   };
 
-  const renderProfessionalCard = (p) => (
-    <Card key={p.id} className="p-5 border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 hover:shadow-lg transition-all duration-200">
-      <div className="flex items-start gap-3">
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-100 to-indigo-100 dark:from-sky-950 dark:to-indigo-950 flex items-center justify-center text-sm font-bold text-sky-700 dark:text-sky-300 flex-shrink-0">
-          {getInitials(p.name)}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="font-semibold text-slate-800 dark:text-slate-100 truncate">{p.name}</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">{categoryLabel[p.category] || 'Profissional'}{p.specialty ? ` · ${p.specialty}` : ''}</div>
-            </div>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium uppercase ${statusBadge[p.status] || 'bg-slate-100 text-slate-500'}`}>{p.status}</span>
-          </div>
-          {p.document && <div className="text-xs text-slate-400 dark:text-slate-500 mt-1">{p.document}{p.document_uf ? ` / ${p.document_uf}` : ''}</div>}
-        </div>
-      </div>
+  const handlePermissionChange = (permId, checked) => {
+    if (checked) {
+      setPermissions((prev) => [...prev, permId]);
+    } else {
+      setPermissions((prev) => prev.filter((p) => p !== permId));
+    }
+  };
 
-      <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80 space-y-1.5">
-        {p.role && <div className="text-xs text-slate-600 dark:text-slate-300"><span className="font-medium">Cargo:</span> {p.role}</div>}
-        {p.phone && <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" />{p.phone}</div>}
-        {p.email && <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 truncate"><Mail className="w-3.5 h-3.5 flex-shrink-0" />{p.email}</div>}
-        {p.hourly_rate && <div className="text-xs text-slate-500 dark:text-slate-400">Valor hora: <span className="font-medium text-slate-700 dark:text-slate-200">R$ {Number(p.hourly_rate).toFixed(2)}</span></div>}
-      </div>
+  const openNewModal = () => {
+    setEditingId(null);
+    setName('');
+    setCategory('medico');
+    setSpecialty('');
+    setDocument('');
+    setEmail('');
+    setPhone('');
+    setUnitId(units[0]?.id || 'unit_h1');
+    setIsManager(false);
+    setPermissions(['painel', 'escalas', 'trocas']);
+    setSchedulePattern('12x36');
+    setMonthReference('2026-09');
+    setCycleStartDate('2026-09-01');
+    setStartTime('07:00');
+    setEndTime('19:00');
+    setDefaultSectorId(sectors[0]?.id || '');
+    setAutoGenerateShifts(true);
+    setDialogOpen(true);
+  };
 
-      <div className="mt-4 flex gap-2">
-        <Button variant="outline" size="sm" className="flex-1 dark:border-slate-700 dark:bg-slate-800/80 dark:hover:bg-slate-700" onClick={() => { setEditing(p); setDialogOpen(true); }}>
-          <Pencil className="w-3.5 h-3.5 mr-1" />Editar
-        </Button>
-        <Button variant="outline" size="sm" className="text-red-500 hover:bg-red-50 dark:border-slate-700 dark:bg-slate-800/80 dark:hover:bg-red-950/40" onClick={() => handleDelete(p.id)}>
-          <Trash2 className="w-3.5 h-3.5" />
-        </Button>
-      </div>
-    </Card>
-  );
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const profPayload = {
+        company_id: companyId,
+        unit_id: unitId,
+        name,
+        category,
+        specialty,
+        role: isManager ? 'Diretor Médico / Gestor' : specialty || category,
+        document,
+        email,
+        phone,
+        status: 'ativo',
+        permissions,
+        schedule_pattern: schedulePattern,
+        schedule_start_time: startTime,
+        schedule_end_time: endTime,
+        default_sector_id: defaultSectorId
+      };
+
+      let profRecord;
+      if (editingId) {
+        profRecord = await base44.entities.Professional.update(editingId, profPayload);
+      } else {
+        profRecord = await base44.entities.Professional.create(profPayload);
+      }
+
+      // Se for Gestor, cria ou atualiza conta de usuário com app_role = manager
+      if (isManager && email) {
+        const existingUsers = await base44.entities.User.filter({ email: email.toLowerCase() });
+        const userData = {
+          company_id: companyId,
+          selected_unit_id: unitId,
+          app_role: 'manager',
+          permissions
+        };
+        if (existingUsers.length > 0) {
+          await base44.entities.User.update(existingUsers[0].id, {
+            role: 'admin',
+            data: userData
+          });
+        } else {
+          await base44.entities.User.create({
+            email: email.toLowerCase(),
+            username: email.split('@')[0],
+            password: '123456',
+            full_name: name,
+            role: 'admin',
+            data: userData
+          });
+        }
+      }
+
+      // Geração Automática da Escala do Mês com Verificação de Conflito Multi-Unidade
+      if (autoGenerateShifts && defaultSectorId && profRecord?.id) {
+        const [yearStr, monthStr] = monthReference.split('-');
+        const year = parseInt(yearStr, 10);
+        const month = parseInt(monthStr, 10) - 1;
+        const totalDays = new Date(year, month + 1, 0).getDate();
+        const sectorObj = sectors.find((s) => s.id === defaultSectorId);
+
+        // Busca todos os plantões do profissional na empresa para checar choque de agenda
+        const existingShifts = await base44.entities.Shift.filter({
+          company_id: companyId,
+          professional_id: profRecord.id
+        });
+
+        const shiftsToCreate = [];
+        const startDay = new Date(cycleStartDate + 'T00:00:00');
+
+        for (let d = 1; d <= totalDays; d++) {
+          const currentDate = new Date(year, month, d);
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          let isWorkDay = false;
+
+          if (schedulePattern === '12x36') {
+            const diffDays = Math.round((currentDate - startDay) / (1000 * 60 * 60 * 24));
+            if (diffDays >= 0 && diffDays % 2 === 0) {
+              isWorkDay = true;
+            }
+          } else if (schedulePattern === '5x2') {
+            const dow = currentDate.getDay();
+            if (dow >= 1 && dow <= 5) isWorkDay = true;
+          } else if (schedulePattern === '6x1') {
+            const dow = currentDate.getDay();
+            if (dow !== 0) isWorkDay = true;
+          }
+
+          if (isWorkDay) {
+            // Trava de Conflito de Unidades
+            const conflict = existingShifts.find((sh) => sh.date === dateStr && sh.unit_id !== unitId && sh.status !== 'cancelado');
+            if (conflict) {
+              const conflictUnit = units.find((u) => u.id === conflict.unit_id)?.name || 'outra unidade';
+              alert(`Atenção: O profissional ${name} já possui plantão no dia ${dateStr} na unidade "${conflictUnit}". O plantão deste dia não foi duplicado.`);
+              continue;
+            }
+
+            shiftsToCreate.push({
+              company_id: companyId,
+              unit_id: unitId,
+              sector_id: defaultSectorId,
+              sector_name: sectorObj?.name || 'Geral',
+              professional_id: profRecord.id,
+              professional_name: name,
+              date: dateStr,
+              start_time: startTime,
+              end_time: endTime,
+              shift_type: startTime >= '18:00' ? 'noturno' : 'diurno',
+              status: 'confirmado',
+              duration_hours: 12
+            });
+          }
+        }
+
+        for (const sh of shiftsToCreate) {
+          await base44.entities.Shift.create(sh);
+        }
+      }
+
+      setDialogOpen(false);
+      await loadData();
+    } catch (err) {
+      alert(err.message || 'Erro ao salvar profissional.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <div className="p-4 md:p-8 space-y-5">
-      <div className="rounded-2xl border border-sky-200 dark:border-sky-900/60 bg-gradient-to-r from-sky-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-900/90 dark:to-sky-950/40 p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-sky-600 flex items-center justify-center text-white shadow-sm">
-              <BriefcaseMedical className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-sky-700 dark:text-sky-400 font-semibold">Gestão clínica</p>
-              <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Cadastro de profissional</h2>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => exportProfessionalsCsv(filtered)} className="gap-2 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-700">
-              <Download className="w-4 h-4" /> Baixar
-            </Button>
-            <Button onClick={() => { setEditing(null); setDialogOpen(true); }} className="gap-2 bg-sky-600 hover:bg-sky-700 text-white">
-              <Plus className="w-4 h-4" /> Novo profissional
-            </Button>
-          </div>
+    <div className="p-4 md:p-8 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Corpo Clínico & Escalas</h1>
+          <p className="text-sm text-slate-500">Gestão de profissionais, vínculos por unidade e geração de escalas mensais</p>
         </div>
+        <Button onClick={openNewModal} className="bg-sky-600 hover:bg-sky-700 text-white gap-2">
+          <Plus className="w-4 h-4" /> Cadastrar profissional
+        </Button>
       </div>
 
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="relative max-w-md w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input 
-            placeholder="Buscar por nome, CBO, cargo ou especialidade..." 
-            value={search} 
-            onChange={(e) => setSearch(e.target.value)} 
-            className="pl-9 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" 
-          />
-        </div>
-
-        <div className="inline-flex rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setViewMode('cards')}
-            className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
-              viewMode === 'cards' 
-                ? 'bg-sky-600 text-white' 
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Grid3X3 className="w-4 h-4" /> Caixas
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('list')}
-            className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
-              viewMode === 'list' 
-                ? 'bg-sky-600 text-white' 
-                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <List className="w-4 h-4" /> Lista
-          </button>
-        </div>
-      </div>
-
-      {filtered.length === 0 ? (
-        <Card className="p-10 text-center border-slate-200 dark:border-slate-800 dark:bg-slate-900/60">
-          <p className="text-slate-400 dark:text-slate-500 text-sm">Nenhum profissional cadastrado. Clique em "Novo profissional" para começar.</p>
-        </Card>
-      ) : viewMode === 'cards' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map(renderProfessionalCard)}
-        </div>
+      {loading ? (
+        <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-sky-600" /></div>
       ) : (
-        <Card className="overflow-hidden border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Profissional</th>
-                  <th className="px-4 py-3 font-medium">Cargo</th>
-                  <th className="px-4 py-3 font-medium">Contato</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((p) => (
-                  <tr key={p.id} className="border-t border-slate-100 dark:border-slate-800/80 align-top hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 font-bold text-xs flex items-center justify-center">
-                          {getInitials(p.name)}
-                        </div>
-                        <div>
-                          <div className="font-medium text-slate-700 dark:text-slate-200">{p.name}</div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400">{categoryLabel[p.category] || 'Profissional'}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{p.role || '—'}</td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                      <div>{p.phone || '—'}</div>
-                      <div className="text-xs text-slate-400 dark:text-slate-500">{p.email || '—'}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase ${statusBadge[p.status] || 'bg-slate-100 text-slate-500'}`}>
-                        {p.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm" className="dark:border-slate-700 dark:bg-slate-800/80 dark:hover:bg-slate-700" onClick={() => { setEditing(p); setDialogOpen(true); }}>
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button variant="outline" size="sm" className="text-red-500 hover:bg-red-50 dark:border-slate-700 dark:bg-slate-800/80 dark:hover:bg-red-950/40" onClick={() => handleDelete(p.id)}>
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {professionals.map((prof) => {
+            const unitName = units.find((u) => u.id === prof.unit_id)?.name || 'Unidade Geral';
+            return (
+              <Card key={prof.id} className="p-5 border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-semibold text-slate-900 dark:text-white">{prof.name}</h3>
+                    <p className="text-xs text-sky-600 font-medium">{prof.specialty || prof.category} • {prof.document}</p>
+                  </div>
+                  {prof.role?.includes('Gestor') && (
+                    <span className="bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3" /> Gestor
+                    </span>
+                  )}
+                </div>
+
+                <div className="text-xs text-slate-500 space-y-1">
+                  <div className="flex items-center gap-1"><Building2 className="w-3.5 h-3.5 text-slate-400" /> {unitName}</div>
+                  <div className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-slate-400" /> Padrão: {prof.schedule_pattern || '12x36'}</div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
       )}
 
-      <ProfessionalFormDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onSaved={load}
-        professional={editing}
-        companyId={companyId}
-        unitId={unitId}
-        sectors={sectors}
-      />
+      {/* Modal de Cadastro */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingId ? 'Editar Profissional' : 'Novo Cadastro de Profissional'}</DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleSave} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <Label>Nome completo</Label>
+                <Input required value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+              <div>
+                <Label>Categoria</Label>
+                <Select value={category} onValueChange={setCategory}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="medico">Médico</SelectItem>
+                    <SelectItem value="enfermeiro">Enfermeiro</SelectItem>
+                    <SelectItem value="tecnico">Técnico de Enfermagem</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Especialidade</Label>
+                <Input required placeholder="Ex: Cardiologia, UTI, Emergência" value={specialty} onChange={(e) => setSpecialty(e.target.value)} />
+              </div>
+              <div>
+                <Label>Documento / Registro (CRM / COREN)</Label>
+                <Input required value={document} onChange={(e) => setDocument(e.target.value)} />
+              </div>
+              <div>
+                <Label>E-mail (para login e notificações)</Label>
+                <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              </div>
+              <div>
+                <Label>Telefone / WhatsApp</Label>
+                <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+              </div>
+            </div>
+
+            {/* Unidade de Atuação */}
+            <div className="border-t pt-3">
+              <Label className="font-semibold text-slate-800 dark:text-slate-200">Unidade Hospitalar de Atuação</Label>
+              <p className="text-xs text-slate-500 mb-2">Para alocar em múltiplas unidades, faça um cadastro para cada unidade. O sistema bloqueia automaticamente choque de horários entre elas.</p>
+              <Select value={unitId} onValueChange={setUnitId}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {units.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Configuração de Acesso / Gestor */}
+            <div className="border border-sky-100 dark:border-sky-950 bg-sky-50/50 dark:bg-sky-950/20 p-4 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-sky-600" /> Acesso de Gestor Pleno
+                  </div>
+                  <p className="text-xs text-slate-500">Ao ativar, o profissional recebe acesso irrestrito a todos os menus do sistema.</p>
+                </div>
+                <Switch checked={isManager} onCheckedChange={handleToggleManager} />
+              </div>
+
+              <div>
+                <Label className="text-xs font-semibold mb-2 block">Permissões de Acesso Granulares</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {ALL_PERMISSIONS.map((perm) => (
+                    <div key={perm.id} className="flex items-center space-x-2 bg-white dark:bg-slate-900 p-2 rounded-lg border text-xs">
+                      <Checkbox
+                        id={`perm-${perm.id}`}
+                        checked={permissions.includes(perm.id)}
+                        disabled={isManager}
+                        onCheckedChange={(checked) => handlePermissionChange(perm.id, !!checked)}
+                      />
+                      <label htmlFor={`perm-${perm.id}`} className="cursor-pointer select-none">{perm.label}</label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Automação de Escala Mensal */}
+            <div className="border border-slate-200 dark:border-slate-800 p-4 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-emerald-600" /> Preencher Mês Completo Automaticamente
+                  </div>
+                  <p className="text-xs text-slate-500">Gera toda a grade de plantões do mês sem necessidade de cadastro individual.</p>
+                </div>
+                <Switch checked={autoGenerateShifts} onCheckedChange={setAutoGenerateShifts} />
+              </div>
+
+              {autoGenerateShifts && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                  <div>
+                    <Label className="text-xs">Padrão da Escala</Label>
+                    <Select value={schedulePattern} onValueChange={setSchedulePattern}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="12x36">12x36 (Dia sim, dia não)</SelectItem>
+                        <SelectItem value="5x2">5x2 (Segunda a Sexta)</SelectItem>
+                        <SelectItem value="6x1">6x1</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Mês de Referência</Label>
+                    <Input type="month" value={monthReference} onChange={(e) => setMonthReference(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Primeiro Plantão</Label>
+                    <Input type="date" value={cycleStartDate} onChange={(e) => setCycleStartDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Setor Padrão</Label>
+                    <Select value={defaultSectorId} onValueChange={setDefaultSectorId}>
+                      <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      <SelectContent>
+                        {sectors.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>{s.name} ({s.specialty})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Início Turno</Label>
+                    <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Fim Turno</Label>
+                    <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={saving} className="bg-sky-600 hover:bg-sky-700 text-white">
+                {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Salvar e Gerar Grade
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
