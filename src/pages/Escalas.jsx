@@ -15,16 +15,31 @@ const shiftTypeStyle = {
   intermediario: 'bg-amber-50 text-amber-700',
 };
 
+const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+
 function fmtDate(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00');
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' (' + d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '') + ')';
+  const cleanDate = dateStr.split('T')[0];
+  const [year, month, day] = cleanDate.split('-');
+  const d = new Date(Number(year), Number(month) - 1, Number(day));
+  const weekday = WEEKDAYS_SHORT[d.getDay()] || '';
+  return `${day}/${month} (${weekday})`;
+}
+
+function fmtDateLong(dateStr) {
+  if (!dateStr) return '';
+  const cleanDate = dateStr.split('T')[0];
+  const [year, month, day] = cleanDate.split('-');
+  const d = new Date(Number(year), Number(month) - 1, Number(day));
+  return WEEKDAYS_LONG[d.getDay()] || '';
 }
 
 function getMonthKey(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00');
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const cleanDate = dateStr.split('T')[0];
+  const [year, month] = cleanDate.split('-');
+  return `${year}-${month}`;
 }
 
 export default function Escalas() {
@@ -42,7 +57,7 @@ export default function Escalas() {
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [duplicating, setDuplicating] = useState(false);
 
-  // Variáveis primitivas
+  // Variáveis primitivas para evitar re-render e flickering
   const userId = user?.id;
   const userEmail = user?.email;
   const userFullName = user?.full_name;
@@ -67,13 +82,11 @@ export default function Escalas() {
     }
   }, [companyId, unitId]);
 
-  // Carrega apenas quando a empresa/unidade estiver pronta (sem intervalo de polling agressivo causando flicker)
   useEffect(() => {
     if (appLoading) return;
     load();
   }, [appLoading, load]);
 
-  // Relógio do Modo TV isolado (apenas se tvMode estiver ativo)
   useEffect(() => {
     if (!tvMode) return;
     const id = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -134,7 +147,7 @@ export default function Escalas() {
 
   const handleExportSchedule = () => {
     const sorted = [...filtered].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    const dateLabel = selectedDate ? new Date(`${selectedDate}T00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) : 'Dia selecionado';
+    const dateLabel = selectedDate ? `${fmtDate(selectedDate)}` : 'Dia selecionado';
     exportSchedulePDF({ company: company || { name: 'ScaleMedic CGT', app_name: 'ScaleMedic CGT' }, shifts: sorted, dateLabel });
   };
 
@@ -148,9 +161,7 @@ export default function Escalas() {
     setTvMode(true);
     try {
       await document.documentElement.requestFullscreen?.();
-    } catch {
-      // Ignora erro se usuário recusar tela cheia
-    }
+    } catch {}
   };
 
   const closeTvMode = async () => {
@@ -230,10 +241,10 @@ export default function Escalas() {
                 <CalendarDays className="h-5 w-5" /> Escala hospitalar ao vivo
               </div>
               <h1 className="mt-2 text-4xl font-black tracking-tight md:text-6xl">
-                {new Date(`${selectedDate}T00:00`).toLocaleDateString('pt-BR', { weekday: 'long' })}
+                {fmtDateLong(selectedDate)}
               </h1>
-              <p className="mt-1 text-lg capitalize text-slate-400">
-                {new Date(`${selectedDate}T00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+              <p className="mt-1 text-lg text-slate-400">
+                {fmtDate(selectedDate)}
               </p>
             </div>
             <div className="flex items-center gap-4">
@@ -387,11 +398,15 @@ export default function Escalas() {
             className="h-10 rounded-md border border-slate-200 px-3 text-sm bg-white"
           >
             <option value="">Todos os meses</option>
-            {monthOptions.map((month) => (
-              <option key={month} value={month}>
-                {new Date(`${month}-01T00:00`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-              </option>
-            ))}
+            {monthOptions.map((month) => {
+              const [y, m] = month.split('-');
+              const dateObj = new Date(Number(y), Number(m) - 1, 1);
+              return (
+                <option key={month} value={month}>
+                  {dateObj.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                </option>
+              );
+            })}
           </select>
           <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-10 w-auto" />
           <Button variant="outline" onClick={() => setSelectedDate('')} className="border-slate-200">Todos os dias</Button>
@@ -428,7 +443,8 @@ export default function Escalas() {
                       <CalendarDays className="h-5 w-5" />
                     </div>
                     <div>
-                      <div className="text-sm font-bold capitalize text-slate-800">{fmtDate(date)}</div>
+                      {/* Formatação explícita com "Sex" */}
+                      <div className="text-sm font-bold text-slate-800">{fmtDate(date)}</div>
                       <div className="text-xs text-slate-500">{dateShifts.length} plantão(ões) programado(s)</div>
                     </div>
                   </div>

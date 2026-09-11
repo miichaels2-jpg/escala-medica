@@ -1,40 +1,60 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 
 export function useAppData() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const cached = localStorage.getItem('medscale_session_user');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [company, setCompany] = useState(null);
   const [loading, setLoading] = useState(true);
+  const isFetchingRef = useRef(false);
 
-  const refresh = useCallback(async () => {
+  const refreshData = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     try {
-      const me = await base44.auth.me();
-      setUser(me);
-      if (me?.data?.company_id) {
-        try {
-          const comp = await base44.entities.Company.get(me.data.company_id);
-          const selectedUnitId = me?.data?.selected_unit_id || comp?.selected_unit_id || comp?.units?.[0]?.id;
-          if (comp) {
-            setCompany({
-              ...comp,
-              selected_unit_id: selectedUnitId,
-              units: comp.units || [],
-              current_unit: (comp.units || []).find((unit) => unit.id === selectedUnitId) || comp.units?.[0] || null
-            });
+      const currentUser = await base44.auth.me();
+      if (currentUser) {
+        setUser((prev) => {
+          // Só altera o estado se o ID ou papel realmente mudarem, evitando re-render loop
+          if (JSON.stringify(prev) !== JSON.stringify(currentUser)) {
+            return currentUser;
           }
-        } catch (e) {
-          /* company may not exist yet */
+          return prev;
+        });
+
+        const compId = currentUser?.data?.company_id || 'cmp_principal';
+        const comp = await base44.entities.Company.get(compId);
+        if (comp) {
+          setCompany((prev) => {
+            if (JSON.stringify(prev) !== JSON.stringify(comp)) return comp;
+            return prev;
+          });
         }
       }
-    } catch (e) {
-      /* not logged in */
+    } catch (err) {
+      console.error('Erro ao buscar dados do app:', err);
+    } finally {
+      setLoading(false);
+      isFetchingRef.current = false;
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    refreshData();
+  }, [refreshData]);
 
-  return { user, company, loading, refresh };
+  return {
+    user,
+    company,
+    loading,
+    refreshData
+  };
 }

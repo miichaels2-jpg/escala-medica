@@ -14,10 +14,29 @@ const shiftTypeStyle = {
   intermediario: 'bg-amber-50 text-amber-700',
 };
 
+const WEEKDAYS_PT = [
+  'domingo',
+  'segunda-feira',
+  'terça-feira',
+  'quarta-feira',
+  'quinta-feira',
+  'sexta-feira',
+  'sábado'
+];
+
+const MONTHS_PT = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
+];
+
 function fmtFull(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00');
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', weekday: 'long' });
+  const clean = dateStr.split('T')[0];
+  const [y, m, d] = clean.split('-');
+  const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
+  const weekday = WEEKDAYS_PT[dateObj.getDay()] || '';
+  const monthName = MONTHS_PT[dateObj.getMonth()] || '';
+  return `${weekday}, ${d} de ${monthName}`;
 }
 
 export default function MinhaEscala() {
@@ -29,7 +48,7 @@ export default function MinhaEscala() {
   const [swapShift, setSwapShift] = useState(null);
   const [tab, setTab] = useState('escala');
 
-  // Valores primitivos para evitar loop infinito
+  // Valores primitivos para evitar loop de re-render
   const userId = user?.id;
   const userEmail = user?.email;
   const userFullName = user?.full_name;
@@ -228,7 +247,7 @@ export default function MinhaEscala() {
               <div className="text-xs opacity-80 flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5" /> Próximo Plantão
               </div>
-              <div className="text-lg font-bold mt-1">{fmtFull(next.date)}</div>
+              <div className="text-lg font-bold mt-1 capitalize">{fmtFull(next.date)}</div>
               <div className="text-sm mt-0.5">{next.start_time} às {next.end_time}</div>
               <div className="text-xs mt-2 opacity-90 flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5" /> {company?.name || 'Hospital'} · {next.sector_name || '—'}
@@ -251,7 +270,9 @@ export default function MinhaEscala() {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-[10px] uppercase tracking-[0.18em] text-amber-700">Vaga disponível</div>
-                          <div className="mt-1 text-sm font-bold text-slate-800">{shift.sector_name || 'Especialidade'} · {fmtFull(shift.date)}</div>
+                          <div className="mt-1 text-sm font-bold text-slate-800 capitalize">
+                            {shift.sector_name || 'Especialidade'} · {fmtFull(shift.date)}
+                          </div>
                         </div>
                         <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700">
                           {shift.shift_type}
