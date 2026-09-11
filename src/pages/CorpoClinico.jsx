@@ -10,155 +10,80 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { 
-  UserCheck, 
   ShieldCheck, 
   Calendar, 
   Building2, 
   Plus, 
   Edit3, 
   Loader2, 
-  AlertTriangle, 
   Clock, 
   Mail, 
   Phone, 
-  FileText,
-  Trash2
+  Lock, 
+  User, 
+  Copy, 
+  Check, 
+  PlusCircle,
+  Share2
 } from 'lucide-react';
 
 const ALL_PERMISSIONS = [
   { id: 'painel', label: 'Painel Geral' },
   { id: 'escalas', label: 'Gestão de Escalas' },
-  { id: 'trocas', label: 'Trocas e Repasses' },
+  { id: 'trocas', label: 'Trocas de Plantão' },
   { id: 'corpo-clinico', label: 'Corpo Clínico' },
-  { id: 'relatorios', label: 'Relatórios de Horas' },
+  { id: 'relatorios', label: 'Relatórios' },
   { id: 'faturamento', label: 'Faturamento e Repasse' },
-  { id: 'configuracoes', label: 'Configurações Globais' }
+  { id: 'configuracoes', label: 'Configurações' }
 ];
 
-// Grade com todas as escalas e turnos reais da rotina hospitalar
 const HOSPITAL_SCHEDULE_PATTERNS = [
-  { 
-    id: '12x36_D', 
-    label: '12x36 Diurno (07:00 às 19:00)', 
-    pattern: '12x36', 
-    start: '07:00', 
-    end: '19:00', 
-    type: 'diurno', 
-    hours: 12 
-  },
-  { 
-    id: '12x36_N', 
-    label: '12x36 Noturno (19:00 às 07:00)', 
-    pattern: '12x36', 
-    start: '19:00', 
-    end: '07:00', 
-    type: 'noturno', 
-    hours: 12 
-  },
-  { 
-    id: '24x72', 
-    label: '24x72 Plantão Integral (07:00 às 07:00)', 
-    pattern: '24x72', 
-    start: '07:00', 
-    end: '07:00', 
-    type: '24h', 
-    hours: 24 
-  },
-  { 
-    id: '24x48', 
-    label: '24x48 Plantão Extensivo (07:00 às 07:00)', 
-    pattern: '24x48', 
-    start: '07:00', 
-    end: '07:00', 
-    type: '24h', 
-    hours: 24 
-  },
-  { 
-    id: '5x2_COMERCIAL', 
-    label: '5x2 Ambulatório / Comercial (08:00 às 17:00)', 
-    pattern: '5x2', 
-    start: '08:00', 
-    end: '17:00', 
-    type: 'diurno', 
-    hours: 8 
-  },
-  { 
-    id: '5x2_MANHA', 
-    label: '5x2 Turno Manhã (07:00 às 13:00)', 
-    pattern: '5x2', 
-    start: '07:00', 
-    end: '13:00', 
-    type: 'diurno', 
-    hours: 6 
-  },
-  { 
-    id: '5x2_TARDE', 
-    label: '5x2 Turno Tarde (13:00 às 19:00)', 
-    pattern: '5x2', 
-    start: '13:00', 
-    end: '19:00', 
-    type: 'diurno', 
-    hours: 6 
-  },
-  { 
-    id: '6x1_MANHA', 
-    label: '6x1 Turno Manhã (07:00 às 13:00)', 
-    pattern: '6x1', 
-    start: '07:00', 
-    end: '13:00', 
-    type: 'diurno', 
-    hours: 6 
-  },
-  { 
-    id: '6x1_TARDE', 
-    label: '6x1 Turno Tarde (13:00 às 19:00)', 
-    pattern: '6x1', 
-    start: '13:00', 
-    end: '19:00', 
-    type: 'diurno', 
-    hours: 6 
-  },
-  { 
-    id: '6x1_NOITE', 
-    label: '6x1 Turno Noite (19:00 às 01:00)', 
-    pattern: '6x1', 
-    start: '19:00', 
-    end: '01:00', 
-    type: 'noturno', 
-    hours: 6 
-  },
-  { 
-    id: 'CUSTOM', 
-    label: 'Horário Personalizado', 
-    pattern: 'custom', 
-    start: '07:00', 
-    end: '19:00', 
-    type: 'diurno', 
-    hours: 12 
-  }
+  { id: '12x36_D', label: '12x36 Diurno (07:00 às 19:00)', pattern: '12x36', start: '07:00', end: '19:00', hours: 12 },
+  { id: '12x36_N', label: '12x36 Noturno (19:00 às 07:00)', pattern: '12x36', start: '19:00', end: '07:00', hours: 12 },
+  { id: '24x72', label: '24x72 Integral (07:00 às 07:00)', pattern: '24x72', start: '07:00', end: '07:00', hours: 24 },
+  { id: '24x48', label: '24x48 Extensivo (07:00 às 07:00)', pattern: '24x48', start: '07:00', end: '07:00', hours: 24 },
+  { id: '5x2_COMERCIAL', label: '5x2 Ambulatório (08:00 às 17:00)', pattern: '5x2', start: '08:00', end: '17:00', hours: 8 },
+  { id: '5x2_MANHA', label: '5x2 Manhã (07:00 às 13:00)', pattern: '5x2', start: '07:00', end: '13:00', hours: 6 },
+  { id: '5x2_TARDE', label: '5x2 Tarde (13:00 às 19:00)', pattern: '5x2', start: '13:00', end: '19:00', hours: 6 },
+  { id: '6x1_MANHA', label: '6x1 Manhã (07:00 às 13:00)', pattern: '6x1', start: '07:00', end: '13:00', hours: 6 },
+  { id: '6x1_TARDE', label: '6x1 Tarde (13:00 às 19:00)', pattern: '6x1', start: '13:00', end: '19:00', hours: 6 },
+  { id: '6x1_NOITE', label: '6x1 Noite (19:00 às 01:00)', pattern: '6x1', start: '19:00', end: '01:00', hours: 6 },
+  { id: 'CUSTOM', label: 'Horário Personalizado', pattern: 'custom', start: '07:00', end: '19:00', hours: 12 }
 ];
 
 export default function CorpoClinico() {
   const { user, company } = useAppData();
   const [professionals, setProfessionals] = useState([]);
   const [sectors, setSectors] = useState([]);
+  const [specialties, setSpecialties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Modal para criar nova especialidade
+  const [newSpecialtyModal, setNewSpecialtyModal] = useState(false);
+  const [newSpecialtyName, setNewSpecialtyName] = useState('');
+  const [savingSpecialty, setSavingSpecialty] = useState(false);
 
   // Form State
   const [editingId, setEditingId] = useState(null);
   const [name, setName] = useState('');
-  const [category, setCategory] = useState('medico');
+  const [cpf, setCpf] = useState('');
   const [specialty, setSpecialty] = useState('');
+  const [section, setSection] = useState('');
   const [document, setDocument] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [unitId, setUnitId] = useState('');
+  
+  // Acesso / Credenciais
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [isManager, setIsManager] = useState(false);
   const [permissions, setPermissions] = useState(['painel', 'escalas', 'trocas']);
 
-  // Padrão de Plantão / Escala
+  // Padrão de Escala Automática
   const [selectedPatternPreset, setSelectedPatternPreset] = useState('12x36_D');
   const [schedulePattern, setSchedulePattern] = useState('12x36');
   const [monthReference, setMonthReference] = useState('2026-09');
@@ -182,14 +107,16 @@ export default function CorpoClinico() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [profs, secs] = await Promise.all([
+      const [profs, secs, specs] = await Promise.all([
         base44.entities.Professional.filter({ company_id: companyId }, '-created_date', 300),
-        base44.entities.Sector.filter({ company_id: companyId }, 'name', 100)
+        base44.entities.Sector.filter({ company_id: companyId }, 'name', 100),
+        base44.entities.Specialty ? base44.entities.Specialty.filter({ company_id: companyId }, 'name', 100) : []
       ]);
       setProfessionals(profs || []);
       setSectors(secs || []);
+      setSpecialties(specs || []);
     } catch (e) {
-      console.error('Erro ao carregar dados do Supabase:', e);
+      console.error('Erro ao buscar dados:', e);
     } finally {
       setLoading(false);
     }
@@ -199,7 +126,6 @@ export default function CorpoClinico() {
     loadData();
   }, [companyId]);
 
-  // Aplica o padrão pré-configurado selecionado
   const handlePatternPresetChange = (presetId) => {
     setSelectedPatternPreset(presetId);
     const preset = HOSPITAL_SCHEDULE_PATTERNS.find((p) => p.id === presetId);
@@ -228,15 +154,17 @@ export default function CorpoClinico() {
     }
   };
 
-  // Abrir Modal de Novo Cadastro
   const openNewModal = () => {
     setEditingId(null);
     setName('');
-    setCategory('medico');
-    setSpecialty('');
+    setCpf('');
+    setSpecialty(specialties[0]?.name || 'Clínica Médica');
+    setSection('');
     setDocument('');
     setEmail('');
     setPhone('');
+    setUsername('');
+    setPassword('Mudar@123');
     setUnitId(units[0]?.id || 'unit_h1');
     setIsManager(false);
     setPermissions(['painel', 'escalas', 'trocas']);
@@ -252,12 +180,12 @@ export default function CorpoClinico() {
     setDialogOpen(true);
   };
 
-  // Abrir Modal com os dados existentes do Profissional carregados
-  const handleEditProfessional = (prof) => {
+  const handleEditProfessional = async (prof) => {
     setEditingId(prof.id);
     setName(prof.name || '');
-    setCategory(prof.category || 'medico');
-    setSpecialty(prof.specialty || '');
+    setCpf(prof.cpf || '');
+    setSpecialty(prof.specialty || prof.category || '');
+    setSection(prof.section || prof.role || '');
     setDocument(prof.document || '');
     setEmail(prof.email || '');
     setPhone(prof.phone || '');
@@ -270,19 +198,61 @@ export default function CorpoClinico() {
       : managerRole ? ALL_PERMISSIONS.map(p => p.id) : ['painel', 'escalas', 'trocas']
     );
 
+    // Busca credenciais vinculadas na tabela de usuários
+    try {
+      const usersFound = await base44.entities.User.filter({ email: (prof.email || '').toLowerCase().trim() });
+      if (usersFound.length > 0) {
+        setUsername(usersFound[0].username || '');
+        setPassword(usersFound[0].password || '');
+      } else {
+        setUsername(prof.email ? prof.email.split('@')[0] : '');
+        setPassword('Mudar@123');
+      }
+    } catch {
+      setUsername(prof.email ? prof.email.split('@')[0] : '');
+      setPassword('Mudar@123');
+    }
+
     setSchedulePattern(prof.schedule_pattern || '12x36');
     setStartTime(prof.schedule_start_time || '07:00');
     setEndTime(prof.schedule_end_time || '19:00');
     setDefaultSectorId(prof.default_sector_id || sectors[0]?.id || '');
-    setAutoGenerateShifts(false); // Na edição vem desligado por padrão para evitar re-gerar sem necessidade
+    setAutoGenerateShifts(false);
 
-    // Tenta encontrar preset correspondente
     const matchingPreset = HOSPITAL_SCHEDULE_PATTERNS.find(
       (p) => p.pattern === prof.schedule_pattern && p.start === prof.schedule_start_time && p.end === prof.schedule_end_time
     );
     setSelectedPatternPreset(matchingPreset ? matchingPreset.id : 'CUSTOM');
 
     setDialogOpen(true);
+  };
+
+  // Criar nova especialidade no banco
+  const handleCreateSpecialty = async () => {
+    if (!newSpecialtyName.trim()) return;
+    setSavingSpecialty(true);
+    try {
+      const created = await base44.entities.Specialty.create({
+        company_id: companyId,
+        name: newSpecialtyName.trim()
+      });
+      setSpecialties((prev) => [...prev, created]);
+      setSpecialty(created.name);
+      setNewSpecialtyName('');
+      setNewSpecialtyModal(false);
+    } catch (e) {
+      alert('Erro ao criar especialidade: ' + e.message);
+    } finally {
+      setSavingSpecialty(false);
+    }
+  };
+
+  // Copiar dados para enviar pelo WhatsApp
+  const handleCopyAccess = () => {
+    const text = `*ScaleMedic - Seus dados de acesso*\n\nOlá, ${name}!\nVocê foi cadastrado no sistema do hospital.\n\n👤 *Usuário / Apelido:* ${username || email.split('@')[0]}\n🔑 *Senha:* ${password}\n🔗 *Acesso:* ${window.location.origin}/login\n\nPor favor, acesse o sistema para visualizar sua escala e plantões.`;
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 3000);
   };
 
   const handleSave = async (e) => {
@@ -294,9 +264,11 @@ export default function CorpoClinico() {
         company_id: companyId,
         unit_id: unitId,
         name,
-        category,
+        cpf,
         specialty,
-        role: isManager ? 'Diretor Médico / Gestor' : specialty || category,
+        category: specialty,
+        section,
+        role: isManager ? 'Diretor Médico / Gestor' : section || specialty,
         document,
         email,
         phone,
@@ -315,33 +287,37 @@ export default function CorpoClinico() {
         profRecord = await base44.entities.Professional.create(profPayload);
       }
 
-      // Sincroniza usuário e perfil de Gestor no Supabase
-      if (email) {
-        const existingUsers = await base44.entities.User.filter({ email: email.toLowerCase().trim() });
-        const finalPermissions = isManager ? ALL_PERMISSIONS.map((p) => p.id) : permissions;
-        const userData = {
-          company_id: companyId,
-          selected_unit_id: unitId,
-          app_role: isManager ? 'manager' : 'professional',
-          permissions: finalPermissions
-        };
+      // Salva / Atualiza o Usuário com nome/apelido e senha definidos
+      const userNick = (username || (email ? email.split('@')[0] : name.toLowerCase().replace(/\s+/g, ''))).trim();
+      const userPass = (password || 'Mudar@123').trim();
+      const userEmail = (email || `${userNick}@scalemedic.local`).toLowerCase().trim();
 
-        if (existingUsers.length > 0) {
-          await base44.entities.User.update(existingUsers[0].id, {
-            full_name: name,
-            role: isManager ? 'admin' : 'user',
-            data: userData
-          });
-        } else if (isManager) {
-          await base44.entities.User.create({
-            email: email.toLowerCase().trim(),
-            username: email.split('@')[0],
-            password: '123456',
-            full_name: name,
-            role: 'admin',
-            data: userData
-          });
-        }
+      const finalPermissions = isManager ? ALL_PERMISSIONS.map((p) => p.id) : permissions;
+      const userData = {
+        company_id: companyId,
+        selected_unit_id: unitId,
+        app_role: isManager ? 'manager' : 'professional',
+        permissions: finalPermissions
+      };
+
+      const existingUsers = await base44.entities.User.filter({ email: userEmail });
+      if (existingUsers.length > 0) {
+        await base44.entities.User.update(existingUsers[0].id, {
+          username: userNick,
+          password: userPass,
+          full_name: name,
+          role: isManager ? 'admin' : 'user',
+          data: userData
+        });
+      } else {
+        await base44.entities.User.create({
+          email: userEmail,
+          username: userNick,
+          password: userPass,
+          full_name: name,
+          role: isManager ? 'admin' : 'user',
+          data: userData
+        });
       }
 
       // Geração Automática da Grade do Mês com Trava de Conflito Multi-Unidades
@@ -352,7 +328,6 @@ export default function CorpoClinico() {
         const totalDays = new Date(year, month + 1, 0).getDate();
         const sectorObj = sectors.find((s) => s.id === defaultSectorId);
 
-        // Busca todas as escalas do profissional para impedir choque com outras unidades
         const existingShifts = await base44.entities.Shift.filter({
           company_id: companyId,
           professional_id: profRecord.id
@@ -384,7 +359,6 @@ export default function CorpoClinico() {
           }
 
           if (isWorkDay) {
-            // Trava de Conflito de Unidades: Checa se já trabalha nesse mesmo dia em outra unidade
             const conflict = existingShifts.find(
               (sh) => sh.date === dateStr && sh.unit_id !== unitId && sh.status !== 'cancelado'
             );
@@ -422,7 +396,7 @@ export default function CorpoClinico() {
       setDialogOpen(false);
       await loadData();
     } catch (err) {
-      alert(err.message || 'Erro ao processar alterações.');
+      alert(err.message || 'Erro ao processar dados.');
     } finally {
       setSaving(false);
     }
@@ -435,22 +409,27 @@ export default function CorpoClinico() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Corpo Clínico & Escalas</h1>
           <p className="text-sm text-slate-500">
-            Gerencie cadastros, libere acessos de gestor, vincule unidades e automatize plantões mensais.
+            Gerencie profissionais, defina especialidades e gere credenciais de acesso direto.
           </p>
         </div>
-        <Button onClick={openNewModal} className="bg-sky-600 hover:bg-sky-700 text-white gap-2 font-medium px-5">
-          <Plus className="w-4 h-4" /> Cadastrar profissional
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setNewSpecialtyModal(true)} className="gap-2">
+            <PlusCircle className="w-4 h-4 text-sky-600" /> Nova Especialidade
+          </Button>
+          <Button onClick={openNewModal} className="bg-sky-600 hover:bg-sky-700 text-white gap-2 font-medium px-5">
+            <Plus className="w-4 h-4" /> Cadastrar profissional
+          </Button>
+        </div>
       </div>
 
-      {/* Grid de Profissionais com Botão de Editar Ativo */}
+      {/* Grid de Profissionais */}
       {loading ? (
         <div className="flex justify-center p-16">
           <Loader2 className="w-8 h-8 animate-spin text-sky-600" />
         </div>
       ) : professionals.length === 0 ? (
         <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300">
-          <p className="text-slate-500">Nenhum profissional cadastrado nesta empresa.</p>
+          <p className="text-slate-500">Nenhum profissional cadastrado.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -468,7 +447,7 @@ export default function CorpoClinico() {
                     <div>
                       <h3 className="font-bold text-base text-slate-900 dark:text-white">{prof.name}</h3>
                       <p className="text-xs text-sky-600 font-semibold uppercase tracking-wide">
-                        {prof.specialty || prof.category} • {prof.document || 'Sem doc'}
+                        {prof.specialty} {prof.section ? `• Seção: ${prof.section}` : ''}
                       </p>
                     </div>
                     {isGestor && (
@@ -483,6 +462,9 @@ export default function CorpoClinico() {
                       <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <span className="font-medium text-slate-700 dark:text-slate-300">{unitName}</span>
                     </div>
+                    {prof.cpf && (
+                      <div className="text-slate-500">CPF: <span className="font-mono">{prof.cpf}</span> | Doc: {prof.document || 'N/A'}</div>
+                    )}
                     <div className="flex items-center gap-2">
                       <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <span>
@@ -495,16 +477,9 @@ export default function CorpoClinico() {
                         <span className="truncate">{prof.email}</span>
                       </div>
                     )}
-                    {prof.phone && (
-                      <div className="flex items-center gap-2">
-                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span>{prof.phone}</span>
-                      </div>
-                    )}
                   </div>
                 </div>
 
-                {/* Botão de Edição que carrega todos os dados salvos */}
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
                   <Button
                     variant="outline"
@@ -521,60 +496,129 @@ export default function CorpoClinico() {
         </div>
       )}
 
-      {/* Modal de Cadastro & Edição Completo */}
+      {/* Modal de Cadastro & Edição */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">
-              {editingId ? `Editar Profissional: ${name}` : 'Cadastrar Novo Profissional'}
+              {editingId ? `Editar Cadastro: ${name}` : 'Cadastrar Novo Profissional'}
             </DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleSave} className="space-y-5 py-2">
-            {/* Dados Pessoais e Profissionais */}
+            {/* Dados Pessoais & Documentos */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs font-semibold">Nome completo</Label>
                 <Input required value={name} onChange={(e) => setName(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs font-semibold">Categoria Profissional</Label>
-                <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label className="text-xs font-semibold">CPF do Profissional</Label>
+                <Input required placeholder="000.000.000-00" value={cpf} onChange={(e) => setCpf(e.target.value)} />
+              </div>
+
+              {/* Seletor de Especialidade + Botão Rápido de Criação */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label className="text-xs font-semibold">Especialidade</Label>
+                  <button
+                    type="button"
+                    onClick={() => setNewSpecialtyModal(true)}
+                    className="text-[11px] text-sky-600 hover:underline flex items-center gap-1 font-medium"
+                  >
+                    <PlusCircle className="w-3 h-3" /> Criar nova
+                  </button>
+                </div>
+                <Select value={specialty} onValueChange={setSpecialty}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a especialidade..." /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="medico">Médico (a)</SelectItem>
-                    <SelectItem value="enfermeiro">Enfermeiro (a)</SelectItem>
-                    <SelectItem value="tecnico">Técnico (a) de Enfermagem</SelectItem>
-                    <SelectItem value="fisioterapeuta">Fisioterapeuta</SelectItem>
+                    {specialties.map((esp) => (
+                      <SelectItem key={esp.id || esp.name} value={esp.name}>{esp.name}</SelectItem>
+                    ))}
+                    {specialties.length === 0 && (
+                      <SelectItem value="Clínica Médica">Clínica Médica</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
+
               <div>
-                <Label className="text-xs font-semibold">Especialidade Clínica</Label>
-                <Input required placeholder="Ex: Cardiologia, UTI, Emergência" value={specialty} onChange={(e) => setSpecialty(e.target.value)} />
+                <Label className="text-xs font-semibold">Seção / Setor</Label>
+                <Input required placeholder="Ex: UTI Adulto, Bloco Cirúrgico, PA" value={section} onChange={(e) => setSection(e.target.value)} />
               </div>
+
               <div>
                 <Label className="text-xs font-semibold">Registro / Conselho (CRM / COREN)</Label>
                 <Input required value={document} onChange={(e) => setDocument(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs font-semibold">E-mail (usado para login)</Label>
-                <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-              </div>
-              <div>
                 <Label className="text-xs font-semibold">Telefone / WhatsApp</Label>
-                <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+                <Input placeholder="(00) 00000-0000" value={phone} onChange={(e) => setPhone(e.target.value)} />
               </div>
             </div>
 
-            {/* Vínculo de Unidade Hospitalar */}
+            {/* Credenciais de Acesso (Login e Senha) */}
+            <div className="p-4 bg-sky-50/50 dark:bg-sky-950/20 rounded-xl border border-sky-200 dark:border-sky-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <User className="w-4 h-4 text-sky-600" /> Acesso ao Sistema (Login & Senha)
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    O profissional poderá acessar usando o nome/apelido ou e-mail com a senha definida aqui.
+                  </p>
+                </div>
+                {username && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyAccess}
+                    className="text-xs font-medium gap-1.5 bg-white dark:bg-slate-900 border-sky-300 text-sky-700"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Share2 className="w-3.5 h-3.5" />}
+                    {copied ? 'Copiado para WhatsApp!' : 'Copiar Acesso para WhatsApp'}
+                  </Button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs font-semibold">Nome de Usuário / Apelido</Label>
+                  <Input
+                    required
+                    placeholder="Ex: dr.silva ou michael"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold">Senha Inicial</Label>
+                  <Input
+                    required
+                    type="text"
+                    placeholder="Ex: 123456"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold">E-mail (opcional para recuperação)</Label>
+                  <Input
+                    type="email"
+                    placeholder="medico@hospital.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Unidade Hospitalar de Lotação */}
             <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
               <Label className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-sky-600" /> Unidade de Lotação
+                <Building2 className="w-4 h-4 text-sky-600" /> Unidade Hospitalar
               </Label>
-              <p className="text-xs text-slate-500">
-                Se o profissional atender em mais de um hospital da rede, crie um vínculo para cada unidade. O sistema valida os plantões para evitar duplicidades no mesmo dia.
-              </p>
               <Select value={unitId} onValueChange={setUnitId}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -585,123 +629,89 @@ export default function CorpoClinico() {
               </Select>
             </div>
 
-            {/* Controle de Acesso e Perfil de Gestor */}
+            {/* Acesso de Gestor */}
             <div className="border border-indigo-100 dark:border-indigo-950 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 rounded-xl space-y-3">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-bold text-sm text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-indigo-600" /> Cadastrar / Ativar como Gestor Pleno
+                    <ShieldCheck className="w-4 h-4 text-indigo-600" /> Cadastrar como Gestor Pleno
                   </div>
                   <p className="text-xs text-slate-500">
-                    Ao ativar, o profissional ganha permissão irrestrita para gerenciar escalas, aprovar trocas e visualizar o hospital por completo.
+                    Ao ativar, o profissional tem acesso irrestrito a todos os menus e aprovações.
                   </p>
                 </div>
                 <Switch checked={isManager} onCheckedChange={handleToggleManager} />
               </div>
 
               <div>
-                <Label className="text-xs font-semibold mb-2 block text-slate-700 dark:text-slate-300">
-                  Permissões do Módulo
-                </Label>
+                <Label className="text-xs font-semibold mb-2 block">Permissões Específicas</Label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {ALL_PERMISSIONS.map((perm) => (
-                    <div key={perm.id} className="flex items-center space-x-2 bg-white dark:bg-slate-900 p-2.5 rounded-lg border text-xs">
+                    <div key={perm.id} className="flex items-center space-x-2 bg-white dark:bg-slate-900 p-2 rounded-lg border text-xs">
                       <Checkbox
                         id={`perm-${perm.id}`}
                         checked={permissions.includes(perm.id)}
                         disabled={isManager}
                         onCheckedChange={(checked) => handlePermissionChange(perm.id, !!checked)}
                       />
-                      <label htmlFor={`perm-${perm.id}`} className="cursor-pointer select-none font-medium">
-                        {perm.label}
-                      </label>
+                      <label htmlFor={`perm-${perm.id}`} className="cursor-pointer select-none font-medium">{perm.label}</label>
                     </div>
                   ))}
                 </div>
               </div>
             </div>
 
-            {/* Automação Completa de Escalas Hospitalares */}
+            {/* Padrão da Escala Hospitalar */}
             <div className="border border-slate-200 dark:border-slate-800 p-4 rounded-xl space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                    <Calendar className="w-4 h-4 text-emerald-600" /> Escala e Geração Automática do Mês
+                    <Calendar className="w-4 h-4 text-emerald-600" /> Escala e Grade do Mês
                   </div>
                   <p className="text-xs text-slate-500">
-                    Define a rotina deste profissional e permite gerar todos os plantões do mês de forma automática.
+                    Defina o turno padrão e gere todos os plantões do mês sem esforço manual.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-600">Gerar grade agora:</span>
+                  <span className="text-xs font-semibold text-slate-600">Preencher mês:</span>
                   <Switch checked={autoGenerateShifts} onCheckedChange={setAutoGenerateShifts} />
                 </div>
               </div>
 
-              {/* Seletor de Escalas Hospitalares */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs font-semibold">Padrão de Escala Hospitalar</Label>
                   <Select value={selectedPatternPreset} onValueChange={handlePatternPresetChange}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {HOSPITAL_SCHEDULE_PATTERNS.map((pattern) => (
-                        <SelectItem key={pattern.id} value={pattern.id}>
-                          {pattern.label}
-                        </SelectItem>
+                        <SelectItem key={pattern.id} value={pattern.id}>{pattern.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-xs font-semibold">Setor Padrão de Atuação</Label>
+                  <Label className="text-xs font-semibold">Setor Padrão</Label>
                   <Select value={defaultSectorId} onValueChange={setDefaultSectorId}>
                     <SelectTrigger><SelectValue placeholder="Selecione o setor..." /></SelectTrigger>
                     <SelectContent>
                       {sectors.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name} ({s.specialty || 'Geral'})
-                        </SelectItem>
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
-              {/* Detalhes de Horários */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl">
-                <div>
-                  <Label className="text-[11px] text-slate-500">Início do Turno</Label>
-                  <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-[11px] text-slate-500">Fim do Turno</Label>
-                  <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-                </div>
-                <div>
-                  <Label className="text-[11px] text-slate-500">Duração (Horas)</Label>
-                  <Input type="number" value={durationHours} onChange={(e) => setDurationHours(Number(e.target.value))} />
-                </div>
-                <div>
-                  <Label className="text-[11px] text-slate-500">Ciclo (Regra)</Label>
-                  <Input disabled value={schedulePattern.toUpperCase()} className="bg-slate-100 font-bold" />
-                </div>
-              </div>
-
-              {/* Configuração do Mês para Geração */}
               {autoGenerateShifts && (
                 <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">
-                      Mês de Lançamento da Grade
-                    </Label>
+                    <Label className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">Mês da Grade</Label>
                     <Input type="month" value={monthReference} onChange={(e) => setMonthReference(e.target.value)} />
                   </div>
                   <div>
-                    <Label className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">
-                      Primeiro Plantão do Ciclo
-                    </Label>
+                    <Label className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">Data do 1º Plantão</Label>
                     <Input type="date" value={cycleStartDate} onChange={(e) => setCycleStartDate(e.target.value)} />
                   </div>
                 </div>
@@ -709,18 +719,36 @@ export default function CorpoClinico() {
             </div>
 
             <DialogFooter className="gap-2">
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                Cancelar
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
               <Button type="submit" disabled={saving} className="bg-sky-600 hover:bg-sky-700 text-white px-6">
-                {saving ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Salvando...</>
-                ) : (
-                  editingId ? 'Salvar Alterações' : 'Cadastrar e Concluir'
-                )}
+                {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Gravando...</> : (editingId ? 'Salvar Alterações' : 'Concluir Cadastro')}
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Criar Nova Especialidade */}
+      <Dialog open={newSpecialtyModal} onOpenChange={setNewSpecialtyModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nova Especialidade Médica</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label className="text-xs font-semibold">Nome da Especialidade</Label>
+            <Input
+              autoFocus
+              placeholder="Ex: Neurocirurgia, Radiologia, Nefrologia"
+              value={newSpecialtyName}
+              onChange={(e) => setNewSpecialtyName(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewSpecialtyModal(false)}>Cancelar</Button>
+            <Button onClick={handleCreateSpecialty} disabled={savingSpecialty} className="bg-sky-600 text-white">
+              {savingSpecialty ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar Especialidade'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -5,15 +5,23 @@ import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogIn, Mail, Lock, Loader2, ShieldCheck, ArrowRight, CalendarClock, Stethoscope, BarChart3, MapPin, Sparkles, UserRound, Building2, Download, MessageCircleMore } from "lucide-react";
-import GoogleIcon from "@/components/GoogleIcon";
-
-const floatingBubbles = [
-  { icon: ShieldCheck, label: 'Cobertura 24h', tone: 'sky', position: 'card-top-left' },
-  { icon: CalendarClock, label: 'Escalas em tempo real', tone: 'violet', position: 'card-top-right' },
-  { icon: BarChart3, label: 'Faturamento e metas', tone: 'emerald', position: 'card-bottom-left' },
-  { icon: Stethoscope, label: 'Equipe médica integrada', tone: 'amber', position: 'card-bottom-right' },
-];
+import { 
+  LogIn, 
+  Mail, 
+  Lock, 
+  Loader2, 
+  ShieldCheck, 
+  ArrowRight, 
+  CalendarClock, 
+  Stethoscope, 
+  BarChart3, 
+  MapPin, 
+  Sparkles, 
+  UserRound, 
+  Building2, 
+  Download, 
+  MessageCircleMore 
+} from "lucide-react";
 
 const features = [
   { icon: CalendarClock, title: 'Escala inteligente', text: 'Planejamento automático de turnos e cobertura por especialidade.' },
@@ -71,23 +79,16 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await base44.auth.loginViaUsernamePassword(username, password);
-      await checkUserAuth();
+      await base44.auth.loginViaUsernamePassword(username.trim(), password);
+      if (checkUserAuth) {
+        await checkUserAuth();
+      }
       navigate('/dashboard');
     } catch (err) {
       setError(err.message || "Usuário ou senha inválidos.");
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleGoogle = () => {
-    const returnUrl = `${window.location.origin}/dashboard`;
-    // Força a janela de seleção de conta do Google mesmo com sessão ativa
-    base44.auth.loginWithProvider("google", returnUrl, {
-      prompt: "select_account",
-      access_type: "offline"
-    });
   };
 
   const handleAppDownload = () => {
@@ -207,7 +208,7 @@ export default function Login() {
               <div className="flex flex-wrap gap-6 pt-4 text-sm text-slate-600">
                 <div>
                   <div className="text-2xl font-black text-slate-900">24h</div>
-                  <div>Operação continua</div>
+                  <div>Operação contínua</div>
                 </div>
                 <div>
                   <div className="text-2xl font-black text-slate-900">+98%</div>
@@ -220,75 +221,55 @@ export default function Login() {
               </div>
             </div>
 
-            <div className="home-visual-shell relative mx-auto w-full max-w-lg">
-              {floatingBubbles.map(({ icon: Icon, label, tone, position }) => (
-                <div key={label} className={`floating-card floating-card-${tone} ${position}`}>
-                  <Icon className="h-4 w-4" />
-                  {label}
-                </div>
-              ))}
-
-              <div className="relative overflow-hidden rounded-[28px] border border-sky-100 bg-white p-6 shadow-[0_30px_80px_rgba(14,116,144,0.14)]">
-                <div className="mb-5 flex items-center justify-between">
+            {/* Container do Formulário Limpo - Sem cards flutuantes nem botão do Google */}
+            <div className="relative mx-auto w-full max-w-md">
+              <div className="relative overflow-hidden rounded-[28px] border border-sky-100 bg-white p-7 shadow-[0_20px_50px_rgba(14,116,144,0.12)]">
+                <div className="mb-6 flex items-center justify-between">
                   <div>
-                    <div className="text-xs uppercase tracking-[0.22em] text-slate-400">Acesso</div>
-                    <h2 className="mt-2 text-2xl font-black text-slate-900">Entrar</h2>
+                    <div className="text-xs uppercase tracking-[0.22em] text-slate-400">Portal do Usuário</div>
+                    <h2 className="mt-1 text-2xl font-black text-slate-900">Acesse sua conta</h2>
                   </div>
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
                     <LogIn className="h-5 w-5" />
                   </div>
                 </div>
 
-                <Button 
-                  type="button"
-                  variant="outline" 
-                  onClick={handleGoogle} 
-                  className="mb-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  <GoogleIcon className="h-5 w-5" />
-                  Continuar com Google
-                </Button>
-
-                <div className="mb-5 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                  <div className="h-px flex-1 bg-slate-200" />
-                  ou
-                  <div className="h-px flex-1 bg-slate-200" />
-                </div>
-
                 {error && (
-                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-700">
                     {error}
                   </div>
                 )}
 
                 <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="username" className="text-sm font-medium text-slate-700">Usuário</Label>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="username" className="text-xs font-semibold text-slate-700">
+                      Nome de Usuário, Apelido ou E-mail
+                    </Label>
                     <div className="relative">
-                      <UserRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <UserRound className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       <Input
                         id="username"
                         name="username_field"
                         type="text"
                         autoComplete="off"
-                        placeholder="Digite seu usuário ou e-mail"
+                        placeholder="Ex: admin, mdevils ou dr.silva"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10 text-slate-900 placeholder:text-slate-400"
+                        className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10 text-slate-900 placeholder:text-slate-400 focus:bg-white"
                         required
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="password" className="text-sm font-medium text-slate-700">Senha</Label>
+                      <Label htmlFor="password" className="text-xs font-semibold text-slate-700">Senha</Label>
                       <Link to="/forgot-password" className="text-xs font-medium text-sky-700 hover:underline">
                         Esqueci a senha
                       </Link>
                     </div>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       <Input
                         id="password"
                         name="password_field"
@@ -297,25 +278,29 @@ export default function Login() {
                         placeholder="••••••••"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10 text-slate-900 placeholder:text-slate-400"
+                        className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10 text-slate-900 placeholder:text-slate-400 focus:bg-white"
                         required
                       />
                     </div>
                   </div>
 
-                  <Button type="submit" className="h-12 w-full rounded-xl bg-sky-600 text-white shadow-lg shadow-sky-200 hover:bg-sky-700" disabled={loading}>
+                  <Button 
+                    type="submit" 
+                    className="mt-2 h-12 w-full rounded-xl bg-sky-600 text-white font-semibold shadow-lg shadow-sky-200 hover:bg-sky-700" 
+                    disabled={loading}
+                  >
                     {loading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Entrando...
+                        Validando credenciais...
                       </>
                     ) : (
-                      "Entrar"
+                      "Entrar no Sistema"
                     )}
                   </Button>
                 </form>
 
-                <p className="mt-5 text-center text-sm text-slate-500">
+                <p className="mt-5 text-center text-xs text-slate-500">
                   Ainda não tem conta?{" "}
                   <Link to="/register" className="font-semibold text-sky-700 hover:underline">
                     Criar conta
@@ -326,6 +311,7 @@ export default function Login() {
           </div>
         </section>
 
+        {/* Seção Escala Médica */}
         <section id="escala-medica" className="border-t border-sky-100 bg-white/60 py-20">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="mb-12 text-center">
@@ -352,6 +338,7 @@ export default function Login() {
           </div>
         </section>
 
+        {/* Seção Como Funciona */}
         <section className="bg-slate-950 py-20 text-white">
           <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
             <div className="mb-12 text-center">
@@ -382,6 +369,7 @@ export default function Login() {
           </div>
         </section>
 
+        {/* Seção Planos */}
         <section id="planos" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
           <div className="mb-12 text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">
@@ -485,6 +473,7 @@ export default function Login() {
           </div>
         </section>
 
+        {/* Seção Contato */}
         <section id="contato" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
           <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">
             <div className="rounded-[28px] border border-sky-100 bg-sky-950 p-8 text-white shadow-[0_20px_60px_rgba(14,116,144,0.25)]">

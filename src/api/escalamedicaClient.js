@@ -9,6 +9,7 @@ const tableMap = {
   Company: 'companies',
   User: 'users',
   Professional: 'professionals',
+  Specialty: 'specialties', // <--- adicione esta linha
   Sector: 'sectors',
   Shift: 'shifts',
   ShiftSwap: 'shift_swaps',
@@ -99,6 +100,7 @@ const entityApis = {
   Company: buildSupabaseEntity(tableMap.Company),
   User: buildSupabaseEntity(tableMap.User),
   Professional: buildSupabaseEntity(tableMap.Professional),
+  Specialty: buildSupabaseEntity(tableMap.Specialty), // <--- adicione esta linha
   Sector: buildSupabaseEntity(tableMap.Sector),
   Shift: buildSupabaseEntity(tableMap.Shift),
   ShiftSwap: buildSupabaseEntity(tableMap.ShiftSwap),
