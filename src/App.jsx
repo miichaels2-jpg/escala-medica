@@ -24,7 +24,7 @@ import Trocas from '@/pages/Trocas';
 import MobilePreview from '@/pages/MobilePreview';
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
+  const { isAuthenticated, isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
@@ -40,17 +40,23 @@ const AuthenticatedApp = () => {
 
   return (
     <Routes>
-      {/* 1. Rotas Públicas */}
-      <Route path="/" element={<Login />} />
-      <Route path="/login" element={<Login />} />
+      {/* Se já estiver logado e tentar abrir a raiz, vai pro dashboard. Se não, abre o Login/Home */}
+      <Route 
+        path="/" 
+        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
+      />
+
+      {/* Rotas Públicas */}
+      <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/mobile-preview" element={<MobilePreview />} />
 
-      {/* 2. Rotas Protegidas (se deslogado, vai para /) */}
-      <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/" />} />}>
+      {/* Rotas Protegidas (se deslogado, vai para /) */}
+      <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/" replace />} />}>
         <Route element={<AppLayout />}>
+          {/* Suporta tanto /dashboard quanto / para não quebrar cliques no menu */}
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/escalas" element={<Escalas />} />
           <Route path="/corpo-clinico" element={<CorpoClinico />} />
@@ -63,7 +69,7 @@ const AuthenticatedApp = () => {
         </Route>
       </Route>
 
-      {/* 3. Não encontrada */}
+      {/* Rota 404 */}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
