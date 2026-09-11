@@ -82,33 +82,12 @@ export default function Login() {
   };
 
   const handleGoogle = () => {
-    const width = 500;
-    const height = 620;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
     const returnUrl = `${window.location.origin}/dashboard`;
-
-    if (typeof base44.auth.getOAuthUrl === 'function') {
-      const oauthUrl = base44.auth.getOAuthUrl('google', returnUrl);
-      const popup = window.open(
-        oauthUrl,
-        "google-auth-popup",
-        `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
-      );
-
-      const interval = setInterval(async () => {
-        if (!popup || popup.closed) {
-          clearInterval(interval);
-          const loggedUser = await checkUserAuth();
-          if (loggedUser) {
-            navigate('/dashboard');
-          }
-        }
-      }, 1000);
-      return;
-    }
-
-    base44.auth.loginWithProvider("google", returnUrl);
+    // Força a janela de seleção de conta do Google mesmo com sessão ativa
+    base44.auth.loginWithProvider("google", returnUrl, {
+      prompt: "select_account",
+      access_type: "offline"
+    });
   };
 
   const handleAppDownload = () => {

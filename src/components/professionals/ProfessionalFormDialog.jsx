@@ -148,13 +148,26 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
     }
   }, [open, professional, companyUnits, unitId]);
 
-  useEffect(() => {
-    const plan = patternConfig[form.schedule_pattern];
-    if (!plan?.durationHours) return;
-    setForm((current) => ({ ...current, schedule_end_time: addHours(current.schedule_start_time, plan.durationHours) }));
-  }, [form.schedule_pattern, form.schedule_start_time]);
-
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handlePatternChange = (newPattern) => {
+    const plan = patternConfig[newPattern];
+    setForm((current) => ({
+      ...current,
+      schedule_pattern: newPattern,
+      schedule_days: newPattern === '5x2' ? ['seg', 'ter', 'qua', 'qui', 'sex'] : current.schedule_days,
+      schedule_end_time: plan?.durationHours ? addHours(current.schedule_start_time, plan.durationHours) : current.schedule_end_time
+    }));
+  };
+
+  const handleStartTimeChange = (newStartTime) => {
+    const plan = patternConfig[form.schedule_pattern];
+    setForm((current) => ({
+      ...current,
+      schedule_start_time: newStartTime,
+      schedule_end_time: plan?.durationHours ? addHours(newStartTime, plan.durationHours) : current.schedule_end_time
+    }));
+  };
 
   const toggleDay = (dayKey) => {
     set('schedule_days', form.schedule_days.includes(dayKey)
@@ -172,7 +185,7 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
   const schedulePreview = isCyclePattern
     ? `${patternConfig[form.schedule_pattern]?.label || 'Ciclo'} a partir de ${form.schedule_reference_date || 'data de referência'}`
     : form.schedule_pattern === '5x2'
-      ? `${form.schedule_days.map((day) => dayLabels[day]).join(', ') || 'Nenhum dia selecionado'} · ${form.schedule_start_time} às ${form.schedule_end_time}`
+      ? `${form.schedule_days.map((day) => dayLabels[day]).join(', ') || 'Nenhum dia'} · ${form.schedule_start_time} às ${form.schedule_end_time}`
       : 'Defina os dias e horários manualmente';
 
   const generateSchedule = async (professionalId, professionalName, professionalData) => {
@@ -256,7 +269,6 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
         throw new Error('As senhas de acesso não conferem.');
       }
 
-      // Payload limpo estritamente para a entidade Professional (evita erro de schema)
       const payload = {
         name: form.name.trim(),
         document: form.document ? form.document.trim() : '',
@@ -291,7 +303,6 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
         savedProfessional = await base44.entities.Professional.create(payload);
       }
 
-      // Se informou e-mail de acesso, sincroniza ou cria a conta de login do usuário
       if (loginEmail && savedProfessional?.id) {
         try {
           const resolvedPassword = loginPassword || generateTemporaryPassword();
@@ -509,22 +520,18 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
             </Select>
           </div>
 
-          <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-3 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-800">Escala mensal automática</p>
-                <p className="text-[11px] text-slate-500">Gere o plantão do mês com padrão hospitalar e dias selecionados.</p>
-              </div>
+          {/* Configuração de Escala e Turnos - Layout Estável */}
+          <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-4 space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Escala mensal e turnos</p>
+              <p className="text-[11px] text-slate-500">Defina o padrão de trabalho e os horários de início e término do turno.</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Padrão</Label>
-                <Select value={form.schedule_pattern} onValueChange={(v) => {
-                  set('schedule_pattern', v);
-                  if (v === '5x2') set('schedule_days', ['seg', 'ter', 'qua', 'qui', 'sex']);
-                }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label>Padrão de escala</Label>
+                <Select value={form.schedule_pattern} onValueChange={handlePatternChange}>
+                  <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="manual">Manual / livre</SelectItem>
                     <SelectItem value="12x36">12x36</SelectItem>
@@ -539,9 +546,9 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
               </div>
 
               <div className="space-y-1.5">
-                <Label>Mês</Label>
+                <Label>Mês de referência</Label>
                 <Select value={form.schedule_month} onValueChange={(v) => set('schedule_month', v)}>
-                  <SelectTrigger><SelectValue placeholder="Selecione o mês" /></SelectTrigger>
+                  <SelectTrigger className="bg-white"><SelectValue placeholder="Selecione o mês" /></SelectTrigger>
                   <SelectContent>
                     {monthOptions.map((option) => (
                       <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
@@ -557,8 +564,8 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
                 <textarea
                   value={form.schedule_custom_config}
                   onChange={(e) => set('schedule_custom_config', e.target.value)}
-                  placeholder="Ex.: 2 noites seg/qua, 1 dia de folga a cada 4 dias, turno 07:00 às 19:00, plantão 24h para enfermeiros OB..."
-                  className="min-h-[90px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                  placeholder="Ex.: 2 noites seg/qua, 1 dia de folga a cada 4 dias..."
+                  className="min-h-[80px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
                 />
               </div>
             )}
@@ -566,26 +573,43 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
             {form.schedule_pattern !== 'manual' && form.schedule_pattern !== 'custom' && (
               <div className="space-y-1.5">
                 <Label>Primeiro dia do ciclo</Label>
-                <Input type="date" value={form.schedule_reference_date} onChange={(e) => set('schedule_reference_date', e.target.value)} />
-                <p className="text-[11px] text-slate-500">A partir desta data o sistema recalcula automaticamente os dias trabalhados na duplicação mensal.</p>
+                <Input 
+                  type="date" 
+                  value={form.schedule_reference_date} 
+                  onChange={(e) => set('schedule_reference_date', e.target.value)} 
+                  className="bg-white"
+                />
               </div>
             )}
 
+            {/* Início e Término do Turno com campos desimpedidos */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Início do turno</Label>
-                <Input type="time" value={form.schedule_start_time} onChange={(e) => set('schedule_start_time', e.target.value)} />
+                <Input 
+                  type="time" 
+                  value={form.schedule_start_time} 
+                  onChange={(e) => handleStartTimeChange(e.target.value)}
+                  className="bg-white"
+                  required
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Fim do turno</Label>
-                <Input type="time" value={form.schedule_end_time} onChange={(e) => set('schedule_end_time', e.target.value)} />
+                <Input 
+                  type="time" 
+                  value={form.schedule_end_time} 
+                  onChange={(e) => set('schedule_end_time', e.target.value)}
+                  className="bg-white"
+                  required
+                />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label>Setor padrão</Label>
+              <Label>Setor padrão da escala</Label>
               <Select value={form.default_sector_id} onValueChange={(v) => set('default_sector_id', v)}>
-                <SelectTrigger><SelectValue placeholder="Selecione o setor da escala" /></SelectTrigger>
+                <SelectTrigger className="bg-white"><SelectValue placeholder="Selecione o setor da escala" /></SelectTrigger>
                 <SelectContent>
                   {sectors.map((sector) => (
                     <SelectItem key={sector.id} value={sector.id}>{sector.name}</SelectItem>
@@ -595,11 +619,10 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
             </div>
 
             <div className="space-y-2">
-              <Label>Dias da semana</Label>
-              <p className="text-[11px] text-slate-500">{isCyclePattern ? 'O ciclo usa a data de referência. Não é necessário marcar os dias.' : 'O 5x2 começa automaticamente de segunda a sexta. Ajuste apenas se necessário.'}</p>
-              <div className={`grid grid-cols-7 gap-2 ${isCyclePattern ? 'pointer-events-none opacity-45' : ''}`}>
+              <Label>Dias da semana trabalhados</Label>
+              <div className={`grid grid-cols-7 gap-1.5 ${isCyclePattern ? 'pointer-events-none opacity-45' : ''}`}>
                 {['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'].map((day) => (
-                  <label key={day} className={`flex flex-col items-center gap-1 rounded-lg border p-2 text-center text-[10px] font-medium transition ${form.schedule_days.includes(day) ? 'border-sky-400 bg-sky-50 text-sky-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600'}`}>
+                  <label key={day} className={`flex flex-col items-center gap-1 rounded-lg border p-2 text-center text-[10px] font-medium transition cursor-pointer ${form.schedule_days.includes(day) ? 'border-sky-400 bg-sky-50 text-sky-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600'}`}>
                     <Checkbox
                       checked={form.schedule_days.includes(day)}
                       onCheckedChange={() => toggleDay(day)}
@@ -608,7 +631,9 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
                   </label>
                 ))}
               </div>
-              <div className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">Prévia: {schedulePreview}</div>
+              <div className="rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                Prévia: {schedulePreview}
+              </div>
             </div>
           </div>
 
@@ -620,7 +645,7 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
 
             <div className="grid grid-cols-2 gap-2">
               {permissionOptions.map((permission) => (
-                <label key={permission.key} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700">
+                <label key={permission.key} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 cursor-pointer">
                   <Checkbox
                     checked={form.permissions.includes(permission.key)}
                     onCheckedChange={() => togglePermission(permission.key)}
