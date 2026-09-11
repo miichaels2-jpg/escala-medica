@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { base44, supabase } from '@/api/base44Client';
+import { base44 } from '@/api/base44Client';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -59,7 +59,6 @@ const DEFAULT_SECTORS = [
   { id: 'sec_clinica_medica', name: 'Enfermaria / Clínica Médica', specialty: 'Clínica Médica' }
 ];
 
-// Helper: Gera a senha padrão (DDMMAAAA + primeira letra minúscula do nome)
 function computeDefaultPassword(birthDateStr, fullName) {
   if (!birthDateStr) return '123456';
   const parts = birthDateStr.split('-');
@@ -78,10 +77,8 @@ export default function CorpoClinico() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   
-  // Alerta Toast
   const [toastMessage, setToastMessage] = useState('');
 
-  // Modal para criar nova especialidade
   const [newSpecialtyModal, setNewSpecialtyModal] = useState(false);
   const [newSpecialtyName, setNewSpecialtyName] = useState('');
   const [savingSpecialty, setSavingSpecialty] = useState(false);
@@ -210,14 +207,10 @@ export default function CorpoClinico() {
         const existingUsers = await base44.entities.User.filter({ email: userEmail });
         if (existingUsers.length > 0) {
           const userRecord = existingUsers[0];
-          await supabase
-            .from('users')
-            .update({
-              password: defaultPass,
-              data: { ...(userRecord.data || {}), must_change_password: true },
-              updated_date: new Date().toISOString()
-            })
-            .eq('id', userRecord.id);
+          await base44.entities.User.update(userRecord.id, {
+            password: defaultPass,
+            data: { ...(userRecord.data || {}), must_change_password: true }
+          });
         }
       } catch (err) {
         console.error('Erro ao resetar senha no banco:', err);
@@ -551,7 +544,7 @@ export default function CorpoClinico() {
 
   return (
     <div className="p-4 md:p-8 space-y-6 relative">
-      {/* Notificação Toast na tela */}
+      {/* Toast Notificação */}
       {toastMessage && (
         <div className="fixed top-6 right-6 z-[9999] flex items-center gap-2 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300 font-medium text-sm">
           <CheckCircle2 className="w-5 h-5 text-emerald-100" />
@@ -577,7 +570,7 @@ export default function CorpoClinico() {
         </div>
       </div>
 
-      {/* Lista de Profissionais */}
+      {/* Grid de Profissionais */}
       {loading ? (
         <div className="flex justify-center p-16">
           <Loader2 className="w-8 h-8 animate-spin text-sky-600" />
