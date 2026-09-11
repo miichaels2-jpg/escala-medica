@@ -6,7 +6,6 @@ import { Calendar, Repeat, DollarSign, User, Clock, MapPin, CheckCircle2 } from 
 import { Link } from 'react-router-dom';
 import SwapRequestDialog from '@/components/shifts/SwapRequestDialog';
 import NotificationBell from '@/components/NotificationBell';
-import { getShiftInterval } from '@/lib/shiftUtils';
 
 const shiftTypeStyle = {
   diurno: 'bg-sky-50 text-sky-700',
@@ -29,6 +28,13 @@ const MONTHS_PT = [
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
 ];
 
+function getLocalDateString(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function fmtFull(dateStr) {
   if (!dateStr) return '';
   const clean = dateStr.split('T')[0];
@@ -48,7 +54,6 @@ export default function MinhaEscala() {
   const [swapShift, setSwapShift] = useState(null);
   const [tab, setTab] = useState('escala');
 
-  // Valores primitivos para evitar loop de re-render
   const userId = user?.id;
   const userEmail = user?.email;
   const userFullName = user?.full_name;
@@ -92,12 +97,12 @@ export default function MinhaEscala() {
     };
   }, [appLoading, userId, userEmail, userFullName, companyId, unitId]);
 
+  // CORREÇÃO: Mostra todos os plantões a partir de HOJE (incluindo o que começa às 07h)
   const upcoming = useMemo(() => {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayStr = getLocalDateString();
     return myShifts.filter((s) => {
-      const interval = getShiftInterval(s);
-      return (interval?.end || new Date(s.date + 'T23:59:59')) >= todayStart;
+      const sDate = (s.date || '').split('T')[0];
+      return sDate >= todayStr;
     });
   }, [myShifts]);
 
@@ -124,7 +129,7 @@ export default function MinhaEscala() {
       const alreadyAssigned = companyShifts.some((existingShift) => {
         if (!existingShift || existingShift.professional_id !== myProfessional.id) return false;
         if (existingShift.status === 'cancelado') return false;
-        return existingShift.date === shift.date;
+        return (existingShift.date || '').split('T')[0] === (shift.date || '').split('T')[0];
       });
 
       return !alreadyAssigned;
@@ -241,11 +246,11 @@ export default function MinhaEscala() {
             )}
           </div>
 
-          {/* Destaque do Próximo Plantão */}
+          {/* Destaque do Próximo Plantão (aparece mesmo antes das 07h) */}
           {next ? (
             <div className="bg-sky-600 text-white p-5 rounded-2xl shadow-sm">
               <div className="text-xs opacity-80 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5" /> Próximo Plantão
+                <Clock className="w-3.5 h-3.5" /> Próximo Plantão Agendado
               </div>
               <div className="text-lg font-bold mt-1 capitalize">{fmtFull(next.date)}</div>
               <div className="text-sm mt-0.5">{next.start_time} às {next.end_time}</div>
