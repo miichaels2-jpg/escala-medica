@@ -4,10 +4,24 @@ import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Pencil, Trash2, Search, Download, CalendarDays, UsersRound, Maximize2, Minimize2, Clock3, Printer } from 'lucide-react';
+import { 
+  Plus, 
+  Pencil, 
+  Trash2, 
+  Search, 
+  Download, 
+  CalendarDays, 
+  UsersRound, 
+  Maximize2, 
+  Minimize2, 
+  Clock3, 
+  Printer,
+  CheckCircle2,
+  Stethoscope
+} from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
 import { exportSchedulePDF } from '@/lib/exportReport';
-import { isShiftCurrentlyActive } from '@/lib/shiftUtils';
+import { getShiftTvLifecycle } from '@/lib/shiftUtils';
 
 const shiftTypeStyle = {
   diurno: 'bg-sky-50 text-sky-700',
@@ -93,6 +107,7 @@ export default function Escalas() {
     load();
   }, [appLoading, load]);
 
+  // Atualizador em tempo real para TV a cada 1 segundo
   useEffect(() => {
     if (!tvMode) return;
     const id = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -140,6 +155,21 @@ export default function Escalas() {
         return (a.professional_name || '').localeCompare(b.professional_name || '') || (a.sector_name || '').localeCompare(b.sector_name || '');
       });
   }, [shifts, search, sectorFilter, selectedMonth, selectedDate, professionals, isManager, myProfessional, userFullName]);
+
+  // Filtro inteligente para a TV: exibe ativos, programados e recém-concluídos (elimina expirados há +2h)
+  const tvShifts = useMemo(() => {
+    return filtered
+      .map((s) => ({
+        ...s,
+        tvStatus: getShiftTvLifecycle(s, currentTime)
+      }))
+      .filter((s) => s.tvStatus.state !== 'expired')
+      .sort((a, b) => {
+        // Prioridade: Ativos primeiro, depois Programados, depois Concluídos
+        const order = { active: 0, upcoming: 1, recently_finished: 2 };
+        return (order[a.tvStatus.state] ?? 99) - (order[b.tvStatus.state] ?? 99);
+      });
+  }, [filtered, currentTime]);
 
   const days = useMemo(() => {
     const grouped = filtered.reduce((result, shift) => {
@@ -248,76 +278,106 @@ export default function Escalas() {
 
   const personalHeadline = myProfessional?.name || userFullName || 'Seu calendário';
 
-  // ==========================================
-  // MODO TV (TODOS OS PLANTÕES DO DIA VISÍVEIS)
-  // ==========================================
+  // =========================================================
+  // MODO TV INTELIGENTE (ATIVO / PROGRAMADO / RECÉM-CONCLUÍDO)
+  // =========================================================
   if (tvMode && isManager) {
     return (
-      <div className="min-h-full bg-slate-950 p-5 text-white md:p-8">
+      <div className="min-h-full bg-slate-950 p-5 text-white md:p-8 select-none">
         <div className="mx-auto max-w-[1800px]">
+          {/* Topo da TV */}
           <div className="mb-6 flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.24em] text-sky-300">
-                <CalendarDays className="h-5 w-5" /> Escala hospitalar ao vivo
+                <CalendarDays className="h-5 w-5" /> Escala Hospitalar ao Vivo
               </div>
               <h1 className="mt-2 text-4xl font-black tracking-tight md:text-6xl">
                 {fmtDateLong(selectedDate)}
               </h1>
               <p className="mt-1 text-lg text-slate-400">
-                {fmtDate(selectedDate)}
+                {fmtDate(selectedDate)} · {tvShifts.length} profissionais na operação do dia
               </p>
             </div>
             <div className="flex items-center gap-4">
               <div className="text-right">
-                <div className="flex items-center justify-end gap-2 text-3xl font-black tabular-nums md:text-5xl">
-                  <Clock3 className="h-7 w-7 text-sky-400" />
+                <div className="flex items-center justify-end gap-2 text-3xl font-black tabular-nums md:text-5xl text-sky-400">
+                  <Clock3 className="h-7 w-7" />
                   {currentTime.toLocaleTimeString('pt-BR')}
                 </div>
-                <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Atualização ao vivo</div>
+                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Horário Oficial Local</div>
               </div>
-              <button title="Fechar modo TV" onClick={closeTvMode} className="rounded-xl border border-white/15 p-3 text-slate-300 hover:bg-white/10">
+              <button 
+                title="Fechar modo TV" 
+                onClick={closeTvMode} 
+                className="rounded-xl border border-white/15 p-3 text-slate-300 hover:bg-white/10 transition-colors"
+              >
                 <Minimize2 className="h-5 w-5" />
               </button>
             </div>
           </div>
 
-          {filtered.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/15 p-12 text-center text-xl text-slate-400">
-              Nenhum plantão agendado para o dia selecionado.
+          {/* Grade de Plantões */}
+          {tvShifts.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/15 p-16 text-center text-xl text-slate-400">
+              Nenhum plantão ativo ou programado para esta data.
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {filtered.map((shift) => {
-                const isActiveNow = isShiftCurrentlyActive(shift, currentTime);
+              {tvShifts.map((shift) => {
+                const state = shift.tvStatus.state;
+                const isActive = state === 'active';
+                const isFinished = state === 'recently_finished';
+
                 return (
                   <div
                     key={shift.id}
-                    className={`rounded-2xl border p-5 shadow-xl transition-all ${
-                      isActiveNow
-                        ? 'border-emerald-500/50 bg-emerald-950/20 shadow-emerald-950/40'
+                    className={`rounded-2xl border p-5 shadow-2xl transition-all duration-500 ${
+                      isActive
+                        ? 'border-emerald-500/60 bg-emerald-950/30 shadow-emerald-950/50 scale-[1.01]'
+                        : isFinished
+                        ? 'border-slate-800 bg-white/[0.03] opacity-60'
                         : 'border-white/10 bg-white/[0.07]'
                     }`}
                   >
+                    {/* Cabeçalho do Card */}
                     <div className="flex items-center justify-between gap-3">
-                      <div className={`rounded-xl px-3 py-2 text-center text-lg font-black ${shiftTypeStyle[shift.shift_type] || 'bg-slate-700 text-white'}`}>
+                      <div className={`rounded-xl px-3 py-2 text-center text-base font-black ${
+                        isActive 
+                          ? 'bg-emerald-500 text-slate-950' 
+                          : isFinished
+                          ? 'bg-slate-800 text-slate-400'
+                          : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                      }`}>
                         <div>{shift.start_time || '--:--'}</div>
-                        <div className="text-xs font-normal opacity-70">até {shift.end_time || '--:--'}</div>
+                        <div className="text-[11px] font-normal opacity-80">até {shift.end_time || '--:--'}</div>
                       </div>
-                      <span
-                        className={`text-xs px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${
-                          isActiveNow
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse'
-                            : 'bg-white/10 text-slate-300'
-                        }`}
-                      >
-                        {isActiveNow ? '● Em Andamento' : 'Programado'}
-                      </span>
+
+                      <div className="text-right">
+                        <span
+                          className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider ${
+                            isActive
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse'
+                              : isFinished
+                              ? 'bg-slate-800 text-slate-400 border border-slate-700'
+                              : 'bg-white/10 text-slate-300'
+                          }`}
+                        >
+                          {isActive && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />}
+                          {isActive ? '● Ativo no Plantão' : isFinished ? '✓ Plantão Concluído' : '⏳ Programado'}
+                        </span>
+                        <div className="text-[10px] text-slate-400 mt-1">{shift.tvStatus.detail}</div>
+                      </div>
                     </div>
 
-                    <div className="mt-5 truncate text-2xl font-black">{shift.professional_name || 'Vaga disponível'}</div>
-                    <div className="mt-2 flex items-center gap-2 text-lg text-slate-300">
-                      <UsersRound className="h-5 w-5 text-sky-400" />
-                      {shift.sector_name || 'Setor não informado'}
+                    {/* Nome do Profissional */}
+                    <div className="mt-5 truncate text-2xl font-black text-white">
+                      {shift.professional_name || 'Vaga Aberta'}
+                    </div>
+
+                    {/* Setor */}
+                    <div className="mt-2 flex items-center gap-2 text-base text-slate-300">
+                      <Stethoscope className={`h-4 w-4 ${isActive ? 'text-emerald-400' : 'text-sky-400'}`} />
+                      <span>{shift.sector_name || 'Setor Geral'}</span>
                     </div>
                   </div>
                 );
@@ -329,6 +389,7 @@ export default function Escalas() {
     );
   }
 
+  // Visualização do Profissional Comum
   if (!isManager) {
     return (
       <div className="p-4 md:p-8 space-y-5">
@@ -388,6 +449,7 @@ export default function Escalas() {
     );
   }
 
+  // Visualização Normal de Gestão
   return (
     <div className="p-4 md:p-8 space-y-5">
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-lg">
@@ -398,7 +460,7 @@ export default function Escalas() {
             </div>
             <h2 className="mt-3 text-3xl font-black tracking-tight">Escala hospitalar</h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              Visualização rápida por dia, turno, setor e profissional. Todos os plantões do dia selecionado aparecem aqui.
+              Visualização por dia, turno, setor e profissional. Modo TV dinâmico atualizado ao vivo.
             </p>
           </div>
           <div className="flex items-center gap-3 text-right">
@@ -418,7 +480,7 @@ export default function Escalas() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Gestão de escala</p>
-          <p className="mt-1 text-sm text-slate-500">Visualize e aloque profissionais para cada turno</p>
+          <p className="mt-1 text-sm text-slate-500">Aloque profissionais e acompanhe o status em tempo real</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={handleDuplicatePreviousMonth} disabled={duplicating} className="border-sky-200 text-sky-700 hover:bg-sky-50">
@@ -468,7 +530,7 @@ export default function Escalas() {
               </option>
             ))}
           </select>
-          <Button variant="outline" onClick={openTvMode} className="border-sky-200 text-sky-700 hover:bg-sky-50">
+          <Button variant="outline" onClick={openTvMode} className="border-sky-200 text-sky-700 hover:bg-sky-50 font-bold">
             <Maximize2 className="w-4 h-4 mr-1.5" /> Modo TV
           </Button>
           <Button variant="outline" onClick={handlePrintSchedule} className="border-sky-200 text-sky-700 hover:bg-sky-50">
