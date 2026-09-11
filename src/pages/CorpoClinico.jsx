@@ -23,7 +23,8 @@ import {
   CheckCircle2, 
   PlusCircle,
   Share2,
-  RotateCcw
+  RotateCcw,
+  DollarSign
 } from 'lucide-react';
 
 const ALL_PERMISSIONS = [
@@ -95,6 +96,12 @@ export default function CorpoClinico() {
   const [phone, setPhone] = useState('');
   const [unitId, setUnitId] = useState('');
   
+  // Remuneração e Financeiro
+  const [remunerationType, setRemunerationType] = useState('hora'); // 'hora', 'diaria', 'mensal'
+  const [hourlyRate, setHourlyRate] = useState('120');
+  const [dailyRate, setDailyRate] = useState('1500');
+  const [monthlySalary, setMonthlySalary] = useState('18000');
+
   // Acesso / Credenciais
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -236,6 +243,13 @@ export default function CorpoClinico() {
     setUnitId(units[0]?.id || 'unit_h1');
     setIsManager(false);
     setPermissions(['painel', 'escalas', 'trocas']);
+    
+    // Remuneração padrão
+    setRemunerationType('hora');
+    setHourlyRate('120');
+    setDailyRate('1500');
+    setMonthlySalary('18000');
+
     setSelectedPatternPreset('12x36_D');
     setSchedulePattern('12x36');
     setMonthReference('2026-09');
@@ -259,6 +273,12 @@ export default function CorpoClinico() {
     setEmail(prof.email || '');
     setPhone(prof.phone || '');
     setUnitId(prof.unit_id || units[0]?.id || 'unit_h1');
+
+    // Carrega remuneração
+    setRemunerationType(prof.remuneration_type || 'hora');
+    setHourlyRate(String(prof.hourly_rate || '120'));
+    setDailyRate(String(prof.daily_rate || '1500'));
+    setMonthlySalary(String(prof.monthly_salary || '18000'));
 
     const managerRole = String(prof.role || '').toLowerCase().includes('gestor') || prof.permissions?.includes('configuracoes');
     setIsManager(managerRole);
@@ -377,12 +397,29 @@ export default function CorpoClinico() {
     }
   };
 
+  // Calcula o valor estimado de um plantão com base nas regras de remuneração
+  const computeShiftRepasseValue = (hours) => {
+    const parsedHours = Number(hours) || 12;
+    if (remunerationType === 'hora') {
+      return parsedHours * (Number(hourlyRate) || 0);
+    }
+    if (remunerationType === 'diaria') {
+      return Number(dailyRate) || 0;
+    }
+    // Salário fixo: o repasse é computado na folha mensal
+    return 0;
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
 
     try {
       const finalRole = isManager ? 'Diretor Médico / Gestor' : (section ? `${specialty} - ${section}` : specialty);
+
+      const numHourly = Number(hourlyRate) || 0;
+      const numDaily = Number(dailyRate) || 0;
+      const numMonthly = Number(monthlySalary) || 0;
 
       const profPayload = {
         company_id: companyId,
@@ -399,7 +436,11 @@ export default function CorpoClinico() {
         schedule_pattern: schedulePattern,
         schedule_start_time: startTime,
         schedule_end_time: endTime,
-        default_sector_id: defaultSectorId
+        default_sector_id: defaultSectorId,
+        remuneration_type: remunerationType,
+        hourly_rate: numHourly,
+        daily_rate: numDaily,
+        monthly_salary: numMonthly
       };
 
       if (cpf) profPayload.cpf = cpf;
@@ -462,7 +503,7 @@ export default function CorpoClinico() {
         });
       }
 
-      // Geração da Grade Mensal
+      // Geração da Grade Mensal & Lançamento Automático em Faturamento
       if (autoGenerateShifts && profRecord?.id) {
         const [yearStr, monthStr] = monthReference.split('-');
         const year = parseInt(yearStr, 10);
@@ -511,6 +552,8 @@ export default function CorpoClinico() {
               continue;
             }
 
+            const repasseValue = computeShiftRepasseValue(durationHours);
+
             shiftsToCreate.push({
               company_id: companyId,
               unit_id: unitId || units[0]?.id,
@@ -523,13 +566,28 @@ export default function CorpoClinico() {
               end_time: endTime,
               shift_type: startTime >= '18:00' ? 'noturno' : 'diurno',
               status: 'confirmado',
-              duration_hours: durationHours
+              duration_hours: durationHours,
+              shift_value: repasseValue
             });
           }
         }
 
         for (const sh of shiftsToCreate) {
-          await base44.entities.Shift.create(sh);
+          const createdShift = await base44.entities.Shift.create(sh);
+          // Lança o registro financeiro na tabela billing_records
+          if (createdShift && createdShift.id) {
+            await base44.entities.BillingRecord.create({
+              company_id: companyId,
+              unit_id: unitId || units[0]?.id,
+              shift_id: createdShift.id,
+              professional_id: profRecord.id,
+              professional_name: name,
+              date: sh.date,
+              hours: sh.duration_hours,
+              value: sh.shift_value || 0,
+              status: 'confirmado'
+            });
+          }
         }
       }
 
@@ -557,7 +615,7 @@ export default function CorpoClinico() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Corpo Clínico & Escalas</h1>
           <p className="text-sm text-slate-500">
-            Gerencie profissionais, defina especialidades e gere credenciais de acesso direto.
+            Gerencie profissionais, defina regras de repasse financeiro e gere credenciais de acesso direto.
           </p>
         </div>
         <div className="flex gap-2">
@@ -585,6 +643,12 @@ export default function CorpoClinico() {
             const unitName = units.find((u) => u.id === prof.unit_id)?.name || 'Hospital Santa Clara';
             const isGestor = String(prof.role || '').toLowerCase().includes('gestor');
 
+            const remType = prof.remuneration_type || 'hora';
+            const remLabel = 
+              remType === 'hora' ? `R$ ${Number(prof.hourly_rate || 0).toLocaleString('pt-BR')}/hora` :
+              remType === 'diaria' ? `R$ ${Number(prof.daily_rate || 0).toLocaleString('pt-BR')}/plantão` :
+              `R$ ${Number(prof.monthly_salary || 0).toLocaleString('pt-BR')}/mês (Fixo)`;
+
             return (
               <Card
                 key={prof.id}
@@ -611,10 +675,15 @@ export default function CorpoClinico() {
                       <span className="font-medium text-slate-700 dark:text-slate-300">{unitName}</span>
                     </div>
                     
-                    {/* Linha com CPF e Data de Nascimento */}
                     <div className="flex flex-wrap gap-x-3 text-slate-500">
                       {prof.cpf && <span>CPF: <b className="font-mono text-slate-700 dark:text-slate-300">{prof.cpf}</b></span>}
-                      {prof.birth_date && <span>Nascimento: <b className="text-slate-700 dark:text-slate-300">{prof.birth_date.split('-').reverse().join('/')}</b></span>}
+                      {prof.birth_date && <span>Nasc: <b className="text-slate-700 dark:text-slate-300">{prof.birth_date.split('-').reverse().join('/')}</b></span>}
+                    </div>
+
+                    {/* Destaque da Remuneração / Repasse */}
+                    <div className="flex items-center gap-2 py-1 px-2.5 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-semibold border border-emerald-200/60">
+                      <DollarSign className="w-3.5 h-3.5 shrink-0" />
+                      <span>Repasse: {remLabel}</span>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -678,7 +747,6 @@ export default function CorpoClinico() {
                 />
               </div>
 
-              {/* Seletor de Especialidade */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <Label className="text-xs font-semibold">Especialidade</Label>
@@ -715,6 +783,79 @@ export default function CorpoClinico() {
               <div className="md:col-span-3">
                 <Label className="text-xs font-semibold">Telefone / WhatsApp</Label>
                 <Input placeholder="(00) 00000-0000" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              </div>
+            </div>
+
+            {/* SEÇÃO: REMUNERAÇÃO, PLANTÕES E REPASSE FINANCEIRO */}
+            <div className="p-4 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-xl border border-emerald-200 dark:border-emerald-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-emerald-600" /> Modelo de Remuneração e Repasse
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    Define como o valor do plantão é calculado e computado automaticamente no Faturamento.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs font-semibold">Tipo de Remuneração</Label>
+                  <Select value={remunerationType} onValueChange={setRemunerationType}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hora">Horista (Valor por Hora Trabalhada)</SelectItem>
+                      <SelectItem value="diaria">Diarista (Valor Fixo por Plantão / Diária)</SelectItem>
+                      <SelectItem value="mensal">Salário Fixo Mensal (Contrato Mensal)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {remunerationType === 'hora' && (
+                  <div>
+                    <Label className="text-xs font-semibold">Valor da Hora (R$)</Label>
+                    <Input
+                      type="number"
+                      placeholder="Ex: 120.00"
+                      value={hourlyRate}
+                      onChange={(e) => setHourlyRate(e.target.value)}
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Estimativa: 12h = R$ {(Number(hourlyRate || 0) * 12).toLocaleString('pt-BR')} por plantão.
+                    </p>
+                  </div>
+                )}
+
+                {remunerationType === 'diaria' && (
+                  <div>
+                    <Label className="text-xs font-semibold">Valor por Diária / Plantão (R$)</Label>
+                    <Input
+                      type="number"
+                      placeholder="Ex: 1500.00"
+                      value={dailyRate}
+                      onChange={(e) => setDailyRate(e.target.value)}
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Valor integral fixo creditado para cada plantão realizado.
+                    </p>
+                  </div>
+                )}
+
+                {remunerationType === 'mensal' && (
+                  <div>
+                    <Label className="text-xs font-semibold">Salário Fixo Mensal (R$)</Label>
+                    <Input
+                      type="number"
+                      placeholder="Ex: 18000.00"
+                      value={monthlySalary}
+                      onChange={(e) => setMonthlySalary(e.target.value)}
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Valor total repassado mensalmente na folha de fechamento.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
