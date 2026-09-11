@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useAppData } from '@/lib/useAppData';
@@ -54,10 +54,10 @@ export default function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('medscale-sidebar-collapsed') === 'true');
   const [currentTime, setCurrentTime] = useState(() => new Date());
+  
   const [theme, setTheme] = useState(() => {
     const stored = localStorage.getItem('medscale-theme');
-    if (stored) return stored;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    return stored ? stored : 'light';
   });
 
   useEffect(() => {
@@ -79,6 +79,7 @@ export default function AppLayout() {
   const isAdmin = user?.role === 'admin';
   const isManager = isAdmin || user?.data?.app_role === 'manager' || user?.data?.app_role === 'gestor';
   const userPermissions = Array.isArray(user?.data?.permissions) ? user.data.permissions : [];
+  
   const navList = (isManager ? navItems : professionalNavItems).filter((item) => {
     if (isManager) return true;
     const permissionMap = {
@@ -95,9 +96,31 @@ export default function AppLayout() {
     if (!requiredPermission) return true;
     return userPermissions.length === 0 || userPermissions.includes(requiredPermission);
   });
-  const selectedUnitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id;
-  const selectedUnit = company?.units?.find((unit) => unit.id === selectedUnitId) || company?.units?.[0] || null;
-  const title = isManager ? (pageTitles[location.pathname] || 'ScaleMedic CGT') : (location.pathname === '/escalas' ? 'Minha escala' : (location.pathname === '/minha-escala' ? 'Agenda pessoal' : 'Painel do profissional'));
+
+  // Filtra as unidades disponíveis com base no perfil do usuário
+  const availableUnits = useMemo(() => {
+    if (!company?.units) return [];
+    if (isManager) return company.units;
+
+    // Se for profissional comum, filtra somente as unidades atribuídas a ele
+    const userUnitIds = Array.isArray(user?.data?.unit_ids) 
+      ? user.data.unit_ids 
+      : (user?.data?.selected_unit_id ? [user.data.selected_unit_id] : []);
+
+    if (userUnitIds.length > 0) {
+      const allowed = company.units.filter((u) => userUnitIds.includes(u.id));
+      return allowed.length > 0 ? allowed : company.units.slice(0, 1);
+    }
+
+    return company.units.slice(0, 1);
+  }, [company?.units, isManager, user?.data]);
+
+  const selectedUnitId = user?.data?.selected_unit_id || availableUnits[0]?.id || company?.selected_unit_id;
+  const selectedUnit = availableUnits.find((unit) => unit.id === selectedUnitId) || availableUnits[0] || company?.units?.[0] || null;
+  
+  const title = isManager 
+    ? (pageTitles[location.pathname] || 'ScaleMedic CGT') 
+    : (location.pathname === '/escalas' ? 'Minha escala' : (location.pathname === '/minha-escala' ? 'Agenda pessoal' : 'Painel do profissional'));
 
   const handleLogout = async () => {
     await base44.auth.logout();
@@ -226,9 +249,9 @@ export default function AppLayout() {
               <Menu className="w-6 h-6" />
             </button>
             <div>
-              <h1 className="text-lg md:text-xl font-bold text-slate-800">{title}</h1>
+              <h1 className="text-lg md:text-xl font-bold text-slate-800 dark:text-slate-100">{title}</h1>
               {company && (
-                <p className="text-xs text-slate-500 hidden sm:block">
+                <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
                   {selectedUnit?.name || company.name} · {new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
                 </p>
               )}
@@ -247,6 +270,7 @@ export default function AppLayout() {
                 </div>
               </div>
             </div>
+            
             <button
               type="button"
               onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}
@@ -255,8 +279,11 @@ export default function AppLayout() {
             >
               {theme === 'dark' ? <SunMedium className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
+            
             <NotificationBell />
-            {company?.units?.length > 1 && (
+            
+            {/* O seletor só aparece se o usuário for gestor e houver mais de uma unidade, ou se o profissional tiver mais de uma autorizada */}
+            {availableUnits.length > 1 && isManager && (
               <div className="hidden md:flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 dark:border-slate-700 dark:bg-slate-800">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Unidade</span>
                 <select
@@ -264,12 +291,13 @@ export default function AppLayout() {
                   onChange={(e) => handleSelectUnit(e.target.value)}
                   className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                 >
-                  {company.units.map((unit) => (
+                  {availableUnits.map((unit) => (
                     <option key={unit.id} value={unit.id}>{unit.name}</option>
                   ))}
                 </select>
               </div>
             )}
+
             <div className="relative z-[60]">
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
@@ -286,6 +314,7 @@ export default function AppLayout() {
                 </div>
                 <ChevronDown className="w-4 h-4 text-slate-400 hidden sm:block dark:text-slate-300" />
               </button>
+
               {menuOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />

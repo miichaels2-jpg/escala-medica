@@ -128,7 +128,7 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
         access_email: professional.access_email || professional.email || '',
         access_password: '',
         access_password_confirm: '',
-        unit_id: professional.unit_id || unitId || '',
+        unit_id: professional.unit_id || unitId || companyUnits[0]?.id || '',
         schedule_days: professional.schedule_days || empty.schedule_days,
         schedule_custom_config: professional.schedule_custom_config || '',
         permissions: Array.isArray(professional.permissions) && professional.permissions.length ? professional.permissions : [...defaultPermissions],
@@ -193,6 +193,7 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
       professional_id: professionalId,
       unit_id: professionalData.unit_id || unitId
     }, '-created_date', 500);
+
     await Promise.all(previousAutomaticShifts
       .filter((shift) => getMonthKey(shift.date) === monthKey && String(shift.notes || '').startsWith('Escala gerada automaticamente'))
       .map((shift) => base44.entities.Shift.delete(shift.id)));
@@ -246,30 +247,32 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
         ? Number(form.daily_rate)
         : valueFromHourly;
 
-      const selectedUnitId = form.unit_id || companyUnits[0]?.id || '';
+      const selectedUnitId = form.unit_id || unitId || companyUnits[0]?.id || '';
       const loginEmail = (form.access_email || form.email || '').trim().toLowerCase();
       const loginPassword = (form.access_password || '').trim();
       const confirmPassword = (form.access_password_confirm || '').trim();
-
-      if (!loginEmail) {
-        throw new Error('Informe o e-mail de acesso do profissional para login no app.');
-      }
 
       if (loginPassword && loginPassword !== confirmPassword) {
         throw new Error('As senhas de acesso não conferem.');
       }
 
-      const resolvedPassword = loginPassword || generateTemporaryPassword();
-
+      // Payload limpo estritamente para a entidade Professional (evita erro de schema)
       const payload = {
-        ...form,
         name: form.name.trim(),
+        document: form.document ? form.document.trim() : '',
+        document_uf: form.document_uf ? form.document_uf.trim().toUpperCase() : '',
+        category: form.category || 'medico',
+        specialty: form.specialty ? form.specialty.trim() : '',
         role: form.role || 'Profissional',
-        email: form.email || loginEmail,
+        phone: form.phone ? form.phone.trim() : '',
+        email: loginEmail || (form.email ? form.email.trim() : ''),
         hourly_rate: valueFromHourly,
         daily_rate: valueFromDaily,
+        shift_preference: form.shift_preference || 'qualquer',
+        status: form.status || 'ativo',
         company_id: companyId,
         unit_id: selectedUnitId,
+        unit_ids: [selectedUnitId],
         schedule_days: Array.isArray(form.schedule_days) ? form.schedule_days : [],
         schedule_custom_config: form.schedule_pattern === 'custom' ? (form.schedule_custom_config || '').trim() : '',
         permissions: Array.isArray(form.permissions) && form.permissions.length ? form.permissions : [...defaultPermissions],
@@ -277,8 +280,7 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
         schedule_start_time: form.schedule_start_time || '07:00',
         schedule_end_time: form.schedule_end_time || '19:00',
         schedule_reference_date: form.schedule_reference_date || `${form.schedule_month || getMonthKey(new Date().toISOString().slice(0, 10))}-01`,
-        schedule_pattern: form.schedule_pattern || 'manual',
-        schedule_month: form.schedule_month || getMonthKey(new Date().toISOString().slice(0, 10))
+        schedule_pattern: form.schedule_pattern || 'manual'
       };
 
       let savedProfessional;
@@ -289,63 +291,68 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
         savedProfessional = await base44.entities.Professional.create(payload);
       }
 
-      const existingUser = (await base44.entities.User.filter({ email: loginEmail }, '-created_date', 20))[0];
-      const username = loginEmail.split('@')[0] || `prof-${savedProfessional.id}`;
-      const userData = {
-        company_id: companyId,
-        selected_unit_id: selectedUnitId,
-        app_role: 'professional',
-        professional_id: savedProfessional.id,
-        professional_role: payload.role || 'Profissional',
-        permissions: payload.permissions || [...defaultPermissions],
-        unit_id: selectedUnitId
-      };
+      // Se informou e-mail de acesso, sincroniza ou cria a conta de login do usuário
+      if (loginEmail && savedProfessional?.id) {
+        try {
+          const resolvedPassword = loginPassword || generateTemporaryPassword();
+          const existingUser = (await base44.entities.User.filter({ email: loginEmail }, '-created_date', 20))[0];
+          const username = loginEmail.split('@')[0] || `prof-${savedProfessional.id}`;
+          
+          const userData = {
+            company_id: companyId,
+            selected_unit_id: selectedUnitId,
+            unit_id: selectedUnitId,
+            unit_ids: [selectedUnitId],
+            app_role: 'professional',
+            professional_id: savedProfessional.id,
+            professional_role: payload.role || 'Profissional',
+            permissions: payload.permissions || [...defaultPermissions]
+          };
 
-      if (!existingUser) {
-        const createdUser = await base44.entities.User.create({
-          username,
-          email: loginEmail,
-          password: resolvedPassword,
-          full_name: payload.name,
-          role: 'user',
-          data: userData
-        });
+          if (!existingUser) {
+            const createdUser = await base44.entities.User.create({
+              username,
+              email: loginEmail,
+              password: resolvedPassword,
+              full_name: payload.name,
+              role: 'user',
+              data: userData
+            });
 
-        await base44.entities.Professional.update(savedProfessional.id, {
-          user_id: createdUser.id,
-          email: loginEmail,
-          unit_id: selectedUnitId,
-          role: payload.role || 'Profissional',
-          permissions: payload.permissions || [...defaultPermissions]
-        });
+            await base44.entities.Professional.update(savedProfessional.id, {
+              user_id: createdUser.id
+            });
 
-        alert(`Credenciais criadas para ${payload.name}\nE-mail: ${loginEmail}\nSenha: ${resolvedPassword}`);
-      } else {
-        await base44.entities.User.update(existingUser.id, {
-          username: existingUser.username || username,
-          email: loginEmail,
-          password: resolvedPassword,
-          full_name: payload.name,
-          role: 'user',
-          data: {
-            ...(existingUser.data || {}),
-            ...userData
+            if (loginPassword) {
+              alert(`Credenciais criadas para ${payload.name}\nE-mail: ${loginEmail}\nSenha: ${resolvedPassword}`);
+            }
+          } else {
+            await base44.entities.User.update(existingUser.id, {
+              username: existingUser.username || username,
+              email: loginEmail,
+              ...(loginPassword ? { password: loginPassword } : {}),
+              full_name: payload.name,
+              role: 'user',
+              data: {
+                ...(existingUser.data || {}),
+                ...userData
+              }
+            });
+
+            await base44.entities.Professional.update(savedProfessional.id, {
+              user_id: existingUser.id
+            });
           }
-        });
-
-        await base44.entities.Professional.update(savedProfessional.id, {
-          user_id: existingUser.id,
-          email: loginEmail,
-          unit_id: selectedUnitId,
-          role: payload.role || 'Profissional',
-          permissions: payload.permissions || [...defaultPermissions]
-        });
-
-        alert(`Credenciais atualizadas para ${payload.name}\nE-mail: ${loginEmail}\nSenha: ${resolvedPassword}`);
+        } catch (authError) {
+          console.warn('Profissional salvo, mas falha ao vincular usuário de login:', authError);
+        }
       }
 
       if (payload.schedule_pattern !== 'manual' && (payload.schedule_days?.length || ['12x36', '24x72', '24x78', '12x60', '7x7'].includes(payload.schedule_pattern)) && payload.default_sector_id) {
-        await generateSchedule(savedProfessional.id, payload.name, payload);
+        await generateSchedule(savedProfessional.id, payload.name, {
+          ...payload,
+          schedule_month: form.schedule_month
+        });
       }
 
       onSaved();
