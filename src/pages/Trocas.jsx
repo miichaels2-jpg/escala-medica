@@ -383,7 +383,7 @@ export default function Trocas() {
                 <SelectContent className="dark:bg-slate-800 dark:border-slate-700">
                   {eligibleProfessionals.length === 0 ? (
                     <div className="p-3 text-xs text-slate-500 text-center">
-                      Nenhum outro profissional encontrado com a mesma especialidade.
+                      Nenhum outro profissional encontrado com a mesma especialidade..
                     </div>
                   ) : (
                     eligibleProfessionals.map((p) => (
