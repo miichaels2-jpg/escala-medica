@@ -65,17 +65,36 @@ export default function CorpoClinico() {
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState('cards');
-  const companyId = user?.data?.company_id;
+  const companyId = user?.data?.company_id || company?.id;
   const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id;
 
   const load = async () => {
-    const f = companyId ? { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) } : {};
-    const [professionalResult, sectorResult] = await Promise.all([
-      base44.entities.Professional.filter(f, '-created_date', 300),
-      base44.entities.Sector.filter(f, '-created_date', 200)
-    ]);
-    setProfessionals(professionalResult);
-    setSectors(sectorResult);
+    try {
+      const filterQuery = {};
+      if (companyId) filterQuery.company_id = companyId;
+      if (unitId) filterQuery.unit_id = unitId;
+
+      const [professionalResult, sectorResult] = await Promise.all([
+        base44.entities.Professional.filter(filterQuery, '-created_date', 300),
+        base44.entities.Sector.filter(companyId ? { company_id: companyId } : {}, '-created_date', 200)
+      ]);
+
+      // Se filtrou por unidade e não retornou registros, busca todos da empresa para garantir que apareçam em qualquer domínio
+      if (professionalResult.length === 0 && companyId) {
+        const fallbackProfessionals = await base44.entities.Professional.filter(
+          { company_id: companyId },
+          '-created_date',
+          300
+        );
+        setProfessionals(fallbackProfessionals);
+      } else {
+        setProfessionals(professionalResult);
+      }
+
+      setSectors(sectorResult);
+    } catch (err) {
+      console.error('Erro ao buscar dados do corpo clínico:', err);
+    }
   };
 
   useEffect(() => { 
@@ -134,7 +153,6 @@ export default function CorpoClinico() {
 
   return (
     <div className="p-4 md:p-8 space-y-5">
-      {/* Cabeçalho com contraste adequado para tema escuro e claro */}
       <div className="rounded-2xl border border-sky-200 dark:border-sky-900/60 bg-gradient-to-r from-sky-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-900/90 dark:to-sky-950/40 p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
