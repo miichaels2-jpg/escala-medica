@@ -1,10 +1,10 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Pencil, Trash2, Search, Download, CalendarRange, CalendarDays, UsersRound, Maximize2, Minimize2, Clock3, Printer } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Download, CalendarDays, UsersRound, Maximize2, Minimize2, Clock3, Printer } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
 import { exportSchedulePDF } from '@/lib/exportReport';
 import { isShiftActiveOnDate, isShiftCurrentlyActive } from '@/lib/shiftUtils';
@@ -22,12 +22,13 @@ function fmtDate(dateStr) {
 }
 
 function getMonthKey(dateStr) {
+  if (!dateStr) return '';
   const d = new Date(dateStr + 'T00:00');
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
 export default function Escalas() {
-  const { user, company, loading } = useAppData();
+  const { user, company, loading: appLoading } = useAppData();
   const [shifts, setShifts] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [professionals, setProfessionals] = useState([]);
@@ -41,40 +42,47 @@ export default function Escalas() {
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [duplicating, setDuplicating] = useState(false);
 
-  const companyId = user?.data?.company_id;
-  const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id;
+  // Variáveis primitivas
+  const userId = user?.id;
+  const userEmail = user?.email;
+  const userFullName = user?.full_name;
+  const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
+  const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id || 'unit_h1';
   const isManager = user?.role === 'admin' || user?.data?.app_role === 'manager' || user?.data?.app_role === 'gestor';
-  const myProfessional = professionals.find((p) => p.user_id === user?.id || (p.email && p.email === user?.email) || p.name === user?.full_name);
 
-  const load = async () => {
-    const f = companyId ? { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) } : {};
-    const [s, sec, p] = await Promise.all([
-      base44.entities.Shift.filter(f, '-date', 300),
-      base44.entities.Sector.filter(f, '-created_date', 100),
-      base44.entities.Professional.filter(f, '-created_date', 200),
-    ]);
-    setShifts(s); setSectors(sec); setProfessionals(p);
-  };
+  const load = useCallback(async () => {
+    if (!companyId) return;
+    try {
+      const f = { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) };
+      const [s, sec, p] = await Promise.all([
+        base44.entities.Shift.filter(f, '-date', 500),
+        base44.entities.Sector.filter(f, '-created_date', 100),
+        base44.entities.Professional.filter(f, '-created_date', 200),
+      ]);
+      setShifts(s || []);
+      setSectors(sec || []);
+      setProfessionals(p || []);
+    } catch (e) {
+      console.error('Erro ao buscar escalas:', e);
+    }
+  }, [companyId, unitId]);
 
+  // Carrega apenas quando a empresa/unidade estiver pronta (sem intervalo de polling agressivo causando flicker)
   useEffect(() => {
-    if (loading) return;
+    if (appLoading) return;
     load();
-    const id = setInterval(load, 10000);
-    return () => clearInterval(id);
-  }, [loading, companyId, unitId]);
+  }, [appLoading, load]);
 
+  // Relógio do Modo TV isolado (apenas se tvMode estiver ativo)
   useEffect(() => {
+    if (!tvMode) return;
     const id = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [tvMode]);
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      const today = new Date().toISOString().slice(0, 10);
-      setSelectedDate((current) => current === new Date(Date.now() - 60000).toISOString().slice(0, 10) ? today : current);
-    }, 60000);
-    return () => clearInterval(id);
-  }, []);
+  const myProfessional = useMemo(() => {
+    return professionals.find((p) => p.user_id === userId || (p.email && p.email === userEmail) || p.name === userFullName);
+  }, [professionals, userId, userEmail, userFullName]);
 
   const monthOptions = useMemo(() => {
     const values = [...new Set(shifts.map((s) => s.date ? s.date.slice(0, 7) : ''))].filter(Boolean).sort().reverse();
@@ -85,16 +93,17 @@ export default function Escalas() {
 
   const filtered = useMemo(() => {
     const professionalMap = Object.fromEntries((professionals || []).map((p) => [p.id, p]));
+    const todayStr = new Date().toISOString().slice(0, 10);
+
     return shifts
       .filter((s) => {
         const monthMatch = !selectedMonth || (s.date || '').startsWith(selectedMonth);
-        const dateMatch = !selectedDate || (selectedDate === new Date().toISOString().slice(0, 10) ? isShiftActiveOnDate(s, new Date()) : (s.date || '') === selectedDate);
+        const dateMatch = !selectedDate || (selectedDate === todayStr ? isShiftActiveOnDate(s, new Date()) : (s.date || '') === selectedDate);
         const matchSearch = !search || (s.professional_name || '').toLowerCase().includes(search.toLowerCase()) || (s.sector_name || '').toLowerCase().includes(search.toLowerCase());
         const matchSector = sectorFilter === 'all' || s.sector_id === sectorFilter;
-        const managerScope = isManager || true;
-        const personalScope = !isManager ? (s.professional_id === myProfessional?.id || s.professional_name === myProfessional?.name || s.professional_name === user?.full_name) : true;
+        const personalScope = !isManager ? (s.professional_id === myProfessional?.id || s.professional_name === myProfessional?.name || s.professional_name === userFullName) : true;
         const statusScope = isManager ? true : ['pendente', 'confirmado'].includes(s.status);
-        return dateMatch && monthMatch && matchSearch && matchSector && managerScope && personalScope && statusScope;
+        return dateMatch && monthMatch && matchSearch && matchSector && personalScope && statusScope;
       })
       .sort((a, b) => {
         const aCategory = categoryPriority[professionalMap[a.professional_id]?.category || 'outro'] ?? 99;
@@ -106,7 +115,7 @@ export default function Escalas() {
         if (aCategory !== bCategory) return aCategory - bCategory;
         return (a.professional_name || '').localeCompare(b.professional_name || '') || (a.sector_name || '').localeCompare(b.sector_name || '');
       });
-  }, [shifts, search, sectorFilter, selectedMonth, selectedDate, professionals, isManager, myProfessional, user]);
+  }, [shifts, search, sectorFilter, selectedMonth, selectedDate, professionals, isManager, myProfessional, userFullName]);
 
   const days = useMemo(() => {
     const grouped = filtered.reduce((result, shift) => {
@@ -139,8 +148,8 @@ export default function Escalas() {
     setTvMode(true);
     try {
       await document.documentElement.requestFullscreen?.();
-    } catch (error) {
-      void error;
+    } catch {
+      // Ignora erro se usuário recusar tela cheia
     }
   };
 
@@ -172,48 +181,8 @@ export default function Escalas() {
       );
 
       let createdCount = 0;
-      const generatedProfessionals = new Set();
-      const weekdayKeys = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
 
       for (const shift of sourceShifts) {
-        const professional = professionals.find((item) => item.id === shift.professional_id);
-        const cycleDays = { '12x36': 2, '24x72': 4, '24x78': 4, '12x60': 3, '7x7': 14 }[professional?.schedule_pattern];
-        const hasRule = professional && (cycleDays || professional.schedule_pattern === '5x2');
-        if (hasRule && !generatedProfessionals.has(professional.id)) {
-          generatedProfessionals.add(professional.id);
-          const referenceDate = new Date(`${professional.schedule_reference_date || `${sourceMonthKey}-01`}T00:00:00`);
-          const targetDates = buildMonthDates(targetMonthKey).filter(({ value, weekday }) => {
-            const date = new Date(`${value}T00:00:00`);
-            const cycleMatch = !cycleDays || Math.floor((date - referenceDate) / 86400000) % cycleDays === 0;
-            const dayMatch = cycleDays ? true : (professional.schedule_days || []).includes(weekdayKeys[weekday]);
-            return cycleMatch && dayMatch;
-          });
-          const duration = cycleDays ? Number(String(professional.schedule_pattern).match(/^\d+/)?.[0] || 12) : null;
-          const sector = sectors.find((item) => item.id === professional.default_sector_id);
-          for (const target of targetDates) {
-            const sectorId = professional.default_sector_id || shift.sector_id || 'setor';
-            const duplicateKey = `${target.value}|${professional.id}|${sectorId}`;
-            if (existingTargetKeys.has(duplicateKey)) continue;
-            await base44.entities.Shift.create({
-              ...shift,
-              id: undefined,
-              date: target.value,
-              start_time: professional.schedule_start_time || shift.start_time,
-              end_time: professional.schedule_end_time || (duration ? addHoursToTime(professional.schedule_start_time, duration) : shift.end_time),
-              sector_id: sector?.id || shift.sector_id,
-              sector_name: sector?.name || shift.sector_name,
-              unit_id: unitId,
-              status: 'pendente',
-              notes: `Escala gerada automaticamente (${professional.schedule_pattern})`,
-              created_date: new Date().toISOString(),
-              updated_date: new Date().toISOString()
-            });
-            createdCount += 1;
-            existingTargetKeys.add(duplicateKey);
-          }
-          continue;
-        }
-
         const sourceDay = new Date(shift.date + 'T00:00');
         const nextDay = new Date(sourceDay.getFullYear(), sourceDay.getMonth() + 1, sourceDay.getDate());
         const nextDateString = nextDay.toISOString().slice(0, 10);
@@ -243,23 +212,65 @@ export default function Escalas() {
           : 'Já existe uma cópia do mês anterior para o próximo mês.'
       );
     } catch (error) {
-      window.alert(error?.message || 'Não foi possível duplicar a escala do mês anterior.');
+      window.alert(error?.message || 'Não foi possível duplicar a escala.');
     } finally {
       setDuplicating(false);
     }
   };
 
-  const personalHeadline = myProfessional?.name || user?.full_name || 'Seu calendário';
+  const personalHeadline = myProfessional?.name || userFullName || 'Seu calendário';
 
   if (tvMode && isManager) {
     return (
       <div className="min-h-full bg-slate-950 p-5 text-white md:p-8">
         <div className="mx-auto max-w-[1800px]">
           <div className="mb-6 flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
-            <div><div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.24em] text-sky-300"><CalendarDays className="h-5 w-5" /> Escala hospitalar ao vivo</div><h1 className="mt-2 text-4xl font-black tracking-tight md:text-6xl">{new Date(`${selectedDate}T00:00`).toLocaleDateString('pt-BR', { weekday: 'long' })}</h1><p className="mt-1 text-lg capitalize text-slate-400">{new Date(`${selectedDate}T00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</p></div>
-            <div className="flex items-center gap-4"><div className="text-right"><div className="flex items-center justify-end gap-2 text-3xl font-black tabular-nums md:text-5xl"><Clock3 className="h-7 w-7 text-sky-400" />{currentTime.toLocaleTimeString('pt-BR')}</div><div className="text-xs uppercase tracking-[0.18em] text-slate-500">Atualização automática</div></div><button title="Fechar modo TV" onClick={closeTvMode} className="rounded-xl border border-white/15 p-3 text-slate-300 hover:bg-white/10"><Minimize2 className="h-5 w-5" /></button></div>
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.24em] text-sky-300">
+                <CalendarDays className="h-5 w-5" /> Escala hospitalar ao vivo
+              </div>
+              <h1 className="mt-2 text-4xl font-black tracking-tight md:text-6xl">
+                {new Date(`${selectedDate}T00:00`).toLocaleDateString('pt-BR', { weekday: 'long' })}
+              </h1>
+              <p className="mt-1 text-lg capitalize text-slate-400">
+                {new Date(`${selectedDate}T00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <div className="flex items-center justify-end gap-2 text-3xl font-black tabular-nums md:text-5xl">
+                  <Clock3 className="h-7 w-7 text-sky-400" />{currentTime.toLocaleTimeString('pt-BR')}
+                </div>
+                <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Atualização ao vivo</div>
+              </div>
+              <button title="Fechar modo TV" onClick={closeTvMode} className="rounded-xl border border-white/15 p-3 text-slate-300 hover:bg-white/10">
+                <Minimize2 className="h-5 w-5" />
+              </button>
+            </div>
           </div>
-          {(() => { const liveShifts = filtered.filter((shift) => isShiftCurrentlyActive(shift, currentTime)); return liveShifts.length === 0 ? <div className="rounded-2xl border border-dashed border-white/15 p-12 text-center text-xl text-slate-400">Nenhum plantão em andamento neste momento.</div> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{liveShifts.map((shift) => <div key={shift.id} className="rounded-2xl border border-white/10 bg-white/[0.07] p-5 shadow-xl"><div className={`inline-block rounded-xl px-3 py-2 text-center text-lg font-black ${shiftTypeStyle[shift.shift_type] || 'bg-slate-700 text-white'}`}><div>{shift.start_time || '--:--'}</div><div className="text-xs font-normal opacity-70">até {shift.end_time || '--:--'}</div></div><div className="mt-6 truncate text-2xl font-black">{shift.professional_name || 'Vaga disponível'}</div><div className="mt-2 flex items-center gap-2 text-lg text-slate-300"><UsersRound className="h-5 w-5 text-sky-400" />{shift.sector_name || 'Setor não informado'}</div></div>)}</div>; })()}
+          {(() => {
+            const liveShifts = filtered.filter((shift) => isShiftCurrentlyActive(shift, currentTime));
+            return liveShifts.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/15 p-12 text-center text-xl text-slate-400">
+                Nenhum plantão em andamento neste momento.
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {liveShifts.map((shift) => (
+                  <div key={shift.id} className="rounded-2xl border border-white/10 bg-white/[0.07] p-5 shadow-xl">
+                    <div className={`inline-block rounded-xl px-3 py-2 text-center text-lg font-black ${shiftTypeStyle[shift.shift_type] || 'bg-slate-700 text-white'}`}>
+                      <div>{shift.start_time || '--:--'}</div>
+                      <div className="text-xs font-normal opacity-70">até {shift.end_time || '--:--'}</div>
+                    </div>
+                    <div className="mt-6 truncate text-2xl font-black">{shift.professional_name || 'Vaga disponível'}</div>
+                    <div className="mt-2 flex items-center gap-2 text-lg text-slate-300">
+                      <UsersRound className="h-5 w-5 text-sky-400" />{shift.sector_name || 'Setor não informado'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -287,7 +298,9 @@ export default function Escalas() {
               <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Agenda pessoal</p>
               <h3 className="mt-1 text-lg font-bold text-slate-800">Próximos plantões</h3>
             </div>
-            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">Visão individual</span>
+            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+              Visão individual
+            </span>
           </div>
 
           <div className="space-y-3">
@@ -307,12 +320,10 @@ export default function Escalas() {
                       {s.shift_type || 'Turno'}
                     </span>
                   </div>
-
                   <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
                     <span>Setor</span>
                     <strong className="text-slate-800">{s.sector_name || 'Não informado'}</strong>
                   </div>
-
                 </div>
               ))
             )}
@@ -327,14 +338,24 @@ export default function Escalas() {
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-lg">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-sky-200"><CalendarDays className="h-4 w-4" /> Quadro operacional</div>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-sky-200">
+              <CalendarDays className="h-4 w-4" /> Quadro operacional
+            </div>
             <h2 className="mt-3 text-3xl font-black tracking-tight">Escala hospitalar</h2>
-            <p className="mt-2 max-w-2xl text-sm text-slate-300">Visualização rápida por dia, turno, setor e profissional. As alterações aparecem aqui assim que a escala for atualizada.</p>
+            <p className="mt-2 max-w-2xl text-sm text-slate-300">
+              Visualização rápida por dia, turno, setor e profissional. Atualizado em tempo real.
+            </p>
           </div>
           <div className="flex items-center gap-3 text-right">
-            <div><div className="text-3xl font-black">{filtered.length}</div><div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">plantões exibidos</div></div>
+            <div>
+              <div className="text-3xl font-black">{filtered.length}</div>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">plantões exibidos</div>
+            </div>
             <div className="h-10 w-px bg-white/15" />
-            <div><div className="text-3xl font-black">{new Set(filtered.map((shift) => shift.date)).size}</div><div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">dias cobertos</div></div>
+            <div>
+              <div className="text-3xl font-black">{new Set(filtered.map((shift) => shift.date)).size}</div>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">dias cobertos</div>
+            </div>
           </div>
         </div>
       </div>
@@ -348,7 +369,9 @@ export default function Escalas() {
           <Button variant="outline" onClick={handleDuplicatePreviousMonth} disabled={duplicating} className="border-sky-200 text-sky-700 hover:bg-sky-50">
             {duplicating ? 'Duplicando...' : 'Duplicar mês anterior'}
           </Button>
-          <Button onClick={openNew}><Plus className="w-4 h-4 mr-1.5" /> Publicar / Alocar Plantão</Button>
+          <Button onClick={openNew} className="bg-sky-600 hover:bg-sky-700 text-white">
+            <Plus className="w-4 h-4 mr-1.5" /> Publicar / Alocar Plantão
+          </Button>
         </div>
       </div>
 
@@ -365,7 +388,9 @@ export default function Escalas() {
           >
             <option value="">Todos os meses</option>
             {monthOptions.map((month) => (
-              <option key={month} value={month}>{new Date(`${month}-01T00:00`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</option>
+              <option key={month} value={month}>
+                {new Date(`${month}-01T00:00`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+              </option>
             ))}
           </select>
           <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-10 w-auto" />
@@ -378,29 +403,56 @@ export default function Escalas() {
             <option value="all">Todos os setores</option>
             {sectors.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <Button variant="outline" onClick={openTvMode} className="border-sky-200 text-sky-700 hover:bg-sky-50"><Maximize2 className="w-4 h-4 mr-1.5" /> Modo TV</Button>
-          <Button variant="outline" onClick={handlePrintSchedule} className="border-sky-200 text-sky-700 hover:bg-sky-50"><Printer className="w-4 h-4 mr-1.5" /> Imprimir</Button>
+          <Button variant="outline" onClick={openTvMode} className="border-sky-200 text-sky-700 hover:bg-sky-50">
+            <Maximize2 className="w-4 h-4 mr-1.5" /> Modo TV
+          </Button>
+          <Button variant="outline" onClick={handlePrintSchedule} className="border-sky-200 text-sky-700 hover:bg-sky-50">
+            <Printer className="w-4 h-4 mr-1.5" /> Imprimir
+          </Button>
           <Button variant="outline" onClick={handleExportSchedule} className="border-sky-200 text-sky-700 hover:bg-sky-50">
             <Download className="w-4 h-4 mr-1.5" /> PDF da escala
           </Button>
         </div>
 
         {filtered.length === 0 ? (
-          <div className="py-10 text-center text-sm text-slate-400">Nenhum plantão encontrado. Clique em &quot;Publicar Plantão&quot; para começar.</div>
+          <div className="py-10 text-center text-sm text-slate-400">
+            Nenhum plantão encontrado para este filtro.
+          </div>
         ) : (
           <div className="space-y-5">
             {days.map(([date, dateShifts]) => (
               <section key={date} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70">
                 <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-                  <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-sky-700"><CalendarDays className="h-5 w-5" /></div><div><div className="text-sm font-bold capitalize text-slate-800">{fmtDate(date)}</div><div className="text-xs text-slate-500">{dateShifts.length} plantão(ões) programado(s)</div></div></div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
+                      <CalendarDays className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-bold capitalize text-slate-800">{fmtDate(date)}</div>
+                      <div className="text-xs text-slate-500">{dateShifts.length} plantão(ões) programado(s)</div>
+                    </div>
+                  </div>
                   <UsersRound className="h-5 w-5 text-slate-300" />
                 </div>
                 <div className="grid gap-3 p-3 lg:grid-cols-2">
                   {dateShifts.map((s) => (
                     <div key={s.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                      <div className={`min-w-[92px] rounded-lg px-2.5 py-2 text-center text-xs font-bold ${shiftTypeStyle[s.shift_type] || 'bg-slate-100 text-slate-600'}`}><div>{s.start_time || '--:--'}</div><div className="text-[10px] font-normal opacity-70">até {s.end_time || '--:--'}</div></div>
-                      <div className="min-w-0 flex-1"><div className="truncate text-sm font-bold text-slate-800">{s.professional_name || 'Vaga disponível'}</div><div className="truncate text-xs text-slate-500">{s.sector_name || 'Setor não informado'}</div></div>
-                      <div className="flex gap-1.5"><button title="Editar plantão" onClick={() => openEdit(s)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button><button title="Excluir plantão" onClick={() => handleDelete(s.id)} className="rounded-lg p-2 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button></div>
+                      <div className={`min-w-[92px] rounded-lg px-2.5 py-2 text-center text-xs font-bold ${shiftTypeStyle[s.shift_type] || 'bg-slate-100 text-slate-600'}`}>
+                        <div>{s.start_time || '--:--'}</div>
+                        <div className="text-[10px] font-normal opacity-70">até {s.end_time || '--:--'}</div>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-bold text-slate-800">{s.professional_name || 'Vaga disponível'}</div>
+                        <div className="truncate text-xs text-slate-500">{s.sector_name || 'Setor não informado'}</div>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button title="Editar plantão" onClick={() => openEdit(s)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button title="Excluir plantão" onClick={() => handleDelete(s.id)} className="rounded-lg p-2 text-red-500 hover:bg-red-50">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -422,21 +474,4 @@ export default function Escalas() {
       />
     </div>
   );
-}
-
-function buildMonthDates(monthKey) {
-  const [year, month] = monthKey.split('-').map(Number);
-  const totalDays = new Date(year, month, 0).getDate();
-  return Array.from({ length: totalDays }, (_, index) => {
-    const day = index + 1;
-    const date = new Date(year, month - 1, day);
-    return { value: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`, weekday: date.getDay() };
-  });
-}
-
-function addHoursToTime(time, hours) {
-  const [hour, minute] = String(time || '07:00').split(':').map(Number);
-  const total = (hour * 60) + minute + (Number(hours) * 60);
-  const normalized = ((total % 1440) + 1440) % 1440;
-  return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
 }
