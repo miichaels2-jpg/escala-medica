@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Plus, Pencil, Trash2, Search, Download, CalendarDays, UsersRound, Maximize2, Minimize2, Clock3, Printer } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
 import { exportSchedulePDF } from '@/lib/exportReport';
-import { isShiftActiveOnDate, isShiftCurrentlyActive } from '@/lib/shiftUtils';
+import { isShiftCurrentlyActive } from '@/lib/shiftUtils';
 
 const shiftTypeStyle = {
   diurno: 'bg-sky-50 text-sky-700',
@@ -17,6 +17,13 @@ const shiftTypeStyle = {
 
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+
+function getLocalDateString(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 function fmtDate(dateStr) {
   if (!dateStr) return '';
@@ -52,12 +59,11 @@ export default function Escalas() {
   const [search, setSearch] = useState('');
   const [sectorFilter, setSectorFilter] = useState('all');
   const [selectedMonth, setSelectedMonth] = useState('');
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
   const [tvMode, setTvMode] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [duplicating, setDuplicating] = useState(false);
 
-  // Variáveis primitivas para evitar re-render e flickering
   const userId = user?.id;
   const userEmail = user?.email;
   const userFullName = user?.full_name;
@@ -98,7 +104,7 @@ export default function Escalas() {
   }, [professionals, userId, userEmail, userFullName]);
 
   const monthOptions = useMemo(() => {
-    const values = [...new Set(shifts.map((s) => s.date ? s.date.slice(0, 7) : ''))].filter(Boolean).sort().reverse();
+    const values = [...new Set(shifts.map((s) => (s.date ? s.date.slice(0, 7) : '')))].filter(Boolean).sort().reverse();
     return values;
   }, [shifts]);
 
@@ -106,15 +112,20 @@ export default function Escalas() {
 
   const filtered = useMemo(() => {
     const professionalMap = Object.fromEntries((professionals || []).map((p) => [p.id, p]));
-    const todayStr = new Date().toISOString().slice(0, 10);
 
     return shifts
       .filter((s) => {
-        const monthMatch = !selectedMonth || (s.date || '').startsWith(selectedMonth);
-        const dateMatch = !selectedDate || (selectedDate === todayStr ? isShiftActiveOnDate(s, new Date()) : (s.date || '') === selectedDate);
-        const matchSearch = !search || (s.professional_name || '').toLowerCase().includes(search.toLowerCase()) || (s.sector_name || '').toLowerCase().includes(search.toLowerCase());
+        const sDate = (s.date || '').split('T')[0];
+        const monthMatch = !selectedMonth || sDate.startsWith(selectedMonth);
+        const dateMatch = !selectedDate || sDate === selectedDate;
+        const matchSearch =
+          !search ||
+          (s.professional_name || '').toLowerCase().includes(search.toLowerCase()) ||
+          (s.sector_name || '').toLowerCase().includes(search.toLowerCase());
         const matchSector = sectorFilter === 'all' || s.sector_id === sectorFilter;
-        const personalScope = !isManager ? (s.professional_id === myProfessional?.id || s.professional_name === myProfessional?.name || s.professional_name === userFullName) : true;
+        const personalScope = !isManager
+          ? s.professional_id === myProfessional?.id || s.professional_name === myProfessional?.name || s.professional_name === userFullName
+          : true;
         const statusScope = isManager ? true : ['pendente', 'confirmado'].includes(s.status);
         return dateMatch && monthMatch && matchSearch && matchSector && personalScope && statusScope;
       })
@@ -132,7 +143,7 @@ export default function Escalas() {
 
   const days = useMemo(() => {
     const grouped = filtered.reduce((result, shift) => {
-      const key = shift.date || 'sem-data';
+      const key = (shift.date || '').split('T')[0] || 'sem-data';
       result[key] = [...(result[key] || []), shift];
       return result;
     }, {});
@@ -169,8 +180,14 @@ export default function Escalas() {
     if (document.fullscreenElement) await document.exitFullscreen?.();
   };
 
-  const openNew = () => { setEditing(null); setDialogOpen(true); };
-  const openEdit = (s) => { setEditing(s); setDialogOpen(true); };
+  const openNew = () => {
+    setEditing(null);
+    setDialogOpen(true);
+  };
+  const openEdit = (s) => {
+    setEditing(s);
+    setDialogOpen(true);
+  };
 
   const handleDuplicatePreviousMonth = async () => {
     if (!companyId) return;
@@ -196,7 +213,7 @@ export default function Escalas() {
       for (const shift of sourceShifts) {
         const sourceDay = new Date(shift.date + 'T00:00');
         const nextDay = new Date(sourceDay.getFullYear(), sourceDay.getMonth() + 1, sourceDay.getDate());
-        const nextDateString = nextDay.toISOString().slice(0, 10);
+        const nextDateString = getLocalDateString(nextDay);
         const duplicateKey = `${nextDateString}|${shift.professional_id || 'vaga'}|${shift.sector_id || 'setor'}`;
 
         if (existingTargetKeys.has(duplicateKey)) continue;
@@ -231,6 +248,9 @@ export default function Escalas() {
 
   const personalHeadline = myProfessional?.name || userFullName || 'Seu calendário';
 
+  // ==========================================
+  // MODO TV (TODOS OS PLANTÕES DO DIA VISÍVEIS)
+  // ==========================================
   if (tvMode && isManager) {
     return (
       <div className="min-h-full bg-slate-950 p-5 text-white md:p-8">
@@ -250,7 +270,8 @@ export default function Escalas() {
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <div className="flex items-center justify-end gap-2 text-3xl font-black tabular-nums md:text-5xl">
-                  <Clock3 className="h-7 w-7 text-sky-400" />{currentTime.toLocaleTimeString('pt-BR')}
+                  <Clock3 className="h-7 w-7 text-sky-400" />
+                  {currentTime.toLocaleTimeString('pt-BR')}
                 </div>
                 <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Atualização ao vivo</div>
               </div>
@@ -259,29 +280,50 @@ export default function Escalas() {
               </button>
             </div>
           </div>
-          {(() => {
-            const liveShifts = filtered.filter((shift) => isShiftCurrentlyActive(shift, currentTime));
-            return liveShifts.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/15 p-12 text-center text-xl text-slate-400">
-                Nenhum plantão em andamento neste momento.
-              </div>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {liveShifts.map((shift) => (
-                  <div key={shift.id} className="rounded-2xl border border-white/10 bg-white/[0.07] p-5 shadow-xl">
-                    <div className={`inline-block rounded-xl px-3 py-2 text-center text-lg font-black ${shiftTypeStyle[shift.shift_type] || 'bg-slate-700 text-white'}`}>
-                      <div>{shift.start_time || '--:--'}</div>
-                      <div className="text-xs font-normal opacity-70">até {shift.end_time || '--:--'}</div>
+
+          {filtered.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/15 p-12 text-center text-xl text-slate-400">
+              Nenhum plantão agendado para o dia selecionado.
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filtered.map((shift) => {
+                const isActiveNow = isShiftCurrentlyActive(shift, currentTime);
+                return (
+                  <div
+                    key={shift.id}
+                    className={`rounded-2xl border p-5 shadow-xl transition-all ${
+                      isActiveNow
+                        ? 'border-emerald-500/50 bg-emerald-950/20 shadow-emerald-950/40'
+                        : 'border-white/10 bg-white/[0.07]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className={`rounded-xl px-3 py-2 text-center text-lg font-black ${shiftTypeStyle[shift.shift_type] || 'bg-slate-700 text-white'}`}>
+                        <div>{shift.start_time || '--:--'}</div>
+                        <div className="text-xs font-normal opacity-70">até {shift.end_time || '--:--'}</div>
+                      </div>
+                      <span
+                        className={`text-xs px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${
+                          isActiveNow
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 animate-pulse'
+                            : 'bg-white/10 text-slate-300'
+                        }`}
+                      >
+                        {isActiveNow ? '● Em Andamento' : 'Programado'}
+                      </span>
                     </div>
-                    <div className="mt-6 truncate text-2xl font-black">{shift.professional_name || 'Vaga disponível'}</div>
+
+                    <div className="mt-5 truncate text-2xl font-black">{shift.professional_name || 'Vaga disponível'}</div>
                     <div className="mt-2 flex items-center gap-2 text-lg text-slate-300">
-                      <UsersRound className="h-5 w-5 text-sky-400" />{shift.sector_name || 'Setor não informado'}
+                      <UsersRound className="h-5 w-5 text-sky-400" />
+                      {shift.sector_name || 'Setor não informado'}
                     </div>
                   </div>
-                ))}
-              </div>
-            );
-          })()}
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -307,7 +349,7 @@ export default function Escalas() {
           <div className="mb-4 flex items-center justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Agenda pessoal</p>
-              <h3 className="mt-1 text-lg font-bold text-slate-800">Próximos plantões</h3>
+              <h3 className="mt-1 text-lg font-bold text-slate-800">Plantões do dia</h3>
             </div>
             <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
               Visão individual
@@ -317,7 +359,7 @@ export default function Escalas() {
           <div className="space-y-3">
             {filtered.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm text-slate-500">
-                Você ainda não possui plantões atribuídos na escala atual.
+                Você não possui plantões atribuídos para esta data.
               </div>
             ) : (
               filtered.map((s) => (
@@ -325,7 +367,9 @@ export default function Escalas() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-xs uppercase tracking-[0.18em] text-slate-400">{fmtDate(s.date)}</div>
-                      <div className="mt-1 text-base font-bold text-slate-800">{s.start_time} às {s.end_time}</div>
+                      <div className="mt-1 text-base font-bold text-slate-800">
+                        {s.start_time} às {s.end_time}
+                      </div>
                     </div>
                     <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${shiftTypeStyle[s.shift_type] || 'bg-slate-100 text-slate-600'}`}>
                       {s.shift_type || 'Turno'}
@@ -354,7 +398,7 @@ export default function Escalas() {
             </div>
             <h2 className="mt-3 text-3xl font-black tracking-tight">Escala hospitalar</h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              Visualização rápida por dia, turno, setor e profissional. Atualizado em tempo real.
+              Visualização rápida por dia, turno, setor e profissional. Todos os plantões do dia selecionado aparecem aqui.
             </p>
           </div>
           <div className="flex items-center gap-3 text-right">
@@ -364,7 +408,7 @@ export default function Escalas() {
             </div>
             <div className="h-10 w-px bg-white/15" />
             <div>
-              <div className="text-3xl font-black">{new Set(filtered.map((shift) => shift.date)).size}</div>
+              <div className="text-3xl font-black">{new Set(filtered.map((shift) => (shift.date || '').split('T')[0])).size}</div>
               <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">dias cobertos</div>
             </div>
           </div>
@@ -409,14 +453,20 @@ export default function Escalas() {
             })}
           </select>
           <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-10 w-auto" />
-          <Button variant="outline" onClick={() => setSelectedDate('')} className="border-slate-200">Todos os dias</Button>
+          <Button variant="outline" onClick={() => setSelectedDate('')} className="border-slate-200">
+            Todos os dias
+          </Button>
           <select
             value={sectorFilter}
             onChange={(e) => setSectorFilter(e.target.value)}
             className="h-10 rounded-md border border-slate-200 px-3 text-sm bg-white"
           >
             <option value="all">Todos os setores</option>
-            {sectors.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {sectors.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
           </select>
           <Button variant="outline" onClick={openTvMode} className="border-sky-200 text-sky-700 hover:bg-sky-50">
             <Maximize2 className="w-4 h-4 mr-1.5" /> Modo TV
@@ -431,7 +481,7 @@ export default function Escalas() {
 
         {filtered.length === 0 ? (
           <div className="py-10 text-center text-sm text-slate-400">
-            Nenhum plantão encontrado para este filtro.
+            Nenhum plantão agendado para este filtro ou data selecionada.
           </div>
         ) : (
           <div className="space-y-5">
@@ -443,7 +493,6 @@ export default function Escalas() {
                       <CalendarDays className="h-5 w-5" />
                     </div>
                     <div>
-                      {/* Formatação explícita com "Sex" */}
                       <div className="text-sm font-bold text-slate-800">{fmtDate(date)}</div>
                       <div className="text-xs text-slate-500">{dateShifts.length} plantão(ões) programado(s)</div>
                     </div>
