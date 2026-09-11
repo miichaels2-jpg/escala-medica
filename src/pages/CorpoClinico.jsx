@@ -20,7 +20,7 @@ import {
   Mail, 
   Phone, 
   User, 
-  Check, 
+  CheckCircle2, 
   PlusCircle,
   Share2
 } from 'lucide-react';
@@ -66,7 +66,9 @@ export default function CorpoClinico() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [copied, setCopied] = useState(false);
+  
+  // Alerta na tela de Copiado com Sucesso
+  const [toastMessage, setToastMessage] = useState('');
 
   // Modal para criar nova especialidade
   const [newSpecialtyModal, setNewSpecialtyModal] = useState(false);
@@ -272,11 +274,51 @@ export default function CorpoClinico() {
     }
   };
 
-  const handleCopyAccess = () => {
-    const text = `*ScaleMedic - Seus dados de acesso*\n\nOlá, ${name}!\nVocê foi cadastrado no sistema do hospital.\n\n👤 *Usuário / Apelido:* ${username || email.split('@')[0]}\n🔑 *Senha:* ${password}\n🔗 *Acesso:* ${window.location.origin}/login\n\nPor favor, acesse o sistema para visualizar sua escala e plantões.`;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 3000);
+  // Copiar dados com proteção contra recarregamento e aviso na tela
+  const handleCopyAccess = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    const host = window.location.origin;
+    const userDisplay = username || (email ? email.split('@')[0] : 'usuario');
+    const passDisplay = password || '123456';
+
+    const textToCopy = `*ScaleMedic - Seus dados de acesso*\n\nOlá, ${name || 'Profissional'}!\nVocê foi cadastrado no sistema da equipe.\n\n👤 *Usuário / Apelido:* ${userDisplay}\n🔑 *Senha:* ${passDisplay}\n🔗 *Acesso:* ${host}/login\n\nPor favor, faça o login para acompanhar sua escala.`;
+
+    const triggerSuccess = () => {
+      setToastMessage('Copiado com sucesso!');
+      setTimeout(() => {
+        setToastMessage('');
+      }, 3000);
+    };
+
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(textToCopy)
+        .then(() => triggerSuccess())
+        .catch(() => fallbackCopyText(textToCopy, triggerSuccess));
+    } else {
+      fallbackCopyText(textToCopy, triggerSuccess);
+    }
+  };
+
+  const fallbackCopyText = (text, callback) => {
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      callback();
+    } catch (err) {
+      console.error('Erro no fallback de cópia:', err);
+    }
   };
 
   const handleSave = async (e) => {
@@ -286,7 +328,6 @@ export default function CorpoClinico() {
     try {
       const finalRole = isManager ? 'Diretor Médico / Gestor' : (section ? `${specialty} - ${section}` : specialty);
 
-      // Payload compatível com schema resiliente
       const profPayload = {
         company_id: companyId,
         unit_id: unitId || units[0]?.id,
@@ -316,7 +357,6 @@ export default function CorpoClinico() {
           profRecord = await base44.entities.Professional.create(profPayload);
         }
       } catch (err) {
-        // Fallback automático caso 'section' ou 'cpf' ainda não estejam no cache do PostgREST
         if (err.message && (err.message.includes('section') || err.message.includes('cpf'))) {
           delete profPayload.section;
           delete profPayload.cpf;
@@ -330,7 +370,7 @@ export default function CorpoClinico() {
         }
       }
 
-      // Salva / Atualiza usuário e credenciais
+      // Salva usuário de login
       const userNick = (username || (email ? email.split('@')[0] : name.toLowerCase().replace(/\s+/g, ''))).trim();
       const userPass = (password || '123456').trim();
       const userEmail = (email || `${userNick}@scalemedic.local`).toLowerCase().trim();
@@ -363,7 +403,7 @@ export default function CorpoClinico() {
         });
       }
 
-      // Geração Automática da Grade do Mês com Trava de Conflito Multi-Unidades
+      // Geração Automática da Grade do Mês
       if (autoGenerateShifts && profRecord?.id) {
         const [yearStr, monthStr] = monthReference.split('-');
         const year = parseInt(yearStr, 10);
@@ -446,7 +486,15 @@ export default function CorpoClinico() {
   };
 
   return (
-    <div className="p-4 md:p-8 space-y-6">
+    <div className="p-4 md:p-8 space-y-6 relative">
+      {/* Notificação Toast na tela: "Copiado com sucesso!" */}
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-[9999] flex items-center gap-2 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300 font-medium text-sm">
+          <CheckCircle2 className="w-5 h-5 text-emerald-100" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* Top Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div>
@@ -560,7 +608,7 @@ export default function CorpoClinico() {
                 <Input required placeholder="000.000.000-00" value={cpf} onChange={(e) => setCpf(e.target.value)} />
               </div>
 
-              {/* Seletor de Especialidade + Botão Rápido de Criação */}
+              {/* Seletor de Especialidade */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <Label className="text-xs font-semibold">Especialidade</Label>
@@ -600,7 +648,7 @@ export default function CorpoClinico() {
               </div>
             </div>
 
-            {/* Credenciais de Acesso (Login e Senha) */}
+            {/* Credenciais de Acesso */}
             <div className="p-4 bg-sky-50/50 dark:bg-sky-950/20 rounded-xl border border-sky-200 dark:border-sky-800 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -611,18 +659,16 @@ export default function CorpoClinico() {
                     O profissional poderá acessar usando o nome/apelido ou e-mail com a senha definida aqui.
                   </p>
                 </div>
-                {username && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCopyAccess}
-                    className="text-xs font-medium gap-1.5 bg-white dark:bg-slate-900 border-sky-300 text-sky-700"
-                  >
-                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Share2 className="w-3.5 h-3.5" />}
-                    {copied ? 'Copiado para WhatsApp!' : 'Copiar Acesso para WhatsApp'}
-                  </Button>
-                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopyAccess}
+                  className="text-xs font-medium gap-1.5 bg-white dark:bg-slate-900 border-sky-300 text-sky-700 hover:bg-sky-50"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  Copiar Acesso para WhatsApp
+                </Button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -734,7 +780,6 @@ export default function CorpoClinico() {
                   </Select>
                 </div>
 
-                {/* Setor Padrão com Fallback e Botão de Criar Novo Setor */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <Label className="text-xs font-semibold">Setor Padrão</Label>
@@ -750,9 +795,7 @@ export default function CorpoClinico() {
                     <SelectTrigger><SelectValue placeholder="Selecione o setor..." /></SelectTrigger>
                     <SelectContent>
                       {sectors.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name} {s.specialty ? `(${s.specialty})` : ''}
-                        </SelectItem>
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
