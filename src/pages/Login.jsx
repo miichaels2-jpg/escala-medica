@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { 
   LogIn, 
   Mail, 
@@ -20,7 +21,9 @@ import {
   UserRound, 
   Building2, 
   Download, 
-  MessageCircleMore 
+  MessageCircleMore,
+  KeyRound,
+  AlertCircle
 } from "lucide-react";
 
 const features = [
@@ -74,12 +77,37 @@ export default function Login() {
   const navigate = useNavigate();
   const { checkUserAuth } = useAuth();
 
+  // Estados do Pop-up Obrigatório de Troca de Senha
+  const [forcePasswordModal, setForcePasswordModal] = useState(false);
+  const [pendingUser, setPendingUser] = useState(null);
+  const [oldPasswordInput, setOldPasswordInput] = useState("");
+  const [newPasswordInput, setNewPasswordInput] = useState("");
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState("");
+  const [modalError, setModalError] = useState("");
+  const [savingNewPassword, setSavingNewPassword] = useState(false);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
+
     try {
-      await base44.auth.loginViaUsernamePassword(username.trim(), password);
+      const res = await base44.auth.loginViaUsernamePassword(username.trim(), password);
+      const sessionUser = res?.user;
+
+      // Trava de Primeiro Acesso / Troca Obrigatória
+      if (sessionUser?.data?.must_change_password) {
+        setPendingUser(sessionUser);
+        setOldPasswordInput(password); // Preenche a provisória digitada
+        setNewPasswordInput("");
+        setConfirmPasswordInput("");
+        setModalError("");
+        setForcePasswordModal(true); // Abre o pop-up na hora!
+        setLoading(false);
+        return; // Não redireciona para o dashboard
+      }
+
+      // Se não precisa trocar senha, entra normalmente
       if (checkUserAuth) {
         await checkUserAuth();
       }
@@ -88,6 +116,57 @@ export default function Login() {
       setError(err.message || "Usuário ou senha inválidos.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleConfirmNewPassword = async (e) => {
+    e.preventDefault();
+    setModalError("");
+
+    if (!pendingUser) return;
+
+    if (oldPasswordInput !== password && oldPasswordInput !== pendingUser.password) {
+      setModalError("A senha anterior provisória informada não coincide.");
+      return;
+    }
+
+    // Regra: Mínimo 7 e máximo 20 caracteres (formato livre)
+    if (newPasswordInput.length < 7 || newPasswordInput.length > 20) {
+      setModalError("A nova senha deve conter entre 7 e 20 caracteres.");
+      return;
+    }
+
+    if (newPasswordInput !== confirmPasswordInput) {
+      setModalError("A confirmação de senha não coincide com a nova senha digitada.");
+      return;
+    }
+
+    if (newPasswordInput === oldPasswordInput) {
+      setModalError("A nova senha precisa ser diferente da senha provisória.");
+      return;
+    }
+
+    setSavingNewPassword(true);
+    try {
+      if (base44.auth.changePassword) {
+        await base44.auth.changePassword(pendingUser.id, newPasswordInput);
+      } else {
+        await base44.entities.User.update(pendingUser.id, {
+          password: newPasswordInput,
+          data: { ...(pendingUser.data || {}), must_change_password: false }
+        });
+      }
+
+      if (checkUserAuth) {
+        await checkUserAuth();
+      }
+
+      setForcePasswordModal(false);
+      navigate('/dashboard');
+    } catch (err) {
+      setModalError(err.message || "Erro ao salvar nova senha. Tente novamente.");
+    } finally {
+      setSavingNewPassword(false);
     }
   };
 
@@ -221,7 +300,7 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Container do Formulário Limpo - Sem cards flutuantes nem botão do Google */}
+            {/* Container do Formulário */}
             <div className="relative mx-auto w-full max-w-md">
               <div className="relative overflow-hidden rounded-[28px] border border-sky-100 bg-white p-7 shadow-[0_20px_50px_rgba(14,116,144,0.12)]">
                 <div className="mb-6 flex items-center justify-between">
@@ -553,6 +632,86 @@ export default function Login() {
       >
         <MessageCircleMore className="h-6 w-6" />
       </button>
+
+      {/* MODAL BLOQUEANTE DE TROCA DE SENHA OBRIGATÓRIA NO 1º ACESSO */}
+      <Dialog open={forcePasswordModal} onOpenChange={() => {}}>
+        <DialogContent className="max-w-md [&>button]:hidden">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-sky-600 mb-1">
+              <KeyRound className="w-5 h-5" />
+              <DialogTitle className="text-lg font-bold">Primeiro Acesso - Troca de Senha</DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-slate-500">
+              Para a segurança da sua conta, é obrigatório alterar sua senha temporária antes de acessar o sistema.
+            </DialogDescription>
+          </DialogHeader>
+
+          {modalError && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2 font-medium">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{modalError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleConfirmNewPassword} className="space-y-3.5 py-1">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">Senha Provisória Anterior</Label>
+              <Input
+                type="password"
+                required
+                placeholder="Digite a senha provisória"
+                value={oldPasswordInput}
+                onChange={(e) => setOldPasswordInput(e.target.value)}
+                className="h-10 text-sm"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">Nova Senha Definitiva</Label>
+              <Input
+                type="password"
+                required
+                placeholder="De 7 a 20 caracteres (formato livre)"
+                value={newPasswordInput}
+                onChange={(e) => setNewPasswordInput(e.target.value)}
+                className="h-10 text-sm"
+              />
+              <p className="text-[11px] text-slate-400">
+                Mínimo 7 e máximo 20 caracteres. Letras maiúsculas, minúsculas, números ou símbolos.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-slate-700">Repetir Nova Senha</Label>
+              <Input
+                type="password"
+                required
+                placeholder="Confirme a nova senha"
+                value={confirmPasswordInput}
+                onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                className="h-10 text-sm"
+              />
+            </div>
+
+            <DialogFooter className="pt-3">
+              <Button
+                type="submit"
+                disabled={savingNewPassword}
+                className="w-full h-11 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-sm"
+              >
+                {savingNewPassword ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Salvando nova senha...
+                  </>
+                ) : (
+                  "Confirmar Nova Senha e Entrar"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

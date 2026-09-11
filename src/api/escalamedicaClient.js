@@ -9,7 +9,7 @@ const tableMap = {
   Company: 'companies',
   User: 'users',
   Professional: 'professionals',
-  Specialty: 'specialties', // <--- adicione esta linha
+  Specialty: 'specialties',
   Sector: 'sectors',
   Shift: 'shifts',
   ShiftSwap: 'shift_swaps',
@@ -100,7 +100,7 @@ const entityApis = {
   Company: buildSupabaseEntity(tableMap.Company),
   User: buildSupabaseEntity(tableMap.User),
   Professional: buildSupabaseEntity(tableMap.Professional),
-  Specialty: buildSupabaseEntity(tableMap.Specialty), // <--- adicione esta linha
+  Specialty: buildSupabaseEntity(tableMap.Specialty),
   Sector: buildSupabaseEntity(tableMap.Sector),
   Shift: buildSupabaseEntity(tableMap.Shift),
   ShiftSwap: buildSupabaseEntity(tableMap.ShiftSwap),
@@ -165,6 +165,29 @@ const makeAuth = () => ({
 
   loginViaEmailPassword: async (email, password) => {
     return makeAuth().loginViaUsernamePassword(email, password);
+  },
+
+  changePassword: async (userId, newPassword) => {
+    const rawUser = localStorage.getItem('medscale_session_user');
+    const cached = rawUser ? JSON.parse(rawUser) : null;
+    const nextData = { ...(cached?.data || {}), must_change_password: false };
+
+    const { data: updated, error } = await supabase
+      .from('users')
+      .update({
+        password: String(newPassword),
+        data: nextData,
+        updated_date: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    const merged = { ...cached, ...updated, password: String(newPassword), data: nextData };
+    localStorage.setItem('medscale_session_user', JSON.stringify(merged));
+    return merged;
   },
 
   loginWithProvider: async (provider, returnTo) => {
