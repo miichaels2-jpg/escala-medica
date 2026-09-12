@@ -30,7 +30,8 @@ import {
   MessageCircle,
   Building2,
   UserCheck,
-  Handshake
+  Handshake,
+  User
 } from 'lucide-react';
 
 const statusBadge = {
@@ -58,7 +59,7 @@ function toTitleCase(str) {
 export default function Trocas() {
   const { user, company, loading } = useAppData();
   const [swaps, setSwaps] = useState([]);
-  const [myShifts, setMyShifts] = useState([]);
+  const [allShifts, setAllShifts] = useState([]);
   const [professionals, setProfessionals] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -67,8 +68,9 @@ export default function Trocas() {
   
   const [activeTab, setActiveTab] = useState('received'); // 'received', 'sent', 'mural', 'all'
 
-  // Formulário de Solicitação
+  // Formulário de Solicitação Otimizado para o Gestor
   const [swapType, setSwapType] = useState('cessao'); // 'cessao', 'direta', 'mural'
+  const [selectedOwnerProfessionalId, setSelectedOwnerProfessionalId] = useState(''); // Filtro por médico no modal
   const [selectedShiftId, setSelectedShiftId] = useState('');
   const [targetProfessionalId, setTargetProfessionalId] = useState('');
   const [swapReason, setSwapReason] = useState('');
@@ -93,7 +95,7 @@ export default function Trocas() {
     try {
       const filterBase = { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) };
 
-      const [allSwaps, allProfessionals, allShifts] = await Promise.all([
+      const [allSwaps, allProfessionals, shiftsRes] = await Promise.all([
         base44.entities.ShiftSwap.filter(filterBase, '-created_date', 500).catch(() => []),
         base44.entities.Professional.filter(filterBase, '-created_date', 400).catch(() => []),
         base44.entities.Shift.filter(filterBase, '-date', 600).catch(() => [])
@@ -101,15 +103,7 @@ export default function Trocas() {
 
       setProfessionals(allProfessionals || []);
       setSwaps(allSwaps || []);
-
-      if (isManager) {
-        setMyShifts(allShifts || []);
-      } else {
-        setMyShifts((allShifts || []).filter((sh) => 
-          String(sh.professional_id) === String(currentProfessionalId) || 
-          sh.professional_name === myProfessional?.name
-        ));
-      }
+      setAllShifts(shiftsRes || []);
     } catch (err) {
       console.error('Erro ao carregar trocas:', err);
     } finally {
@@ -119,17 +113,33 @@ export default function Trocas() {
 
   useEffect(() => {
     if (!loading) loadData();
-  }, [loading, companyId, unitId, currentProfessionalId]);
+  }, [loading, companyId, unitId]);
 
+  // Plantões disponíveis no modal com base no profissional selecionado (ou plantões do próprio usuário se for médico)
+  const modalAvailableShifts = useMemo(() => {
+    if (isManager) {
+      if (!selectedOwnerProfessionalId) return [];
+      const prof = professionals.find((p) => String(p.id) === String(selectedOwnerProfessionalId));
+      if (!prof) return [];
+      return allShifts.filter((sh) => String(sh.professional_id) === String(prof.id) || sh.professional_name === prof.name);
+    } else {
+      // Profissional comum só vê os próprios plantões
+      return allShifts.filter((sh) => String(sh.professional_id) === String(currentProfessionalId) || sh.professional_name === myProfessional?.name);
+    }
+  }, [isManager, selectedOwnerProfessionalId, professionals, allShifts, currentProfessionalId, myProfessional]);
+
+  // Plantão atualmente selecionado
   const currentSelectedShift = useMemo(() => {
-    return myShifts.find((sh) => String(sh.id) === String(selectedShiftId)) || null;
-  }, [myShifts, selectedShiftId]);
+    return allShifts.find((sh) => String(sh.id) === String(selectedShiftId)) || null;
+  }, [allShifts, selectedShiftId]);
 
+  // Dono do plantão selecionado
   const requesterProfessional = useMemo(() => {
-    if (!currentSelectedShift) return myProfessional;
+    if (!currentSelectedShift) return isManager ? professionals.find(p => String(p.id) === String(selectedOwnerProfessionalId)) : myProfessional;
     return professionals.find((p) => String(p.id) === String(currentSelectedShift.professional_id)) || myProfessional;
-  }, [currentSelectedShift, professionals, myProfessional]);
+  }, [currentSelectedShift, isManager, selectedOwnerProfessionalId, professionals, myProfessional]);
 
+  // Colegas elegíveis da mesma especialidade
   const eligibleProfessionals = useMemo(() => {
     if (!requesterProfessional) return [];
     
@@ -151,13 +161,13 @@ export default function Trocas() {
   const handleCreateSwap = async (e) => {
     e.preventDefault();
     if (!currentSelectedShift) {
-      alert('Por favor, selecione o plantão que deseja passar.');
+      alert('Por favor, selecione o plantão a ser passado.');
       return;
     }
 
     const isMural = swapType === 'mural';
     if (!isMural && !targetProfessionalId) {
-      alert('Selecione o profissional que assumirá o plantão.');
+      alert('Selecione o profissional substituto.');
       return;
     }
 
@@ -182,46 +192,29 @@ export default function Trocas() {
         target_specialty: isMural ? requesterProfessional?.specialty : (targetProf?.specialty || targetProf?.category),
         swap_type: swapType,
         reason: swapReason.trim(),
-        status: 'pendente'
+        status: isManager ? 'aprovada' : 'pendente' // Se o gestor iniciou, já nasce aprovado e alocado
       };
 
       await base44.entities.ShiftSwap.create(payload);
 
+      // Se o gestor criou a solicitação, já atualiza o plantão na escala de imediato
+      if (isManager && currentSelectedShift.id && targetProf) {
+        await base44.entities.Shift.update(currentSelectedShift.id, {
+          professional_id: targetProf.id,
+          professional_name: targetProf.name,
+          notes: `Plantão transferido por solicitação do Gestor para ${targetProf.name}`
+        });
+      }
+
       setDialogOpen(false);
       setSelectedShiftId('');
+      setSelectedOwnerProfessionalId('');
       setTargetProfessionalId('');
       setSwapReason('');
       setSwapType('cessao');
       await loadData();
     } catch (err) {
-      // Fallback caso a coluna swap_type ainda dê conflito no banco
-      try {
-        const payloadFallback = {
-          company_id: companyId,
-          unit_id: unitId || currentSelectedShift.unit_id,
-          shift_id: currentSelectedShift.id,
-          shift_date: currentSelectedShift.date,
-          shift_time: `${currentSelectedShift.start_time || '07:00'} - ${currentSelectedShift.end_time || '19:00'}`,
-          sector_name: currentSelectedShift.sector_name || 'Geral',
-          requester_professional_id: requesterProfessional?.id || currentProfessionalId,
-          requester_name: requesterProfessional?.name || user?.full_name,
-          requester_specialty: requesterProfessional?.specialty || requesterProfessional?.category || 'Clínica Geral',
-          target_professional_id: isMural ? null : targetProf?.id,
-          target_name: isMural ? 'Mural Aberto (Qualquer Colega)' : targetProf?.name,
-          target_specialty: isMural ? requesterProfessional?.specialty : (targetProf?.specialty || targetProf?.category),
-          reason: swapReason.trim(),
-          status: 'pendente'
-        };
-        await base44.entities.ShiftSwap.create(payloadFallback);
-        setDialogOpen(false);
-        setSelectedShiftId('');
-        setTargetProfessionalId('');
-        setSwapReason('');
-        setSwapType('cessao');
-        await loadData();
-      } catch (innerErr) {
-        alert(innerErr.message || 'Não foi possível solicitar a troca.');
-      }
+      alert(err.message || 'Não foi possível solicitar a troca.');
     } finally {
       setSubmitting(false);
     }
@@ -248,14 +241,13 @@ export default function Trocas() {
     }
   };
 
-  // CORREÇÃO: Atribui o plantão IMEDIATAMENTE ao profissional na tabela shifts ao assumir do mural
   const handleClaimMuralShift = async (swap) => {
-    if (!myProfessional && !currentProfessionalId) {
+    if (!myProfessional && !currentProfessionalId && !isManager) {
       alert('Você precisa ter um perfil profissional vinculado para assumir este plantão.');
       return;
     }
 
-    const claimingProf = myProfessional || professionals.find((p) => String(p.id) === String(currentProfessionalId));
+    const claimingProf = myProfessional || professionals.find((p) => String(p.id) === String(currentProfessionalId)) || professionals[0];
     if (!claimingProf) {
       alert('Perfil profissional não localizado para atribuição.');
       return;
@@ -264,15 +256,13 @@ export default function Trocas() {
     if (!confirm(`Confirmar interesse em assumir o plantão de ${swap.requester_name} em ${swap.shift_date}?`)) return;
 
     try {
-      // 1. Atualiza o registro da troca no banco
       await base44.entities.ShiftSwap.update(swap.id, {
         target_professional_id: claimingProf.id,
         target_name: claimingProf.name,
         target_specialty: claimingProf.specialty || claimingProf.category,
-        status: 'aprovada' // Assumido do mural já homologa a transferência
+        status: 'aprovada'
       });
 
-      // 2. Atualiza imediatamente o plantão oficial na escala com o novo médico
       if (swap.shift_id) {
         await base44.entities.Shift.update(swap.shift_id, {
           professional_id: claimingProf.id,
@@ -344,7 +334,7 @@ export default function Trocas() {
 
   return (
     <div className="p-4 md:p-8 space-y-6">
-      {/* Banner Principal */}
+      {/* Banner */}
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-xl">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -368,7 +358,7 @@ export default function Trocas() {
         </div>
       </div>
 
-      {/* ABAS INTELIGENTES */}
+      {/* ABAS */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-2">
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           <button
@@ -577,7 +567,7 @@ export default function Trocas() {
         </div>
       )}
 
-      {/* MODAL DE NOVA SOLICITAÇÃO */}
+      {/* MODAL DE NOVA SOLICITAÇÃO COM FILTRO POR NOME DO PROFISSIONAL PARA O GESTOR */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg dark:bg-slate-900 dark:border-slate-800">
           <DialogHeader>
@@ -633,21 +623,59 @@ export default function Trocas() {
               </div>
             </div>
 
+            {/* Se for gestor, filtra primeiro pelo nome do profissional para não misturar tudo */}
+            {isManager && (
+              <div className="space-y-1.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-sky-600" /> 1. Quem é o profissional que quer passar o plantão?
+                </Label>
+                <Select value={selectedOwnerProfessionalId} onValueChange={(val) => {
+                  setSelectedOwnerProfessionalId(val);
+                  setSelectedShiftId('');
+                  setTargetProfessionalId('');
+                }}>
+                  <SelectTrigger className="h-10 text-xs bg-white dark:bg-slate-900">
+                    <SelectValue placeholder="Selecione o médico / profissional..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {professionals.map((p) => (
+                      <SelectItem key={p.id} value={p.id} className="text-xs">
+                        {p.name} ({p.specialty || p.category || 'Geral'})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* 2. Escolha do Plantão (Filtrado pelo profissional escolhido ou do usuário logado) */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Selecione o plantão a ser passado</Label>
-              <Select value={selectedShiftId} onValueChange={(val) => {
-                setSelectedShiftId(val);
-                setTargetProfessionalId('');
-              }}>
+              <Label className="text-xs font-semibold">
+                {isManager ? '2. Selecione o plantão deste profissional' : 'Selecione o plantão a ser passado'}
+              </Label>
+              <Select 
+                value={selectedShiftId} 
+                onValueChange={(val) => {
+                  setSelectedShiftId(val);
+                  setTargetProfessionalId('');
+                }}
+                disabled={isManager && !selectedOwnerProfessionalId}
+              >
                 <SelectTrigger className="h-10 text-xs">
-                  <SelectValue placeholder="Escolha seu plantão na escala..." />
+                  <SelectValue placeholder={isManager && !selectedOwnerProfessionalId ? "Primeiro selecione o profissional acima..." : "Escolha o plantão na escala..."} />
                 </SelectTrigger>
                 <SelectContent>
-                  {myShifts.map((shift) => (
-                    <SelectItem key={shift.id} value={shift.id} className="text-xs">
-                      {shift.date?.split('-').reverse().join('/')} ({shift.start_time} - {shift.end_time}) · {toTitleCase(shift.sector_name) || 'Geral'}
-                    </SelectItem>
-                  ))}
+                  {modalAvailableShifts.length === 0 ? (
+                    <div className="p-3 text-xs text-slate-500 text-center">
+                      Nenhum plantão localizado para este profissional.
+                    </div>
+                  ) : (
+                    modalAvailableShifts.map((shift) => (
+                      <SelectItem key={shift.id} value={shift.id} className="text-xs">
+                        {shift.date?.split('-').reverse().join('/')} ({shift.start_time} - {shift.end_time}) · {toTitleCase(shift.sector_name) || 'Geral'}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>

@@ -107,10 +107,10 @@ export function exportSchedulePDF({ company, shifts, monthLabel = '', dateLabel 
   const kpiWidth = (tableWidth - 24) / 4;
 
   const kpis = [
-    { label: 'TURNOS NA GRADE', val: `${totalShifts} plantões` },
-    { label: 'COBERTURA EFETIVA', val: `${fillRate}% preenchidos` },
-    { label: 'VAGAS DESCOBERTAS', val: `${vacantShifts} desfalques` },
-    { label: 'CARGA HORÁRIA TOTAL', val: `${totalHours} horas` },
+    { label: 'TURNOS NA GRADE', val: `${totalShifts} Plantões` },
+    { label: 'COBERTURA EFETIVA', val: `${fillRate}% Preenchidos` },
+    { label: 'VAGAS DESCOBERTAS', val: `${vacantShifts} Desfalques` },
+    { label: 'CARGA HORÁRIA TOTAL', val: `${totalHours} Horas` },
   ];
 
   kpis.forEach((k, idx) => {
