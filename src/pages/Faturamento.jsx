@@ -297,7 +297,7 @@ export default function Faturamento() {
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-emerald-400 font-bold">
             <ShieldCheck className="w-4 h-4" /> Gestão Financeira Hospitalar
           </div>
-          <h1 className="text-2xl md:text-3xl font-black mt-2 tracking-tight">Faturamento & Repasse Médico</h1>
+          <h1 className="text-2xl md:text-3xl font-black mt-2 tracking-tight">Faturamento & Repasse Profissional</h1>
           <p className="text-sm text-slate-400 mt-1 max-w-2xl">
             Repasses proporcionais liberados estritamente após a conclusão dos turnos e controle de pagamentos.
           </p>
