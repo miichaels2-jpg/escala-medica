@@ -153,7 +153,7 @@ export default function Trocas() {
     });
   }, [requesterProfessional, professionals]);
 
-  // Criação segura da Solicitação sem invoke
+  // Criação da Solicitação garantindo o roteamento correto (Direcionado vs Mural)
   const handleCreateSwap = async (e) => {
     e.preventDefault();
     if (!currentSelectedShift) {
@@ -183,23 +183,16 @@ export default function Trocas() {
         requester_professional_id: requesterProfessional?.id || currentProfessionalId,
         requester_name: requesterProfessional?.name || user?.full_name,
         requester_specialty: requesterProfessional?.specialty || requesterProfessional?.category || 'Clínica Geral',
+        // Se for mural, limpa o target_id para cair estritamente no Mural de Oportunidades
         target_professional_id: isMural ? null : targetProf?.id,
         target_name: isMural ? 'Mural Aberto (Qualquer Colega)' : targetProf?.name,
         target_specialty: isMural ? requesterProfessional?.specialty : (targetProf?.specialty || targetProf?.category),
         swap_type: swapType,
         reason: swapReason.trim(),
-        status: isManager ? 'aprovada' : 'pendente'
+        status: isManager && !isMural ? 'aprovada' : 'pendente'
       };
 
       await base44.entities.ShiftSwap.create(payload);
-
-      if (isManager && currentSelectedShift.id && targetProf) {
-        await base44.entities.Shift.update(currentSelectedShift.id, {
-          professional_id: targetProf.id,
-          professional_name: targetProf.name,
-          notes: `Plantão transferido por solicitação do Gestor para ${targetProf.name}`
-        });
-      }
 
       setDialogOpen(false);
       setSelectedShiftId('');
@@ -329,9 +322,12 @@ export default function Trocas() {
     });
   }, [swaps, search]);
 
+  // Pedidos recebidos direcionados especificamente a este profissional (caem em "Trocas de Plantão" e não na escala direta)
   const tabReceived = useMemo(() => {
     return searchedSwaps.filter((s) => 
-      String(s.target_professional_id) === String(currentProfessionalId) && s.status === 'pendente'
+      String(s.target_professional_id) === String(currentProfessionalId) && 
+      s.status === 'pendente' &&
+      s.swap_type !== 'mural'
     );
   }, [searchedSwaps, currentProfessionalId]);
 
@@ -341,14 +337,16 @@ export default function Trocas() {
     );
   }, [searchedSwaps, currentProfessionalId]);
 
+  // Mural de Oportunidades (plantões deixados vagos / sem destinatário fixo)
   const tabMural = useMemo(() => {
     return searchedSwaps.filter((s) => 
-      (!s.target_professional_id || s.swap_type === 'mural' || s.target_name?.toLowerCase().includes('mural')) && s.status === 'pendente'
+      (!s.target_professional_id || s.swap_type === 'mural' || s.target_name?.toLowerCase().includes('mural')) && 
+      s.status === 'pendente'
     );
   }, [searchedSwaps]);
 
   const activeSwapsList = useMemo(() => {
-    if (activeTab === 'received') return isManager ? searchedSwaps.filter((s) => s.status === 'pendente') : tabReceived;
+    if (activeTab === 'received') return isManager ? searchedSwaps.filter((s) => s.status === 'pendente' && s.swap_type !== 'mural') : tabReceived;
     if (activeTab === 'sent') return tabSent;
     if (activeTab === 'mural') return tabMural;
     return searchedSwaps;
@@ -390,10 +388,10 @@ export default function Trocas() {
             }`}
           >
             <Inbox className="w-3.5 h-3.5" />
-            <span>{isManager ? 'Pendentes de Homologação' : 'Pedidos para Mim'}</span>
-            {(isManager ? searchedSwaps.filter((s) => s.status === 'pendente').length : tabReceived.length) > 0 && (
+            <span>{isManager ? 'Pendentes de Homologação' : 'Trocas Diretas Recebidas'}</span>
+            {(isManager ? searchedSwaps.filter((s) => s.status === 'pendente' && s.swap_type !== 'mural').length : tabReceived.length) > 0 && (
               <span className="w-5 h-5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black flex items-center justify-center">
-                {isManager ? searchedSwaps.filter((s) => s.status === 'pendente').length : tabReceived.length}
+                {isManager ? searchedSwaps.filter((s) => s.status === 'pendente' && s.swap_type !== 'mural').length : tabReceived.length}
               </span>
             )}
           </button>
@@ -463,7 +461,7 @@ export default function Trocas() {
           <Repeat className="w-10 h-10 text-slate-300 mx-auto" />
           <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">Nenhuma troca nesta categoria</h3>
           <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            {activeTab === 'received' && 'Você não possui nenhum pedido de troca pendente de resposta.'}
+            {activeTab === 'received' && 'Você não possui nenhum pedido de troca direcionado pendente.'}
             {activeTab === 'sent' && 'Você ainda não solicitou nenhuma troca ou cessão de plantão.'}
             {activeTab === 'mural' && 'Nenhum plantão em aberto no mural neste momento.'}
             {activeTab === 'all' && 'Nenhum registro de troca localizado com este filtro.'}
@@ -477,7 +475,6 @@ export default function Trocas() {
             const isMuralCard = (!swap.target_professional_id || swap.swap_type === 'mural' || swap.target_name?.includes('Mural')) && swap.status === 'pendente';
             const canAction = isManager || isTarget;
 
-            // Define o nome correto a exibir em "Assume o Plantão"
             const assignedName = swap.target_professional_id && !swap.target_name?.includes('Mural') 
               ? swap.target_name 
               : (swap.status === 'aprovada' && swap.target_name && !swap.target_name.includes('Mural') ? swap.target_name : 'Mural Aberto');
