@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Clock, Calendar, TrendingUp, FileText, FileSpreadsheet, 
-  ShieldCheck, AlertTriangle, Users, Building2, Activity, Filter, Loader2, Download, DollarSign, BarChart3
+  ShieldCheck, AlertTriangle, Users, Building2, Activity, Filter, Loader2, Download, DollarSign, BarChart3, Eye, Printer
 } from 'lucide-react';
 import { exportReportPDF, exportReportCSV } from '@/lib/exportReport';
 
@@ -142,61 +142,66 @@ export default function Relatorios() {
     return byProfessional.reduce((acc, p) => acc + (p?.estimatedPay || 0), 0);
   }, [byProfessional]);
 
-  // FUNÇÕES DE DOWNLOAD ESPECÍFICAS PARA CADA ABA (ISOLADAS)
+  // EXPORTAÇÕES ISOLADAS E CORRETAS POR ABA
   const handleDownloadPDF = () => {
-    let titleSuffix = 'Relatório Geral';
-    let customData = { overview, byProfessional, bySector };
-
+    const dateRangeLabel = startDate || endDate ? `Período: ${startDate || 'Início'} até ${endDate || 'Hoje'}` : 'Consolidado Geral';
+    
     if (activeTab === 'produtividade') {
-      titleSuffix = 'Produtividade do Corpo Clínico';
-      customData = { overview: { title: titleSuffix, total: overview.total }, byProfessional };
+      exportReportPDF({
+        company: company || { name: 'Hospital' },
+        titleSuffix: `Relatório de Produtividade e Horas - ${dateRangeLabel}`,
+        overview: { total: overview.total, confirmed: overview.confirmed },
+        byProfessional
+      });
     } else if (activeTab === 'cobertura') {
-      titleSuffix = 'Cobertura Operacional por Setor';
-      customData = { overview: { title: titleSuffix, total: overview.total }, bySector };
+      exportReportPDF({
+        company: company || { name: 'Hospital' },
+        titleSuffix: `Relatório de Cobertura Operacional por Setor - ${dateRangeLabel}`,
+        overview: { total: overview.total, open: overview.open },
+        bySector: bySector.map(([name, data]) => ({ name, ...data }))
+      });
     } else if (activeTab === 'financeiro') {
-      titleSuffix = 'Projeção de Repasse Financeiro';
-      customData = { overview: { title: titleSuffix, totalEstimate: totalFinancialEstimate }, byProfessional };
+      exportReportPDF({
+        company: company || { name: 'Hospital' },
+        titleSuffix: `Relatório de Projeção de Repasse Financeiro - ${dateRangeLabel}`,
+        overview: { totalEstimate: totalFinancialEstimate },
+        byProfessional: byProfessional.map(p => ({ name: p.name, hours: p.hours, estimatedPay: p.estimatedPay }))
+      });
     } else if (activeTab === 'auditoria') {
-      titleSuffix = 'Log de Auditoria e Plantões Cancelados';
-      customData = { overview: { title: titleSuffix }, auditLogs };
+      exportReportPDF({
+        company: company || { name: 'Hospital' },
+        titleSuffix: `Relatório de Log de Auditoria e Modificações - ${dateRangeLabel}`,
+        overview: { totalCanceled: auditLogs.length },
+        auditLogs
+      });
     }
-
-    exportReportPDF({ company: company || { name: 'Hospital' }, ...customData, titleSuffix });
   };
 
   const handleDownloadCSV = () => {
-    let customData = { byProfessional, bySector, overview };
-    if (activeTab === 'produtividade') customData = { byProfessional };
-    else if (activeTab === 'cobertura') customData = { bySector };
-    else if (activeTab === 'financeiro') customData = { byProfessional };
-    else if (activeTab === 'auditoria') customData = { auditLogs };
-
-    exportReportCSV(customData);
+    if (activeTab === 'produtividade') {
+      exportReportCSV({ type: 'produtividade', data: byProfessional });
+    } else if (activeTab === 'cobertura') {
+      exportReportCSV({ type: 'cobertura', data: bySector.map(([name, data]) => ({ setor: name, ...data })) });
+    } else if (activeTab === 'financeiro') {
+      exportReportCSV({ type: 'financeiro', data: byProfessional.map(p => ({ profissional: p.name, horas: p.hours, totalEstimado: p.estimatedPay })) });
+    } else if (activeTab === 'auditoria') {
+      exportReportCSV({ type: 'auditoria', data: auditLogs });
+    }
   };
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans">
       
-      {/* HEADER EXECUTIVO HOSPITALAR */}
+      {/* HEADER EXECUTIVO */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-950 to-sky-950 p-6 rounded-3xl text-white shadow-xl">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-sky-400">
-            <BarChart3 className="w-4 h-4" /> Inteligência Gerencial & Governança
+            <BarChart3 className="w-4 h-4" /> Inteligência Executiva & Governança
           </div>
           <h1 className="text-3xl font-black tracking-tight">Central de Relatórios</h1>
           <p className="text-xs text-slate-300 max-w-xl">
-            Painel unificado de auditoria, dimensionamento de equipes e controle de repasses da instituição.
+            Visualize os dados analíticos na tela em tempo real e emita documentos certificados conforme a necessidade operacional.
           </p>
-        </div>
-
-        {/* BOTÕES DE DOWNLOAD RÁPIDO DO CONTEXTO ATUAL */}
-        <div className="flex items-center gap-2 shrink-0">
-          <Button onClick={handleDownloadPDF} className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-10 px-4 gap-2 shadow-lg">
-            <FileText className="w-4 h-4" /> Baixar PDF desta Aba
-          </Button>
-          <Button onClick={handleDownloadCSV} variant="outline" className="border-white/20 text-white bg-white/10 hover:bg-white/20 font-bold text-xs h-10 px-4 gap-2">
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Exportar CSV
-          </Button>
         </div>
       </div>
 
@@ -204,113 +209,83 @@ export default function Relatorios() {
       <div className="flex items-center bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto gap-1">
         <button
           onClick={() => setActiveTab('produtividade')}
-          className={`flex-1 min-w-[160px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all text-center whitespace-nowrap ${activeTab === 'produtividade' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+          className={`flex-1 min-w-[150px] px-4 py-3 text-xs font-bold rounded-xl transition-all text-center whitespace-nowrap ${activeTab === 'produtividade' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
         >
           ⏱️ Produtividade & Horas
         </button>
         <button
           onClick={() => setActiveTab('cobertura')}
-          className={`flex-1 min-w-[160px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all text-center whitespace-nowrap ${activeTab === 'cobertura' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+          className={`flex-1 min-w-[150px] px-4 py-3 text-xs font-bold rounded-xl transition-all text-center whitespace-nowrap ${activeTab === 'cobertura' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
         >
           🏥 Cobertura por Setor
         </button>
         <button
           onClick={() => setActiveTab('financeiro')}
-          className={`flex-1 min-w-[160px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all text-center whitespace-nowrap ${activeTab === 'financeiro' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+          className={`flex-1 min-w-[150px] px-4 py-3 text-xs font-bold rounded-xl transition-all text-center whitespace-nowrap ${activeTab === 'financeiro' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
         >
           💰 Repasse Financeiro
         </button>
         <button
           onClick={() => setActiveTab('auditoria')}
-          className={`flex-1 min-w-[160px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all text-center whitespace-nowrap ${activeTab === 'auditoria' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+          className={`flex-1 min-w-[150px] px-4 py-3 text-xs font-bold rounded-xl transition-all text-center whitespace-nowrap ${activeTab === 'auditoria' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
         >
           🛡️ Log de Auditoria
         </button>
       </div>
 
-      {/* BARRA DE FILTROS INTELIGENTES (OPCIONAL) */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center gap-4">
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0">
-          <Filter className="w-4 h-4 text-sky-600" /> Filtros Rápidos:
+      {/* BARRA DE FILTROS E AÇÕES DE IMPRESSÃO */}
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3 w-full flex-1">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0 hidden sm:flex">
+            <Filter className="w-4 h-4 text-sky-600" /> Filtrar:
+          </div>
+          <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9 text-xs bg-slate-50 dark:bg-slate-800 w-full sm:w-auto" title="Data Inicial" />
+          <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-9 text-xs bg-slate-50 dark:bg-slate-800 w-full sm:w-auto" title="Data Final" />
+          <Select value={String(selectedSector)} onValueChange={setSelectedSector}>
+            <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800 w-full sm:w-[200px]"><SelectValue placeholder="Todos os setores" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os setores</SelectItem>
+              {sectors.map((s) => (
+                <SelectItem key={s.id} value={String(s.name)}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {(startDate || endDate || selectedSector !== 'all') && (
+            <Button variant="ghost" size="sm" onClick={() => { setStartDate(''); setEndDate(''); setSelectedSector('all'); }} className="text-xs text-red-500 shrink-0">
+              Limpar
+            </Button>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full flex-1">
-          <div>
-            <label className="text-[10px] font-semibold text-slate-400 block mb-1">De (Opcional)</label>
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9 text-xs bg-slate-50 dark:bg-slate-800" />
-          </div>
-          <div>
-            <label className="text-[10px] font-semibold text-slate-400 block mb-1">Até (Opcional)</label>
-            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-9 text-xs bg-slate-50 dark:bg-slate-800" />
-          </div>
-          <div>
-            <label className="text-[10px] font-semibold text-slate-400 block mb-1">Setor Específico</label>
-            <Select value={String(selectedSector)} onValueChange={setSelectedSector}>
-              <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800"><SelectValue placeholder="Todos os setores" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os setores (Geral)</SelectItem>
-                {sectors.map((s) => (
-                  <SelectItem key={s.id} value={String(s.name)}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {(startDate || endDate || selectedSector !== 'all') && (
-          <Button variant="ghost" size="sm" onClick={() => { setStartDate(''); setEndDate(''); setSelectedSector('all'); }} className="text-xs text-red-500 shrink-0 h-9">
-            Redefinir Filtros
+        {/* BOTÕES DE EXPORTAÇÃO EXCLUSIVOS DA ABA ATIVA */}
+        <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-end border-t md:border-t-0 pt-3 md:pt-0 border-slate-100 dark:border-slate-800">
+          <Button onClick={handleDownloadPDF} className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-9 px-3.5 gap-1.5 shadow-sm">
+            <FileText className="w-3.5 h-3.5" /> Baixar PDF
           </Button>
-        )}
+          <Button onClick={handleDownloadCSV} variant="outline" className="border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs h-9 px-3.5 gap-1.5">
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Exportar CSV
+          </Button>
+        </div>
       </div>
 
-      {/* CARDS DE RESUMO EXECUTIVO (KPIs) */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="text-[10px] uppercase font-bold text-slate-400">Total Analisado</div>
-          <div className="text-2xl font-black text-slate-800 dark:text-white mt-1">{overview.total}</div>
-          <div className="text-[10px] text-slate-500">Plantões no escopo</div>
-        </Card>
-        <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="text-[10px] uppercase font-bold text-emerald-600">Confirmados</div>
-          <div className="text-2xl font-black text-emerald-600 mt-1">{overview.confirmed}</div>
-          <div className="text-[10px] text-emerald-600 font-semibold">Postos ocupados</div>
-        </Card>
-        <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="text-[10px] uppercase font-bold text-amber-600">Pendentes</div>
-          <div className="text-2xl font-black text-amber-600 mt-1">{overview.pending}</div>
-          <div className="text-[10px] text-amber-600 font-semibold">Aguardando aceite</div>
-        </Card>
-        <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="text-[10px] uppercase font-bold text-red-600">Vagas Abertas</div>
-          <div className="text-2xl font-black text-red-600 mt-1">{overview.open}</div>
-          <div className="text-[10px] text-red-600 font-semibold">Risco de desfalque</div>
-        </Card>
-        <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm col-span-2 sm:col-span-1">
-          <div className="text-[10px] uppercase font-bold text-sky-600">Cancelados</div>
-          <div className="text-2xl font-black text-sky-600 mt-1">{overview.canceled}</div>
-          <div className="text-[10px] text-sky-600 font-semibold">Soft deletes</div>
-        </Card>
-      </div>
-
-      {/* CORPO DO RELATÓRIO (CONTAINER PRINCIPAL) */}
+      {/* PRÉ-VISUALIZAÇÃO INTERATIVA (O CONTEÚDO DA TELA) */}
       {loadingData ? (
         <div className="flex justify-center p-20"><Loader2 className="w-8 h-8 animate-spin text-sky-600" /></div>
       ) : (
         <div className="space-y-6">
           
-          {/* ABA 1: PRODUTIVIDADE & HORAS */}
+          {/* ABA 1: PRÉ-VISUALIZAÇÃO DE PRODUTIVIDADE */}
           {activeTab === 'produtividade' && (
             <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 rounded-2xl">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
                 <div>
                   <h3 className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-sky-600" /> Carga Horária & Produtividade do Corpo Clínico
+                    <Clock className="w-5 h-5 text-sky-600" /> Pré-visualização: Produtividade & Carga Horária
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Total de horas válidas e plantões confirmados por profissional.</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Estes dados refletem exatamente o que será impresso no relatório oficial.</p>
                 </div>
                 <span className="text-xs font-bold px-3 py-1 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200">
-                  {byProfessional.length} ativos no período
+                  {byProfessional.length} registros ativos
                 </span>
               </div>
 
@@ -345,15 +320,15 @@ export default function Relatorios() {
             </Card>
           )}
 
-          {/* ABA 2: COBERTURA POR SETOR */}
+          {/* ABA 2: PRÉ-VISUALIZAÇÃO DE COBERTURA */}
           {activeTab === 'cobertura' && (
             <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 rounded-2xl">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
                 <div>
                   <h3 className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-sky-600" /> Cobertura Operacional por Setor
+                    <TrendingUp className="w-5 h-5 text-sky-600" /> Pré-visualização: Cobertura Operacional por Setor
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Mapeamento de furos de escala e postos descobertos por ala hospitalar.</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Indicador gerencial de postos guarnecidos vs. descobertos.</p>
                 </div>
               </div>
 
@@ -384,15 +359,15 @@ export default function Relatorios() {
             </Card>
           )}
 
-          {/* ABA 3: REPASSE FINANCEIRO */}
+          {/* ABA 3: PRÉ-VISUALIZAÇÃO FINANCEIRA */}
           {activeTab === 'financeiro' && (
             <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 rounded-2xl">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
                 <div>
                   <h3 className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">
-                    <DollarSign className="w-5 h-5 text-emerald-600" /> Projeção de Repasse & Honorários
+                    <DollarSign className="w-5 h-5 text-emerald-600" /> Pré-visualização: Projeção de Repasses
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Cálculo automatizado do montante a ser liquidado ao corpo clínico.</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Valores calculados com base nas horas trabalhadas e validadas.</p>
                 </div>
                 <div className="text-right bg-emerald-50 dark:bg-emerald-950/40 px-4 py-2 rounded-2xl border border-emerald-200 dark:border-emerald-800">
                   <div className="text-2xl font-black text-emerald-600">R$ {totalFinancialEstimate.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
@@ -425,15 +400,15 @@ export default function Relatorios() {
             </Card>
           )}
 
-          {/* ABA 4: LOG DE AUDITORIA */}
+          {/* ABA 4: PRÉ-VISUALIZAÇÃO DE AUDITORIA */}
           {activeTab === 'auditoria' && (
             <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 rounded-2xl">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
                 <div>
                   <h3 className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5 text-sky-600" /> Log de Auditoria & Modificações
+                    <ShieldCheck className="w-5 h-5 text-sky-600" /> Pré-visualização: Log de Auditoria & Modificações
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Rastreabilidade completa de cancelamentos e alterações em plantões.</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Histórico rastreável de plantões cancelados ou ajustados pela gestão.</p>
                 </div>
                 <span className="text-xs font-bold px-3 py-1 rounded-full bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300 border border-red-200">
                   {auditLogs.length} eventos registrados
