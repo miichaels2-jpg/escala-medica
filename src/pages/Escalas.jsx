@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { 
   Plus, Pencil, Trash2, Search, Download, CalendarDays, UsersRound, 
   Maximize2, Minimize2, MessageCircle, Filter, UserPlus, X, Sun, Moon, 
-  Building2, Activity, LayoutGrid, List, ChevronDown, ChevronRight
+  Building2, Activity, LayoutGrid, List, ChevronDown, ChevronRight, Lock
 } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
 import { exportSchedulePDF } from '@/lib/exportReport';
@@ -134,7 +134,6 @@ export default function Escalas() {
         return dateMatch && monthMatch && matchSearch && matchSector && personalScope;
       })
       .map((s) => {
-        // Blindagem no Lifecycle
         let lifecycle = { state: 'upcoming', detail: '' };
         try {
           const safeShift = { ...s, date: s.date || '', start_time: s.start_time || '', end_time: s.end_time || '' };
@@ -223,10 +222,27 @@ export default function Escalas() {
     } catch (e) { alert(e.message || 'Erro ao cancelar o plantão.'); }
   };
 
+  // PDF DIÁRIO (Solução de Auditoria)
   const handleExportSchedule = () => {
-    const sorted = [...filtered].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
-    const dateLabel = selectedDate ? `${fmtDate(selectedDate)}` : (selectedMonth || 'Período Atual');
-    exportSchedulePDF({ company: company || { name: 'ScaleMedic CGT', app_name: 'ScaleMedic' }, shifts: sorted, dateLabel });
+    // Se o gestor não escolheu um dia específico, puxamos o dia de hoje automaticamente
+    const targetDate = selectedDate || getLocalDateString(currentTime);
+    
+    const dayShifts = filtered.filter(s => {
+      const sDate = typeof s.date === 'string' ? s.date.split('T')[0] : '';
+      return sDate === targetDate;
+    });
+
+    if (dayShifts.length === 0) {
+      alert(`Não existem plantões agendados para a data ${fmtDate(targetDate)} para gerar o PDF.`);
+      return;
+    }
+
+    const sorted = [...dayShifts].sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
+    exportSchedulePDF({ 
+      company: company || { name: 'ScaleMedic CGT', app_name: 'ScaleMedic' }, 
+      shifts: sorted, 
+      dateLabel: fmtDate(targetDate) // Agora o PDF sai com a data exata do dia!
+    });
   };
 
   const handleNotifyWhatsApp = (shift, e) => {
@@ -241,6 +257,66 @@ export default function Escalas() {
     window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
   };
 
+  const openTvMode = async () => {
+    setTvMode(true);
+    try { await document.documentElement.requestFullscreen?.(); } catch {}
+  };
+  const closeTvMode = async () => {
+    setTvMode(false);
+    if (document.fullscreenElement) await document.exitFullscreen?.();
+  };
+
+  if (tvMode && isManager) {
+    const activeTvShifts = filtered.filter(s => s.lifecycle.state !== 'concluded');
+    const groups = {};
+    activeTvShifts.forEach(shift => {
+      const secKey = shift.sector_id || 'geral';
+      if (!groups[secKey]) groups[secKey] = { id: secKey, name: shift.sector_name || 'Geral', active: [], upcoming: [], vacant: [] };
+      if (shift.isVacant) groups[secKey].vacant.push(shift);
+      else if (shift.lifecycle.state === 'active') groups[secKey].active.push(shift);
+      else if (shift.lifecycle.state === 'upcoming') groups[secKey].upcoming.push(shift);
+    });
+    const tvSectorsGrouped = Object.values(groups).sort((a,b) => (b.vacant.length * 10 + b.active.length) - (a.vacant.length * 10 + a.active.length));
+    const totalActiveNow = tvSectorsGrouped.reduce((sum, g) => sum + g.active.length, 0);
+
+    return (
+      <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col p-6 font-sans">
+        <div className="flex justify-between items-center border-b border-white/10 pb-4 mb-4">
+           <div>
+             <h1 className="text-3xl font-black text-sky-400">ScaleMedic TV</h1>
+             <p className="text-sm text-slate-400">{fmtDateLong(getLocalDateString(currentTime))} · Visão Setorial</p>
+           </div>
+           <div className="flex gap-4 items-center">
+             <div className="text-right">
+                <div className="text-2xl font-mono text-emerald-400 font-black">{currentTime.toLocaleTimeString('pt-BR')}</div>
+                <div className="text-[10px] text-slate-400 uppercase">Horário Oficial</div>
+             </div>
+             <button onClick={closeTvMode} className="p-3 bg-white/10 rounded-xl hover:bg-white/20"><Minimize2 className="w-5 h-5"/></button>
+           </div>
+        </div>
+        <div className="flex-1 overflow-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+           {tvSectorsGrouped.map(sec => (
+             <div key={sec.id} className={`p-5 rounded-3xl border ${sec.vacant.length > 0 ? 'bg-amber-950/20 border-amber-500/50' : 'bg-slate-900 border-white/10'}`}>
+                <h2 className="text-xl font-bold mb-4">{sec.name}</h2>
+                <div className="space-y-3">
+                   {sec.vacant.map(s => (
+                     <div key={s.id} className="p-3 bg-amber-500/20 text-amber-300 border border-amber-500/50 rounded-xl flex justify-between animate-pulse">
+                        <div><b>VAGA ABERTA</b><br/><span className="text-xs">{s.start_time} às {s.end_time}</span></div>
+                     </div>
+                   ))}
+                   {sec.active.map(s => (
+                     <div key={s.id} className="p-3 bg-emerald-500/20 border border-emerald-500/50 rounded-xl flex justify-between">
+                        <div><div className="text-emerald-400 text-[10px] font-bold">● EM ATENDIMENTO</div><b>{toTitleCase(s.professional_name)}</b><br/><span className="text-xs text-slate-300">Até {s.end_time}</span></div>
+                     </div>
+                   ))}
+                </div>
+             </div>
+           ))}
+        </div>
+      </div>
+    );
+  }
+
   if (!isManager) {
     return (
       <div className="p-4 md:p-8 flex items-center justify-center h-full">
@@ -254,7 +330,10 @@ export default function Escalas() {
     const sTime = typeof shift.start_time === 'string' ? shift.start_time : '00:00';
     const isNight = shift.shift_type === 'noturno' || (sTime >= '18:00' || sTime < '06:00');
     if (shift.lifecycle.state === 'active') return 'bg-emerald-500 border-emerald-600 shadow-emerald-500/40 text-white font-bold ring-2 ring-emerald-300';
-    if (shift.lifecycle.state === 'concluded' || shift.lifecycle.state === 'recently_finished') return 'bg-slate-300 border-slate-400 text-slate-600 opacity-60';
+    
+    // COR PARA PLANTÕES CONCLUÍDOS (Mais apagado)
+    if (['concluded', 'recently_finished'].includes(shift.lifecycle.state)) return 'bg-slate-200 border-slate-300 text-slate-500 shadow-none';
+    
     return isNight ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-sky-500 border-sky-600 text-white';
   };
 
@@ -306,7 +385,7 @@ export default function Escalas() {
           </select>
           
           {viewMode === 'list' && (
-            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9 w-auto text-xs shrink-0" />
+            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9 w-auto text-xs shrink-0" title="Escolha um dia específico para ver e exportar" />
           )}
 
           <select value={sectorFilter} onChange={(e) => setSectorFilter(e.target.value)} className="h-9 rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 font-semibold shrink-0 cursor-pointer">
@@ -316,8 +395,14 @@ export default function Escalas() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
-          <Button variant="outline" onClick={handleExportSchedule} className="text-xs h-9 font-semibold border-slate-200">
-            <Download className="w-3.5 h-3.5 mr-1.5" /> PDF
+          {/* BOTÃO DA TV RESTAURADO */}
+          <Button onClick={openTvMode} className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs h-9 px-4 shadow-sm hidden md:flex">
+            <Maximize2 className="w-3.5 h-3.5 mr-1.5" /> TV
+          </Button>
+
+          {/* BOTÃO DO PDF DIÁRIO */}
+          <Button variant="outline" onClick={handleExportSchedule} className="text-xs h-9 font-semibold border-slate-200" title="Imprime os plantões do dia selecionado">
+            <Download className="w-3.5 h-3.5 mr-1.5 text-sky-600" /> PDF do Dia
           </Button>
           <Button onClick={() => { setEditing(null); setDialogOpen(true); }} className="bg-sky-600 hover:bg-sky-700 text-white text-xs h-9 font-bold px-4 shadow-md shadow-sky-600/20">
             <Plus className="w-4 h-4 mr-1.5" /> Novo Plantão
@@ -326,19 +411,17 @@ export default function Escalas() {
       </div>
 
       <Card className="flex-1 border-slate-200 shadow-sm overflow-hidden flex flex-col bg-white">
+        
+        {/* ===================== MODO MATRIZ ===================== */}
         {viewMode === 'matrix' && (
           <div className="flex flex-col h-full">
             <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
-              <div className="flex items-center gap-4 text-xs font-medium text-slate-500">
+              <div className="flex items-center gap-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-sky-500" /> Diurno</span>
                 <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-indigo-600" /> Noturno</span>
                 <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-emerald-500 ring-2 ring-emerald-300" /> Em Andamento</span>
-                <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-red-500 animate-pulse" /> Vaga Descoberta</span>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={expandAllSectors} className="text-[10px] uppercase font-bold text-sky-600 hover:text-sky-800">Expandir Tudo</button>
-                <span className="text-slate-300">|</span>
-                <button onClick={collapseAllSectors} className="text-[10px] uppercase font-bold text-slate-500 hover:text-slate-800">Recolher Tudo</button>
+                <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-slate-200 border border-slate-300" /> Concluído</span>
+                <span className="flex items-center gap-1.5 text-red-600"><div className="w-3 h-3 rounded bg-red-500 animate-pulse" /> Vaga Descoberta</span>
               </div>
             </div>
 
@@ -399,14 +482,20 @@ export default function Escalas() {
                                       <div className="flex flex-col gap-0.5 items-center justify-center">
                                         {dayShifts.map(s => {
                                           const startHour = typeof s.start_time === 'string' ? s.start_time.split(':')[0] : '00';
+                                          const isDone = ['concluded', 'recently_finished'].includes(s.lifecycle.state);
+                                          
                                           return (
                                             <button 
                                               key={s.id}
-                                              onClick={() => { setEditing(s); setDialogOpen(true); }}
-                                              title={`${s.start_time || '--'} às ${s.end_time || '--'} - Clique para detalhes`}
-                                              className={`w-[26px] h-[22px] rounded-md border text-[9px] flex items-center justify-center transition-transform hover:scale-110 hover:z-10 shadow-sm ${getMatrixBlockColor(s)}`}
+                                              onClick={() => { 
+                                                // BLOQUEIO DE AUDITORIA NA MATRIZ
+                                                if(isDone) alert('🔒 Plantão Histórico.\n\nEste plantão já foi realizado e está bloqueado para edição para garantir a integridade da auditoria.');
+                                                else { setEditing(s); setDialogOpen(true); }
+                                              }}
+                                              title={isDone ? 'Plantão Concluído (Bloqueado)' : `${s.start_time || '--'} às ${s.end_time || '--'}`}
+                                              className={`w-[26px] h-[22px] rounded-md border text-[9px] flex items-center justify-center transition-transform shadow-sm ${getMatrixBlockColor(s)} ${isDone ? 'cursor-not-allowed opacity-80' : 'hover:scale-110 hover:z-10'}`}
                                             >
-                                              {startHour}h
+                                              {isDone ? <Lock className="w-2.5 h-2.5 opacity-70" /> : `${startHour}h`}
                                             </button>
                                           );
                                         })}
@@ -427,6 +516,7 @@ export default function Escalas() {
           </div>
         )}
 
+        {/* ===================== MODO LISTA DIÁRIA ===================== */}
         {viewMode === 'list' && (
           <div className="overflow-y-auto p-4 space-y-4">
              {filtered.length === 0 ? (
@@ -435,24 +525,42 @@ export default function Escalas() {
                 filtered.map(s => {
                   const sTime = typeof s.start_time === 'string' ? s.start_time : '00:00';
                   const isNight = s.shift_type === 'noturno' || (sTime >= '18:00' || sTime < '06:00');
+                  
+                  // VERIFICA SE O PLANTÃO JÁ PASSOU
+                  const isDone = ['concluded', 'recently_finished'].includes(s.lifecycle.state);
+
                   return (
-                    <div key={s.id} className={`flex items-center gap-3 rounded-xl border p-3 bg-white hover:border-sky-300 transition-colors shadow-sm ${s.isVacant ? 'border-amber-400 bg-amber-50' : 'border-slate-200'}`}>
-                      <div className="min-w-[85px] rounded-lg bg-slate-50 py-1.5 text-center text-xs font-black text-slate-700 border border-slate-100 shrink-0">
+                    <div key={s.id} className={`flex items-center gap-3 rounded-xl border p-3 bg-white transition-colors shadow-sm ${s.isVacant ? 'border-amber-400 bg-amber-50' : 'border-slate-200 hover:border-sky-300'}`}>
+                      <div className={`min-w-[85px] rounded-lg py-1.5 text-center text-xs font-black border shrink-0 ${isDone ? 'bg-slate-100 border-slate-200 text-slate-500' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
                         {fmtDate(s.date)} <br/>
-                        <span className="text-sky-600">{s.start_time || '--'} - {s.end_time || '--'}</span>
+                        <span className={isDone ? "text-slate-400" : "text-sky-600"}>{s.start_time || '--'} - {s.end_time || '--'}</span>
                       </div>
+                      
                       <div className="flex-1 min-w-0">
-                        <strong className={`block text-sm truncate ${s.isVacant ? 'text-amber-800' : 'text-slate-800'}`}>{toTitleCase(s.professional_name) || 'Vaga Aberta'}</strong>
-                        <span className="text-xs text-slate-500">{toTitleCase(s.sector_name)}</span>
+                        <strong className={`block text-sm truncate ${s.isVacant ? 'text-amber-800' : (isDone ? 'text-slate-500' : 'text-slate-800')}`}>
+                          {toTitleCase(s.professional_name) || 'Vaga Aberta'}
+                        </strong>
+                        <span className="text-xs text-slate-400">{toTitleCase(s.sector_name)}</span>
                       </div>
-                      <div className="flex gap-1">
-                        {s.isVacant ? (
-                          <Button size="sm" onClick={() => { setEditing(s); setDialogOpen(true); }} className="h-8 bg-amber-500 hover:bg-amber-600 text-white"><UserPlus className="w-3.5 h-3.5 mr-1" /> Alocar</Button>
+                      
+                      <div className="flex items-center gap-2">
+                        {/* BLOQUEIO DE AUDITORIA NA LISTA */}
+                        {isDone ? (
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-100 text-slate-400" title="Plantão fechado/histórico">
+                            <Lock className="w-3.5 h-3.5" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider">Concluído</span>
+                          </div>
                         ) : (
-                          <Button size="icon" variant="ghost" onClick={(e) => handleNotifyWhatsApp(s, e)} className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"><MessageCircle className="w-4 h-4"/></Button>
+                          <>
+                            {s.isVacant ? (
+                              <Button size="sm" onClick={() => { setEditing(s); setDialogOpen(true); }} className="h-8 bg-amber-500 hover:bg-amber-600 text-white"><UserPlus className="w-3.5 h-3.5 mr-1" /> Alocar</Button>
+                            ) : (
+                              <Button size="icon" variant="ghost" onClick={(e) => handleNotifyWhatsApp(s, e)} className="h-8 w-8 text-emerald-600 hover:bg-emerald-50" title="Avisar no WhatsApp"><MessageCircle className="w-4 h-4"/></Button>
+                            )}
+                            <Button size="icon" variant="ghost" onClick={() => { setEditing(s); setDialogOpen(true); }} className="h-8 w-8 text-slate-500" title="Editar"><Pencil className="w-4 h-4"/></Button>
+                            <Button size="icon" variant="ghost" onClick={() => handleDelete(s.id)} className="h-8 w-8 text-red-500" title="Excluir/Cancelar"><Trash2 className="w-4 h-4"/></Button>
+                          </>
                         )}
-                        <Button size="icon" variant="ghost" onClick={() => { setEditing(s); setDialogOpen(true); }} className="h-8 w-8 text-slate-500"><Pencil className="w-4 h-4"/></Button>
-                        <Button size="icon" variant="ghost" onClick={() => handleDelete(s.id)} className="h-8 w-8 text-red-500"><Trash2 className="w-4 h-4"/></Button>
                       </div>
                     </div>
                   );
