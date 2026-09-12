@@ -407,7 +407,7 @@ export default function Painel() {
             </span>
           </div>
           <div className="text-2xl md:text-3xl font-black text-emerald-950 dark:text-emerald-100 mt-3">
-            {activeNowList.length} profissionais
+            {activeNowList.length} Profissionais
           </div>
           <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1 font-medium">
             Em jornada presencial ativa na unidade
@@ -424,10 +424,10 @@ export default function Painel() {
             </span>
           </div>
           <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-3">
-            {todayShifts.length} turnos
+            {todayShifts.length} Turnos
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            {upcomingList.length} programados · {recentlyFinishedList.length} recém-concluídos
+            {upcomingList.length} Programados · {recentlyFinishedList.length} recém-concluídos
           </p>
         </Card>
 
@@ -441,7 +441,7 @@ export default function Painel() {
             </span>
           </div>
           <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-3">
-            {professionals.length} cadastrados
+            {professionals.length} Cadastrados
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
             Profissionais vinculados a escalas
