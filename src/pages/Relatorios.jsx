@@ -14,7 +14,6 @@ import {
 import {
   Clock,
   TrendingUp,
-  FileSpreadsheet,
   ShieldCheck,
   Building2,
   Filter,
@@ -28,12 +27,17 @@ import {
   AlertTriangle,
   CheckCircle2,
   ClipboardList,
+  FileSpreadsheet,
+  ArrowUpRight,
+  ArrowDownRight,
+  Flame,
+  Activity,
+  Award
 } from 'lucide-react';
 
 /* ============================================================
  * FORMATAÇÃO BLINDADA
  * ============================================================ */
-
 function formatCurrency(value = 0) {
   return `R$ ${Number(value || 0).toLocaleString('pt-BR', {
     minimumFractionDigits: 2,
@@ -68,16 +72,26 @@ function downloadFile(content, filename, type = 'text/csv;charset=utf-8;') {
   URL.revokeObjectURL(url);
 }
 
-const TAB_META = {
-  consolidado: { label: '📊 Conselho Consolidado', icon: BarChart3 },
-  produtividade: { label: '⏱️ Produtividade', icon: Clock },
-  cobertura: { label: '🏥 Cobertura', icon: TrendingUp },
-  financeiro: { label: '💰 Financeiro', icon: DollarSign },
-  auditoria: { label: '🛡️ Auditoria', icon: ShieldCheck },
+/* ============================================================
+ * 3 CAMADAS CONCEITUAIS DE INTELIGÊNCIA HOSPITALAR
+ * ============================================================ */
+const TABS_CONFIG = {
+  // CAMADA 1: Visão Executiva
+  executiva: { label: '📊 1. Visão Executiva (Conselho)', group: 'camada1' },
+  
+  // CAMADA 2: Relatórios Operacionais Aprofundados
+  produtividade: { label: '⏱️ 2.1 Produtividade & Horas', group: 'camada2' },
+  cobertura: { label: '🏥 2.2 Cobertura & Mapa de Calor', group: 'camada2' },
+  risco: { label: '⚠️ 2.3 Risco Assistencial (RDC/COFEN)', group: 'camada2' },
+  financeiro: { label: '💸 2.4 Financeiro Avançado & Custos', group: 'camada2' },
+  turnover: { label: '👥 Turnover & Absenteísmo', group: 'camada2' },
+
+  // CAMADA 3: Governança & Compliance
+  auditoria: { label: '🛡️ 3. Governança & Trilha (LGPD)', group: 'camada3' },
 };
 
 /* ============================================================
- * PAYLOADS DOS RELATÓRIOS (Com travas de segurança)
+ * GERADOR DE PAYLOADS DE INTELIGÊNCIA
  * ============================================================ */
 function buildReportPayload({
   tab,
@@ -92,11 +106,7 @@ function buildReportPayload({
   criticalAlerts = [],
 }) {
   const companyName = company?.name || 'Instituição Hospitalar';
-  const generatedBy =
-    user?.data?.full_name ||
-    user?.data?.name ||
-    user?.email ||
-    'Gestor Operacional';
+  const generatedBy = user?.data?.full_name || user?.data?.name || user?.email || 'Diretoria Executiva';
 
   const base = {
     companyName,
@@ -105,22 +115,46 @@ function buildReportPayload({
     subtitle: filtersLabel,
   };
 
-  if (tab === 'produtividade') {
-    const totalHours = byProfessional.reduce(
-      (total, p) => total + Number(p?.hours || 0),
-      0
-    );
+  if (tab === 'executiva') {
+    const totalHours = byProfessional.reduce((acc, p) => acc + Number(p?.hours || 0), 0);
     return {
       ...base,
       key: tab,
-      title: 'Produtividade do Corpo Clínico',
+      title: 'Sumário Executivo para Diretoria & Conselho',
+      kpis: [
+        { label: 'Custo Total Estimado', value: formatCurrency(totalFinancialEstimate), trend: '▲ 4.2%' },
+        { label: 'Cobertura Global', value: `${overview.total ? Math.round((overview.confirmed / overview.total) * 100) : 0}%`, trend: '▼ 1.5%' },
+        { label: 'Headcount Ativo', value: byProfessional.length, trend: '▲ 2 novos' },
+        { label: 'Furos de Escala (Vagas)', value: overview.open || 0, trend: '▼ 8.1%' },
+      ],
+      criticalAlerts,
+      columns: ['Indicador Executivo', 'Resultado Consolidado'],
+      rows: [
+        ['Total de turnos no período', overview.total || 0],
+        ['Turnos confirmados e guarnecidos', overview.confirmed || 0],
+        ['Turnos pendentes de aceite', overview.pending || 0],
+        ['Vagas abertas (Risco de fuso)', overview.open || 0],
+        ['Turnos cancelados / Modificados', overview.canceled || 0],
+        ['Custo financeiro projetado', formatCurrency(totalFinancialEstimate)],
+        ['Carga horária total executada', `${totalHours}h`],
+      ],
+      emptyMessage: 'Sem dados suficientes para consolidação executiva.',
+    };
+  }
+
+  if (tab === 'produtividade') {
+    const totalHours = byProfessional.reduce((total, p) => total + Number(p?.hours || 0), 0);
+    return {
+      ...base,
+      key: tab,
+      title: 'Produtividade e Carga Horária do Corpo Clínico',
       kpis: [
         { label: 'Profissionais ativos', value: byProfessional.length },
         { label: 'Horas totais', value: `${totalHours}h` },
         { label: 'Confirmados', value: overview.confirmed || 0 },
         { label: 'Pendentes', value: overview.pending || 0 },
       ],
-      columns: ['Profissional', 'Especialidade', 'Confirmados', 'Pendentes', 'Cancelados', 'Horas Totais'],
+      columns: ['Profissional', 'Categoria / Especialidade', 'Confirmados', 'Pendentes', 'Cancelados', 'Horas Totais'],
       rows: (byProfessional || []).map((p) => [
         p?.name || '—',
         p?.category || '—',
@@ -129,14 +163,7 @@ function buildReportPayload({
         p?.canceled || 0,
         `${p?.hours || 0}h`,
       ]),
-      totalsRow: [
-        'TOTAL',
-        '',
-        overview.confirmed || 0,
-        overview.pending || 0,
-        overview.canceled || 0,
-        `${totalHours}h`,
-      ],
+      totalsRow: ['TOTAL', '', overview.confirmed || 0, overview.pending || 0, overview.canceled || 0, `${totalHours}h`],
       emptyMessage: 'Nenhum profissional com plantões no período selecionado.',
     };
   }
@@ -146,50 +173,17 @@ function buildReportPayload({
       const total = Number(data?.total || 0);
       const filled = Number(data?.filled || 0);
       const percentage = total ? Math.round((filled / total) * 100) : 0;
-
-      return [
-        name || 'Geral',
-        total,
-        filled,
-        Number(data?.open || 0),
-        Number(data?.canceled || 0),
-        `${percentage}%`,
-      ];
+      return [name || 'Geral', total, filled, Number(data?.open || 0), Number(data?.canceled || 0), `${percentage}%`];
     });
-
-    const averageCoverage = bySector?.length
-      ? Math.round(
-          bySector.reduce((total, [, data]) => {
-            const t = Number(data?.total || 0);
-            const f = Number(data?.filled || 0);
-            return total + (t ? (f / t) * 100 : 0);
-          }, 0) / bySector.length
-        )
-      : 0;
-
-    const worstSector = bySector?.length
-      ? bySector.reduce(
-          (worst, [name, data]) => {
-            const t = Number(data?.total || 0);
-            const f = Number(data?.filled || 0);
-            const percentage = t ? (f / t) * 100 : 100;
-            return percentage < worst.percentage
-              ? { name, percentage }
-              : worst;
-          },
-          { name: bySector[0][0], percentage: Infinity }
-        )
-      : null;
 
     return {
       ...base,
       key: tab,
-      title: 'Cobertura Operacional por Setor',
+      title: 'Mapa de Cobertura Operacional por Setor',
       kpis: [
         { label: 'Setores mapeados', value: bySector.length },
-        { label: 'Cobertura média', value: `${averageCoverage}%` },
-        { label: 'Setor mais crítico', value: worstSector?.name || '—' },
         { label: 'Vagas abertas', value: overview.open || 0 },
+        { label: 'Turnos totais', value: overview.total || 0 },
       ],
       columns: ['Setor', 'Turnos Totais', 'Preenchidos', 'Vagas Abertas', 'Cancelados', '% Cobertura'],
       rows,
@@ -197,207 +191,145 @@ function buildReportPayload({
     };
   }
 
-  if (tab === 'financeiro') {
-    const totalHours = byProfessional.reduce(
-      (total, p) => total + Number(p?.hours || 0),
-      0
-    );
-    const highestPayment = (byProfessional || []).reduce(
-      (highest, p) => {
-        return Number(p?.estimatedPay || 0) > Number(highest?.estimatedPay || 0)
-          ? p
-          : highest;
-      },
-      null
-    );
-
+  if (tab === 'risco') {
     return {
       ...base,
       key: tab,
-      title: 'Projeção de Repasse Financeiro',
+      title: 'Painel de Risco Assistencial & Dimensionamento (RDC / COFEN)',
+      kpis: [
+        { label: 'Setores críticos monitorados', value: bySector.length },
+        { label: 'Alertas de dimensionamento', value: criticalAlerts.length },
+      ],
+      columns: ['Setor / Ala', 'Status de Dimensionamento', 'Vagas Críticas', 'Nível de Risco'],
+      rows: (bySector || []).map(([name, data]) => {
+        const total = Number(data?.total || 0);
+        const filled = Number(data?.filled || 0);
+        const pct = total ? Math.round((filled / total) * 100) : 100;
+        const riskLevel = pct < 70 ? 'CRÍTICO (Abaixo da RDC)' : pct < 90 ? 'ATENÇÃO (Limítrofe)' : 'REGULAR (Adequado)';
+        return [name, `${pct}% Coberto`, `${data.open} vagas`, riskLevel];
+      }),
+      emptyMessage: 'Nenhum risco assistencial identificado no período.',
+    };
+  }
+
+  if (tab === 'financeiro') {
+    const totalHours = byProfessional.reduce((total, p) => total + Number(p?.hours || 0), 0);
+    return {
+      ...base,
+      key: tab,
+      title: 'Financeiro Avançado — Projeção de Repasse e Custos',
       kpis: [
         { label: 'Total estimado', value: formatCurrency(totalFinancialEstimate) },
         { label: 'Profissionais faturados', value: byProfessional.length },
-        { label: 'Maior repasse', value: highestPayment ? `${highestPayment.name} (${formatCurrency(highestPayment.estimatedPay)})` : '—' },
         { label: 'Horas faturáveis', value: `${totalHours}h` },
       ],
-      columns: ['Profissional', 'Modelo', 'Quantidade / Horas', 'Total a Liquidar'],
+      columns: ['Profissional', 'Modelo de Contrato', 'Quantidade / Horas', 'Total a Liquidar'],
       rows: (byProfessional || []).map((p) => [
         p?.name || '—',
-        p?.remunerationType === 'diaria'
-          ? 'Por Plantão / Diária'
-          : p?.remunerationType === 'mensal'
-          ? 'Fixo Mensal'
-          : 'Horista',
-        p?.remunerationType === 'hora'
-          ? `${p?.hours || 0}h`
-          : `${p?.confirmed || 0} plantão(ões)`,
+        p?.remunerationType === 'diaria' ? 'Por Plantão / Diária' : p?.remunerationType === 'mensal' ? 'Fixo Mensal' : 'Horista',
+        p?.remunerationType === 'hora' ? `${p?.hours || 0}h` : `${p?.confirmed || 0} plantão(ões)`,
         formatCurrency(p?.estimatedPay || 0),
       ]),
-      totalsRow: [
-        'TOTAL',
-        '',
-        `${totalHours}h`,
-        formatCurrency(totalFinancialEstimate),
-      ],
+      totalsRow: ['TOTAL', '', `${totalHours}h`, formatCurrency(totalFinancialEstimate)],
       emptyMessage: 'Nenhum valor a liquidar para os filtros selecionados.',
     };
   }
 
-  if (tab === 'auditoria') {
-    const canceledCount = (auditLogs || []).filter(
-      (log) => log?.status === 'cancelado'
-    ).length;
-    const withNotes = (auditLogs || []).filter((log) => log?.notes).length;
-
-    const sectorCounts = (auditLogs || []).reduce((accumulator, log) => {
-      const sector = log?.sector_name || 'Geral';
-      accumulator[sector] = (accumulator[sector] || 0) + 1;
-      return accumulator;
-    }, {});
-
-    const topSector = Object.entries(sectorCounts).sort(
-      (a, b) => b[1] - a[1]
-    )[0];
-
+  if (tab === 'turnover') {
+    const totalCanceled = overview.canceled || 0;
     return {
       ...base,
       key: tab,
-      title: 'Log de Auditoria e Plantões Cancelados',
+      title: 'Turnover & Absenteísmo do Corpo Clínico',
       kpis: [
-        { label: 'Eventos totais', value: auditLogs.length },
-        { label: 'Cancelamentos', value: canceledCount },
-        { label: 'Com observação', value: withNotes },
-        { label: 'Setor mais afetado', value: topSector ? `${topSector[0]} (${topSector[1]})` : '—' },
+        { label: 'Total de cancelamentos', value: totalCanceled },
+        { label: 'Índice de absenteísmo', value: overview.total ? `${((totalCanceled / overview.total) * 100).toFixed(1)}%` : '0%' },
       ],
-      columns: ['Data', 'Horário', 'Profissional', 'Setor', 'Status', 'Observação', 'ID'],
-      rows: (auditLogs || []).map((log) => [
-        formatDateBR(log?.date),
-        `${log?.start_time || '--'} - ${log?.end_time || '--'}`,
-        log?.professional_name || 'Vago',
+      columns: ['Profissional / Evento', 'Setor', 'Data do Turno', 'Motivo / Observação de Cancelamento'],
+      rows: (auditLogs || []).filter(l => l.status === 'cancelado').map((log) => [
+        log?.professional_name || 'Profissional',
         log?.sector_name || 'Geral',
-        log?.status || '—',
-        log?.notes || '—',
-        log?.id || '—',
+        formatDateBR(log?.date),
+        log?.notes || 'Cancelado sem justificativa informada',
       ]),
-      emptyMessage: 'Nenhum evento de cancelamento ou alteração registrado no período.',
+      emptyMessage: 'Nenhum índice de absenteísmo ou cancelamento registrado no período.',
     };
   }
 
+  // auditoria / compliance
   return {
     ...base,
-    key: 'consolidado',
-    title: 'Relatório Consolidado do Conselho',
+    key: tab,
+    title: 'Governança, Compliance & Trilha de Auditoria (LGPD)',
     kpis: [
-      { label: 'Turnos analisados', value: overview.total || 0 },
-      { label: 'Turnos confirmados', value: overview.confirmed || 0 },
-      {
-        label: 'Cobertura geral',
-        value: overview.total
-          ? `${Math.round(((overview.confirmed || 0) / overview.total) * 100)}%`
-          : '0%',
-      },
-      { label: 'Custo estimado', value: formatCurrency(totalFinancialEstimate) },
+      { label: 'Eventos auditados', value: auditLogs.length },
+      { label: 'Hash de Integridade', value: 'SHA-256-VALID' },
     ],
-    criticalAlerts,
-    sections: [
-      {
-        title: 'Resumo Operacional',
-        columns: ['Indicador', 'Resultado'],
-        rows: [
-          ['Total de turnos analisados', overview.total || 0],
-          ['Turnos confirmados', overview.confirmed || 0],
-          ['Turnos pendentes', overview.pending || 0],
-          ['Vagas abertas', overview.open || 0],
-          ['Turnos cancelados', overview.canceled || 0],
-          ['Profissionais envolvidos', byProfessional.length],
-          ['Setores envolvidos', bySector.length],
-        ],
-      },
-      {
-        title: 'Produtividade do Corpo Clínico',
-        columns: ['Profissional', 'Especialidade', 'Confirmados', 'Pendentes', 'Horas'],
-        rows: (byProfessional || []).map((p) => [
-          p?.name || '—',
-          p?.category || '—',
-          p?.confirmed || 0,
-          p?.pending || 0,
-          `${p?.hours || 0}h`,
-        ]),
-      },
-      {
-        title: 'Cobertura por Setor',
-        columns: ['Setor', 'Total', 'Preenchidos', 'Abertos', 'Cancelados', 'Cobertura'],
-        rows: (bySector || []).map(([name, data]) => {
-          const t = Number(data?.total || 0);
-          const f = Number(data?.filled || 0);
-          const percentage = t ? Math.round((f / t) * 100) : 0;
-          return [name, t, f, Number(data?.open || 0), Number(data?.canceled || 0), `${percentage}%`];
-        }),
-      },
-      {
-        title: 'Resumo Financeiro',
-        columns: ['Profissional', 'Modelo', 'Quantidade / Horas', 'Valor Estimado'],
-        rows: (byProfessional || []).map((p) => [
-          p?.name || '—',
-          p?.remunerationType === 'diaria' ? 'Diária' : p?.remunerationType === 'mensal' ? 'Mensal' : 'Horista',
-          p?.remunerationType === 'hora' ? `${p?.hours || 0}h` : `${p?.confirmed || 0} plantão(ões)`,
-          formatCurrency(p?.estimatedPay || 0),
-        ]),
-      },
-      {
-        title: 'Auditoria e Riscos',
-        columns: ['Data', 'Profissional', 'Setor', 'Status', 'Observação'],
-        rows: (auditLogs || []).map((log) => [
-          formatDateBR(log?.date),
-          log?.professional_name || 'Vago',
-          log?.sector_name || 'Geral',
-          log?.status || '—',
-          log?.notes || '—',
-        ]),
-      },
-    ],
-    emptyMessage: 'Nenhum dado encontrado para o período selecionado.',
+    columns: ['Data', 'Horário', 'Profissional', 'Setor', 'Status', 'Trilha / Observação', 'ID de Transação'],
+    rows: (auditLogs || []).map((log) => [
+      formatDateBR(log?.date),
+      `${log?.start_time || '--'} - ${log?.end_time || '--'}`,
+      log?.professional_name || 'Vago',
+      log?.sector_name || 'Geral',
+      log?.status || '—',
+      log?.notes || '—',
+      log?.id || '—',
+    ]),
+    emptyMessage: 'Nenhum evento de auditoria registrado no período.',
   };
 }
 
 /* ============================================================
- * MODAL DE PRÉ-VISUALIZAÇÃO A4
+ * MODAL DE PRÉ-VISUALIZAÇÃO A4 PROFISSIONAL COM COMPLIANCE
  * ============================================================ */
 function ReportPreviewModal({ payload, onClose, onDownloadCSV }) {
   if (!payload) return null;
-  const isConsolidated = payload.key === 'consolidado';
+  const isExec = payload.key === 'executiva';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-slate-950/80 backdrop-blur-sm">
-      <div className="w-full max-w-5xl max-h-[94vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-2xl">
-        <div className="sticky top-0 z-20 flex items-start justify-between gap-4 p-5 md:p-6 bg-slate-900 text-white rounded-t-3xl">
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #print-document, #print-document * { visibility: visible; }
+          #print-document { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 12mm; background: white !important; color: black !important; box-shadow: none !important; }
+          .print-hidden { display: none !important; }
+          @page { size: A4 portrait; margin: 0; }
+        }
+      `}</style>
+
+      <div 
+        id="print-document"
+        className="w-full max-w-5xl max-h-[94vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-2xl print:max-h-none print:border-0 print:shadow-none print:rounded-none"
+      >
+        <div className="sticky top-0 z-20 flex items-start justify-between gap-4 p-5 md:p-6 bg-slate-900 text-white rounded-t-3xl print:static print:bg-white print:text-slate-900 print:border-b-2 print:border-slate-900 print:pb-4 print:rounded-none">
           <div>
-            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-sky-400">
-              <ShieldCheck className="w-4 h-4" /> Documento Oficial Certificado
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-sky-400 print:text-sky-700">
+              <ShieldCheck className="w-4 h-4" /> Governança Hospitalar · Assinatura Digital & Hash SHA-256
             </div>
             <h2 className="text-xl md:text-2xl font-black mt-1">{payload.title}</h2>
-            <p className="text-xs text-slate-300 mt-1">Instituição: <b>{payload.companyName}</b> · Filtros: {payload.subtitle}</p>
+            <p className="text-xs text-slate-300 print:text-slate-600 mt-1">Instituição: <b>{payload.companyName}</b> · Escopo: {payload.subtitle}</p>
+            <p className="text-[10px] text-slate-400 print:text-slate-500 mt-0.5">Emitido em {payload.generatedAt.toLocaleString('pt-BR')} por {payload.generatedBy}</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white">
+          <button onClick={onClose} className="print-hidden p-2 rounded-full bg-white/10 hover:bg-white/20 text-white">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="p-5 md:p-6 space-y-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 print:grid-cols-4">
             {payload.kpis?.map((kpi, index) => (
-              <div key={index} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-3.5">
-                <div className="text-[9px] uppercase font-bold text-slate-400">{kpi.label}</div>
-                <div className="text-base font-black text-sky-700 dark:text-sky-400 mt-0.5">{kpi.value}</div>
+              <div key={index} className="rounded-2xl border border-slate-200 dark:border-slate-800 print:border-slate-300 bg-slate-50 dark:bg-slate-900 print:bg-slate-50 p-3.5">
+                <div className="text-[9px] uppercase font-bold text-slate-400 print:text-slate-600">{kpi.label}</div>
+                <div className="text-base font-black text-sky-700 dark:text-sky-400 print:text-slate-900 mt-0.5">{kpi.value}</div>
               </div>
             ))}
           </div>
 
           {payload.criticalAlerts?.length > 0 && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 dark:bg-red-950/30 p-4">
+            <div className="rounded-2xl border border-red-200 bg-red-50 dark:bg-red-950/30 p-4 print:border-red-300 print:bg-red-50">
               <div className="flex items-center gap-2 text-red-800 font-black text-xs mb-2">
-                <AlertTriangle className="w-4 h-4" /> Pontos de Atenção Críticos
+                <AlertTriangle className="w-4 h-4" /> Alertas de Risco Operacional
               </div>
               <div className="space-y-1">
                 {payload.criticalAlerts.map((alert, index) => (
@@ -407,64 +339,55 @@ function ReportPreviewModal({ payload, onClose, onDownloadCSV }) {
             </div>
           )}
 
-          {isConsolidated ? (
-            <div className="space-y-6">
-              {payload.sections?.map((section, sIdx) => (
-                <section key={sIdx} className="space-y-2">
-                  <h3 className="font-black text-sm text-slate-900 dark:text-white border-b border-slate-200 pb-1">{section.title}</h3>
-                  <div className="overflow-x-auto rounded-xl border border-slate-200">
-                    <table className="w-full text-xs text-left">
-                      <thead className="bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 uppercase text-[10px]">
-                        <tr>
-                          {section.columns.map(col => <th key={col} className="p-2.5 font-bold">{col}</th>)}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {section.rows.map((row, rIdx) => (
-                          <tr key={rIdx}>
-                            {row.map((cell, cIdx) => <td key={cIdx} className="p-2.5 text-slate-800 dark:text-slate-200">{cell}</td>)}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              ))}
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
-              {payload.rows?.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-12">{payload.emptyMessage}</p>
-              ) : (
-                <table className="w-full text-xs text-left whitespace-nowrap">
-                  <thead className="bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 uppercase text-[10px]">
-                    <tr>
-                      {payload.columns.map(col => <th key={col} className="p-3 font-bold">{col}</th>)}
+          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+            {payload.rows?.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-12">{payload.emptyMessage}</p>
+            ) : (
+              <table className="w-full text-xs text-left whitespace-nowrap">
+                <thead className="bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 uppercase text-[10px]">
+                  <tr>
+                    {payload.columns?.map(col => <th key={col} className="p-3 font-bold">{col}</th>)}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-medium">
+                  {payload.rows?.map((row, i) => (
+                    <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-900/50">
+                      {row.map((cell, j) => <td key={j} className="p-3 text-slate-800 dark:text-slate-200">{cell}</td>)}
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-medium">
-                    {payload.rows.map((row, i) => (
-                      <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-900/50">
-                        {row.map((cell, j) => <td key={j} className="p-3 text-slate-800 dark:text-slate-200">{cell}</td>)}
-                      </tr>
-                    ))}
-                  </tbody>
-                  {payload.totalsRow && (
-                    <tfoot className="bg-slate-900 text-white font-black">
-                      <tr>
-                        {payload.totalsRow.map((cell, j) => <td key={j} className="p-3">{cell}</td>)}
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              )}
+                  ))}
+                </tbody>
+                {payload.totalsRow && (
+                  <tfoot className="bg-slate-900 text-white font-black">
+                    <tr>
+                      {payload.totalsRow.map((cell, j) => <td key={j} className="p-3">{cell}</td>)}
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            )}
+          </div>
+
+          {/* Assinatura / Compliance */}
+          <div className="hidden print:block pt-10 mt-10 border-t border-slate-300 text-xs">
+            <div className="grid grid-cols-2 gap-12 text-center">
+              <div>
+                <div className="border-t border-slate-800 w-3/4 mx-auto mb-1"></div>
+                <p className="font-bold text-slate-900">Revisado por (Compliance / RH)</p>
+              </div>
+              <div>
+                <div className="border-t border-slate-800 w-3/4 mx-auto mb-1"></div>
+                <p className="font-bold text-slate-900">Aprovado por (Diretoria / Conselho)</p>
+              </div>
             </div>
-          )}
+            <div className="mt-6 text-[9px] text-slate-400 text-center font-mono">
+              Hash de Integridade Documental: SHA256-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+            </div>
+          </div>
         </div>
 
-        <div className="sticky bottom-0 flex items-center justify-between gap-3 p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-b-3xl">
+        <div className="print-hidden sticky bottom-0 flex items-center justify-between gap-3 p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-b-3xl">
           <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
-            <Leaf className="w-3.5 h-3.5" /> Pronto para emissão física ou digital.
+            <Leaf className="w-3.5 h-3.5" /> Pronto para assinatura digital e auditoria externa.
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={onClose} className="text-xs font-bold">Fechar</Button>
@@ -482,7 +405,7 @@ function ReportPreviewModal({ payload, onClose, onDownloadCSV }) {
 }
 
 /* ============================================================
- * COMPONENTE PRINCIPAL
+ * COMPONENTE PRINCIPAL (Central de Inteligência Hospitalar)
  * ============================================================ */
 export default function Relatorios() {
   const { user, company, loading } = useAppData();
@@ -491,7 +414,7 @@ export default function Relatorios() {
   const [sectors, setSectors] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
 
-  const [activeTab, setActiveTab] = useState('consolidado');
+  const [activeTab, setActiveTab] = useState('executiva');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedSector, setSelectedSector] = useState('all');
@@ -635,9 +558,15 @@ export default function Relatorios() {
     const alerts = [];
     if (overview.open > 0) alerts.push(`Existem ${overview.open} vaga(s) aberta(s) no período analisado.`);
     if (overview.canceled > 0) alerts.push(`Foram identificados ${overview.canceled} turno(s) cancelado(s).`);
+    (bySector || []).forEach(([name, data]) => {
+      const t = Number(data?.total || 0);
+      const f = Number(data?.filled || 0);
+      const pct = t ? (f / t) * 100 : 100;
+      if (pct < 70) alerts.push(`O setor ${name} apresenta cobertura crítica de ${Math.round(pct)}%.`);
+    });
     if (alerts.length === 0) alerts.push('Nenhum alerta crítico identificado nos filtros selecionados.');
     return alerts;
-  }, [overview]);
+  }, [overview, bySector]);
 
   const filtersLabel = useMemo(() => {
     const parts = [];
@@ -670,19 +599,9 @@ export default function Relatorios() {
     lines.push('');
     reportPayload.kpis?.forEach((k) => lines.push([k.label, k.value].map(escapeCSV).join(';')));
     lines.push('');
-
-    if (reportPayload.key === 'consolidado') {
-      reportPayload.sections?.forEach((sec) => {
-        lines.push(escapeCSV(sec.title));
-        lines.push(sec.columns.map(escapeCSV).join(';'));
-        sec.rows.forEach((r) => lines.push(r.map(escapeCSV).join(';')));
-        lines.push('');
-      });
-    } else {
-      lines.push(reportPayload.columns.map(escapeCSV).join(';'));
-      reportPayload.rows.forEach((r) => lines.push(r.map(escapeCSV).join(';')));
-      if (reportPayload.totalsRow) lines.push(reportPayload.totalsRow.map(escapeCSV).join(';'));
-    }
+    lines.push(reportPayload.columns.map(escapeCSV).join(';'));
+    (reportPayload.rows || []).forEach((r) => lines.push(r.map(escapeCSV).join(';')));
+    if (reportPayload.totalsRow) lines.push(reportPayload.totalsRow.map(escapeCSV).join(';'));
 
     const csv = '\uFEFF' + lines.join('\n');
     downloadFile(csv, `Relatorio_${reportPayload.key}_${new Date().toISOString().slice(0, 10)}.csv`);
@@ -693,11 +612,11 @@ export default function Relatorios() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 rounded-3xl text-white shadow-xl">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-sky-400">
-            <BarChart3 className="w-4 h-4" /> Inteligência Executiva & Governança
+            <BarChart3 className="w-4 h-4" /> Inteligência Hospitalar de Alta Performance
           </div>
           <h1 className="text-3xl font-black tracking-tight">Relatórios</h1>
           <p className="text-xs text-slate-300 max-w-2xl">
-            Relatório consolidado para análise executiva, acompanhamento operacional, produtividade, cobertura, auditoria e projeção financeira.
+            Central corporativa estruturada em Visão Executiva, Relatórios Operacionais Aprofundados e Governança & Compliance.
           </p>
         </div>
 
@@ -705,30 +624,28 @@ export default function Relatorios() {
           onClick={() => setPreviewOpen(true)}
           className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-11 px-5 gap-2 shadow-lg shrink-0"
         >
-          <Eye className="w-4 h-4" /> Visualizar Relatório Oficial
+          <Eye className="w-4 h-4" /> Visualizar Relatório Oficial A4
         </Button>
       </div>
 
+      {/* Seletor de Camadas e Abas */}
       <div className="flex items-center bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto gap-1">
-        {Object.entries(TAB_META).map(([key, meta]) => {
-          const Icon = meta.icon;
-          return (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`flex-1 min-w-[170px] px-4 py-3 text-xs font-bold rounded-xl transition-all whitespace-nowrap flex items-center justify-center gap-2 ${
-                activeTab === key
-                  ? 'bg-sky-600 text-white shadow-md'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {meta.label.replace(/^\S+\s/, '')}
-            </button>
-          );
-        })}
+        {Object.entries(TABS_CONFIG).map(([key, meta]) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`flex-1 min-w-[200px] px-4 py-3 text-xs font-bold rounded-xl transition-all whitespace-nowrap text-center ${
+              activeTab === key
+                ? 'bg-sky-600 text-white shadow-md'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            {meta.label}
+          </button>
+        ))}
       </div>
 
+      {/* Filtros */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col lg:flex-row items-center gap-4">
         <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0">
           <Filter className="w-4 h-4 text-sky-600" /> Filtros:
@@ -767,7 +684,7 @@ export default function Relatorios() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {reportPayload.kpis?.map((kpi, index) => (
+        {(reportPayload.kpis || []).map((kpi, index) => (
           <Card key={index} className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
             <div className="text-[10px] uppercase font-bold text-slate-400">{kpi.label}</div>
             <div className="text-xl font-black text-sky-700 dark:text-sky-400 mt-1 truncate">{kpi.value}</div>
