@@ -79,7 +79,7 @@ export default function Escalas() {
     try {
       const f = { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) };
       const [s, sec, p] = await Promise.all([
-        base44.entities.Shift.filter(f, '-date', 2000), // Puxa mais para caber o mês todo
+        base44.entities.Shift.filter(f, '-date', 2000), 
         base44.entities.Sector.filter(f, '-created_date', 100),
         base44.entities.Professional.filter(f, '-created_date', 400),
       ]);
@@ -107,7 +107,10 @@ export default function Escalas() {
     return shifts
       .filter((s) => {
         if (s.status === 'cancelado') return false;
-        const sDate = (s.date || '').split('T')[0];
+        // TRAVA DE SEGURANÇA 1: Garante que tem data
+        const sDate = s.date ? s.date.split('T')[0] : '';
+        if (!sDate) return false;
+
         const monthMatch = !selectedMonth || sDate.startsWith(selectedMonth);
         const dateMatch = !selectedDate || sDate === selectedDate;
         const profNameNorm = normalizeStr(s.professional_name);
@@ -128,13 +131,14 @@ export default function Escalas() {
         if (quickFilter === 'upcoming') return s.lifecycle.state === 'upcoming';
         if (quickFilter === 'concluded') return ['concluded', 'recently_finished'].includes(s.lifecycle.state);
         if (quickFilter === 'vacant') return s.isVacant;
-        if (quickFilter === 'diurno') return s.shift_type === 'diurno' || (s.start_time >= '06:00' && s.start_time < '18:00');
-        if (quickFilter === 'noturno') return s.shift_type === 'noturno' || (s.start_time >= '18:00' || s.start_time < '06:00');
+        
+        const sTime = s.start_time || '00:00';
+        if (quickFilter === 'diurno') return s.shift_type === 'diurno' || (sTime >= '06:00' && sTime < '18:00');
+        if (quickFilter === 'noturno') return s.shift_type === 'noturno' || (sTime >= '18:00' || sTime < '06:00');
         return true;
       });
   }, [shifts, search, sectorFilter, quickFilter, selectedMonth, selectedDate, isManager, myProfessional, currentTime]);
 
-  // ESTATÍSTICAS DE AUDITORIA
   const auditStats = useMemo(() => {
     const total = filtered.length;
     const vacant = filtered.filter((s) => s.isVacant).length;
@@ -152,12 +156,17 @@ export default function Escalas() {
   const matrixData = useMemo(() => {
     const groups = {};
     filtered.forEach(shift => {
-      const sDate = shift.date.split('T')[0];
-      const day = parseInt(sDate.split('-')[2], 10);
+      // TRAVA DE SEGURANÇA 2: Nunca tenta dar split em nulo na Matriz
+      const sDate = shift.date ? shift.date.split('T')[0] : '';
+      if (!sDate) return; 
+
+      const dayPart = sDate.split('-')[2];
+      const day = dayPart ? parseInt(dayPart, 10) : 0;
+      if (!day) return;
+
       const secId = shift.sector_id || 'geral';
       const secName = shift.sector_name || 'Geral';
       
-      // Agrupa vagas abertas em uma "Pessoa Virtual" chamada VAGAS para não misturar
       const profId = shift.isVacant ? `vaga_${secId}` : (shift.professional_id || 'vaga_geral');
       const profName = shift.isVacant ? '⚠️ VAGAS DESCOBERTAS' : (toTitleCase(shift.professional_name) || 'Não Informado');
       const cat = profMap[shift.professional_id]?.category || 'outro';
@@ -169,15 +178,14 @@ export default function Escalas() {
       groups[secId].profs[profId].shiftsByDay[day].push(shift);
     });
 
-    // Converte objeto para Array ordenado (Vagas primeiro)
     return Object.values(groups).map(sec => ({
       ...sec,
       profsList: Object.values(sec.profs).sort((a, b) => {
         if (a.isVacant && !b.isVacant) return -1;
         if (!a.isVacant && b.isVacant) return 1;
-        return a.name.localeCompare(b.name);
+        return (a.name || '').localeCompare(b.name || '');
       })
-    })).sort((a, b) => a.name.localeCompare(b.name));
+    })).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }, [filtered, profMap]);
 
   const toggleSectorCollapse = (secId) => {
@@ -264,10 +272,10 @@ export default function Escalas() {
     );
   }
 
-  // Helpers de Cor para os Blocos da Matriz
   const getMatrixBlockColor = (shift) => {
     if (shift.isVacant) return 'bg-red-500 border-red-700 shadow-red-500/50 animate-pulse text-white';
-    const isNight = shift.shift_type === 'noturno' || (shift.start_time >= '18:00' || shift.start_time < '06:00');
+    const sTime = shift.start_time || '00:00';
+    const isNight = shift.shift_type === 'noturno' || (sTime >= '18:00' || sTime < '06:00');
     if (shift.lifecycle.state === 'active') return 'bg-emerald-500 border-emerald-600 shadow-emerald-500/40 text-white font-bold ring-2 ring-emerald-300';
     if (shift.lifecycle.state === 'concluded' || shift.lifecycle.state === 'recently_finished') return 'bg-slate-300 border-slate-400 text-slate-600 opacity-60';
     return isNight ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-sky-500 border-sky-600 text-white';
@@ -300,7 +308,7 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* BARRA DE CONTROLE (FILTROS E VISÕES) */}
+      {/* BARRA DE CONTROLE */}
       <div className="flex flex-col md:flex-row items-center justify-between gap-3 shrink-0 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
           <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0">
@@ -321,7 +329,7 @@ export default function Escalas() {
           <div className="h-6 w-px bg-slate-200 mx-1 shrink-0" />
 
           <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="h-9 rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 font-semibold focus:ring-2 focus:ring-sky-500 shrink-0 cursor-pointer">
-            <option value="">Selecione o Mês</option>
+            <option value="">Todos os Meses</option>
             {monthOptions.map((m) => {
               const d = new Date(Number(m.split('-')[0]), Number(m.split('-')[1]) - 1, 1);
               return <option key={m} value={m}>{d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}</option>;
@@ -348,10 +356,9 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* RENDERIZAÇÃO DO CONTEÚDO (MATRIZ VS LISTA) */}
       <Card className="flex-1 border-slate-200 shadow-sm overflow-hidden flex flex-col bg-white">
         
-        {/* ===================== MODO MATRIZ MENSAL ===================== */}
+        {/* ===================== MODO MATRIZ ===================== */}
         {viewMode === 'matrix' && (
           <div className="flex flex-col h-full">
             <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
@@ -376,7 +383,8 @@ export default function Escalas() {
                       Profissional / Setor
                     </th>
                     {matrixDaysArray.map(day => {
-                      const isWeekend = [0, 6].includes(new Date(selectedMonth.split('-')[0], selectedMonth.split('-')[1] - 1, day).getDay());
+                      const refMonth = selectedMonth || getLocalDateString().slice(0, 7);
+                      const isWeekend = [0, 6].includes(new Date(refMonth.split('-')[0], refMonth.split('-')[1] - 1, day).getDay());
                       return (
                         <th key={day} className={`p-2 min-w-[36px] border-b border-slate-200 text-center font-black ${isWeekend ? 'bg-slate-50 text-slate-400' : 'text-slate-700'}`}>
                           {day}
@@ -393,7 +401,6 @@ export default function Escalas() {
                       const isCollapsed = collapsedSectors[sector.id];
                       return (
                         <React.Fragment key={sector.id}>
-                          {/* Linha Cabeçalho do Setor */}
                           <tr className="bg-slate-50 hover:bg-slate-100 transition-colors group cursor-pointer" onClick={() => toggleSectorCollapse(sector.id)}>
                             <td className="sticky left-0 bg-slate-50 group-hover:bg-slate-100 z-10 p-2 border-r border-slate-200">
                               <div className="flex items-center gap-2 font-black text-slate-800 uppercase tracking-wider text-[11px]">
@@ -401,11 +408,9 @@ export default function Escalas() {
                                 <Building2 className="w-3.5 h-3.5 text-slate-400" /> {sector.name}
                               </div>
                             </td>
-                            {/* Células Vazias no Cabeçalho do Setor para manter o grid alinhado */}
                             {matrixDaysArray.map(day => <td key={day} className="bg-slate-50" />)}
                           </tr>
 
-                          {/* Linhas dos Profissionais daquele Setor */}
                           {!isCollapsed && sector.profsList.map(prof => (
                             <tr key={prof.id} className="hover:bg-sky-50/30 transition-colors group">
                               <td className="sticky left-0 bg-white group-hover:bg-sky-50/50 z-10 p-2 pl-6 border-r border-slate-100">
@@ -416,25 +421,29 @@ export default function Escalas() {
                                   </span>
                                 </div>
                               </td>
-                              {/* Quadrados de Plantão */}
                               {matrixDaysArray.map(day => {
                                 const dayShifts = prof.shiftsByDay[day];
-                                const isWeekend = [0, 6].includes(new Date(selectedMonth.split('-')[0], selectedMonth.split('-')[1] - 1, day).getDay());
+                                const refMonth = selectedMonth || getLocalDateString().slice(0, 7);
+                                const isWeekend = [0, 6].includes(new Date(refMonth.split('-')[0], refMonth.split('-')[1] - 1, day).getDay());
                                 
                                 return (
                                   <td key={day} className={`p-1 border-r border-slate-100/50 text-center ${isWeekend ? 'bg-slate-50/50' : ''}`}>
                                     {dayShifts && dayShifts.length > 0 ? (
                                       <div className="flex flex-col gap-0.5 items-center justify-center">
-                                        {dayShifts.map(s => (
-                                          <button 
-                                            key={s.id}
-                                            onClick={() => { setEditing(s); setDialogOpen(true); }}
-                                            title={`${s.start_time} às ${s.end_time} - Clique para detalhes`}
-                                            className={`w-[26px] h-[22px] rounded-md border text-[9px] flex items-center justify-center transition-transform hover:scale-110 hover:z-10 shadow-sm ${getMatrixBlockColor(s)}`}
-                                          >
-                                            {s.start_time.split(':')[0]}h
-                                          </button>
-                                        ))}
+                                        {dayShifts.map(s => {
+                                          // TRAVA DE SEGURANÇA 3: Nunca tenta dar split no tempo se ele for vazio
+                                          const startHour = (s.start_time || '00:00').split(':')[0];
+                                          return (
+                                            <button 
+                                              key={s.id}
+                                              onClick={() => { setEditing(s); setDialogOpen(true); }}
+                                              title={`${s.start_time || '--'} às ${s.end_time || '--'} - Clique para detalhes`}
+                                              className={`w-[26px] h-[22px] rounded-md border text-[9px] flex items-center justify-center transition-transform hover:scale-110 hover:z-10 shadow-sm ${getMatrixBlockColor(s)}`}
+                                            >
+                                              {startHour}h
+                                            </button>
+                                          );
+                                        })}
                                       </div>
                                     ) : null}
                                   </td>
@@ -452,19 +461,20 @@ export default function Escalas() {
           </div>
         )}
 
-        {/* ===================== MODO LISTA DIÁRIA (Original, intocado e perfeito) ===================== */}
+        {/* ===================== MODO LISTA DIÁRIA ===================== */}
         {viewMode === 'list' && (
           <div className="overflow-y-auto p-4 space-y-4">
              {filtered.length === 0 ? (
-                <div className="py-12 text-center text-slate-400">Nenhum plantão neste dia/mês.</div>
+                <div className="py-12 text-center text-slate-400">Nenhum plantão localizado neste filtro.</div>
               ) : (
                 filtered.map(s => {
-                  const isNight = s.shift_type === 'noturno' || (s.start_time >= '18:00' || s.start_time < '06:00');
+                  const sTime = s.start_time || '00:00';
+                  const isNight = s.shift_type === 'noturno' || (sTime >= '18:00' || sTime < '06:00');
                   return (
                     <div key={s.id} className={`flex items-center gap-3 rounded-xl border p-3 bg-white hover:border-sky-300 transition-colors shadow-sm ${s.isVacant ? 'border-amber-400 bg-amber-50' : 'border-slate-200'}`}>
                       <div className="min-w-[85px] rounded-lg bg-slate-50 py-1.5 text-center text-xs font-black text-slate-700 border border-slate-100 shrink-0">
                         {fmtDate(s.date)} <br/>
-                        <span className="text-sky-600">{s.start_time} - {s.end_time}</span>
+                        <span className="text-sky-600">{s.start_time || '--'} - {s.end_time || '--'}</span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <strong className={`block text-sm truncate ${s.isVacant ? 'text-amber-800' : 'text-slate-800'}`}>{toTitleCase(s.professional_name) || 'Vaga Aberta'}</strong>
@@ -472,7 +482,7 @@ export default function Escalas() {
                       </div>
                       <div className="flex gap-1">
                         {s.isVacant ? (
-                          <Button size="sm" onClick={() => { setEditing(s); setDialogOpen(true); }} className="h-8 bg-amber-500 text-white"><UserPlus className="w-3.5 h-3.5 mr-1" /> Alocar</Button>
+                          <Button size="sm" onClick={() => { setEditing(s); setDialogOpen(true); }} className="h-8 bg-amber-500 hover:bg-amber-600 text-white"><UserPlus className="w-3.5 h-3.5 mr-1" /> Alocar</Button>
                         ) : (
                           <Button size="icon" variant="ghost" onClick={(e) => handleNotifyWhatsApp(s, e)} className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"><MessageCircle className="w-4 h-4"/></Button>
                         )}
