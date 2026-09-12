@@ -30,36 +30,21 @@ export default function SwapRequestDialog({ open, onClose, onDone, shift, profes
     const target = professionals.find((p) => p.id === targetId);
     
     try {
-      // Se houver suporte a invoke, tenta por ele; caso contrário, grava diretamente na entidade de solicitações/plantão
-      if (base44.functions?.invoke) {
-        await base44.functions.invoke('manageShiftSwap', {
-          action: 'request',
-          shiftId: shift.id,
-          companyId,
-          requesterId: myProfessional?.id,
-          requesterName: myProfessional?.name,
-          targetId: targetId || '',
-          targetName: target?.name || '',
-          reason,
-          shiftDate: shift.date,
-          shiftTime: `${shift.start_time} - ${shift.end_time}`,
-          sectorName: shift.sector_name
-        });
-      } else if (base44.entities?.ShiftSwap?.create) {
+      if (base44.entities?.ShiftSwap?.create) {
+        // Remove propriedades que nao existem na tabela do banco para evitar conflitos de schema
         await base44.entities.ShiftSwap.create({
-          action: 'request',
           shift_id: shift.id,
           company_id: companyId,
           requester_id: myProfessional?.id,
           requester_name: myProfessional?.name,
-          target_id: targetId || '',
+          target_id: targetId || null,
           target_name: target?.name || '',
           reason,
           status: 'pendente',
           created_date: new Date().toISOString()
         });
       } else {
-        // Fallback direto atualizando o status do plantão para refletir a pendência de troca
+        // Fallback seguro atualizando diretamente o status do plantão
         await base44.entities.Shift.update(shift.id, {
           status: 'pendente',
           notes: `Solicitação de troca por ${myProfessional?.name || 'Profissional'}. Motivo: ${reason}`
