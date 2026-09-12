@@ -1,33 +1,59 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { 
-  Clock, TrendingUp, FileText, FileSpreadsheet, 
-  ShieldCheck, Building2, Filter, Loader2, DollarSign, BarChart3,
-  Eye, X, Leaf, Sparkles, AlertTriangle, Users, CheckCircle2, ClipboardList, Printer
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Clock,
+  TrendingUp,
+  FileSpreadsheet,
+  ShieldCheck,
+  Building2,
+  Filter,
+  Loader2,
+  DollarSign,
+  BarChart3,
+  Eye,
+  X,
+  Printer,
+  Users,
+  AlertTriangle,
+  CheckCircle2,
+  ClipboardList,
 } from 'lucide-react';
 
 /* ============================================================
- * Helpers de formatação (pt-BR)
+ * FORMATAÇÃO BLINDADA
  * ============================================================ */
+
 function formatCurrency(value = 0) {
-  return `R$ ${Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `R$ ${Number(value || 0).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatDateBR(dateStr) {
   if (!dateStr) return '—';
   const value = String(dateStr).split('T')[0];
-  const [year, month, day] = value.split('-');
-  if (!year || !month || !day) return dateStr;
+  const parts = value.split('-');
+  if (parts.length !== 3) return dateStr;
+  const [year, month, day] = parts;
   return `${day}/${month}/${year}`;
 }
 
 function escapeCSV(value) {
-  return `"${String(value ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
+  return `"${String(value ?? '')
+    .replace(/"/g, '""')
+    .replace(/\r?\n/g, ' ')}"`;
 }
 
 function downloadFile(content, filename, type = 'text/csv;charset=utf-8;') {
@@ -51,51 +77,119 @@ const TAB_META = {
 };
 
 /* ============================================================
- * BUILD REPORT PAYLOAD (Única fonte de verdade)
+ * PAYLOADS DOS RELATÓRIOS (Com travas de segurança)
  * ============================================================ */
-function buildReportPayload({ tab, company, user, filtersLabel, overview, byProfessional, bySector, auditLogs, totalFinancialEstimate, criticalAlerts }) {
+function buildReportPayload({
+  tab,
+  company,
+  user,
+  filtersLabel,
+  overview = {},
+  byProfessional = [],
+  bySector = [],
+  auditLogs = [],
+  totalFinancialEstimate = 0,
+  criticalAlerts = [],
+}) {
   const companyName = company?.name || 'Instituição Hospitalar';
-  const generatedBy = user?.data?.full_name || user?.data?.name || user?.email || 'Gestor Operacional';
-  const generatedAt = new Date();
-  const base = { companyName, generatedBy, generatedAt, subtitle: filtersLabel };
+  const generatedBy =
+    user?.data?.full_name ||
+    user?.data?.name ||
+    user?.email ||
+    'Gestor Operacional';
+
+  const base = {
+    companyName,
+    generatedBy,
+    generatedAt: new Date(),
+    subtitle: filtersLabel,
+  };
 
   if (tab === 'produtividade') {
-    const totalHours = byProfessional.reduce((total, p) => total + Number(p.hours || 0), 0);
+    const totalHours = byProfessional.reduce(
+      (total, p) => total + Number(p?.hours || 0),
+      0
+    );
     return {
       ...base,
       key: tab,
-      title: 'Relatório de Produtividade do Corpo Clínico',
+      title: 'Produtividade do Corpo Clínico',
       kpis: [
         { label: 'Profissionais ativos', value: byProfessional.length },
         { label: 'Horas totais', value: `${totalHours}h` },
-        { label: 'Confirmados', value: overview.confirmed },
-        { label: 'Pendentes', value: overview.pending },
+        { label: 'Confirmados', value: overview.confirmed || 0 },
+        { label: 'Pendentes', value: overview.pending || 0 },
       ],
       columns: ['Profissional', 'Especialidade', 'Confirmados', 'Pendentes', 'Cancelados', 'Horas Totais'],
-      rows: byProfessional.map((p) => [p.name, p.category, p.confirmed, p.pending, p.canceled, `${p.hours}h`]),
-      totalsRow: ['TOTAL', '', overview.confirmed, overview.pending, overview.canceled, `${totalHours}h`],
+      rows: (byProfessional || []).map((p) => [
+        p?.name || '—',
+        p?.category || '—',
+        p?.confirmed || 0,
+        p?.pending || 0,
+        p?.canceled || 0,
+        `${p?.hours || 0}h`,
+      ]),
+      totalsRow: [
+        'TOTAL',
+        '',
+        overview.confirmed || 0,
+        overview.pending || 0,
+        overview.canceled || 0,
+        `${totalHours}h`,
+      ],
       emptyMessage: 'Nenhum profissional com plantões no período selecionado.',
     };
   }
 
   if (tab === 'cobertura') {
-    const rows = bySector.map(([name, data]) => {
-      const percentage = data.total ? Math.round((data.filled / data.total) * 100) : 0;
-      return [name, data.total, data.filled, data.open, data.canceled, `${percentage}%`];
+    const rows = (bySector || []).map(([name, data]) => {
+      const total = Number(data?.total || 0);
+      const filled = Number(data?.filled || 0);
+      const percentage = total ? Math.round((filled / total) * 100) : 0;
+
+      return [
+        name || 'Geral',
+        total,
+        filled,
+        Number(data?.open || 0),
+        Number(data?.canceled || 0),
+        `${percentage}%`,
+      ];
     });
-    const averageCoverage = bySector.length
-      ? Math.round(bySector.reduce((total, [, data]) => total + (data.total ? (data.filled / data.total) * 100 : 0), 0) / bySector.length)
+
+    const averageCoverage = bySector?.length
+      ? Math.round(
+          bySector.reduce((total, [, data]) => {
+            const t = Number(data?.total || 0);
+            const f = Number(data?.filled || 0);
+            return total + (t ? (f / t) * 100 : 0);
+          }, 0) / bySector.length
+        )
       : 0;
+
+    const worstSector = bySector?.length
+      ? bySector.reduce(
+          (worst, [name, data]) => {
+            const t = Number(data?.total || 0);
+            const f = Number(data?.filled || 0);
+            const percentage = t ? (f / t) * 100 : 100;
+            return percentage < worst.percentage
+              ? { name, percentage }
+              : worst;
+          },
+          { name: bySector[0][0], percentage: Infinity }
+        )
+      : null;
 
     return {
       ...base,
       key: tab,
-      title: 'Relatório de Cobertura Operacional por Setor',
+      title: 'Cobertura Operacional por Setor',
       kpis: [
         { label: 'Setores mapeados', value: bySector.length },
         { label: 'Cobertura média', value: `${averageCoverage}%` },
-        { label: 'Vagas abertas', value: overview.open },
-        { label: 'Total turnos', value: overview.total },
+        { label: 'Setor mais crítico', value: worstSector?.name || '—' },
+        { label: 'Vagas abertas', value: overview.open || 0 },
       ],
       columns: ['Setor', 'Turnos Totais', 'Preenchidos', 'Vagas Abertas', 'Cancelados', '% Cobertura'],
       rows,
@@ -104,50 +198,87 @@ function buildReportPayload({ tab, company, user, filtersLabel, overview, byProf
   }
 
   if (tab === 'financeiro') {
-    const totalHours = byProfessional.reduce((total, p) => total + Number(p.hours || 0), 0);
+    const totalHours = byProfessional.reduce(
+      (total, p) => total + Number(p?.hours || 0),
+      0
+    );
+    const highestPayment = (byProfessional || []).reduce(
+      (highest, p) => {
+        return Number(p?.estimatedPay || 0) > Number(highest?.estimatedPay || 0)
+          ? p
+          : highest;
+      },
+      null
+    );
+
     return {
       ...base,
       key: tab,
-      title: 'Relatório de Projeção de Repasse Financeiro',
+      title: 'Projeção de Repasse Financeiro',
       kpis: [
         { label: 'Total estimado', value: formatCurrency(totalFinancialEstimate) },
         { label: 'Profissionais faturados', value: byProfessional.length },
+        { label: 'Maior repasse', value: highestPayment ? `${highestPayment.name} (${formatCurrency(highestPayment.estimatedPay)})` : '—' },
         { label: 'Horas faturáveis', value: `${totalHours}h` },
       ],
       columns: ['Profissional', 'Modelo', 'Quantidade / Horas', 'Total a Liquidar'],
-      rows: byProfessional.map((p) => [
-        p.name,
-        p.remunerationType === 'diaria' ? 'Por Plantão/Diária' : p.remunerationType === 'mensal' ? 'Fixo Mensal' : 'Horista',
-        p.remunerationType === 'hora' ? `${p.hours}h` : `${p.confirmed} plantão(ões)`,
-        formatCurrency(p.estimatedPay),
+      rows: (byProfessional || []).map((p) => [
+        p?.name || '—',
+        p?.remunerationType === 'diaria'
+          ? 'Por Plantão / Diária'
+          : p?.remunerationType === 'mensal'
+          ? 'Fixo Mensal'
+          : 'Horista',
+        p?.remunerationType === 'hora'
+          ? `${p?.hours || 0}h`
+          : `${p?.confirmed || 0} plantão(ões)`,
+        formatCurrency(p?.estimatedPay || 0),
       ]),
-      totalsRow: ['TOTAL', '', `${totalHours}h`, formatCurrency(totalFinancialEstimate)],
+      totalsRow: [
+        'TOTAL',
+        '',
+        `${totalHours}h`,
+        formatCurrency(totalFinancialEstimate),
+      ],
       emptyMessage: 'Nenhum valor a liquidar para os filtros selecionados.',
     };
   }
 
   if (tab === 'auditoria') {
-    const canceledCount = auditLogs.filter((log) => log.status === 'cancelado').length;
-    const withNotes = auditLogs.filter((log) => log.notes).length;
+    const canceledCount = (auditLogs || []).filter(
+      (log) => log?.status === 'cancelado'
+    ).length;
+    const withNotes = (auditLogs || []).filter((log) => log?.notes).length;
+
+    const sectorCounts = (auditLogs || []).reduce((accumulator, log) => {
+      const sector = log?.sector_name || 'Geral';
+      accumulator[sector] = (accumulator[sector] || 0) + 1;
+      return accumulator;
+    }, {});
+
+    const topSector = Object.entries(sectorCounts).sort(
+      (a, b) => b[1] - a[1]
+    )[0];
 
     return {
       ...base,
       key: tab,
-      title: 'Relatório de Log de Auditoria e Plantões Cancelados',
+      title: 'Log de Auditoria e Plantões Cancelados',
       kpis: [
         { label: 'Eventos totais', value: auditLogs.length },
         { label: 'Cancelamentos', value: canceledCount },
         { label: 'Com observação', value: withNotes },
+        { label: 'Setor mais afetado', value: topSector ? `${topSector[0]} (${topSector[1]})` : '—' },
       ],
       columns: ['Data', 'Horário', 'Profissional', 'Setor', 'Status', 'Observação', 'ID'],
-      rows: auditLogs.map((log) => [
-        formatDateBR(log.date),
-        `${log.start_time || '--'} - ${log.end_time || '--'}`,
-        log.professional_name || 'Vago',
-        log.sector_name || 'Geral',
-        log.status || '—',
-        log.notes || '—',
-        log.id || '—',
+      rows: (auditLogs || []).map((log) => [
+        formatDateBR(log?.date),
+        `${log?.start_time || '--'} - ${log?.end_time || '--'}`,
+        log?.professional_name || 'Vago',
+        log?.sector_name || 'Geral',
+        log?.status || '—',
+        log?.notes || '—',
+        log?.id || '—',
       ]),
       emptyMessage: 'Nenhum evento de cancelamento ou alteração registrado no período.',
     };
@@ -158,9 +289,14 @@ function buildReportPayload({ tab, company, user, filtersLabel, overview, byProf
     key: 'consolidado',
     title: 'Relatório Consolidado do Conselho',
     kpis: [
-      { label: 'Turnos analisados', value: overview.total },
-      { label: 'Turnos confirmados', value: overview.confirmed },
-      { label: 'Cobertura geral', value: overview.total ? `${Math.round((overview.confirmed / overview.total) * 100)}%` : '0%' },
+      { label: 'Turnos analisados', value: overview.total || 0 },
+      { label: 'Turnos confirmados', value: overview.confirmed || 0 },
+      {
+        label: 'Cobertura geral',
+        value: overview.total
+          ? `${Math.round(((overview.confirmed || 0) / overview.total) * 100)}%`
+          : '0%',
+      },
       { label: 'Custo estimado', value: formatCurrency(totalFinancialEstimate) },
     ],
     criticalAlerts,
@@ -169,11 +305,11 @@ function buildReportPayload({ tab, company, user, filtersLabel, overview, byProf
         title: 'Resumo Operacional',
         columns: ['Indicador', 'Resultado'],
         rows: [
-          ['Total de turnos analisados', overview.total],
-          ['Turnos confirmados', overview.confirmed],
-          ['Turnos pendentes', overview.pending],
-          ['Vagas abertas', overview.open],
-          ['Turnos cancelados', overview.canceled],
+          ['Total de turnos analisados', overview.total || 0],
+          ['Turnos confirmados', overview.confirmed || 0],
+          ['Turnos pendentes', overview.pending || 0],
+          ['Vagas abertas', overview.open || 0],
+          ['Turnos cancelados', overview.canceled || 0],
           ['Profissionais envolvidos', byProfessional.length],
           ['Setores envolvidos', bySector.length],
         ],
@@ -181,35 +317,43 @@ function buildReportPayload({ tab, company, user, filtersLabel, overview, byProf
       {
         title: 'Produtividade do Corpo Clínico',
         columns: ['Profissional', 'Especialidade', 'Confirmados', 'Pendentes', 'Horas'],
-        rows: byProfessional.map((p) => [p.name, p.category, p.confirmed, p.pending, `${p.hours}h`]),
+        rows: (byProfessional || []).map((p) => [
+          p?.name || '—',
+          p?.category || '—',
+          p?.confirmed || 0,
+          p?.pending || 0,
+          `${p?.hours || 0}h`,
+        ]),
       },
       {
         title: 'Cobertura por Setor',
         columns: ['Setor', 'Total', 'Preenchidos', 'Abertos', 'Cancelados', 'Cobertura'],
-        rows: bySector.map(([name, data]) => {
-          const percentage = data.total ? Math.round((data.filled / data.total) * 100) : 0;
-          return [name, data.total, data.filled, data.open, data.canceled, `${percentage}%`];
+        rows: (bySector || []).map(([name, data]) => {
+          const t = Number(data?.total || 0);
+          const f = Number(data?.filled || 0);
+          const percentage = t ? Math.round((f / t) * 100) : 0;
+          return [name, t, f, Number(data?.open || 0), Number(data?.canceled || 0), `${percentage}%`];
         }),
       },
       {
         title: 'Resumo Financeiro',
         columns: ['Profissional', 'Modelo', 'Quantidade / Horas', 'Valor Estimado'],
-        rows: byProfessional.map((p) => [
-          p.name,
-          p.remunerationType === 'diaria' ? 'Diária' : p.remunerationType === 'mensal' ? 'Mensal' : 'Horista',
-          p.remunerationType === 'hora' ? `${p.hours}h` : `${p.confirmed} plantão(ões)`,
-          formatCurrency(p.estimatedPay),
+        rows: (byProfessional || []).map((p) => [
+          p?.name || '—',
+          p?.remunerationType === 'diaria' ? 'Diária' : p?.remunerationType === 'mensal' ? 'Mensal' : 'Horista',
+          p?.remunerationType === 'hora' ? `${p?.hours || 0}h` : `${p?.confirmed || 0} plantão(ões)`,
+          formatCurrency(p?.estimatedPay || 0),
         ]),
       },
       {
         title: 'Auditoria e Riscos',
         columns: ['Data', 'Profissional', 'Setor', 'Status', 'Observação'],
-        rows: auditLogs.map((log) => [
-          formatDateBR(log.date),
-          log.professional_name || 'Vago',
-          log.sector_name || 'Geral',
-          log.status || '—',
-          log.notes || '—',
+        rows: (auditLogs || []).map((log) => [
+          formatDateBR(log?.date),
+          log?.professional_name || 'Vago',
+          log?.sector_name || 'Geral',
+          log?.status || '—',
+          log?.notes || '—',
         ]),
       },
     ],
@@ -218,80 +362,40 @@ function buildReportPayload({ tab, company, user, filtersLabel, overview, byProf
 }
 
 /* ============================================================
- * MODAL DE PRÉ-VISUALIZAÇÃO COM ESTILO DE IMPRESSÃO PROFISSIONAL A4
+ * MODAL DE PRÉ-VISUALIZAÇÃO A4
  * ============================================================ */
 function ReportPreviewModal({ payload, onClose, onDownloadCSV }) {
   if (!payload) return null;
-
   const isConsolidated = payload.key === 'consolidado';
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 md:p-6 bg-slate-950/80 backdrop-blur-sm print:p-0 print:bg-white print:inset-auto print:relative print:block">
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          #print-document, #print-document * {
-            visibility: visible;
-          }
-          #print-document {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            margin: 0;
-            padding: 15mm;
-            background: white !important;
-            color: black !important;
-            box-shadow: none !important;
-          }
-          .print-hidden {
-            display: none !important;
-          }
-          @page {
-            size: A4 portrait;
-            margin: 0;
-          }
-        }
-      `}</style>
-
-      <div 
-        id="print-document"
-        className="w-full max-w-4xl max-h-[94vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-2xl print:max-h-none print:border-0 print:shadow-none print:rounded-none"
-      >
-        {/* Cabeçalho do Documento Impresso / Modal */}
-        <div className="sticky top-0 z-20 flex items-start justify-between gap-4 p-5 md:p-6 bg-slate-900 text-white rounded-t-3xl print:static print:bg-white print:text-slate-900 print:border-b-2 print:border-slate-900 print:pb-4 print:rounded-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6 bg-slate-950/80 backdrop-blur-sm">
+      <div className="w-full max-w-5xl max-h-[94vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-2xl">
+        <div className="sticky top-0 z-20 flex items-start justify-between gap-4 p-5 md:p-6 bg-slate-900 text-white rounded-t-3xl">
           <div>
-            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-sky-400 print:text-sky-700">
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-sky-400">
               <ShieldCheck className="w-4 h-4" /> Documento Oficial Certificado
             </div>
             <h2 className="text-xl md:text-2xl font-black mt-1">{payload.title}</h2>
-            <p className="text-xs text-slate-300 print:text-slate-600 mt-1">Instituição: <b>{payload.companyName}</b> · Filtros: {payload.subtitle}</p>
-            <p className="text-[10px] text-slate-400 print:text-slate-500 mt-0.5">Emitido em {payload.generatedAt.toLocaleString('pt-BR')} {payload.generatedBy ? `por ${payload.generatedBy}` : ''}</p>
+            <p className="text-xs text-slate-300 mt-1">Instituição: <b>{payload.companyName}</b> · Filtros: {payload.subtitle}</p>
           </div>
-          <button onClick={onClose} className="print-hidden p-2 rounded-full bg-white/10 hover:bg-white/20 text-white">
+          <button onClick={onClose} className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="p-5 md:p-6 space-y-6">
-          {/* KPIs */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 print:grid-cols-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {payload.kpis?.map((kpi, index) => (
-              <div key={index} className="rounded-2xl border border-slate-200 dark:border-slate-800 print:border-slate-300 bg-slate-50 dark:bg-slate-900 print:bg-slate-50 p-3.5">
-                <div className="text-[9px] uppercase font-bold text-slate-400 print:text-slate-600">{kpi.label}</div>
-                <div className="text-base font-black text-sky-700 dark:text-sky-400 print:text-slate-900 mt-0.5">{kpi.value}</div>
+              <div key={index} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-3.5">
+                <div className="text-[9px] uppercase font-bold text-slate-400">{kpi.label}</div>
+                <div className="text-base font-black text-sky-700 dark:text-sky-400 mt-0.5">{kpi.value}</div>
               </div>
             ))}
           </div>
 
           {payload.criticalAlerts?.length > 0 && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 dark:bg-red-950/30 p-4 print:border-red-300 print:bg-red-50">
+            <div className="rounded-2xl border border-red-200 bg-red-50 dark:bg-red-950/30 p-4">
               <div className="flex items-center gap-2 text-red-800 font-black text-xs mb-2">
                 <AlertTriangle className="w-4 h-4" /> Pontos de Atenção Críticos
               </div>
@@ -310,15 +414,15 @@ function ReportPreviewModal({ payload, onClose, onDownloadCSV }) {
                   <h3 className="font-black text-sm text-slate-900 dark:text-white border-b border-slate-200 pb-1">{section.title}</h3>
                   <div className="overflow-x-auto rounded-xl border border-slate-200">
                     <table className="w-full text-xs text-left">
-                      <thead className="bg-slate-100 text-slate-700 uppercase text-[10px]">
+                      <thead className="bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 uppercase text-[10px]">
                         <tr>
                           {section.columns.map(col => <th key={col} className="p-2.5 font-bold">{col}</th>)}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                         {section.rows.map((row, rIdx) => (
                           <tr key={rIdx}>
-                            {row.map((cell, cIdx) => <td key={cIdx} className="p-2.5 text-slate-800">{cell}</td>)}
+                            {row.map((cell, cIdx) => <td key={cIdx} className="p-2.5 text-slate-800 dark:text-slate-200">{cell}</td>)}
                           </tr>
                         ))}
                       </tbody>
@@ -328,20 +432,20 @@ function ReportPreviewModal({ payload, onClose, onDownloadCSV }) {
               ))}
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
               {payload.rows?.length === 0 ? (
                 <p className="text-sm text-slate-400 text-center py-12">{payload.emptyMessage}</p>
               ) : (
                 <table className="w-full text-xs text-left whitespace-nowrap">
-                  <thead className="bg-slate-100 text-slate-700 uppercase text-[10px]">
+                  <thead className="bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 uppercase text-[10px]">
                     <tr>
                       {payload.columns.map(col => <th key={col} className="p-3 font-bold">{col}</th>)}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 font-medium">
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-medium">
                     {payload.rows.map((row, i) => (
-                      <tr key={i} className="hover:bg-slate-50">
-                        {row.map((cell, j) => <td key={j} className="p-3 text-slate-800">{cell}</td>)}
+                      <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-900/50">
+                        {row.map((cell, j) => <td key={j} className="p-3 text-slate-800 dark:text-slate-200">{cell}</td>)}
                       </tr>
                     ))}
                   </tbody>
@@ -356,33 +460,18 @@ function ReportPreviewModal({ payload, onClose, onDownloadCSV }) {
               )}
             </div>
           )}
-
-          {/* Assinatura institucional para impressão */}
-          <div className="hidden print:block pt-12 mt-12 border-t border-slate-300">
-            <div className="grid grid-cols-2 gap-12 text-center">
-              <div>
-                <div className="border-t border-slate-800 w-3/4 mx-auto mb-1"></div>
-                <p className="text-xs font-bold text-slate-900">Diretoria Executiva / Conselho</p>
-              </div>
-              <div>
-                <div className="border-t border-slate-800 w-3/4 mx-auto mb-1"></div>
-                <p className="text-xs font-bold text-slate-900">Coordenação Médica / Controller</p>
-              </div>
-            </div>
-          </div>
         </div>
 
-        {/* Rodapé do Modal (oculto na impressão física) */}
-        <div className="print-hidden sticky bottom-0 flex items-center justify-between gap-3 p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-b-3xl">
+        <div className="sticky bottom-0 flex items-center justify-between gap-3 p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-b-3xl">
           <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
-            <Leaf className="w-3.5 h-3.5" /> Conferido. Pronto para emitir.
+            <Leaf className="w-3.5 h-3.5" /> Pronto para emissão física ou digital.
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={onClose} className="text-xs font-bold">Fechar</Button>
             <Button onClick={onDownloadCSV} variant="outline" className="text-xs font-bold h-9 gap-1.5 border-slate-200">
               <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> CSV
             </Button>
-            <Button onClick={handlePrint} className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold h-9 gap-2">
+            <Button onClick={() => window.print()} className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold h-9 gap-2">
               <Printer className="w-4 h-4" /> Imprimir / Salvar PDF
             </Button>
           </div>
@@ -437,7 +526,7 @@ export default function Relatorios() {
   }, [loading, companyId, unitId]);
 
   const filteredShifts = useMemo(() => {
-    return shifts.filter((shift) => {
+    return (shifts || []).filter((shift) => {
       if (!shift) return false;
       const shiftDate = String(shift.date || '').split('T')[0];
       const matchesStart = !startDate || shiftDate >= startDate;
@@ -447,10 +536,9 @@ export default function Relatorios() {
     });
   }, [shifts, startDate, endDate, selectedSector]);
 
-  // MOTOR DE CÁLCULO FINANCEIRO REAL (Igual ao módulo de faturamento)
   const byProfessional = useMemo(() => {
     const map = {};
-    professionals.forEach((professional) => {
+    (professionals || []).forEach((professional) => {
       if (!professional?.id) return;
       const remunerationType = professional.remuneration_type || 'hora';
       let baseRate = 120;
@@ -528,7 +616,7 @@ export default function Relatorios() {
   }, [filteredShifts]);
 
   const auditLogs = useMemo(() => {
-    return filteredShifts.filter((shift) => shift && (shift.status === 'cancelado' || shift.notes));
+    return (filteredShifts || []).filter((shift) => shift && (shift.status === 'cancelado' || shift.notes));
   }, [filteredShifts]);
 
   const overview = useMemo(() => ({
@@ -540,7 +628,7 @@ export default function Relatorios() {
   }), [filteredShifts]);
 
   const totalFinancialEstimate = useMemo(() => {
-    return byProfessional.reduce((total, p) => total + Number(p.estimatedPay || 0), 0);
+    return (byProfessional || []).reduce((total, p) => total + Number(p?.estimatedPay || 0), 0);
   }, [byProfessional]);
 
   const criticalAlerts = useMemo(() => {
@@ -602,7 +690,6 @@ export default function Relatorios() {
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans">
-      {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 rounded-3xl text-white shadow-xl">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-sky-400">
@@ -622,7 +709,6 @@ export default function Relatorios() {
         </Button>
       </div>
 
-      {/* Abas */}
       <div className="flex items-center bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto gap-1">
         {Object.entries(TAB_META).map(([key, meta]) => {
           const Icon = meta.icon;
@@ -643,7 +729,6 @@ export default function Relatorios() {
         })}
       </div>
 
-      {/* Filtros */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col lg:flex-row items-center gap-4">
         <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0">
           <Filter className="w-4 h-4 text-sky-600" /> Filtros:
@@ -652,11 +737,11 @@ export default function Relatorios() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
           <div>
             <label className="text-[10px] font-semibold text-slate-400 block mb-1">Data inicial</label>
-            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-9 text-xs bg-slate-50 dark:bg-slate-800" />
+            <Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="h-9 text-xs bg-slate-50 dark:bg-slate-800" />
           </div>
           <div>
             <label className="text-[10px] font-semibold text-slate-400 block mb-1">Data final</label>
-            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-9 text-xs bg-slate-50 dark:bg-slate-800" />
+            <Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="h-9 text-xs bg-slate-50 dark:bg-slate-800" />
           </div>
           <div>
             <label className="text-[10px] font-semibold text-slate-400 block mb-1">Setor</label>
@@ -666,8 +751,8 @@ export default function Relatorios() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os setores</SelectItem>
-                {sectors.map((s) => (
-                  <SelectItem key={s.id} value={String(s.name)}>{s.name}</SelectItem>
+                {(sectors || []).map((sector) => (
+                  <SelectItem key={sector.id} value={String(sector.name)}>{sector.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -681,48 +766,52 @@ export default function Relatorios() {
         )}
       </div>
 
-      {/* Cards de Resumo */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {reportPayload.kpis?.map((kpi, idx) => (
-          <Card key={idx} className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+        {reportPayload.kpis?.map((kpi, index) => (
+          <Card key={index} className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
             <div className="text-[10px] uppercase font-bold text-slate-400">{kpi.label}</div>
             <div className="text-xl font-black text-sky-700 dark:text-sky-400 mt-1 truncate">{kpi.value}</div>
           </Card>
         ))}
       </div>
 
-      {/* Conteúdo Dinâmico Tela */}
       {loadingData ? (
         <div className="flex justify-center p-20"><Loader2 className="w-8 h-8 animate-spin text-sky-600" /></div>
       ) : (
-        <Card className="p-6 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <h3 className="font-black text-base text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-            <ClipboardList className="w-5 h-5 text-sky-600" /> {reportPayload.title}
-          </h3>
-          <p className="text-xs text-slate-500 mb-4">Utilize o botão superior <b>"Visualizar Relatório Oficial"</b> para emitir a via em PDF/Impressão formatada sem poluição visual.</p>
+        <Card className="p-6 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+            <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-sky-600" /> {reportPayload.title}
+            </h3>
+            <span className="text-xs font-semibold text-slate-400">{reportPayload.rows?.length || 0} registros listados</span>
+          </div>
 
           <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
-            <table className="w-full text-xs text-left whitespace-nowrap">
-              <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 uppercase">
-                <tr>
-                  {reportPayload.columns.map((col) => <th key={col} className="p-3 font-bold">{col}</th>)}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                {reportPayload.rows.map((row, i) => (
-                  <tr key={i} className="hover:bg-slate-50/50">
-                    {row.map((cell, j) => <td key={j} className="p-3 text-slate-700 dark:text-slate-200">{cell}</td>)}
-                  </tr>
-                ))}
-              </tbody>
-              {reportPayload.totalsRow && (
-                <tfoot className="bg-slate-100 dark:bg-slate-800 font-black">
+            {reportPayload.rows?.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-12">{reportPayload.emptyMessage}</p>
+            ) : (
+              <table className="w-full text-xs text-left whitespace-nowrap">
+                <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 border-b border-slate-200 dark:border-slate-800 uppercase">
                   <tr>
-                    {reportPayload.totalsRow.map((cell, j) => <td key={j} className="p-3 text-slate-900 dark:text-white">{cell}</td>)}
+                    {reportPayload.columns?.map(col => <th key={col} className="p-3 font-bold">{col}</th>)}
                   </tr>
-                </tfoot>
-              )}
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                  {reportPayload.rows?.map((row, i) => (
+                    <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50">
+                      {row.map((cell, j) => <td key={j} className="p-3 text-slate-700 dark:text-slate-200">{cell}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+                {reportPayload.totalsRow && (
+                  <tfoot className="bg-slate-100 dark:bg-slate-800 font-black">
+                    <tr>
+                      {reportPayload.totalsRow.map((cell, j) => <td key={j} className="p-3 text-slate-900 dark:text-white">{cell}</td>)}
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            )}
           </div>
         </Card>
       )}
