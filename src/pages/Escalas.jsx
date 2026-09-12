@@ -16,7 +16,6 @@ import {
   Minimize2, 
   Clock3, 
   Printer,
-  CheckCircle2,
   Stethoscope
 } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
@@ -107,12 +106,11 @@ export default function Escalas() {
     load();
   }, [appLoading, load]);
 
-  // Atualizador em tempo real para TV a cada 1 segundo
+  // Atualiza o relógio em tempo real tanto no modo TV quanto na visualização padrão
   useEffect(() => {
-    if (!tvMode) return;
     const id = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(id);
-  }, [tvMode]);
+  }, []);
 
   const myProfessional = useMemo(() => {
     return professionals.find((p) => p.user_id === userId || (p.email && p.email === userEmail) || p.name === userFullName);
@@ -124,7 +122,10 @@ export default function Escalas() {
   }, [shifts]);
 
   const categoryPriority = { medico: 0, enfermeiro: 1, tecnico: 2, outro: 3 };
+  const todayStr = useMemo(() => getLocalDateString(currentTime), [currentTime]);
 
+  // FILTRO INTELIGENTE UNIFICADO:
+  // Se for o dia de hoje, remove plantões expirados há mais de 2h
   const filtered = useMemo(() => {
     const professionalMap = Object.fromEntries((professionals || []).map((p) => [p.id, p]));
 
@@ -142,9 +143,32 @@ export default function Escalas() {
           ? s.professional_id === myProfessional?.id || s.professional_name === myProfessional?.name || s.professional_name === userFullName
           : true;
         const statusScope = isManager ? true : ['pendente', 'confirmado'].includes(s.status);
-        return dateMatch && monthMatch && matchSearch && matchSector && personalScope && statusScope;
+
+        if (!dateMatch || !monthMatch || !matchSearch || !matchSector || !personalScope || !statusScope) {
+          return false;
+        }
+
+        // Se estiver filtrando pelo dia de hoje, aplica a regra de remoção de +2h encerrado
+        if (selectedDate === todayStr || (!selectedDate && sDate === todayStr)) {
+          const lifecycle = getShiftTvLifecycle(s, currentTime);
+          if (lifecycle.state === 'expired') {
+            return false;
+          }
+        }
+
+        return true;
       })
+      .map((s) => ({
+        ...s,
+        lifecycle: getShiftTvLifecycle(s, currentTime)
+      }))
       .sort((a, b) => {
+        // Ordenação inteligente: Ativos primeiro, depois Programados, depois Concluídos recentes
+        const orderPriority = { active: 0, upcoming: 1, recently_finished: 2, expired: 3 };
+        const prioA = orderPriority[a.lifecycle.state] ?? 99;
+        const prioB = orderPriority[b.lifecycle.state] ?? 99;
+        if (prioA !== prioB) return prioA - prioB;
+
         const aCategory = categoryPriority[professionalMap[a.professional_id]?.category || 'outro'] ?? 99;
         const bCategory = categoryPriority[professionalMap[b.professional_id]?.category || 'outro'] ?? 99;
         const aDate = new Date(`${a.date}T00:00:00`).getTime();
@@ -154,22 +178,7 @@ export default function Escalas() {
         if (aCategory !== bCategory) return aCategory - bCategory;
         return (a.professional_name || '').localeCompare(b.professional_name || '') || (a.sector_name || '').localeCompare(b.sector_name || '');
       });
-  }, [shifts, search, sectorFilter, selectedMonth, selectedDate, professionals, isManager, myProfessional, userFullName]);
-
-  // Filtro inteligente para a TV: exibe ativos, programados e recém-concluídos (elimina expirados há +2h)
-  const tvShifts = useMemo(() => {
-    return filtered
-      .map((s) => ({
-        ...s,
-        tvStatus: getShiftTvLifecycle(s, currentTime)
-      }))
-      .filter((s) => s.tvStatus.state !== 'expired')
-      .sort((a, b) => {
-        // Prioridade: Ativos primeiro, depois Programados, depois Concluídos
-        const order = { active: 0, upcoming: 1, recently_finished: 2 };
-        return (order[a.tvStatus.state] ?? 99) - (order[b.tvStatus.state] ?? 99);
-      });
-  }, [filtered, currentTime]);
+  }, [shifts, search, sectorFilter, selectedMonth, selectedDate, professionals, isManager, myProfessional, userFullName, currentTime, todayStr]);
 
   const days = useMemo(() => {
     const grouped = filtered.reduce((result, shift) => {
@@ -278,14 +287,13 @@ export default function Escalas() {
 
   const personalHeadline = myProfessional?.name || userFullName || 'Seu calendário';
 
-  // =========================================================
-  // MODO TV INTELIGENTE (ATIVO / PROGRAMADO / RECÉM-CONCLUÍDO)
-  // =========================================================
+  // ==========================================
+  // MODO TV (TELA CHEIA HOSPITALAR)
+  // ==========================================
   if (tvMode && isManager) {
     return (
       <div className="min-h-full bg-slate-950 p-5 text-white md:p-8 select-none">
         <div className="mx-auto max-w-[1800px]">
-          {/* Topo da TV */}
           <div className="mb-6 flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.24em] text-sky-300">
@@ -295,7 +303,7 @@ export default function Escalas() {
                 {fmtDateLong(selectedDate)}
               </h1>
               <p className="mt-1 text-lg text-slate-400">
-                {fmtDate(selectedDate)} · {tvShifts.length} profissionais na operação do dia
+                {fmtDate(selectedDate)} · {filtered.length} profissionais na operação do dia
               </p>
             </div>
             <div className="flex items-center gap-4">
@@ -316,15 +324,14 @@ export default function Escalas() {
             </div>
           </div>
 
-          {/* Grade de Plantões */}
-          {tvShifts.length === 0 ? (
+          {filtered.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/15 p-16 text-center text-xl text-slate-400">
               Nenhum plantão ativo ou programado para esta data.
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {tvShifts.map((shift) => {
-                const state = shift.tvStatus.state;
+              {filtered.map((shift) => {
+                const state = shift.lifecycle.state;
                 const isActive = state === 'active';
                 const isFinished = state === 'recently_finished';
 
@@ -339,7 +346,6 @@ export default function Escalas() {
                         : 'border-white/10 bg-white/[0.07]'
                     }`}
                   >
-                    {/* Cabeçalho do Card */}
                     <div className="flex items-center justify-between gap-3">
                       <div className={`rounded-xl px-3 py-2 text-center text-base font-black ${
                         isActive 
@@ -365,16 +371,14 @@ export default function Escalas() {
                           {isActive && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />}
                           {isActive ? '● Ativo no Plantão' : isFinished ? '✓ Plantão Concluído' : '⏳ Programado'}
                         </span>
-                        <div className="text-[10px] text-slate-400 mt-1">{shift.tvStatus.detail}</div>
+                        <div className="text-[10px] text-slate-400 mt-1">{shift.lifecycle.detail}</div>
                       </div>
                     </div>
 
-                    {/* Nome do Profissional */}
                     <div className="mt-5 truncate text-2xl font-black text-white">
                       {shift.professional_name || 'Vaga Aberta'}
                     </div>
 
-                    {/* Setor */}
                     <div className="mt-2 flex items-center gap-2 text-base text-slate-300">
                       <Stethoscope className={`h-4 w-4 ${isActive ? 'text-emerald-400' : 'text-sky-400'}`} />
                       <span>{shift.sector_name || 'Setor Geral'}</span>
@@ -389,67 +393,9 @@ export default function Escalas() {
     );
   }
 
-  // Visualização do Profissional Comum
-  if (!isManager) {
-    return (
-      <div className="p-4 md:p-8 space-y-5">
-        <div className="rounded-[28px] border border-sky-200 bg-gradient-to-br from-sky-600 to-sky-700 p-6 text-white shadow-lg shadow-sky-100">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-sky-100">Minha escala</p>
-              <h2 className="mt-3 text-2xl font-black">{personalHeadline}</h2>
-            </div>
-            <div className="rounded-2xl bg-white/10 px-3 py-2 text-right">
-              <div className="text-[10px] uppercase tracking-[0.2em] text-sky-100">Plantões</div>
-              <div className="text-xl font-black">{filtered.length}</div>
-            </div>
-          </div>
-        </div>
-
-        <Card className="border-slate-200 p-4">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Agenda pessoal</p>
-              <h3 className="mt-1 text-lg font-bold text-slate-800">Plantões do dia</h3>
-            </div>
-            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
-              Visão individual
-            </span>
-          </div>
-
-          <div className="space-y-3">
-            {filtered.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm text-slate-500">
-                Você não possui plantões atribuídos para esta data.
-              </div>
-            ) : (
-              filtered.map((s) => (
-                <div key={s.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.18em] text-slate-400">{fmtDate(s.date)}</div>
-                      <div className="mt-1 text-base font-bold text-slate-800">
-                        {s.start_time} às {s.end_time}
-                      </div>
-                    </div>
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${shiftTypeStyle[s.shift_type] || 'bg-slate-100 text-slate-600'}`}>
-                      {s.shift_type || 'Turno'}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                    <span>Setor</span>
-                    <strong className="text-slate-800">{s.sector_name || 'Não informado'}</strong>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  // Visualização Normal de Gestão
+  // ==========================================
+  // MODO PADRÃO FORA DA TV (ESCALAS & PLANTÕES)
+  // ==========================================
   return (
     <div className="p-4 md:p-8 space-y-5">
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-lg">
@@ -460,7 +406,7 @@ export default function Escalas() {
             </div>
             <h2 className="mt-3 text-3xl font-black tracking-tight">Escala hospitalar</h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              Visualização por dia, turno, setor e profissional. Modo TV dinâmico atualizado ao vivo.
+              Visualização por dia, turno, setor e status de jornada (Ativo no Plantão, Programado e Recém-Concluído).
             </p>
           </div>
           <div className="flex items-center gap-3 text-right">
@@ -480,7 +426,7 @@ export default function Escalas() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Gestão de escala</p>
-          <p className="mt-1 text-sm text-slate-500">Aloque profissionais e acompanhe o status em tempo real</p>
+          <p className="mt-1 text-sm text-slate-500">Acompanhe a presença dos profissionais em tempo real</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={handleDuplicatePreviousMonth} disabled={duplicating} className="border-sky-200 text-sky-700 hover:bg-sky-50">
@@ -543,7 +489,7 @@ export default function Escalas() {
 
         {filtered.length === 0 ? (
           <div className="py-10 text-center text-sm text-slate-400">
-            Nenhum plantão agendado para este filtro ou data selecionada.
+            Nenhum plantão ativo ou programado para este filtro ou data selecionada.
           </div>
         ) : (
           <div className="space-y-5">
@@ -556,32 +502,78 @@ export default function Escalas() {
                     </div>
                     <div>
                       <div className="text-sm font-bold text-slate-800">{fmtDate(date)}</div>
-                      <div className="text-xs text-slate-500">{dateShifts.length} plantão(ões) programado(s)</div>
+                      <div className="text-xs text-slate-500">{dateShifts.length} plantão(ões) na escala</div>
                     </div>
                   </div>
                   <UsersRound className="h-5 w-5 text-slate-300" />
                 </div>
+
                 <div className="grid gap-3 p-3 lg:grid-cols-2">
-                  {dateShifts.map((s) => (
-                    <div key={s.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-                      <div className={`min-w-[92px] rounded-lg px-2.5 py-2 text-center text-xs font-bold ${shiftTypeStyle[s.shift_type] || 'bg-slate-100 text-slate-600'}`}>
-                        <div>{s.start_time || '--:--'}</div>
-                        <div className="text-[10px] font-normal opacity-70">até {s.end_time || '--:--'}</div>
+                  {dateShifts.map((s) => {
+                    const state = s.lifecycle.state;
+                    const isActive = state === 'active';
+                    const isFinished = state === 'recently_finished';
+
+                    return (
+                      <div 
+                        key={s.id} 
+                        className={`flex items-center gap-3 rounded-xl border p-3 shadow-sm transition-all duration-300 ${
+                          isActive 
+                            ? 'border-emerald-300 bg-emerald-50/70' 
+                            : isFinished 
+                            ? 'border-slate-200 bg-slate-100/60 opacity-75' 
+                            : 'border-slate-200 bg-white'
+                        }`}
+                      >
+                        {/* Bloco de Horário */}
+                        <div className={`min-w-[92px] rounded-lg px-2.5 py-2 text-center text-xs font-bold ${
+                          isActive 
+                            ? 'bg-emerald-600 text-white' 
+                            : isFinished 
+                            ? 'bg-slate-200 text-slate-600' 
+                            : shiftTypeStyle[s.shift_type] || 'bg-slate-100 text-slate-600'
+                        }`}>
+                          <div>{s.start_time || '--:--'}</div>
+                          <div className="text-[10px] font-normal opacity-80">até {s.end_time || '--:--'}</div>
+                        </div>
+
+                        {/* Dados do Médico & Setor */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-bold text-slate-800">
+                              {s.professional_name || 'Vaga disponível'}
+                            </span>
+                            
+                            {/* Badge Idêntica à TV */}
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 ${
+                              isActive 
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse' 
+                                : isFinished 
+                                ? 'bg-slate-200 text-slate-700' 
+                                : 'bg-sky-50 text-sky-700 border border-sky-200'
+                            }`}>
+                              {isActive ? '● Ativo no Plantão' : isFinished ? '✓ Concluído' : '⏳ Programado'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
+                            <span className="truncate">{s.sector_name || 'Setor não informado'}</span>
+                            <span className="text-[10px] text-slate-400">{s.lifecycle.detail}</span>
+                          </div>
+                        </div>
+
+                        {/* Ações */}
+                        <div className="flex gap-1">
+                          <button title="Editar plantão" onClick={() => openEdit(s)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button title="Excluir plantão" onClick={() => handleDelete(s.id)} className="rounded-lg p-2 text-red-500 hover:bg-red-50">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-bold text-slate-800">{s.professional_name || 'Vaga disponível'}</div>
-                        <div className="truncate text-xs text-slate-500">{s.sector_name || 'Setor não informado'}</div>
-                      </div>
-                      <div className="flex gap-1.5">
-                        <button title="Editar plantão" onClick={() => openEdit(s)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button title="Excluir plantão" onClick={() => handleDelete(s.id)} className="rounded-lg p-2 text-red-500 hover:bg-red-50">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             ))}

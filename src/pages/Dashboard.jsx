@@ -76,37 +76,33 @@ export default function Painel() {
   }, [appLoading, loadData]);
 
   useEffect(() => {
-    if (!tvMode) return;
     const id = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(id);
-  }, [tvMode]);
+  }, []);
 
   const todayStr = useMemo(() => getLocalDateString(currentTime), [currentTime]);
 
+  // Aplica o ciclo de vida inteligente no Painel: Ativos, Programados e Concluídos (<2h)
   const todayShifts = useMemo(() => {
-    return shifts.filter((s) => {
-      const sDate = (s.date || '').split('T')[0];
-      return sDate === todayStr && s.status !== 'cancelado';
-    });
-  }, [shifts, todayStr]);
-
-  // Lista com cálculo de ciclo de vida para a TV
-  const tvShifts = useMemo(() => {
-    return todayShifts
+    return shifts
+      .filter((s) => {
+        const sDate = (s.date || '').split('T')[0];
+        return sDate === todayStr && s.status !== 'cancelado';
+      })
       .map((s) => ({
         ...s,
-        tvStatus: getShiftTvLifecycle(s, currentTime)
+        lifecycle: getShiftTvLifecycle(s, currentTime)
       }))
-      .filter((s) => s.tvStatus.state !== 'expired')
+      .filter((s) => s.lifecycle.state !== 'expired') // Elimina após 2h do término
       .sort((a, b) => {
-        const order = { active: 0, upcoming: 1, recently_finished: 2 };
-        return (order[a.tvStatus.state] ?? 99) - (order[b.tvStatus.state] ?? 99);
+        const orderPriority = { active: 0, upcoming: 1, recently_finished: 2 };
+        return (orderPriority[a.lifecycle.state] ?? 99) - (orderPriority[b.lifecycle.state] ?? 99);
       });
-  }, [todayShifts, currentTime]);
+  }, [shifts, todayStr, currentTime]);
 
   const activeNowCount = useMemo(() => {
-    return todayShifts.filter((s) => getShiftTvLifecycle(s, currentTime).state === 'active').length;
-  }, [todayShifts, currentTime]);
+    return todayShifts.filter((s) => s.lifecycle.state === 'active').length;
+  }, [todayShifts]);
 
   const openTvMode = async () => {
     setTvMode(true);
@@ -136,7 +132,7 @@ export default function Painel() {
                 {fmtDateLong(currentTime)}
               </h1>
               <p className="mt-1 text-lg text-slate-400">
-                {fmtDate(todayStr)} · {tvShifts.length} plantões ativos/programados hoje
+                {fmtDate(todayStr)} · {todayShifts.length} plantões na operação de hoje
               </p>
             </div>
             <div className="flex items-center gap-4">
@@ -153,14 +149,14 @@ export default function Painel() {
             </div>
           </div>
 
-          {tvShifts.length === 0 ? (
+          {todayShifts.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/15 p-16 text-center text-xl text-slate-400">
-              Nenhum plantão ativo ou agendado para as próximas horas.
+              Nenhum plantão ativo ou agendado para o dia de hoje.
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {tvShifts.map((shift) => {
-                const state = shift.tvStatus.state;
+              {todayShifts.map((shift) => {
+                const state = shift.lifecycle.state;
                 const isActive = state === 'active';
                 const isFinished = state === 'recently_finished';
 
@@ -200,11 +196,11 @@ export default function Painel() {
                           {isActive && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />}
                           {isActive ? '● Ativo no Plantão' : isFinished ? '✓ Plantão Concluído' : '⏳ Programado'}
                         </span>
-                        <div className="text-[10px] text-slate-400 mt-1">{shift.tvStatus.detail}</div>
+                        <div className="text-[10px] text-slate-400 mt-1">{shift.lifecycle.detail}</div>
                       </div>
                     </div>
 
-                    <div className="mt-5 truncate text-2xl font-black">{shift.professional_name || 'Vaga Aberta'}</div>
+                    <div className="mt-5 truncate text-2xl font-black text-white">{shift.professional_name || 'Vaga Aberta'}</div>
                     <div className="mt-2 flex items-center gap-2 text-base text-slate-300">
                       <Stethoscope className={`h-4 w-4 ${isActive ? 'text-emerald-400' : 'text-sky-400'}`} />
                       {shift.sector_name || 'Setor não informado'}
@@ -219,7 +215,9 @@ export default function Painel() {
     );
   }
 
-  // Visualização Normal do Painel
+  // ==========================================
+  // PAINEL NORMAL FORA DA TV
+  // ==========================================
   return (
     <div className="p-4 md:p-8 space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -279,12 +277,12 @@ export default function Painel() {
         </Card>
       </div>
 
-      {/* Lista de Plantões de Hoje no Painel */}
+      {/* Lista de Plantões de Hoje no Painel com a Mesma Lógica da TV */}
       <Card className="p-5 border-slate-200 space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div>
-            <h3 className="font-bold text-base text-slate-800">Plantões de Hoje</h3>
-            <p className="text-xs text-slate-500">Escala completa do dia {fmtDate(todayStr)}</p>
+            <h3 className="font-bold text-base text-slate-800">Plantões em Operação Hoje</h3>
+            <p className="text-xs text-slate-500">Escala de {fmtDate(todayStr)} (Ativos no momento, programados e recém-concluídos)</p>
           </div>
           <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-sky-50 text-sky-700">
             {todayShifts.length} turno(s)
@@ -293,23 +291,23 @@ export default function Painel() {
 
         {todayShifts.length === 0 ? (
           <div className="py-8 text-center text-sm text-slate-400">
-            Nenhum plantão agendado para a data de hoje.
+            Nenhum plantão ativo ou agendado para a data de hoje.
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {todayShifts.map((shift) => {
-              const tvStatus = getShiftTvLifecycle(shift, currentTime);
-              const isActive = tvStatus.state === 'active';
-              const isFinished = tvStatus.state === 'recently_finished';
+              const state = shift.lifecycle.state;
+              const isActive = state === 'active';
+              const isFinished = state === 'recently_finished';
 
               return (
                 <div
                   key={shift.id}
-                  className={`p-4 rounded-xl border transition-all ${
+                  className={`p-4 rounded-xl border transition-all duration-300 ${
                     isActive 
-                      ? 'border-emerald-300 bg-emerald-50/50' 
+                      ? 'border-emerald-300 bg-emerald-50/70 shadow-sm' 
                       : isFinished
-                      ? 'border-slate-200 bg-slate-50 opacity-70'
+                      ? 'border-slate-200 bg-slate-100/60 opacity-75'
                       : 'border-slate-200 bg-white'
                   }`}
                 >
@@ -318,19 +316,26 @@ export default function Painel() {
                       {shift.start_time} às {shift.end_time}
                     </span>
                     <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
                         isActive
-                          ? 'bg-emerald-600 text-white'
+                          ? 'bg-emerald-600 text-white animate-pulse'
                           : isFinished
-                          ? 'bg-slate-200 text-slate-600'
-                          : 'bg-sky-100 text-sky-700'
+                          ? 'bg-slate-200 text-slate-700'
+                          : 'bg-sky-100 text-sky-800'
                       }`}
                     >
-                      {isActive ? 'Ativo no Plantão' : isFinished ? 'Concluído' : 'Programado'}
+                      {isActive ? '● Ativo no Plantão' : isFinished ? '✓ Concluído' : '⏳ Programado'}
                     </span>
                   </div>
-                  <div className="font-bold text-sm text-slate-900 truncate">{shift.professional_name || 'Vaga Aberta'}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">{shift.sector_name || 'Geral'}</div>
+
+                  <div className="font-bold text-sm text-slate-900 truncate">
+                    {shift.professional_name || 'Vaga Aberta'}
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
+                    <span className="truncate">{shift.sector_name || 'Geral'}</span>
+                    <span className="text-[10px] text-slate-400">{shift.lifecycle.detail}</span>
+                  </div>
                 </div>
               );
             })}
