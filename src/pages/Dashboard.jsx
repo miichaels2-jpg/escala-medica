@@ -11,9 +11,17 @@ import {
   Maximize2, 
   Minimize2, 
   Clock3, 
-  Stethoscope
+  Stethoscope,
+  AlertTriangle,
+  CheckCircle2,
+  ArrowRightLeft,
+  Activity,
+  DollarSign,
+  Building2,
+  TrendingUp,
+  ShieldAlert
 } from 'lucide-react';
-import { getShiftTvLifecycle } from '@/lib/shiftUtils';
+import { getShiftTvLifecycle, getShiftInterval } from '@/lib/shiftUtils';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -56,9 +64,9 @@ export default function Painel() {
     try {
       const f = { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) };
       const [s, sec, p] = await Promise.all([
-        base44.entities.Shift.filter(f, '-date', 500),
+        base44.entities.Shift.filter(f, '-date', 800),
         base44.entities.Sector.filter(f, '-created_date', 100),
-        base44.entities.Professional.filter(f, '-created_date', 200),
+        base44.entities.Professional.filter(f, '-created_date', 300),
       ]);
       setShifts(s || []);
       setSectors(sec || []);
@@ -75,6 +83,7 @@ export default function Painel() {
     loadData();
   }, [appLoading, loadData]);
 
+  // Atualizador de relógio em tempo real
   useEffect(() => {
     const id = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(id);
@@ -82,7 +91,12 @@ export default function Painel() {
 
   const todayStr = useMemo(() => getLocalDateString(currentTime), [currentTime]);
 
-  // Aplica o ciclo de vida inteligente no Painel: Ativos, Programados e Concluídos (<2h)
+  // Mapa rápido de profissionais para consulta de remuneração
+  const profMap = useMemo(() => {
+    return Object.fromEntries((professionals || []).map((p) => [p.id, p]));
+  }, [professionals]);
+
+  // Plantões de Hoje com ciclo de vida
   const todayShifts = useMemo(() => {
     return shifts
       .filter((s) => {
@@ -93,16 +107,101 @@ export default function Painel() {
         ...s,
         lifecycle: getShiftTvLifecycle(s, currentTime)
       }))
-      .filter((s) => s.lifecycle.state !== 'expired') // Elimina após 2h do término
+      .filter((s) => s.lifecycle.state !== 'expired')
       .sort((a, b) => {
-        const orderPriority = { active: 0, upcoming: 1, recently_finished: 2 };
-        return (orderPriority[a.lifecycle.state] ?? 99) - (orderPriority[b.lifecycle.state] ?? 99);
+        const order = { active: 0, upcoming: 1, recently_finished: 2 };
+        return (order[a.lifecycle.state] ?? 99) - (order[b.lifecycle.state] ?? 99);
       });
   }, [shifts, todayStr, currentTime]);
 
-  const activeNowCount = useMemo(() => {
-    return todayShifts.filter((s) => s.lifecycle.state === 'active').length;
+  // Contadores Operacionais
+  const activeNowList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'active'), [todayShifts]);
+  const upcomingList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'upcoming'), [todayShifts]);
+  const recentlyFinishedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'recently_finished'), [todayShifts]);
+
+  // Vagas Descobertas / Alerta de Risco
+  const vacantShifts = useMemo(() => {
+    return todayShifts.filter((s) => !s.professional_id || s.professional_name?.toLowerCase().includes('vaga') || s.status === 'pendente');
   }, [todayShifts]);
+
+  // Indicador Financeiro do Dia (Burn-rate de plantões de hoje)
+  const todayFinancials = useMemo(() => {
+    let executedValue = 0;
+    let predictedTotal = 0;
+
+    todayShifts.forEach((s) => {
+      const p = profMap[s.professional_id];
+      const hours = Number(s.duration_hours) || 12;
+      let val = 0;
+
+      if (p) {
+        const remType = p.remuneration_type || 'hora';
+        if (remType === 'hora') val = hours * (Number(p.hourly_rate) || 0);
+        else if (remType === 'diaria') val = Number(p.daily_rate) || 0;
+        else if (remType === 'mensal') val = (Number(p.monthly_salary) || 0) / 20; // Estimativa média diária
+      }
+
+      predictedTotal += val;
+      if (s.lifecycle.state === 'active' || s.lifecycle.state === 'recently_finished') {
+        executedValue += val;
+      }
+    });
+
+    return { executedValue, predictedTotal };
+  }, [todayShifts, profMap]);
+
+  // Análise de Cobertura por Setor
+  const sectorsCoverage = useMemo(() => {
+    const map = {};
+    sectors.forEach((sec) => {
+      map[sec.id] = {
+        id: sec.id,
+        name: sec.name,
+        specialty: sec.specialty || 'Geral',
+        total: 0,
+        active: 0,
+        upcoming: 0,
+        vacant: 0
+      };
+    });
+
+    todayShifts.forEach((s) => {
+      const secId = s.sector_id || 'sem_setor';
+      if (!map[secId]) {
+        map[secId] = {
+          id: secId,
+          name: s.sector_name || 'Geral',
+          specialty: 'Geral',
+          total: 0,
+          active: 0,
+          upcoming: 0,
+          vacant: 0
+        };
+      }
+      map[secId].total += 1;
+      if (s.lifecycle.state === 'active') map[secId].active += 1;
+      if (s.lifecycle.state === 'upcoming') map[secId].upcoming += 1;
+      if (!s.professional_id || s.professional_name?.toLowerCase().includes('vaga')) {
+        map[secId].vacant += 1;
+      }
+    });
+
+    return Object.values(map).filter((sec) => sec.total > 0 || sectors.some((s) => s.id === sec.id));
+  }, [sectors, todayShifts]);
+
+  // Próxima Passagem de Turno (Next Shift Handover)
+  const nextHandover = useMemo(() => {
+    if (upcomingList.length === 0) return null;
+    const nextStart = upcomingList[0].start_time;
+    const incoming = upcomingList.filter((s) => s.start_time === nextStart);
+    const outgoing = activeNowList.filter((s) => s.end_time === nextStart);
+
+    return {
+      targetTime: nextStart,
+      incoming,
+      outgoing
+    };
+  }, [upcomingList, activeNowList]);
 
   const openTvMode = async () => {
     setTvMode(true);
@@ -117,7 +216,7 @@ export default function Painel() {
   };
 
   // ==========================================
-  // MODO TV NO PAINEL
+  // MODO TV (FULLSCREEN OPERACIONAL)
   // ==========================================
   if (tvMode) {
     return (
@@ -126,13 +225,13 @@ export default function Painel() {
           <div className="mb-6 flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.24em] text-sky-300">
-                <CalendarDays className="h-5 w-5" /> Painel Operacional ao Vivo
+                <CalendarDays className="h-5 w-5" /> Painel Operacional Hospitalar
               </div>
               <h1 className="mt-2 text-4xl font-black tracking-tight md:text-6xl">
                 {fmtDateLong(currentTime)}
               </h1>
               <p className="mt-1 text-lg text-slate-400">
-                {fmtDate(todayStr)} · {todayShifts.length} plantões na operação de hoje
+                {fmtDate(todayStr)} · {todayShifts.length} plantões na operação · {activeNowList.length} ativos neste instante
               </p>
             </div>
             <div className="flex items-center gap-4">
@@ -143,7 +242,7 @@ export default function Painel() {
                 </div>
                 <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Tempo Real</div>
               </div>
-              <button title="Fechar modo TV" onClick={closeTvMode} className="rounded-xl border border-white/15 p-3 text-slate-300 hover:bg-white/10">
+              <button title="Fechar modo TV" onClick={closeTvMode} className="rounded-xl border border-white/15 p-3 text-slate-300 hover:bg-white/10 transition-colors">
                 <Minimize2 className="h-5 w-5" />
               </button>
             </div>
@@ -151,7 +250,7 @@ export default function Painel() {
 
           {todayShifts.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-white/15 p-16 text-center text-xl text-slate-400">
-              Nenhum plantão ativo ou agendado para o dia de hoje.
+              Nenhum plantão agendado para as próximas horas.
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -216,81 +315,278 @@ export default function Painel() {
   }
 
   // ==========================================
-  // PAINEL NORMAL FORA DA TV
+  // PAINEL DE CONTROLE EXECUTIVO
   // ==========================================
   return (
     <div className="p-4 md:p-8 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+      {/* Header Cockpit */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white p-6 rounded-3xl border border-slate-800 shadow-xl">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Painel Geral</h1>
-          <p className="text-sm text-slate-500">
-            Visão consolidada da operação, escala do dia e indicadores em tempo real.
+          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-sky-400 font-bold">
+            <Activity className="w-4 h-4" /> Centro de Operações Clínicas
+          </div>
+          <h1 className="text-2xl md:text-3xl font-black mt-2 tracking-tight">Painel Operacional Hospitalar</h1>
+          <p className="text-sm text-slate-300 mt-1 max-w-2xl">
+            Monitoramento em tempo real de presença médica, passagens de turno e cobertura setorial.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={openTvMode} className="border-sky-200 text-sky-700 hover:bg-sky-50 gap-2 font-bold">
+
+        <div className="flex items-center gap-3">
+          <div className="text-right hidden sm:block">
+            <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Horário do Sistema</div>
+            <div className="text-xl font-mono font-black text-sky-400">{currentTime.toLocaleTimeString('pt-BR')}</div>
+          </div>
+          <Button onClick={openTvMode} className="bg-sky-600 hover:bg-sky-500 text-white font-bold gap-2 text-xs h-10 px-4 rounded-xl shadow-lg shadow-sky-950">
             <Maximize2 className="w-4 h-4" /> Modo TV
           </Button>
         </div>
       </div>
 
-      {/* Cards de Métricas */}
+      {/* BANNER 1: ALERTA DE RISCO OPERACIONAL / DESFALQUES */}
+      {vacantShifts.length > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-amber-500 text-slate-950 shrink-0 font-bold">
+              <ShieldAlert className="w-5 h-5" />
+            </div>
+            <div>
+              <strong className="text-sm font-black block">Atenção: {vacantShifts.length} vaga(s) com risco de cobertura hoje</strong>
+              <p className="text-xs opacity-90">
+                Setores afetados: {Array.from(new Set(vacantShifts.map((s) => s.sector_name || 'Geral'))).join(', ')}.
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-bold uppercase px-3 py-1 bg-amber-500/20 border border-amber-500/40 rounded-lg shrink-0">
+            Ação Recomendada: Alocar Retaguarda
+          </span>
+        </div>
+      )}
+
+      {/* 4 CARDS DE MÉTRICAS EXECUTIVAS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="p-5 border-slate-200 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
-            <CalendarDays className="w-6 h-6" />
+        <Card className="p-5 border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+              Ativos no Plantão Agora
+            </span>
+            <span className="p-2 rounded-xl bg-emerald-600 text-white shadow-sm animate-pulse">
+              <Clock className="w-4 h-4" />
+            </span>
           </div>
-          <div>
-            <div className="text-xs text-slate-400 font-semibold uppercase">Plantões Hoje</div>
-            <div className="text-2xl font-black text-slate-900">{todayShifts.length}</div>
+          <div className="text-2xl md:text-3xl font-black text-emerald-950 dark:text-emerald-100 mt-3">
+            {activeNowList.length} profissionais
           </div>
+          <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1 font-medium">
+            Em jornada presencial ativa na unidade
+          </p>
         </Card>
 
-        <Card className="p-5 border-slate-200 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-            <Clock className="w-6 h-6" />
+        <Card className="p-5 border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Plantões de Hoje
+            </span>
+            <span className="p-2 rounded-xl bg-sky-50 text-sky-600">
+              <CalendarDays className="w-4 h-4" />
+            </span>
           </div>
-          <div>
-            <div className="text-xs text-slate-400 font-semibold uppercase">Ativos Agora</div>
-            <div className="text-2xl font-black text-emerald-600">{activeNowCount}</div>
+          <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-3">
+            {todayShifts.length} turnos
           </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            {upcomingList.length} programados · {recentlyFinishedList.length} recém-concluídos
+          </p>
         </Card>
 
-        <Card className="p-5 border-slate-200 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-            <Users className="w-6 h-6" />
+        <Card className="p-5 border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Corpo Clínico Ativo
+            </span>
+            <span className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
+              <Users className="w-4 h-4" />
+            </span>
           </div>
-          <div>
-            <div className="text-xs text-slate-400 font-semibold uppercase">Corpo Clínico Ativo</div>
-            <div className="text-2xl font-black text-slate-900">{professionals.length}</div>
+          <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-3">
+            {professionals.length} cadastrados
           </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Profissionais disponíveis para alocação
+          </p>
         </Card>
 
-        <Card className="p-5 border-slate-200 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-            <Layers className="w-6 h-6" />
+        <Card className="p-5 border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Custo Operacional Hoje
+            </span>
+            <span className="p-2 rounded-xl bg-amber-50 text-amber-600">
+              <DollarSign className="w-4 h-4" />
+            </span>
           </div>
-          <div>
-            <div className="text-xs text-slate-400 font-semibold uppercase">Setores Cadastrados</div>
-            <div className="text-2xl font-black text-slate-900">{sectors.length}</div>
+          <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-3">
+            R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Previsto total do dia: R$ {todayFinancials.predictedTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </p>
         </Card>
       </div>
 
-      {/* Lista de Plantões de Hoje no Painel com a Mesma Lógica da TV */}
-      <Card className="p-5 border-slate-200 space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+      {/* SEÇÃO 2 COLUNAS: PASSAGEM DE TURNO + TERMÔMETRO SETORIAL */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Passagem de Turno */}
+        <Card className="p-5 border-slate-200 dark:border-slate-800 lg:col-span-1 flex flex-col justify-between space-y-4">
           <div>
-            <h3 className="font-bold text-base text-slate-800">Plantões em Operação Hoje</h3>
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <ArrowRightLeft className="w-4 h-4 text-sky-600" /> Passagem de Plantão
+                </h3>
+                <p className="text-xs text-slate-500">Próxima transição de escala</p>
+              </div>
+              {nextHandover && (
+                <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-sky-100 text-sky-800 font-mono">
+                  {nextHandover.targetTime}
+                </span>
+              )}
+            </div>
+
+            {nextHandover ? (
+              <div className="mt-4 space-y-4">
+                {/* Quem Entra */}
+                <div className="p-3 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
+                  <div className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 uppercase flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Equipe que Assume ({nextHandover.incoming.length})
+                  </div>
+                  <div className="mt-2 space-y-1.5">
+                    {nextHandover.incoming.map((s) => (
+                      <div key={s.id} className="text-xs flex items-center justify-between">
+                        <span className="font-bold text-slate-900 dark:text-white truncate">{s.professional_name || 'Vaga Aberta'}</span>
+                        <span className="text-[10px] text-slate-500 shrink-0 font-medium">{s.sector_name || 'Geral'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Quem Sai */}
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase">
+                    Equipe que Entrega ({nextHandover.outgoing.length})
+                  </div>
+                  <div className="mt-2 space-y-1.5">
+                    {nextHandover.outgoing.length === 0 ? (
+                      <div className="text-xs text-slate-400 italic">Nenhum plantão encerrando exatamente neste minuto.</div>
+                    ) : (
+                      nextHandover.outgoing.map((s) => (
+                        <div key={s.id} className="text-xs flex items-center justify-between">
+                          <span className="font-medium text-slate-700 dark:text-slate-300 truncate">{s.professional_name}</span>
+                          <span className="text-[10px] text-slate-400 shrink-0">{s.sector_name || 'Geral'}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="py-10 text-center text-xs text-slate-400">
+                Nenhuma passagem de turno pendente para hoje.
+              </div>
+            )}
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 flex items-center justify-between">
+            <span>Passagens auditadas em tempo real</span>
+            <span className="font-bold text-sky-600">ScaleMedic Cockpit</span>
+          </div>
+        </Card>
+
+        {/* Termômetro de Cobertura por Setores */}
+        <Card className="p-5 border-slate-200 dark:border-slate-800 lg:col-span-2 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                <Building2 className="w-4 h-4 text-emerald-600" /> Cobertura por Setor Clínico
+              </h3>
+              <p className="text-xs text-slate-500">Capacidade operacional instalada e ocupação hoje</p>
+            </div>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              {sectorsCoverage.length} setores ativos
+            </span>
+          </div>
+
+          {sectorsCoverage.length === 0 ? (
+            <div className="py-12 text-center text-xs text-slate-400">
+              Nenhum setor cadastrado ou com escala vinculada.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {sectorsCoverage.map((sec) => {
+                const percent = sec.total > 0 ? Math.round((sec.active / sec.total) * 100) : 0;
+                const hasVacant = sec.vacant > 0;
+
+                return (
+                  <div 
+                    key={sec.id}
+                    className={`p-3.5 rounded-xl border transition-all ${
+                      hasVacant
+                        ? 'border-amber-300 bg-amber-50/40 dark:bg-amber-950/20'
+                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <strong className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                        {sec.name}
+                      </strong>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        sec.active > 0 
+                          ? 'bg-emerald-100 text-emerald-800' 
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                      }`}>
+                        {sec.active} ativo(s)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-slate-500 mt-2">
+                      <span>Ocupação do setor</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">{sec.active} / {sec.total} turnos</span>
+                    </div>
+
+                    {/* Barra de Progresso */}
+                    <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full mt-1.5 overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-500 ${hasVacant ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                        style={{ width: `${Math.min(100, Math.max(10, percent))}%` }}
+                      />
+                    </div>
+
+                    {hasVacant && (
+                      <div className="text-[10px] text-amber-700 dark:text-amber-400 font-bold mt-2 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> {sec.vacant} vaga(s) descoberta(s)
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* LISTA DINÂMICA DE PLANTÕES EM OPERAÇÃO HOJE */}
+      <Card className="p-5 border-slate-200 dark:border-slate-800 space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div>
+            <h3 className="font-bold text-base text-slate-900 dark:text-white">Plantões em Operação Hoje</h3>
             <p className="text-xs text-slate-500">Escala de {fmtDate(todayStr)} (Ativos no momento, programados e recém-concluídos)</p>
           </div>
           <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-sky-50 text-sky-700">
-            {todayShifts.length} turno(s)
+            {todayShifts.length} turno(s) no total
           </span>
         </div>
 
         {todayShifts.length === 0 ? (
-          <div className="py-8 text-center text-sm text-slate-400">
+          <div className="py-12 text-center text-sm text-slate-400">
             Nenhum plantão ativo ou agendado para a data de hoje.
           </div>
         ) : (
@@ -308,11 +604,11 @@ export default function Painel() {
                       ? 'border-emerald-300 bg-emerald-50/70 shadow-sm' 
                       : isFinished
                       ? 'border-slate-200 bg-slate-100/60 opacity-75'
-                      : 'border-slate-200 bg-white'
+                      : 'border-slate-200 bg-white dark:bg-slate-900'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="text-xs font-bold text-slate-700">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
                       {shift.start_time} às {shift.end_time}
                     </span>
                     <span
@@ -328,7 +624,7 @@ export default function Painel() {
                     </span>
                   </div>
 
-                  <div className="font-bold text-sm text-slate-900 truncate">
+                  <div className="font-bold text-sm text-slate-900 dark:text-white truncate">
                     {shift.professional_name || 'Vaga Aberta'}
                   </div>
 
