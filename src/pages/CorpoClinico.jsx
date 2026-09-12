@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { Checkbox } from '@/components/ui/checkbox';
 import { 
   ShieldCheck, 
   Calendar, 
@@ -17,16 +16,16 @@ import {
   Edit3, 
   Loader2, 
   Clock, 
-  Mail, 
-  Phone, 
-  User, 
   CheckCircle2, 
   PlusCircle,
   Share2,
   RotateCcw,
   DollarSign,
   Landmark,
-  CreditCard
+  CreditCard,
+  LayoutGrid,
+  List,
+  MessageCircle
 } from 'lucide-react';
 
 const ALL_PERMISSIONS = [
@@ -80,6 +79,7 @@ export default function CorpoClinico() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   
+  const [viewMode, setViewMode] = useState('grid'); // 'grid' ou 'list'
   const [toastMessage, setToastMessage] = useState('');
 
   const [newSpecialtyModal, setNewSpecialtyModal] = useState(false);
@@ -105,7 +105,7 @@ export default function CorpoClinico() {
   const [monthlySalary, setMonthlySalary] = useState('18000');
 
   // Dados Bancários / PIX Exclusivos
-  const [pixType, setPixType] = useState('cpf'); // 'cpf', 'email', 'telefone', 'aleatoria', 'banco'
+  const [pixType, setPixType] = useState('cpf'); 
   const [pixKey, setPixKey] = useState('');
   const [bankInfo, setBankInfo] = useState('');
 
@@ -179,14 +179,6 @@ export default function CorpoClinico() {
     }
   };
 
-  const handlePermissionChange = (permId, checked) => {
-    if (checked) {
-      setPermissions((prev) => [...prev, permId]);
-    } else {
-      setPermissions((prev) => prev.filter((p) => p !== permId));
-    }
-  };
-
   const handleBirthDateChange = (newDate) => {
     setBirthDate(newDate);
     if (!editingId) {
@@ -199,6 +191,19 @@ export default function CorpoClinico() {
     if (!editingId && birthDate) {
       setPassword(computeDefaultPassword(birthDate, newName));
     }
+  };
+
+  // BOTÃO WHATSAPP DIRETO DA LISTA
+  const handleWhatsApp = (prof) => {
+    let rawPhone = prof.phone ? String(prof.phone).replace(/\D/g, '') : '';
+    if (!rawPhone) {
+      alert('Este profissional não possui telefone cadastrado.');
+      return;
+    }
+    if (rawPhone.length === 10 || rawPhone.length === 11) rawPhone = `55${rawPhone}`;
+    
+    const text = encodeURIComponent(`Olá, Dr(a). ${prof.name}!\n\nSeu cadastro no sistema ScaleMedic foi atualizado com sucesso. Você já está apto a assumir e visualizar plantões no painel.\n\nQualquer dúvida, a gestão está à disposição!`);
+    window.open(`https://wa.me/${rawPhone}?text=${text}`, '_blank');
   };
 
   const handleResetPassword = async (e) => {
@@ -251,13 +256,11 @@ export default function CorpoClinico() {
     setIsManager(false);
     setPermissions(['painel', 'escalas', 'trocas']);
     
-    // Remuneração padrão
     setRemunerationType('hora');
     setHourlyRate('120');
     setDailyRate('1500');
     setMonthlySalary('18000');
 
-    // Chave PIX padrão vazia (sem auto-preencher CPF aleatório)
     setPixType('cpf');
     setPixKey('');
     setBankInfo('');
@@ -291,7 +294,6 @@ export default function CorpoClinico() {
     setDailyRate(String(prof.daily_rate || '1500'));
     setMonthlySalary(String(prof.monthly_salary || '18000'));
 
-    // Carrega dados bancários e PIX reais
     setPixType(prof.pix_type || 'cpf');
     setPixKey(prof.pix_key || '');
     setBankInfo(prof.bank_info || '');
@@ -350,25 +352,6 @@ export default function CorpoClinico() {
     }
   };
 
-  const handleCreateSectorPrompt = async () => {
-    const nomeSetor = prompt('Digite o nome do novo setor hospitalar:');
-    if (nomeSetor && nomeSetor.trim()) {
-      try {
-        const novo = await base44.entities.Sector.create({
-          company_id: companyId,
-          unit_id: unitId || units[0]?.id || 'unit_h1',
-          name: nomeSetor.trim(),
-          specialty: specialty || 'Geral',
-          active: true
-        });
-        setSectors((prev) => [...prev, novo]);
-        setDefaultSectorId(novo.id);
-      } catch (err) {
-        alert('Erro ao cadastrar setor: ' + err.message);
-      }
-    }
-  };
-
   const handleCopyAccess = (e) => {
     if (e) {
       e.preventDefault();
@@ -379,7 +362,7 @@ export default function CorpoClinico() {
     const userDisplay = username || (email ? email.split('@')[0] : 'usuario');
     const passDisplay = password || (birthDate ? computeDefaultPassword(birthDate, name) : '123456');
 
-    const textToCopy = `*ScaleMedic - Seus dados de acesso*\n\nOlá, ${name || 'Profissional'}!\nVocê foi cadastrado no sistema da escala hospitalar.\n\n👤 *Usuário / Apelido:* ${userDisplay}\n🔑 *Senha Provisória:* ${passDisplay}\n🔗 *Acesso:* ${host}/login\n\n⚠️ *Atenção:* Ao acessar o aplicativo de escala, é obrigatório trocar a senha. A nova senha deve ter no mínimo 7 e no máximo 20 caracteres (formato livre: letras, números, símbolos ou acentos).`;
+    const textToCopy = `*ScaleMedic - Seus dados de acesso*\n\nOlá, ${name || 'Profissional'}!\nVocê foi cadastrado no sistema da escala hospitalar.\n\n👤 *Usuário / Apelido:* ${userDisplay}\n🔑 *Senha Provisória:* ${passDisplay}\n🔗 *Acesso:* ${host}/login\n\n⚠️ *Atenção:* Ao acessar o aplicativo de escala, é obrigatório trocar a senha.`;
 
     const triggerSuccess = () => {
       setToastMessage('Copiado com sucesso!');
@@ -475,7 +458,6 @@ export default function CorpoClinico() {
         }
       }
 
-      // Salva usuário com flag de troca de senha no 1º login
       const userNick = (username || (email ? email.split('@')[0] : name.toLowerCase().replace(/\s+/g, ''))).trim();
       const finalPass = password || (birthDate ? computeDefaultPassword(birthDate, name) : '123456');
       const userEmail = (email || `${userNick}@scalemedic.local`).toLowerCase().trim();
@@ -509,7 +491,6 @@ export default function CorpoClinico() {
         });
       }
 
-      // Geração da Grade Mensal se ativada
       if (autoGenerateShifts && profRecord?.id) {
         const [yearStr, monthStr] = monthReference.split('-');
         const year = parseInt(yearStr, 10);
@@ -595,7 +576,7 @@ export default function CorpoClinico() {
         </div>
       )}
 
-      {/* Header */}
+      {/* Header com os Controles de Visão */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Corpo Clínico & Escalas</h1>
@@ -603,17 +584,36 @@ export default function CorpoClinico() {
             Gerencie profissionais, defina regras de repasse e dados bancários para liquidação de plantões.
           </p>
         </div>
-        <div className="flex gap-2">
+        
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Alternador de Visão (Tabela vs Grid) */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shrink-0">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-sky-700 dark:bg-slate-700 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
+            >
+              <LayoutGrid className="w-4 h-4" /> Cartões
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-sky-700 dark:bg-slate-700 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
+            >
+              <List className="w-4 h-4" /> Lista
+            </button>
+          </div>
+
+          <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block" />
+
           <Button variant="outline" onClick={() => setNewSpecialtyModal(true)} className="gap-2">
             <PlusCircle className="w-4 h-4 text-sky-600" /> Nova Especialidade
           </Button>
           <Button onClick={openNewModal} className="bg-sky-600 hover:bg-sky-700 text-white gap-2 font-medium px-5">
-            <Plus className="w-4 h-4" /> Cadastrar profissional
+            <Plus className="w-4 h-4" /> Cadastrar Profissional
           </Button>
         </div>
       </div>
 
-      {/* Grid de Profissionais */}
+      {/* Renderização do Corpo (Carregando, Vazio, Matriz ou Lista) */}
       {loading ? (
         <div className="flex justify-center p-16">
           <Loader2 className="w-8 h-8 animate-spin text-sky-600" />
@@ -622,7 +622,8 @@ export default function CorpoClinico() {
         <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300">
           <p className="text-slate-500">Nenhum profissional cadastrado.</p>
         </div>
-      ) : (
+      ) : viewMode === 'grid' ? (
+        /* VISÃO EM CARTÕES (Original) */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {professionals.map((prof) => {
             const unitName = units.find((u) => u.id === prof.unit_id)?.name || 'Hospital Santa Clara';
@@ -644,11 +645,11 @@ export default function CorpoClinico() {
                     <div>
                       <h3 className="font-bold text-base text-slate-900 dark:text-white">{prof.name}</h3>
                       <p className="text-xs text-sky-600 font-semibold uppercase tracking-wide">
-                        {prof.specialty || prof.category || 'Clínica Geral'} {prof.section ? `• Seção: ${prof.section}` : ''}
+                        {prof.specialty || prof.category || 'Clínica Geral'} {prof.section ? `• ${prof.section}` : ''}
                       </p>
                     </div>
                     {isGestor && (
-                      <span className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 text-[11px] font-bold px-2.5 py-1 rounded-full uppercase flex items-center gap-1 shrink-0 border border-emerald-200 dark:border-emerald-800">
+                      <span className="bg-emerald-50 text-emerald-700 text-[11px] font-bold px-2.5 py-1 rounded-full uppercase flex items-center gap-1 shrink-0 border border-emerald-200">
                         <ShieldCheck className="w-3.5 h-3.5" /> Gestor
                       </span>
                     )}
@@ -660,41 +661,107 @@ export default function CorpoClinico() {
                       <span className="font-medium text-slate-700 dark:text-slate-300">{unitName}</span>
                     </div>
 
-                    <div className="flex items-center gap-2 py-1 px-2.5 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-semibold border border-emerald-200/60">
+                    <div className="flex items-center gap-2 py-1 px-2.5 rounded-lg bg-emerald-50/80 text-emerald-800 font-semibold border border-emerald-200/60">
                       <DollarSign className="w-3.5 h-3.5 shrink-0" />
                       <span>Repasse: {remLabel}</span>
                     </div>
 
-                    {/* Exibição da Chave PIX cadastrada */}
-                    <div className="flex items-center gap-2 py-1 px-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center gap-2 py-1 px-2.5 rounded-lg bg-slate-50 border border-slate-200">
                       <CreditCard className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">
-                        PIX: <b>{prof.pix_key || 'Não cadastrada'}</b> {prof.pix_key && `(${prof.pix_type?.toUpperCase()})`}
-                      </span>
+                      <span className="truncate">PIX: <b>{prof.pix_key || 'Não cadastrada'}</b></span>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span>
-                        Padrão: <b>{prof.schedule_pattern || '12x36'}</b> ({prof.schedule_start_time || '07:00'} - {prof.schedule_end_time || '19:00'})
-                      </span>
+                      <span>Padrão: <b>{prof.schedule_pattern || '12x36'}</b> ({prof.schedule_start_time || '07:00'} - {prof.schedule_end_time || '19:00'})</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleWhatsApp(prof)}
+                    className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 gap-1.5 px-2"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" /> Chamar WhatsApp
+                  </Button>
+
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleEditProfessional(prof)}
                     className="text-xs font-semibold gap-1.5 text-slate-700 hover:text-sky-600 hover:border-sky-400"
                   >
-                    <Edit3 className="w-3.5 h-3.5" /> Editar Cadastro
+                    <Edit3 className="w-3.5 h-3.5" /> Editar
                   </Button>
                 </div>
               </Card>
             );
           })}
+        </div>
+      ) : (
+        /* VISÃO EM LISTA / TABELA (Nova) */
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-x-auto shadow-sm">
+          <table className="w-full text-left text-sm whitespace-nowrap">
+            <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-slate-500">
+              <tr>
+                <th className="p-4 font-semibold">Profissional / Especialidade</th>
+                <th className="p-4 font-semibold">Contato</th>
+                <th className="p-4 font-semibold">Repasse & Dados Bancários</th>
+                <th className="p-4 font-semibold">Padrão Escala</th>
+                <th className="p-4 font-semibold text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {professionals.map((prof) => {
+                const isGestor = String(prof.role || '').toLowerCase().includes('gestor');
+                const remType = prof.remuneration_type || 'hora';
+                const remLabel = 
+                  remType === 'hora' ? `R$ ${Number(prof.hourly_rate || 0).toLocaleString('pt-BR')}/hora` :
+                  remType === 'diaria' ? `R$ ${Number(prof.daily_rate || 0).toLocaleString('pt-BR')}/plantão` :
+                  `R$ ${Number(prof.monthly_salary || 0).toLocaleString('pt-BR')}/mês (Fixo)`;
+
+                return (
+                  <tr key={prof.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                    <td className="p-4">
+                      <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        {prof.name} {isGestor && <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" title="Gestor Pleno" />}
+                      </div>
+                      <div className="text-xs text-sky-600 font-semibold uppercase mt-0.5">
+                        {prof.specialty || prof.category || 'Clínica Geral'}
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <div className="text-slate-700 dark:text-slate-300 font-medium">{prof.phone || 'Sem telefone'}</div>
+                      <div className="text-xs text-slate-500 mt-0.5">{prof.email || 'Sem e-mail'}</div>
+                    </td>
+                    <td className="p-4">
+                      <div className="text-emerald-700 dark:text-emerald-400 font-bold">{remLabel}</div>
+                      <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-[200px]" title={prof.pix_key}>
+                        PIX: {prof.pix_key || 'Não cadastrada'}
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <div className="text-slate-700 dark:text-slate-300 font-medium">{prof.schedule_pattern || '12x36'}</div>
+                      <div className="text-xs text-slate-500 mt-0.5">{prof.schedule_start_time || '07:00'} às {prof.schedule_end_time || '19:00'}</div>
+                    </td>
+                    <td className="p-4 text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-600 hover:bg-emerald-50" onClick={() => handleWhatsApp(prof)} title="Enviar Mensagem no WhatsApp">
+                          <MessageCircle className="w-4 h-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:bg-slate-100" onClick={() => handleEditProfessional(prof)} title="Editar Profissional">
+                          <Edit3 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -831,7 +898,7 @@ export default function CorpoClinico() {
                 <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                   <Landmark className="w-4 h-4 text-emerald-600" /> Dados para Pagamento & Chave PIX
                 </h4>
-                <span className="text-[11px] text-slate-400">Utilizado no módulo de Faturamento & Repasse</span>
+                <span className="text-[11px] text-slate-400">Utilizado no módulo de Faturamento</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -857,7 +924,7 @@ export default function CorpoClinico() {
                     onChange={(e) => setPixKey(e.target.value)}
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
-                    Esta chave aparecerá diretamente no faturamento e na geração de lote bancário.
+                    Esta chave aparecerá diretamente na geração de lote bancário.
                   </p>
                 </div>
 
@@ -877,32 +944,18 @@ export default function CorpoClinico() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                    <User className="w-4 h-4 text-sky-600" /> Acesso ao Sistema (Login & Senha Padrão)
+                    <User className="w-4 h-4 text-sky-600" /> Acesso ao Sistema (Login)
                   </h4>
                   <p className="text-xs text-slate-500">
                     Senha padrão calculada: <b>Data de Nascimento + 1ª letra do nome</b>.
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleResetPassword}
-                    className="text-xs font-medium gap-1.5 bg-amber-50 dark:bg-slate-900 border-amber-300 text-amber-800 hover:bg-amber-100"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
-                    Reiniciar Senha
+                  <Button type="button" variant="outline" size="sm" onClick={handleResetPassword} className="text-xs font-medium gap-1.5 bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100">
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-600" /> Reiniciar Senha
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCopyAccess}
-                    className="text-xs font-medium gap-1.5 bg-white dark:bg-slate-900 border-sky-300 text-sky-700 hover:bg-sky-50"
-                  >
-                    <Share2 className="w-3.5 h-3.5" />
-                    Copiar WhatsApp
+                  <Button type="button" variant="outline" size="sm" onClick={handleCopyAccess} className="text-xs font-medium gap-1.5 bg-white border-sky-300 text-sky-700 hover:bg-sky-50">
+                    <Share2 className="w-3.5 h-3.5" /> Copiar Acesso
                   </Button>
                 </div>
               </div>
@@ -923,29 +976,28 @@ export default function CorpoClinico() {
               </div>
             </div>
 
-            {/* Unidade */}
-            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-              <Label className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-sky-600" /> Unidade Hospitalar
-              </Label>
-              <Select value={unitId} onValueChange={setUnitId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {units.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Unidade e Gestor */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                <Label className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-sky-600" /> Unidade Hospitalar
+                </Label>
+                <Select value={unitId} onValueChange={setUnitId}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {units.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {/* Gestor */}
-            <div className="border border-indigo-100 dark:border-indigo-950 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 rounded-xl space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="border border-indigo-100 dark:border-indigo-950 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 rounded-xl flex items-center justify-between">
                 <div>
                   <div className="font-bold text-sm text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-indigo-600" /> Cadastrar como Gestor Pleno
+                    <ShieldCheck className="w-4 h-4 text-indigo-600" /> Gestor Pleno
                   </div>
-                  <p className="text-xs text-slate-500">Acesso irrestrito a configurações e aprovações.</p>
+                  <p className="text-xs text-slate-500 mt-1">Acesso irrestrito ao sistema.</p>
                 </div>
                 <Switch checked={isManager} onCheckedChange={handleToggleManager} />
               </div>
@@ -961,7 +1013,7 @@ export default function CorpoClinico() {
                   <p className="text-xs text-slate-500">Gere a grade do mês automaticamente.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-600">Preencher mês:</span>
+                  <span className="text-xs font-semibold text-slate-600">Gerar grade mensal:</span>
                   <Switch checked={autoGenerateShifts} onCheckedChange={setAutoGenerateShifts} />
                 </div>
               </div>
