@@ -30,26 +30,11 @@ export default function SwapRequestDialog({ open, onClose, onDone, shift, profes
     const target = professionals.find((p) => p.id === targetId);
     
     try {
-      if (base44.entities?.ShiftSwap?.create) {
-        // Remove propriedades que nao existem na tabela do banco para evitar conflitos de schema
-        await base44.entities.ShiftSwap.create({
-          shift_id: shift.id,
-          company_id: companyId,
-          requester_id: myProfessional?.id,
-          requester_name: myProfessional?.name,
-          target_id: targetId || null,
-          target_name: target?.name || '',
-          reason,
-          status: 'pendente',
-          created_date: new Date().toISOString()
-        });
-      } else {
-        // Fallback seguro atualizando diretamente o status do plantão
-        await base44.entities.Shift.update(shift.id, {
-          status: 'pendente',
-          notes: `Solicitação de troca por ${myProfessional?.name || 'Profissional'}. Motivo: ${reason}`
-        });
-      }
+      // Atualiza diretamente o plantão de forma segura e garantida pelo schema existente
+      await base44.entities.Shift.update(shift.id, {
+        status: 'pendente',
+        notes: `Solicitação de troca por ${myProfessional?.name || 'Profissional'}${target ? ` com ${target.name}` : ''}. Motivo: ${reason}`
+      });
 
       onDone();
       onClose();
