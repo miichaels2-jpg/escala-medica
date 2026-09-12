@@ -430,7 +430,7 @@ export default function CentralInteligenciaHospitalar() {
   };
 
   /* ============================================================
-     CARREGAMENTO
+     CARREGAMENTO BLINDADO DE DADOS
      ============================================================ */
 
   const loadData = useCallback(
@@ -444,14 +444,16 @@ export default function CentralInteligenciaHospitalar() {
       setError('');
 
       try {
+        const queryFilter = companyId ? { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) } : {};
+
         const [
           shiftsResponse,
           professionalsResponse,
           sectorsResponse,
         ] = await Promise.all([
-          base44.entities.Shift?.list?.().catch(() => []),
-          base44.entities.Professional?.list?.().catch(() => []),
-          base44.entities.Sector?.list?.().catch(() => []),
+          base44.entities.Shift?.filter ? base44.entities.Shift.filter(queryFilter, '-date', 2000).catch(() => []) : base44.entities.Shift?.list?.().catch(() => []),
+          base44.entities.Professional?.filter ? base44.entities.Professional.filter(queryFilter, '-created_date', 1000).catch(() => []) : base44.entities.Professional?.list?.().catch(() => []),
+          base44.entities.Sector?.filter ? base44.entities.Sector.filter(queryFilter, '-created_date', 200).catch(() => []) : base44.entities.Sector?.list?.().catch(() => []),
         ]);
 
         setShifts(Array.isArray(shiftsResponse) ? shiftsResponse : []);
@@ -474,7 +476,7 @@ export default function CentralInteligenciaHospitalar() {
         setRefreshing(false);
       }
     },
-    []
+    [companyId, unitId]
   );
 
   useEffect(() => {
@@ -862,7 +864,7 @@ export default function CentralInteligenciaHospitalar() {
   }, [riskRows, baseMetrics]);
 
   /* ============================================================
-     FINANCEIRO (Cruzado com o motor de Faturamento real)
+     FINANCEIRO (Cruzado com o faturamento real)
      ============================================================ */
 
   const financialData = useMemo(() => {
@@ -1580,7 +1582,7 @@ export default function CentralInteligenciaHospitalar() {
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       {/* ========================================================
-          PRINT CSS (Ajustado para permitir múltiplas folhas limpas)
+          PRINT CSS (Permite múltiplas folhas limpas)
           ======================================================== */}
 
       <style>{`
@@ -1599,7 +1601,6 @@ export default function CentralInteligenciaHospitalar() {
             padding: 0 !important;
             overflow: visible !important;
             background: #ffffff !important;
-            color: #0f172a !important;
           }
 
           body {
@@ -1870,13 +1871,13 @@ export default function CentralInteligenciaHospitalar() {
             onClick={() =>
               setMobileMenuOpen(false)
             }
-            className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           />
         )}
 
         {/* ======================================================
             CONTEÚDO
-            ====================================================== */}
+            ================================================      */}
 
         <main className="flex-1 min-w-0">
           {/* HEADER */}
@@ -1899,11 +1900,11 @@ export default function CentralInteligenciaHospitalar() {
                       </span>
                     </div>
 
-                    <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white mt-1">
+                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50 mt-1">
                       {activeConfig.label}
                     </h1>
 
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                    <p className="text-sm text-slate-500 mt-1">
                       {activeConfig.description}
                     </p>
                   </div>
@@ -1966,7 +1967,7 @@ export default function CentralInteligenciaHospitalar() {
 
           {/* ====================================================
               FILTROS
-              ==================================================== */}
+              ================================================    */}
 
           <section className="px-5 sm:px-8 pt-6">
             <Card className="p-5 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
@@ -1981,7 +1982,7 @@ export default function CentralInteligenciaHospitalar() {
                       Filtros do relatório
                     </h2>
 
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    <p className="text-xs text-slate-500 mt-0.5">
                       Os indicadores abaixo refletem somente os
                       registros selecionados.
                     </p>
@@ -1999,7 +2000,7 @@ export default function CentralInteligenciaHospitalar() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3">
                 <FilterField
                   label="Data inicial"
                   icon={CalendarDays}
@@ -2147,10 +2148,46 @@ export default function CentralInteligenciaHospitalar() {
                     </SelectContent>
                   </Select>
                 </FilterField>
+
+                <FilterField
+                  label="Categoria"
+                  icon={Users}
+                >
+                  <Select
+                    value={filters.category}
+                    onValueChange={(value) =>
+                      setFilters((current) => ({
+                        ...current,
+                        category: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700">
+                      <SelectValue placeholder="Todas" />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      <SelectItem value="todos">
+                        Todas
+                      </SelectItem>
+
+                      {categories.map(
+                        (category) => (
+                          <SelectItem
+                            key={category}
+                            value={category}
+                          >
+                            {category}
+                          </SelectItem>
+                        )
+                      )}
+                    </SelectContent>
+                  </Select>
+                </FilterField>
               </div>
 
               <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center gap-2 text-xs">
-                <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                <div className="flex items-center gap-2 text-slate-500">
                   <Filter className="w-3.5 h-3.5 text-sky-600" />
                   <span className="font-medium">
                     Filtro aplicado:
@@ -2166,7 +2203,7 @@ export default function CentralInteligenciaHospitalar() {
 
           {/* ====================================================
               ERRO
-              ================================================    */}
+              ==================================================== */}
 
           {error && (
             <section className="px-5 sm:px-8 pt-5">
@@ -2386,7 +2423,7 @@ export default function CentralInteligenciaHospitalar() {
 
       {/* ========================================================
           MODAL DO RELATÓRIO
-          ======================================================== */}
+          ================================================        */}
 
       {reportModalOpen && (
         <ReportPreviewModal
@@ -2476,9 +2513,9 @@ function FilterField({
 }) {
   return (
     <div>
-      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 mb-1.5">
         {Icon && (
-          <Icon className="w-3.5 h-3.5 text-sky-600" />
+          <Icon className="w-3.5 h-3.5" />
         )}
         {label}
       </label>
@@ -2501,7 +2538,7 @@ function KpiCard({
   warning,
 }) {
   return (
-    <Card className="p-5 border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 transition-colors">
+    <Card className="p-5 border-slate-200 dark:border-slate-700 shadow-sm bg-white dark:bg-slate-900 transition-colors">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -2518,10 +2555,10 @@ function KpiCard({
             w-10 h-10 rounded-xl flex items-center justify-center
             ${
               warning
-                ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-600'
+                ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600'
                 : positive
-                ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
             }
           `}
         >
@@ -2529,7 +2566,7 @@ function KpiCard({
         </div>
       </div>
 
-      <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+      <div className="mt-3 text-xs text-slate-500">
         {description}
       </div>
     </Card>
@@ -2552,14 +2589,14 @@ function ExecutiveView({
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <Card className="xl:col-span-2 p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
+        <Card className="xl:col-span-2 p-6 border-slate-200 dark:border-slate-700 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+              <h2 className="text-lg font-bold">
                 Resumo executivo
               </h2>
 
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              <p className="text-sm text-slate-500 mt-1">
                 Indicadores consolidados da operação
               </p>
             </div>
@@ -2600,11 +2637,11 @@ function ExecutiveView({
           </div>
         </Card>
 
-        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
+        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
           <div className="flex items-center gap-2 mb-5">
-            <ShieldCheck className="w-5 h-5 text-slate-700 dark:text-slate-300" />
+            <ShieldCheck className="w-5 h-5 text-slate-700 dark:text-slate-200" />
 
-            <h2 className="font-bold text-slate-900 dark:text-white">
+            <h2 className="font-bold">
               Situação operacional
             </h2>
           </div>
@@ -2653,14 +2690,14 @@ function ExecutiveView({
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
+        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="font-bold text-slate-900 dark:text-white">
+              <h2 className="font-bold">
                 Cobertura por setor
               </h2>
 
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 Menores percentuais aparecem primeiro
               </p>
             </div>
@@ -2686,14 +2723,14 @@ function ExecutiveView({
           </div>
         </Card>
 
-        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
+        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="font-bold text-slate-900 dark:text-white">
+              <h2 className="font-bold">
                 Profissionais por horas
               </h2>
 
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              <p className="text-xs text-slate-500 mt-1">
                 Maior volume de horas no período
               </p>
             </div>
@@ -2711,7 +2748,7 @@ function ExecutiveView({
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm text-slate-900 dark:text-white truncate">
+                    <div className="font-medium text-sm truncate">
                       {row.name}
                     </div>
 
@@ -2720,7 +2757,7 @@ function ExecutiveView({
                     </div>
                   </div>
 
-                  <div className="text-sm font-bold text-slate-900 dark:text-white">
+                  <div className="text-sm font-bold">
                     {formatNumber(
                       row.hours,
                       1
@@ -2741,11 +2778,11 @@ function ExecutiveView({
       </div>
 
       {criticalAlerts.length > 0 && (
-        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
+        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
           <div className="flex items-center gap-2 mb-5">
             <AlertTriangle className="w-5 h-5 text-amber-600" />
 
-            <h2 className="font-bold text-slate-900 dark:text-white">
+            <h2 className="font-bold">
               Alertas de gestão
             </h2>
           </div>
@@ -2757,11 +2794,11 @@ function ExecutiveView({
                   key={index}
                   className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
                 >
-                  <div className="font-semibold text-sm text-slate-900 dark:text-white">
+                  <div className="font-semibold text-sm">
                     {alert.title}
                   </div>
 
-                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  <div className="text-xs text-slate-500 mt-1">
                     {alert.description}
                   </div>
                 </div>
@@ -2783,12 +2820,12 @@ function ExecutiveMetric({
   value,
 }) {
   return (
-    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 p-4">
-      <div className="text-xs text-slate-500 dark:text-slate-400">
+    <div className="rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 p-4">
+      <div className="text-xs text-slate-500">
         {label}
       </div>
 
-      <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
+      <div className="text-xl font-bold mt-1">
         {value}
       </div>
     </div>
@@ -2806,11 +2843,11 @@ function StatusLine({
 }) {
   const styles = {
     success:
-      'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+      'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300',
     warning:
-      'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+      'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
     danger:
-      'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800',
+      'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300',
   };
 
   return (
@@ -2820,7 +2857,7 @@ function StatusLine({
       </span>
 
       <span
-        className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${styles[type]}`}
+        className={`px-2.5 py-1 rounded-lg text-xs font-bold ${styles[type]}`}
       >
         {formatNumber(value)}
       </span>
@@ -2844,7 +2881,7 @@ function CoverageBar({
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5 text-xs">
-        <span className="font-semibold text-slate-700 dark:text-slate-300 truncate pr-3">
+        <span className="font-medium text-slate-700 dark:text-slate-300 truncate pr-3">
           {label}
         </span>
 
@@ -2855,7 +2892,7 @@ function CoverageBar({
 
       <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
         <div
-          className="h-full rounded-full bg-sky-600 transition-all"
+          className="h-full rounded-full bg-slate-800 dark:bg-slate-200 transition-all"
           style={{
             width: `${numeric}%`,
           }}
@@ -2878,7 +2915,7 @@ function ProductivityView({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-800 text-left text-slate-500">
+            <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-500">
               <th className="py-3 pr-4">
                 Profissional
               </th>
@@ -2955,7 +2992,7 @@ function ProductivityView({
 
           {rows.length > 0 && (
             <tfoot>
-              <tr className="bg-slate-50 dark:bg-slate-800/80 font-bold text-slate-900 dark:text-white">
+              <tr className="bg-slate-50 dark:bg-slate-800 font-bold text-slate-900 dark:text-white">
                 <td className="py-3">
                   TOTAL
                 </td>
@@ -3040,7 +3077,7 @@ function CoverageView({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-800 text-left text-slate-500">
+              <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-500">
                 <th className="py-3">
                   Setor
                 </th>
@@ -3151,26 +3188,26 @@ function RiskView({
             regular: {
               label: 'Regular',
               className:
-                'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
+                'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-100 dark:border-emerald-800',
             },
 
             atencao: {
               label: 'Atenção',
               className:
-                'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+                'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-100',
             },
 
             critico: {
               label: 'Crítico',
               className:
-                'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800',
+                'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-100',
             },
           }[row.level];
 
           return (
             <div
               key={row.name}
-              className="flex flex-col md:flex-row md:items-center gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
+              className="flex flex-col md:flex-row md:items-center gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
             >
               <div className="flex-1">
                 <div className="font-semibold text-slate-900 dark:text-white">
@@ -3272,7 +3309,7 @@ function FinancialView({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-800 text-left text-slate-500">
+              <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-500">
                 <th className="py-3">
                   Profissional
                 </th>
@@ -3300,7 +3337,7 @@ function FinancialView({
                 (row, index) => (
                   <tr
                     key={`${row.professional}-${index}`}
-                    className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50"
+                    className="border-b border-slate-100 dark:border-slate-800"
                   >
                     <td className="py-3 font-medium text-slate-900 dark:text-white">
                       {row.professional}
@@ -3365,7 +3402,7 @@ function CancellationView({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-800 text-left text-slate-500">
+            <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-500">
               <th className="py-3">
                 Data
               </th>
@@ -3388,7 +3425,7 @@ function CancellationView({
             {rows.map((row, index) => (
               <tr
                 key={`${row.date}-${index}`}
-                className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50"
+                className="border-b border-slate-100 dark:border-slate-800"
               >
                 <td className="py-3">
                   {formatDateBR(row.date)}
@@ -3475,14 +3512,14 @@ function GovernanceView({
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
           <div className="flex items-center gap-3 mb-5">
             <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-              <FileCheck2 className="w-5 h-5 text-slate-700 dark:text-slate-300" />
+              <FileCheck2 className="w-5 h-5 text-slate-700 dark:text-slate-200" />
             </div>
 
             <div>
-              <h2 className="font-bold text-slate-900 dark:text-white">
+              <h2 className="font-bold">
                 Governança do documento
               </h2>
 
@@ -3516,8 +3553,8 @@ function GovernanceView({
                   transition-all
                   ${
                     status === option
-                      ? 'border-sky-600 bg-sky-600 text-white font-bold shadow-md'
-                      : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200'
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50'
                   }
                 `}
               >
@@ -3543,14 +3580,14 @@ function GovernanceView({
           </Button>
         </Card>
 
-        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
           <div className="flex items-center gap-3 mb-5">
             <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-              <Hash className="w-5 h-5 text-slate-700 dark:text-slate-300" />
+              <Hash className="w-5 h-5 text-slate-700 dark:text-slate-200" />
             </div>
 
             <div>
-              <h2 className="font-bold text-slate-900 dark:text-white">
+              <h2 className="font-bold">
                 Integridade do relatório
               </h2>
 
@@ -3573,7 +3610,7 @@ function GovernanceView({
               SHA-256
             </div>
 
-            <div className="text-xs font-mono text-sky-400 mt-1 break-all leading-relaxed">
+            <div className="text-xs font-mono text-slate-300 mt-1 break-all leading-relaxed">
               {hash ||
                 'Hash ainda não calculado'}
             </div>
@@ -3581,7 +3618,7 @@ function GovernanceView({
 
           <Button
             type="button"
-            className="w-full mt-4 gap-2 bg-sky-600 hover:bg-sky-500 text-white font-bold"
+            className="w-full mt-4 gap-2"
             onClick={onGenerateHash}
             disabled={hashLoading}
           >
@@ -3606,10 +3643,10 @@ function GovernanceView({
         </Card>
       </div>
 
-      <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+      <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h2 className="font-bold text-slate-900 dark:text-white">
+            <h2 className="font-bold">
               Trilha de auditoria
             </h2>
 
@@ -3625,15 +3662,15 @@ function GovernanceView({
           {auditEvents.map((event) => (
             <div
               key={event.id}
-              className="flex gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800"
+              className="flex gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100"
             >
-              <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0">
                 <Activity className="w-4 h-4 text-slate-500" />
               </div>
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  <span className="text-xs font-bold">
                     {event.type}
                   </span>
 
@@ -3642,7 +3679,7 @@ function GovernanceView({
                   </span>
                 </div>
 
-                <div className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                <div className="text-xs text-slate-600 mt-1">
                   {event.description}
                 </div>
               </div>
@@ -3672,20 +3709,20 @@ function GovernanceCard({
   description,
 }) {
   return (
-    <Card className="p-5 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+    <Card className="p-5 border-slate-200 dark:border-slate-700 shadow-sm">
       <div className="flex items-start justify-between">
         <div>
           <div className="text-xs uppercase tracking-wide text-slate-400 font-semibold">
             {title}
           </div>
 
-          <div className="text-xl font-bold text-slate-900 dark:text-white mt-2">
+          <div className="text-xl font-bold mt-2">
             {value}
           </div>
         </div>
 
-        <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-slate-800 flex items-center justify-center text-sky-600 dark:text-sky-400">
-          <Icon className="w-5 h-5" />
+        <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+          <Icon className="w-5 h-5 text-slate-700 dark:text-slate-200" />
         </div>
       </div>
 
@@ -3706,14 +3743,14 @@ function ReportCard({
   children,
 }) {
   return (
-    <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden transition-colors">
+    <Card className="border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
       <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800">
-        <h2 className="font-bold text-base text-slate-900 dark:text-white">
+        <h2 className="font-bold text-lg">
           {title}
         </h2>
 
         {description && (
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-500 mt-1">
             {description}
           </p>
         )}
@@ -3747,443 +3784,6 @@ function EmptyState({
       <p className="text-xs text-slate-500 mt-1 max-w-sm">
         {description}
       </p>
-    </div>
-  );
-}
-
-/* ============================================================
-   REPORT PREVIEW MODAL (Imressão A4 em múltiplas folhas)
-   ============================================================ */
-
-function ReportPreviewModal({
-  reportPayload,
-  reportHash,
-  hashLoading,
-  reportStatus,
-  reportVersion,
-  onClose,
-  onPrint,
-  onExport,
-  onStatusChange,
-  onNewVersion,
-}) {
-  const generatedAt =
-    new Date().toLocaleString('pt-BR');
-
-  return (
-    <div
-      className="report-print-overlay fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-5"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Pré-visualização do relatório"
-    >
-      <div className="report-print-shell w-full h-full max-w-[1500px] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-        {/* TOOLBAR */}
-        <div className="report-no-print h-auto min-h-[68px] bg-slate-950 text-white px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
-              <FileCheck2 className="w-5 h-5" />
-            </div>
-
-            <div>
-              <div className="font-semibold text-sm">
-                Pré-visualização oficial
-              </div>
-
-              <div className="text-[11px] text-slate-400">
-                {reportPayload.reportId} • v
-                {reportVersion}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={reportStatus}
-              onValueChange={onStatusChange}
-            >
-              <SelectTrigger className="w-[145px] bg-white/10 border-white/10 text-white">
-                <SelectValue />
-              </SelectTrigger>
-
-              <SelectContent>
-                <SelectItem value="Rascunho">
-                  Rascunho
-                </SelectItem>
-
-                <SelectItem value="Em revisão">
-                  Em revisão
-                </SelectItem>
-
-                <SelectItem value="Aprovado">
-                  Aprovado
-                </SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onExport}
-              className="gap-2 bg-transparent text-white border-white/20 hover:bg-white/10 hover:text-white"
-            >
-              <Download className="w-4 h-4" />
-              CSV
-            </Button>
-
-            <Button
-              type="button"
-              onClick={onPrint}
-              className="gap-2 bg-sky-600 hover:bg-sky-500 text-white font-bold"
-            >
-              <Printer className="w-4 h-4" />
-              Imprimir / PDF
-            </Button>
-
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={onClose}
-              className="text-white hover:bg-white/10 hover:text-white"
-              aria-label="Fechar"
-            >
-              <X className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
-
-        {/* REPORT SCROLL */}
-        <div className="report-print-scroll flex-1 overflow-auto bg-slate-100 dark:bg-slate-800 p-3 sm:p-8">
-          <div
-            id="report-print-area"
-            className="mx-auto w-[210mm] min-h-[297mm] bg-white shadow-xl px-[14mm] py-[13mm] text-slate-900"
-          >
-            {/* CABEÇALHO */}
-            <div className="report-avoid-break">
-              <div className="flex items-start justify-between gap-8 border-b-2 border-slate-950 pb-5">
-                <div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-slate-950 flex items-center justify-center">
-                      <Activity className="w-5 h-5 text-white" />
-                    </div>
-
-                    <div>
-                      <div className="text-[10px] font-bold tracking-[0.2em] uppercase">
-                        Central de Inteligência
-                      </div>
-
-                      <div className="text-[10px] tracking-[0.1em] uppercase text-slate-500">
-                        Hospitalar
-                      </div>
-                    </div>
-                  </div>
-
-                  <h1 className="text-2xl font-bold mt-7">
-                    {reportPayload.title}
-                  </h1>
-
-                  <p className="text-sm text-slate-500 mt-1">
-                    Documento gerencial consolidado
-                  </p>
-                </div>
-
-                <div className="text-right text-[10px] text-slate-500 leading-relaxed">
-                  <div>
-                    <strong className="text-slate-700">
-                      ID:
-                    </strong>{' '}
-                    {reportPayload.reportId}
-                  </div>
-
-                  <div>
-                    <strong className="text-slate-700">
-                      Versão:
-                    </strong>{' '}
-                    {reportVersion}
-                  </div>
-
-                  <div>
-                    <strong className="text-slate-700">
-                      Status:
-                    </strong>{' '}
-                    {reportStatus}
-                  </div>
-
-                  <div>
-                    <strong className="text-slate-700">
-                      Emissão:
-                    </strong>{' '}
-                    {generatedAt}
-                  </div>
-                </div>
-              </div>
-
-              {/* METADADOS */}
-              <div className="grid grid-cols-2 gap-x-8 gap-y-3 mt-6 p-4 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                <div>
-                  <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">
-                    Instituição / Empresa
-                  </div>
-
-                  <div className="font-medium mt-1">
-                    {reportPayload.companyId ||
-                      'Não informado'}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">
-                    Unidade
-                  </div>
-
-                  <div className="font-medium mt-1">
-                    {reportPayload.unitId ||
-                      'Não informado'}
-                  </div>
-                </div>
-
-                <div className="col-span-2">
-                  <div className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">
-                    Filtros aplicados
-                  </div>
-
-                  <div className="font-medium mt-1">
-                    {reportPayload.filtersLabel}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* KPIs */}
-            <div className="mt-7 report-avoid-break">
-              <div className="text-xs uppercase tracking-[0.15em] font-bold text-slate-400 mb-3">
-                Indicadores principais
-              </div>
-
-              <div className="grid grid-cols-4 gap-3">
-                <PrintKpi
-                  label="Registros"
-                  value={formatNumber(
-                    reportPayload.kpis.total
-                  )}
-                />
-
-                <PrintKpi
-                  label="Confirmados"
-                  value={formatNumber(
-                    reportPayload.kpis.confirmed
-                  )}
-                />
-
-                <PrintKpi
-                  label="Horas"
-                  value={formatNumber(
-                    reportPayload.kpis.confirmedHours,
-                    1
-                  )}
-                />
-
-                <PrintKpi
-                  label="Cobertura"
-                  value={`${formatNumber(
-                    reportPayload.kpis.coverage,
-                    1
-                  )}%`}
-                />
-              </div>
-            </div>
-
-            {/* TABELA */}
-            <div className="mt-8">
-              <div className="text-xs uppercase tracking-[0.15em] font-bold text-slate-400 mb-3">
-                Dados do relatório
-              </div>
-
-              {reportPayload.rows.length > 0 ? (
-                <table className="report-print-table w-full text-[9px] border-collapse">
-                  <thead>
-                    <tr className="bg-slate-950 text-white">
-                      {reportPayload.columns.map(
-                        (column) => (
-                          <th
-                            key={column}
-                            className="px-2 py-2 text-left font-bold border border-slate-950"
-                          >
-                            {column}
-                          </th>
-                        )
-                      )}
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {reportPayload.rows.map(
-                      (row, rowIndex) => (
-                        <tr
-                          key={rowIndex}
-                          className={
-                            rowIndex % 2 === 0
-                              ? 'bg-white'
-                              : 'bg-slate-50'
-                          }
-                        >
-                          {row.map(
-                            (value, cellIndex) => (
-                              <td
-                                key={cellIndex}
-                                className="px-2 py-2 border border-slate-200 align-top"
-                              >
-                                {typeof value ===
-                                'number'
-                                  ? formatNumber(
-                                      value,
-                                      Number.isInteger(
-                                        value
-                                      )
-                                        ? 0
-                                        : 2
-                                    )
-                                  : value}
-                              </td>
-                            )
-                          )}
-                        </tr>
-                      )
-                    )}
-                  </tbody>
-
-                  {reportPayload.totalsRow && (
-                    <tfoot>
-                      <tr className="font-bold bg-slate-100">
-                        {reportPayload.totalsRow.map(
-                          (value, index) => (
-                            <td
-                              key={index}
-                              className="px-2 py-2 border border-slate-300"
-                            >
-                              {typeof value ===
-                              'number'
-                                ? formatNumber(
-                                    value,
-                                    Number.isInteger(
-                                      value
-                                    )
-                                      ? 0
-                                      : 2
-                                  )
-                                : value}
-                            </td>
-                          )
-                        )}
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              ) : (
-                <div className="border border-slate-200 rounded-lg p-10 text-center text-xs text-slate-500">
-                  Não existem registros para os critérios
-                  selecionados.
-                </div>
-              )}
-            </div>
-
-            {/* INTEGRIDADE */}
-            <div className="mt-8 border-t border-slate-200 pt-5 report-avoid-break">
-              <div className="grid grid-cols-2 gap-5">
-                <div>
-                  <div className="text-[9px] uppercase tracking-wider font-bold text-slate-400">
-                    Integridade do documento
-                  </div>
-
-                  <div className="font-mono text-[8px] mt-2 break-all leading-relaxed">
-                    {hashLoading
-                      ? 'Calculando SHA-256...'
-                      : reportHash ||
-                        'Hash não calculado'}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-[9px] uppercase tracking-wider font-bold text-slate-400">
-                    Governança
-                  </div>
-
-                  <div className="text-[10px] mt-2">
-                    Status atual:{' '}
-                    <strong>
-                      {reportStatus}
-                    </strong>
-                  </div>
-
-                  <div className="text-[10px] mt-1">
-                    Versão:{' '}
-                    <strong>
-                      {reportVersion}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ASSINATURA */}
-            <div className="mt-10 grid grid-cols-2 gap-10 report-avoid-break">
-              <div className="pt-10 border-t border-slate-400 text-center">
-                <div className="text-xs font-semibold">
-                  Responsável pela emissão
-                </div>
-
-                <div className="text-[10px] text-slate-400 mt-1">
-                  Nome / cargo
-                </div>
-              </div>
-
-              <div className="pt-10 border-t border-slate-400 text-center">
-                <div className="text-xs font-semibold">
-                  Revisão / aprovação
-                </div>
-
-                <div className="text-[10px] text-slate-400 mt-1">
-                  Nome / cargo
-                </div>
-              </div>
-            </div>
-
-            {/* RODAPÉ */}
-            <div className="mt-12 pt-4 border-t border-slate-200 flex justify-between gap-6 text-[8px] text-slate-400">
-              <div>
-                Documento gerado pela Central de Inteligência
-                Hospitalar.
-              </div>
-
-              <div className="text-right">
-                {reportPayload.reportId} • v
-                {reportVersion}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   PRINT KPI
-   ============================================================ */
-
-function PrintKpi({
-  label,
-  value,
-}) {
-  return (
-    <div className="border border-slate-200 rounded-lg p-3">
-      <div className="text-[8px] uppercase tracking-wider text-slate-400 font-bold">
-        {label}
-      </div>
-
-      <div className="text-base font-bold mt-1">
-        {value}
-      </div>
     </div>
   );
 }
