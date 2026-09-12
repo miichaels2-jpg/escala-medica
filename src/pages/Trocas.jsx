@@ -12,16 +12,48 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from '@/components/ui/dialog';
 import {
-  Repeat, CheckCircle2, XCircle, Clock, Plus, Search,
-  Calendar, Stethoscope, ArrowRight, ShieldAlert, Loader2
+  Repeat, 
+  CheckCircle2, 
+  XCircle, 
+  Clock, 
+  Plus, 
+  Search,
+  Calendar, 
+  Stethoscope, 
+  ArrowRight, 
+  ShieldAlert, 
+  Loader2,
+  Globe,
+  Inbox,
+  Send,
+  ShieldCheck,
+  MessageCircle,
+  Building2,
+  UserCheck,
+  Handshake
 } from 'lucide-react';
 
 const statusBadge = {
-  pendente: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
-  aprovada: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
-  rejeitada: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800',
+  pendente: 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30',
+  aprovada: 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/30',
+  rejeitada: 'bg-red-500/10 text-red-800 dark:text-red-300 border-red-500/30',
   cancelada: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
 };
+
+function toTitleCase(str) {
+  if (!str) return '';
+  const acr = ['UTI', 'UCO', 'PA', 'PS', 'CRM', 'COREN'];
+  return str
+    .toLowerCase()
+    .split(' ')
+    .map((word) => {
+      const upper = word.toUpperCase();
+      if (acr.includes(upper)) return upper;
+      if (['de', 'da', 'do', 'das', 'dos', 'e'].includes(word)) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+}
 
 export default function Trocas() {
   const { user, company, loading } = useAppData();
@@ -32,51 +64,54 @@ export default function Trocas() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
+  
+  // Abas organizadas
+  const [activeTab, setActiveTab] = useState('received'); // 'received', 'sent', 'mural', 'all'
 
-  // Formulário de nova troca
+  // Formulário de Solicitação
+  const [swapType, setSwapType] = useState('cessao'); // 'cessao' (doação/mão única), 'direta' (1 por 1), 'mural' (aberta)
   const [selectedShiftId, setSelectedShiftId] = useState('');
   const [targetProfessionalId, setTargetProfessionalId] = useState('');
   const [swapReason, setSwapReason] = useState('');
 
   const isAdmin = user?.role === 'admin';
   const isManager = isAdmin || user?.data?.app_role === 'manager' || user?.data?.app_role === 'gestor';
-  const companyId = user?.data?.company_id || company?.id;
-  const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id;
-  const currentProfessionalId = user?.data?.professional_id;
+  const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
+  const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id || 'unit_h1';
+  
+  // Localiza o perfil profissional do usuário logado
+  const myProfessional = useMemo(() => {
+    const uId = user?.id;
+    const uEmail = user?.email;
+    const uName = user?.full_name;
+    return (professionals || []).find((p) => p.user_id === uId || (p.email && p.email === uEmail) || p.name === uName);
+  }, [professionals, user]);
+
+  const currentProfessionalId = myProfessional?.id || user?.data?.professional_id;
 
   const loadData = async () => {
     if (!companyId) return;
     setLoadingData(true);
     try {
-      const filterBase = { company_id: companyId };
-      if (unitId) filterBase.unit_id = unitId;
+      const filterBase = { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) };
 
       const [allSwaps, allProfessionals, allShifts] = await Promise.all([
-        base44.entities.ShiftSwap.filter(filterBase, '-created_date', 300).catch(() => []),
-        base44.entities.Professional.filter(filterBase, '-created_date', 300).catch(() => []),
-        base44.entities.Shift.filter(filterBase, '-date', 400).catch(() => [])
+        base44.entities.ShiftSwap.filter(filterBase, '-created_date', 500).catch(() => []),
+        base44.entities.Professional.filter(filterBase, '-created_date', 400).catch(() => []),
+        base44.entities.Shift.filter(filterBase, '-date', 600).catch(() => [])
       ]);
 
-      setProfessionals(allProfessionals);
+      setProfessionals(allProfessionals || []);
+      setSwaps(allSwaps || []);
 
-      // Regra 1: Visibilidade estrita
-      // - Se for gestor: visualiza todas as trocas
-      // - Se for profissional comum: somente trocas solicitadas por ele OU direcionadas a ele
+      // Plantões elegíveis do usuário logado para solicitar troca
       if (isManager) {
-        setSwaps(allSwaps);
+        setMyShifts(allShifts || []);
       } else {
-        const filteredSwaps = allSwaps.filter((s) => 
-          String(s.requester_professional_id) === String(currentProfessionalId) ||
-          String(s.target_professional_id) === String(currentProfessionalId)
-        );
-        setSwaps(filteredSwaps);
-      }
-
-      // Plantões disponíveis para o usuário trocar
-      if (isManager) {
-        setMyShifts(allShifts);
-      } else {
-        setMyShifts(allShifts.filter((sh) => String(sh.professional_id) === String(currentProfessionalId)));
+        setMyShifts((allShifts || []).filter((sh) => 
+          String(sh.professional_id) === String(currentProfessionalId) || 
+          sh.professional_name === myProfessional?.name
+        ));
       }
     } catch (err) {
       console.error('Erro ao carregar trocas:', err);
@@ -89,19 +124,18 @@ export default function Trocas() {
     if (!loading) loadData();
   }, [loading, companyId, unitId, currentProfessionalId]);
 
-  // Identifica o plantão escolhido no formulário
+  // Plantão atualmente selecionado no modal
   const currentSelectedShift = useMemo(() => {
     return myShifts.find((sh) => String(sh.id) === String(selectedShiftId)) || null;
   }, [myShifts, selectedShiftId]);
 
-  // Identifica o profissional dono do plantão selecionado
+  // Profissional dono do plantão
   const requesterProfessional = useMemo(() => {
-    if (!currentSelectedShift) return null;
-    return professionals.find((p) => String(p.id) === String(currentSelectedShift.professional_id)) || null;
-  }, [currentSelectedShift, professionals]);
+    if (!currentSelectedShift) return myProfessional;
+    return professionals.find((p) => String(p.id) === String(currentSelectedShift.professional_id)) || myProfessional;
+  }, [currentSelectedShift, professionals, myProfessional]);
 
-  // Regra 2: Amarrar estritamente por especialidade
-  // Só lista profissionais da mesma especialidade que NÃO sejam o próprio solicitante
+  // Profissionais elegíveis (Amarração estrita por especialidade)
   const eligibleProfessionals = useMemo(() => {
     if (!requesterProfessional) return [];
     
@@ -115,25 +149,28 @@ export default function Trocas() {
       const pSpecialty = (p.specialty || '').trim().toLowerCase();
       const pCategory = (p.category || '').trim().toLowerCase();
 
-      // Precisa ter a mesma especialidade cadastrada
-      if (targetSpecialty) {
-        return pSpecialty === targetSpecialty;
-      }
-
-      // Se não tiver especialidade explícita, amarra pela categoria (ex: enfermeiro para enfermeiro)
+      if (targetSpecialty) return pSpecialty === targetSpecialty;
       return pCategory === targetCategory;
     });
   }, [requesterProfessional, professionals]);
 
+  // Criação da Solicitação de Troca
   const handleCreateSwap = async (e) => {
     e.preventDefault();
-    if (!currentSelectedShift || !targetProfessionalId) {
-      alert('Selecione o plantão e o profissional substituto.');
+    if (!currentSelectedShift) {
+      alert('Por favor, selecione o plantão que deseja passar.');
       return;
     }
 
-    const targetProf = professionals.find((p) => String(p.id) === String(targetProfessionalId));
-    if (!targetProf) return;
+    const isMural = swapType === 'mural';
+    if (!isMural && !targetProfessionalId) {
+      alert('Selecione o profissional que assumirá o plantão.');
+      return;
+    }
+
+    const targetProf = !isMural 
+      ? professionals.find((p) => String(p.id) === String(targetProfessionalId)) 
+      : null;
 
     setSubmitting(true);
     try {
@@ -144,12 +181,13 @@ export default function Trocas() {
         shift_date: currentSelectedShift.date,
         shift_time: `${currentSelectedShift.start_time || '07:00'} - ${currentSelectedShift.end_time || '19:00'}`,
         sector_name: currentSelectedShift.sector_name || 'Geral',
-        requester_professional_id: requesterProfessional?.id,
-        requester_name: requesterProfessional?.name,
-        requester_specialty: requesterProfessional?.specialty || requesterProfessional?.category,
-        target_professional_id: targetProf.id,
-        target_name: targetProf.name,
-        target_specialty: targetProf.specialty || targetProf.category,
+        requester_professional_id: requesterProfessional?.id || currentProfessionalId,
+        requester_name: requesterProfessional?.name || user?.full_name,
+        requester_specialty: requesterProfessional?.specialty || requesterProfessional?.category || 'Clínica Geral',
+        target_professional_id: isMural ? null : targetProf?.id,
+        target_name: isMural ? 'Mural Aberto (Qualquer Colega)' : targetProf?.name,
+        target_specialty: isMural ? requesterProfessional?.specialty : (targetProf?.specialty || targetProf?.category),
+        swap_type: swapType,
         reason: swapReason.trim(),
         status: 'pendente'
       });
@@ -158,6 +196,7 @@ export default function Trocas() {
       setSelectedShiftId('');
       setTargetProfessionalId('');
       setSwapReason('');
+      setSwapType('cessao');
       await loadData();
     } catch (err) {
       alert(err.message || 'Não foi possível solicitar a troca.');
@@ -166,19 +205,20 @@ export default function Trocas() {
     }
   };
 
+  // Aceitar / Aprovar / Rejeitar
   const handleUpdateStatus = async (swap, newStatus) => {
-    const actionLabel = newStatus === 'aprovada' ? 'aprovar' : 'rejeitar';
+    const actionLabel = newStatus === 'aprovada' ? 'aprovar e homologar' : 'rejeitar';
     if (!confirm(`Deseja realmente ${actionLabel} esta solicitação de troca?`)) return;
 
     try {
       await base44.entities.ShiftSwap.update(swap.id, { status: newStatus });
 
-      // Se a troca for aprovada, atualiza o plantão na escala com o novo profissional
+      // Se a troca for aprovada, atualiza o plantão oficial na escala na hora!
       if (newStatus === 'aprovada' && swap.shift_id) {
         await base44.entities.Shift.update(swap.shift_id, {
           professional_id: swap.target_professional_id,
           professional_name: swap.target_name,
-          notes: `Troca realizada com ${swap.requester_name}`
+          notes: `Plantão transferido de ${swap.requester_name} via módulo de Trocas`
         });
       }
 
@@ -188,236 +228,481 @@ export default function Trocas() {
     }
   };
 
-  const filteredSwaps = useMemo(() => {
+  // Candidatar-se / Assumir Plantão do Mural Aberto
+  const handleClaimMuralShift = async (swap) => {
+    if (!myProfessional) {
+      alert('Você precisa ter um perfil profissional vinculado para assumir este plantão.');
+      return;
+    }
+
+    if (!confirm(`Confirmar interesse em assumir o plantão de ${swap.requester_name} em ${swap.shift_date}?`)) return;
+
+    try {
+      await base44.entities.ShiftSwap.update(swap.id, {
+        target_professional_id: myProfessional.id,
+        target_name: myProfessional.name,
+        target_specialty: myProfessional.specialty || myProfessional.category,
+        status: isManager ? 'aprovada' : 'pendente' // Se o gestor assumir, já aprova; senão, vai para validação
+      });
+
+      if (isManager && swap.shift_id) {
+        await base44.entities.Shift.update(swap.shift_id, {
+          professional_id: myProfessional.id,
+          professional_name: myProfessional.name,
+          notes: `Assumido do Mural por ${myProfessional.name}`
+        });
+      }
+
+      await loadData();
+      alert('Plantão assumido com sucesso!');
+    } catch (err) {
+      alert(err.message || 'Erro ao assumir plantão.');
+    }
+  };
+
+  // Notificar no WhatsApp
+  const handleNotifyWhatsApp = (swap, e) => {
+    if (e) e.stopPropagation();
+    const prof = professionals.find((p) => String(p.id) === String(swap.target_professional_id));
+    const phone = prof?.phone?.replace(/\D/g, '');
+    const dateFmt = swap.shift_date ? swap.shift_date.split('-').reverse().join('/') : '';
+    
+    const text = encodeURIComponent(
+      `Olá, Dr(a). ${swap.target_name || ''}!\n\nO Dr(a). *${swap.requester_name}* solicitou a transferência do plantão:\n🏥 Unidade: *${company?.name || 'Hospital'}*\n📅 Data: *${dateFmt}*\n⏰ Horário: *${swap.shift_time}*\n📍 Setor: *${swap.sector_name}*\n\nPor favor, acesse o sistema ScaleMedic para aceitar e confirmar a assunção do turno. Obrigado!`
+    );
+
+    if (phone) {
+      window.open(`https://wa.me/55${phone}?text=${text}`, '_blank');
+    } else {
+      window.open(`https://wa.me/?text=${text}`, '_blank');
+    }
+  };
+
+  // Filtro de Busca Geral
+  const searchedSwaps = useMemo(() => {
     return swaps.filter((s) => {
       if (!search) return true;
       const term = search.toLowerCase();
       return (
         (s.requester_name || '').toLowerCase().includes(term) ||
         (s.target_name || '').toLowerCase().includes(term) ||
-        (s.requester_specialty || '').toLowerCase().includes(term) ||
         (s.sector_name || '').toLowerCase().includes(term)
       );
     });
   }, [swaps, search]);
 
+  // Separação por Abas
+  const tabReceived = useMemo(() => {
+    return searchedSwaps.filter((s) => 
+      String(s.target_professional_id) === String(currentProfessionalId) && s.status === 'pendente'
+    );
+  }, [searchedSwaps, currentProfessionalId]);
+
+  const tabSent = useMemo(() => {
+    return searchedSwaps.filter((s) => 
+      String(s.requester_professional_id) === String(currentProfessionalId)
+    );
+  }, [searchedSwaps, currentProfessionalId]);
+
+  const tabMural = useMemo(() => {
+    return searchedSwaps.filter((s) => 
+      !s.target_professional_id || s.swap_type === 'mural' || s.target_name?.toLowerCase().includes('mural')
+    );
+  }, [searchedSwaps]);
+
+  const activeSwapsList = useMemo(() => {
+    if (activeTab === 'received') return isManager ? searchedSwaps.filter((s) => s.status === 'pendente') : tabReceived;
+    if (activeTab === 'sent') return tabSent;
+    if (activeTab === 'mural') return tabMural;
+    return searchedSwaps;
+  }, [activeTab, isManager, searchedSwaps, tabReceived, tabSent, tabMural]);
+
   return (
     <div className="p-4 md:p-8 space-y-6">
-      {/* Cabeçalho */}
-      <div className="rounded-2xl border border-sky-200 dark:border-sky-900/60 bg-gradient-to-r from-sky-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-900/90 dark:to-sky-950/40 p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-sky-600 flex items-center justify-center text-white shadow-sm">
-              <Repeat className="w-6 h-6" />
+      {/* Banner Principal */}
+      <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-xl">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-sky-400">
+              <Repeat className="w-4 h-4" /> Gestão de Cobertura Hospitalar
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-sky-700 dark:text-sky-400 font-semibold">Operação médica</p>
-              <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Trocas de plantão</h2>
-            </div>
+            <h2 className="mt-2 text-3xl font-black tracking-tight">Trocas & Cessões de Plantão</h2>
+            <p className="mt-1 max-w-2xl text-sm text-slate-300">
+              Substituições diretas com amarração de especialidade, doações para o mural aberto e validação médica.
+            </p>
           </div>
 
-          <Button 
-            onClick={() => setDialogOpen(true)} 
-            className="gap-2 bg-sky-600 hover:bg-sky-700 text-white"
-          >
-            <Plus className="w-4 h-4" /> Solicitar troca
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button 
+              onClick={() => setDialogOpen(true)} 
+              className="bg-sky-600 hover:bg-sky-500 text-white font-bold gap-2 text-xs h-10 px-5 rounded-xl shadow-lg shadow-sky-950"
+            >
+              <Plus className="w-4 h-4" /> Nova Solicitação de Troca
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Barra de Busca e Filtro */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative max-w-md w-full">
+      {/* ABAS INTELIGENTES DE NAVEGAÇÃO */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-2">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <button
+            onClick={() => setActiveTab('received')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'received'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+            }`}
+          >
+            <Inbox className="w-3.5 h-3.5" />
+            <span>{isManager ? 'Pendentes de Homologação' : 'Pedidos para Mim'}</span>
+            {(isManager ? searchedSwaps.filter((s) => s.status === 'pendente').length : tabReceived.length) > 0 && (
+              <span className="w-5 h-5 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black flex items-center justify-center">
+                {isManager ? searchedSwaps.filter((s) => s.status === 'pendente').length : tabReceived.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('sent')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'sent'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+            }`}
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>Minhas Solicitações</span>
+            <span className="text-[10px] opacity-70">({tabSent.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('mural')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'mural'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5 text-sky-600" />
+            <span>Mural de Oportunidades</span>
+            {tabMural.length > 0 && (
+              <span className="w-5 h-5 rounded-full bg-sky-500 text-white text-[10px] font-black flex items-center justify-center">
+                {tabMural.length}
+              </span>
+            )}
+          </button>
+
+          {isManager && (
+            <button
+              onClick={() => setActiveTab('all')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'all'
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Histórico Completo</span>
+            </button>
+          )}
+        </div>
+
+        <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
-            placeholder="Buscar por profissional, especialidade ou setor..."
+            placeholder="Filtrar por médico ou setor..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            className="pl-9 h-9 text-xs"
           />
         </div>
       </div>
 
       {/* Listagem de Trocas */}
       {loadingData ? (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex items-center justify-center py-16">
           <Loader2 className="w-8 h-8 text-sky-600 animate-spin" />
         </div>
-      ) : filteredSwaps.length === 0 ? (
-        <Card className="p-12 text-center border-slate-200 dark:border-slate-800 dark:bg-slate-900/60">
-          <p className="text-slate-400 dark:text-slate-500 text-sm">
-            Nenhuma solicitação de troca pendente para o seu perfil.
+      ) : activeSwapsList.length === 0 ? (
+        <Card className="p-16 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-2">
+          <Repeat className="w-10 h-10 text-slate-300 mx-auto" />
+          <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">Nenhuma troca nesta categoria</h3>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            {activeTab === 'received' && 'Você não possui nenhum pedido de troca pendente de resposta.'}
+            {activeTab === 'sent' && 'Você ainda não solicitou nenhuma troca ou cessão de plantão.'}
+            {activeTab === 'mural' && 'Nenhum plantão em aberto no mural neste momento.'}
+            {activeTab === 'all' && 'Nenhum registro de troca localizado com este filtro.'}
           </p>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredSwaps.map((swap) => {
+          {activeSwapsList.map((swap) => {
             const isTarget = String(swap.target_professional_id) === String(currentProfessionalId);
+            const isRequester = String(swap.requester_professional_id) === String(currentProfessionalId);
+            const isMuralCard = !swap.target_professional_id || swap.swap_type === 'mural';
             const canAction = isManager || isTarget;
 
             return (
-              <Card key={swap.id} className="p-5 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    <Calendar className="w-4 h-4 text-sky-600" />
-                    <span>{swap.shift_date ? new Date(swap.shift_date + 'T00:00:00').toLocaleDateString('pt-BR') : 'Data a definir'}</span>
-                    <span>• {swap.shift_time || '12h'}</span>
+              <Card 
+                key={swap.id} 
+                className={`p-5 rounded-2xl border transition-all duration-300 flex flex-col justify-between space-y-4 shadow-sm ${
+                  isMuralCard 
+                    ? 'border-sky-300 bg-sky-50/30 dark:bg-sky-950/10' 
+                    : swap.status === 'pendente'
+                    ? 'border-amber-300/80 bg-white dark:bg-slate-900'
+                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                }`}
+              >
+                <div className="space-y-3">
+                  {/* Topo do Card */}
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
+                      <Calendar className="w-4 h-4 text-sky-600" />
+                      <span>{swap.shift_date ? swap.shift_date.split('-').reverse().join('/') : 'Data a definir'}</span>
+                      <span className="text-slate-400">· {swap.shift_time || '12h'}</span>
+                    </div>
+
+                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase border ${statusBadge[swap.status] || 'bg-slate-100 text-slate-600'}`}>
+                      {swap.status}
+                    </span>
                   </div>
-                  <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase border ${statusBadge[swap.status] || 'bg-slate-100 text-slate-600'}`}>
-                    {swap.status}
-                  </span>
+
+                  {/* Setor */}
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                    <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Setor: <b>{toTitleCase(swap.sector_name) || 'Geral'}</b></span>
+                  </div>
+
+                  {/* Fluxo Visual: Sai -> Assume */}
+                  <div className="flex items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase block">Cede o Plantão</span>
+                      <strong className="text-slate-900 dark:text-white text-xs block truncate">
+                        {toTitleCase(swap.requester_name)}
+                      </strong>
+                      <span className="text-[10px] text-sky-600 font-medium truncate block">
+                        {swap.requester_specialty || 'Especialidade'}
+                      </span>
+                    </div>
+
+                    <ArrowRight className="w-4 h-4 text-slate-400 shrink-0" />
+
+                    <div className="min-w-0 flex-1 text-right">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase block">Assume o Plantão</span>
+                      <strong className={`text-xs block truncate ${isMuralCard ? 'text-sky-700 font-black' : 'text-slate-900 dark:text-white'}`}>
+                        {isMuralCard ? 'Mural Aberto' : toTitleCase(swap.target_name)}
+                      </strong>
+                      <span className="text-[10px] text-slate-500 truncate block">
+                        {isMuralCard ? 'Disponível' : (swap.target_specialty || 'Especialidade')}
+                      </span>
+                    </div>
+                  </div>
+
+                  {swap.reason && (
+                    <p className="text-xs text-slate-500 italic bg-slate-50/50 p-2 rounded-lg">
+                      "{swap.reason}"
+                    </p>
+                  )}
                 </div>
 
-                {/* Fluxo: Solicitante -> Substituto */}
-                <div className="flex items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl">
-                  <div className="min-w-0 flex-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Sai</span>
-                    <div className="font-semibold text-slate-800 dark:text-slate-100 text-sm truncate">
-                      {swap.requester_name}
-                    </div>
-                    <div className="text-[11px] text-sky-600 dark:text-sky-400 truncate flex items-center gap-1">
-                      <Stethoscope className="w-3 h-3" />
-                      {swap.requester_specialty || 'Especialidade'}
-                    </div>
-                  </div>
-
-                  <ArrowRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
-
-                  <div className="min-w-0 flex-1 text-right">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Assume</span>
-                    <div className="font-semibold text-slate-800 dark:text-slate-100 text-sm truncate">
-                      {swap.target_name}
-                    </div>
-                    <div className="text-[11px] text-sky-600 dark:text-sky-400 truncate flex items-center justify-end gap-1">
-                      <Stethoscope className="w-3 h-3" />
-                      {swap.target_specialty || 'Especialidade'}
-                    </div>
-                  </div>
-                </div>
-
-                {swap.reason && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 italic">
-                    "{swap.reason}"
-                  </p>
-                )}
-
-                {/* Botões de Decisão (Aparecem somente para o gestor ou para o médico convidado a assumir) */}
-                {swap.status === 'pendente' && canAction && (
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                {/* AÇÕES NO RODAPÉ */}
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
+                  {/* Se for do Mural Aberto e ainda estiver pendente */}
+                  {isMuralCard && swap.status === 'pendente' && !isRequester && (
                     <Button
                       size="sm"
-                      onClick={() => handleUpdateStatus(swap, 'aprovada')}
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-xs"
+                      onClick={() => handleClaimMuralShift(swap)}
+                      className="flex-1 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-8 gap-1.5 shadow-sm"
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Aceitar / Aprovar
+                      <UserCheck className="w-3.5 h-3.5" /> Assumir este Plantão
                     </Button>
+                  )}
+
+                  {/* Se for uma troca direcionada pendente que o usuário ou gestor pode aprovar */}
+                  {!isMuralCard && swap.status === 'pendente' && canAction && (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() => handleUpdateStatus(swap, 'aprovada')}
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 gap-1 shadow-sm"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Aprovar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleUpdateStatus(swap, 'rejeitada')}
+                        className="flex-1 text-red-600 border-red-200 hover:bg-red-50 text-xs h-8 gap-1"
+                      >
+                        <XCircle className="w-3.5 h-3.5" /> Recusar
+                      </Button>
+                    </>
+                  )}
+
+                  {/* Notificar no WhatsApp se houver destinatário definido */}
+                  {!isMuralCard && swap.target_professional_id && (
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleUpdateStatus(swap, 'rejeitada')}
-                      className="flex-1 text-red-600 hover:bg-red-50 border-red-200 dark:border-red-900/50 dark:hover:bg-red-950/30 gap-1 text-xs"
+                      onClick={(e) => handleNotifyWhatsApp(swap, e)}
+                      className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-xs h-8 px-2.5"
+                      title="Enviar aviso de confirmação no WhatsApp do colega"
                     >
-                      <XCircle className="w-3.5 h-3.5" /> Recusar
+                      <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
                     </Button>
-                  </div>
-                )}
+                  )}
+                </div>
               </Card>
             );
           })}
         </div>
       )}
 
-      {/* Modal para Solicitar Nova Troca com Especialidade Travada */}
+      {/* MODAL DE NOVA SOLICITAÇÃO COM OS 3 MODOS */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md dark:bg-slate-900 dark:border-slate-800">
+        <DialogContent className="sm:max-w-lg dark:bg-slate-900 dark:border-slate-800">
           <DialogHeader>
-            <DialogTitle className="dark:text-white">Solicitar troca de plantão</DialogTitle>
+            <DialogTitle className="text-xl font-bold dark:text-white flex items-center gap-2">
+              <Handshake className="w-5 h-5 text-sky-600" /> Solicitar Troca ou Cessão de Plantão
+            </DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={handleCreateSwap} className="space-y-4">
+          <form onSubmit={handleCreateSwap} className="space-y-4 py-2">
+            {/* Escolha do Modo de Troca */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                Modalidade de Substituição
+              </Label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSwapType('cessao')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-center transition-all ${
+                    swapType === 'cessao'
+                      ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 ring-2 ring-sky-500/20'
+                      : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  Cessão / Doação
+                  <span className="block text-[10px] font-normal text-slate-400 mt-0.5">Mão única</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSwapType('direta')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-center transition-all ${
+                    swapType === 'direta'
+                      ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 ring-2 ring-sky-500/20'
+                      : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  Troca Direta
+                  <span className="block text-[10px] font-normal text-slate-400 mt-0.5">1 por 1</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSwapType('mural')}
+                  className={`p-2.5 rounded-xl border text-xs font-bold text-center transition-all ${
+                    swapType === 'mural'
+                      ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 ring-2 ring-sky-500/20'
+                      : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  Mural Aberto
+                  <span className="block text-[10px] font-normal text-slate-400 mt-0.5">Todos do setor</span>
+                </button>
+              </div>
+            </div>
+
             {/* 1. Escolha do Plantão */}
             <div className="space-y-1.5">
-              <Label className="dark:text-slate-200">Selecione o plantão a ser passado</Label>
+              <Label className="text-xs font-semibold">Selecione o plantão a ser passado</Label>
               <Select value={selectedShiftId} onValueChange={(val) => {
                 setSelectedShiftId(val);
                 setTargetProfessionalId('');
               }}>
-                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100">
-                  <SelectValue placeholder="Escolha um plantão..." />
+                <SelectTrigger className="h-10 text-xs">
+                  <SelectValue placeholder="Escolha seu plantão na escala..." />
                 </SelectTrigger>
-                <SelectContent className="dark:bg-slate-800 dark:border-slate-700">
+                <SelectContent>
                   {myShifts.map((shift) => (
-                    <SelectItem key={shift.id} value={shift.id}>
-                      {new Date(shift.date + 'T00:00:00').toLocaleDateString('pt-BR')} ({shift.start_time || '07:00'} - {shift.end_time || '19:00'}) · {shift.sector_name || 'Setor'}
+                    <SelectItem key={shift.id} value={shift.id} className="text-xs">
+                      {shift.date?.split('-').reverse().join('/')} ({shift.start_time} - {shift.end_time}) · {toTitleCase(shift.sector_name) || 'Geral'}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Indicador de Especialidade Travada */}
+            {/* Indicador de Especialidade */}
             {requesterProfessional && (
               <div className="rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50/70 dark:bg-sky-950/30 p-3 flex items-start gap-2.5">
-                <ShieldAlert className="w-4 h-4 text-sky-600 dark:text-sky-400 mt-0.5 flex-shrink-0" />
+                <ShieldAlert className="w-4 h-4 text-sky-600 dark:text-sky-400 mt-0.5 shrink-0" />
                 <div className="text-xs text-slate-600 dark:text-slate-300">
-                  <span className="font-semibold text-sky-700 dark:text-sky-300">Especialidade exigida: </span>
-                  {requesterProfessional.specialty || requesterProfessional.category}.
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Apenas profissionais com a mesma especialidade estão autorizados para a troca.
+                  <span className="font-semibold text-sky-700 dark:text-sky-300">Especialidade vinculada: </span>
+                  <b>{requesterProfessional.specialty || requesterProfessional.category || 'Clínica Geral'}</b>.
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {swapType === 'mural' 
+                      ? 'Este plantão será exibido apenas para profissionais credenciados nesta mesma especialidade.'
+                      : 'Apenas profissionais da mesma especialidade estão autorizados para assumir.'}
                   </p>
                 </div>
               </div>
             )}
 
-            {/* 2. Escolha do Profissional Substituto (Filtrado estritamente por especialidade) */}
-            <div className="space-y-1.5">
-              <Label className="dark:text-slate-200">Profissional substituto da mesma especialidade</Label>
-              <Select 
-                value={targetProfessionalId} 
-                onValueChange={setTargetProfessionalId}
-                disabled={!selectedShiftId}
-              >
-                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100">
-                  <SelectValue placeholder={!selectedShiftId ? "Primeiro escolha o plantão acima" : "Selecione o profissional..."} />
-                </SelectTrigger>
-                <SelectContent className="dark:bg-slate-800 dark:border-slate-700">
-                  {eligibleProfessionals.length === 0 ? (
-                    <div className="p-3 text-xs text-slate-500 text-center">
-                      Nenhum outro profissional encontrado com a mesma especialidade..
-                    </div>
-                  ) : (
-                    eligibleProfessionals.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name} ({p.specialty || p.category})
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* 2. Escolha do Colega Substituto (Oculto se for Mural Aberto) */}
+            {swapType !== 'mural' && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Profissional substituto da mesma especialidade</Label>
+                <Select 
+                  value={targetProfessionalId} 
+                  onValueChange={setTargetProfessionalId}
+                  disabled={!selectedShiftId}
+                >
+                  <SelectTrigger className="h-10 text-xs">
+                    <SelectValue placeholder={!selectedShiftId ? "Primeiro escolha o plantão acima" : "Selecione o colega..."} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {eligibleProfessionals.length === 0 ? (
+                      <div className="p-3 text-xs text-slate-500 text-center">
+                        Nenhum colega ativo com a mesma especialidade encontrado.
+                      </div>
+                    ) : (
+                      eligibleProfessionals.map((p) => (
+                        <SelectItem key={p.id} value={p.id} className="text-xs">
+                          {p.name} ({p.specialty || p.category})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* 3. Justificativa */}
             <div className="space-y-1.5">
-              <Label className="dark:text-slate-200">Motivo da troca (opcional)</Label>
+              <Label className="text-xs font-semibold">Motivo da solicitação (opcional)</Label>
               <Input
                 value={swapReason}
                 onChange={(e) => setSwapReason(e.target.value)}
-                placeholder="Ex: Conflito de agenda no consultório"
-                className="dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100"
+                placeholder="Ex: Conflito de agenda, congresso médico ou emergência pessoal"
+                className="h-9 text-xs"
               />
             </div>
 
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+            <DialogFooter className="pt-3 gap-2">
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="text-xs">
                 Cancelar
               </Button>
               <Button 
                 type="submit" 
-                disabled={submitting || !selectedShiftId || !targetProfessionalId}
-                className="bg-sky-600 hover:bg-sky-700 text-white"
+                disabled={submitting || !selectedShiftId || (swapType !== 'mural' && !targetProfessionalId)}
+                className="bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold px-5"
               >
-                {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Enviar solicitação
+                {submitting && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+                {swapType === 'mural' ? 'Publicar no Mural' : 'Enviar Solicitação'}
               </Button>
             </DialogFooter>
           </form>
