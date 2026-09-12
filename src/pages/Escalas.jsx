@@ -21,17 +21,13 @@ import {
   MessageCircle,
   Filter,
   UserPlus,
-  X
+  X,
+  Sun,
+  Moon
 } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
 import { exportSchedulePDF } from '@/lib/exportReport';
 import { getShiftTvLifecycle } from '@/lib/shiftUtils';
-
-const shiftTypeStyle = {
-  diurno: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300',
-  noturno: 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
-  intermediario: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
-};
 
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
@@ -348,6 +344,67 @@ export default function Escalas() {
 
   const personalHeadline = myProfessional?.name || userFullName || 'Seu calendário';
 
+  // Helper de estilos harmoniosos
+  const getCardStyle = (shift) => {
+    if (shift.isVacant) {
+      return 'border-amber-400/80 bg-amber-500/[0.04] dark:bg-amber-500/[0.08] border-dashed shadow-sm ring-1 ring-amber-400/20';
+    }
+    if (shift.lifecycle.state === 'active') {
+      return 'border-emerald-500/50 bg-emerald-500/[0.06] dark:bg-emerald-500/[0.12] shadow-sm shadow-emerald-500/10 ring-1 ring-emerald-500/30';
+    }
+    if (shift.lifecycle.state === 'concluded' || shift.lifecycle.state === 'recently_finished') {
+      // Concluído: fundo limpo com tom suave de ardósia azulada (sem cinza sujo)
+      return 'border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 hover:border-slate-300';
+    }
+    // Programado futuro
+    return 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-sky-300 dark:hover:border-sky-700 shadow-sm';
+  };
+
+  const getBadgeScheduleTime = (shift) => {
+    const isNight = shift.shift_type === 'noturno' || (shift.start_time >= '18:00' || shift.start_time < '06:00');
+    
+    if (shift.isVacant) {
+      return 'bg-amber-500/15 text-amber-900 dark:text-amber-200 border border-amber-500/30';
+    }
+    if (shift.lifecycle.state === 'active') {
+      return 'bg-emerald-500 text-white font-black shadow-sm';
+    }
+    if (shift.lifecycle.state === 'concluded' || shift.lifecycle.state === 'recently_finished') {
+      return 'bg-blue-500/10 text-blue-800 dark:text-blue-300 border border-blue-500/20';
+    }
+    if (isNight) {
+      // Noturno suave: Índigo Crepúsculo
+      return 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20';
+    }
+    // Diurno suave: Azul Céu
+    return 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20';
+  };
+
+  const getStatusBadge = (shift) => {
+    if (shift.isVacant) {
+      return {
+        label: '⚠️ Vaga Aberta',
+        className: 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40 animate-pulse'
+      };
+    }
+    if (shift.lifecycle.state === 'active') {
+      return {
+        label: '● Ativo no Plantão',
+        className: 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/40 animate-pulse'
+      };
+    }
+    if (shift.lifecycle.state === 'concluded' || shift.lifecycle.state === 'recently_finished') {
+      return {
+        label: '✓ Concluído',
+        className: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20'
+      };
+    }
+    return {
+      label: '⏳ Programado',
+      className: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20'
+    };
+  };
+
   // Modo TV
   if (tvMode && isManager) {
     const tvVisible = filtered.filter((s) => s.lifecycle.state !== 'concluded');
@@ -391,9 +448,8 @@ export default function Escalas() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {tvVisible.map((shift) => {
-                const state = shift.lifecycle.state;
-                const isActive = state === 'active';
-                const isFinished = state === 'recently_finished';
+                const isActive = shift.lifecycle.state === 'active';
+                const isFinished = shift.lifecycle.state === 'recently_finished';
                 const isVacant = shift.isVacant;
 
                 return (
@@ -405,7 +461,7 @@ export default function Escalas() {
                         : isActive
                         ? 'border-emerald-500/60 bg-emerald-950/30 shadow-emerald-950/50 scale-[1.01]'
                         : isFinished
-                        ? 'border-slate-800 bg-white/[0.03] opacity-60'
+                        ? 'border-blue-900/40 bg-blue-950/20'
                         : 'border-white/10 bg-white/[0.07]'
                     }`}
                   >
@@ -416,7 +472,7 @@ export default function Escalas() {
                           : isActive 
                           ? 'bg-emerald-500 text-slate-950' 
                           : isFinished
-                          ? 'bg-slate-800 text-slate-400'
+                          ? 'bg-blue-900/60 text-blue-200 border border-blue-700/50'
                           : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
                       }`}>
                         <div>{shift.start_time || '--:--'}</div>
@@ -431,12 +487,12 @@ export default function Escalas() {
                               : isActive
                               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse'
                               : isFinished
-                              ? 'bg-slate-800 text-slate-400 border border-slate-700'
+                              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
                               : 'bg-white/10 text-slate-300'
                           }`}
                         >
                           {isActive && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />}
-                          {isVacant ? '⚠️ Vaga em Aberto' : isActive ? '● Ativo no Plantão' : isFinished ? '✓ Plantão Concluído' : '⏳ Programado'}
+                          {isVacant ? '⚠️ Vaga em Aberto' : isActive ? '● Ativo no Plantão' : isFinished ? '✓ Concluído' : '⏳ Programado'}
                         </span>
                         <div className="text-[10px] text-slate-400 mt-1">{shift.lifecycle.detail}</div>
                       </div>
@@ -494,25 +550,33 @@ export default function Escalas() {
                 Você não possui plantões atribuídos para este filtro.
               </div>
             ) : (
-              filtered.map((s) => (
-                <div key={s.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.18em] text-slate-400 font-bold">{fmtDate(s.date)}</div>
-                      <div className="mt-1 text-base font-bold text-slate-800">
-                        {s.start_time} às {s.end_time}
+              filtered.map((s) => {
+                const isNight = s.shift_type === 'noturno' || (s.start_time >= '18:00' || s.start_time < '06:00');
+                return (
+                  <div key={s.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs uppercase tracking-[0.18em] text-slate-400 font-bold">{fmtDate(s.date)}</div>
+                        <div className="mt-1 text-base font-bold text-slate-800">
+                          {s.start_time} às {s.end_time}
+                        </div>
                       </div>
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${
+                        isNight 
+                          ? 'bg-indigo-500/10 text-indigo-700 border border-indigo-500/20' 
+                          : 'bg-sky-500/10 text-sky-700 border border-sky-500/20'
+                      }`}>
+                        {isNight ? <Moon className="w-3 h-3" /> : <Sun className="w-3 h-3" />}
+                        {s.shift_type || (isNight ? 'Noturno' : 'Diurno')}
+                      </span>
                     </div>
-                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${shiftTypeStyle[s.shift_type] || 'bg-slate-100 text-slate-600'}`}>
-                      {s.shift_type || 'Turno'}
-                    </span>
+                    <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      <span>Setor Hospitalar:</span>
+                      <strong className="text-slate-800">{toTitleCase(s.sector_name) || 'Não informado'}</strong>
+                    </div>
                   </div>
-                  <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                    <span>Setor Hospitalar:</span>
-                    <strong className="text-slate-800">{toTitleCase(s.sector_name) || 'Não informado'}</strong>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </Card>
@@ -563,7 +627,7 @@ export default function Escalas() {
         </div>
 
         <div className={`p-3.5 rounded-2xl border shadow-sm transition-all ${
-          auditStats.vacant > 0 ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'
+          auditStats.vacant > 0 ? 'bg-amber-50/70 border-amber-300' : 'bg-white border-slate-200'
         }`}>
           <span className={`text-[10.5px] font-bold uppercase tracking-wider block ${
             auditStats.vacant > 0 ? 'text-amber-800' : 'text-slate-400'
@@ -604,7 +668,7 @@ export default function Escalas() {
       </div>
 
       <Card className="p-4 border-slate-200 space-y-4">
-        {/* Barra de Filtros com desativação automática de data ao buscar por nome */}
+        {/* Barra de Filtros */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -613,7 +677,6 @@ export default function Escalas() {
               value={search} 
               onChange={(e) => {
                 setSearch(e.target.value);
-                // Se o usuário digitou uma busca e a data estava travada em um dia específico, limpa a data para buscar no mês todo
                 if (e.target.value.trim().length > 1 && selectedDate) {
                   setSelectedDate('');
                 }
@@ -746,63 +809,35 @@ export default function Escalas() {
 
                 <div className="grid gap-3 p-3 lg:grid-cols-2">
                   {dateShifts.map((s) => {
-                    const state = s.lifecycle.state;
-                    const isActive = state === 'active';
-                    const isFinished = state === 'recently_finished';
-                    const isConcluded = state === 'concluded';
-                    const isVacant = s.isVacant;
+                    const statusInfo = getStatusBadge(s);
+                    const scheduleTimeClass = getBadgeScheduleTime(s);
+                    const cardClass = getCardStyle(s);
+                    const isNight = s.shift_type === 'noturno' || (s.start_time >= '18:00' || s.start_time < '06:00');
 
                     return (
                       <div 
                         key={s.id} 
-                        className={`flex items-center gap-3 rounded-xl border p-3.5 shadow-sm transition-all duration-300 ${
-                          isVacant
-                            ? 'border-amber-400 bg-amber-50/70 border-dashed ring-1 ring-amber-300/50'
-                            : isActive 
-                            ? 'border-emerald-300 bg-emerald-50/70' 
-                            : (isFinished || isConcluded)
-                            ? 'border-slate-200 bg-slate-100/60 opacity-80' 
-                            : 'border-slate-200 bg-white'
-                        }`}
+                        className={`flex items-center gap-3 rounded-xl border p-3.5 transition-all duration-300 ${cardClass}`}
                       >
-                        {/* Bloco de Horário */}
-                        <div className={`min-w-[92px] rounded-xl px-2.5 py-2 text-center text-xs font-black ${
-                          isVacant
-                            ? 'bg-amber-500 text-slate-950 font-black'
-                            : isActive 
-                            ? 'bg-emerald-600 text-white' 
-                            : (isFinished || isConcluded)
-                            ? 'bg-slate-200 text-slate-600' 
-                            : shiftTypeStyle[s.shift_type] || 'bg-slate-100 text-slate-600'
-                        }`}>
-                          <div>{s.start_time || '--:--'}</div>
-                          <div className="text-[10px] font-normal opacity-80">até {s.end_time || '--:--'}</div>
+                        {/* Bloco de Horário Sofisticado */}
+                        <div className={`min-w-[92px] rounded-xl px-2.5 py-2 text-center text-xs font-black shrink-0 ${scheduleTimeClass}`}>
+                          <div className="flex items-center justify-center gap-1">
+                            {isNight ? <Moon className="w-3 h-3 opacity-70" /> : <Sun className="w-3 h-3 opacity-70" />}
+                            <span>{s.start_time || '--:--'}</span>
+                          </div>
+                          <div className="text-[10px] font-normal opacity-85 mt-0.5">até {s.end_time || '--:--'}</div>
                         </div>
 
                         {/* Dados do Médico & Setor */}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className={`truncate text-sm font-black ${isVacant ? 'text-amber-950' : 'text-slate-900'}`}>
+                            <span className={`truncate text-sm font-black ${s.isVacant ? 'text-amber-900 dark:text-amber-200' : 'text-slate-900 dark:text-white'}`}>
                               {toTitleCase(s.professional_name) || 'Vaga Descoberta'}
                             </span>
                             
-                            {/* Badges de Status Rigorosas */}
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 ${
-                              isVacant
-                                ? 'bg-amber-200 text-amber-900 border border-amber-400 animate-pulse'
-                                : isActive 
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse' 
-                                : (isFinished || isConcluded)
-                                ? 'bg-slate-200 text-slate-700 border border-slate-300' 
-                                : 'bg-sky-50 text-sky-700 border border-sky-200'
-                            }`}>
-                              {isVacant 
-                                ? '⚠️ Vaga Aberta' 
-                                : isActive 
-                                ? '● Ativo no Plantão' 
-                                : (isFinished || isConcluded) 
-                                ? '✓ Concluído' 
-                                : '⏳ Programado'}
+                            {/* Badges de Status Refinadas */}
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 ${statusInfo.className}`}>
+                              {statusInfo.label}
                             </span>
                           </div>
 
@@ -814,7 +849,7 @@ export default function Escalas() {
 
                         {/* Ações */}
                         <div className="flex items-center gap-1 shrink-0">
-                          {isVacant ? (
+                          {s.isVacant ? (
                             <Button
                               size="sm"
                               onClick={() => openFillVacancy(s)}
@@ -827,16 +862,16 @@ export default function Escalas() {
                             <button
                               title="Enviar aviso do plantão no WhatsApp"
                               onClick={(e) => handleNotifyWhatsApp(s, e)}
-                              className="rounded-lg p-2 text-emerald-600 hover:bg-emerald-50 transition-colors"
+                              className="rounded-lg p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
                             >
                               <MessageCircle className="h-4 w-4" />
                             </button>
                           )}
 
-                          <button title="Editar plantão" onClick={() => openEdit(s)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+                          <button title="Editar plantão" onClick={() => openEdit(s)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
                             <Pencil className="h-4 w-4" />
                           </button>
-                          <button title="Excluir plantão" onClick={() => handleDelete(s.id)} className="rounded-lg p-2 text-red-500 hover:bg-red-50">
+                          <button title="Excluir plantão" onClick={() => handleDelete(s.id)} className="rounded-lg p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40">
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
