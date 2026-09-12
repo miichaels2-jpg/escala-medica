@@ -4,7 +4,6 @@ import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   DollarSign, 
   Users, 
@@ -15,17 +14,46 @@ import {
   TrendingUp, 
   Search, 
   CheckCircle2, 
-  FileSpreadsheet 
+  FileSpreadsheet,
+  X,
+  Copy,
+  ChevronRight,
+  ShieldCheck,
+  Stethoscope,
+  Building2,
+  Lock,
+  FileCheck,
+  AlertCircle
 } from 'lucide-react';
+import { getShiftInterval } from '@/lib/shiftUtils';
+
+// Helper para calcular o valor de repasse de um turno com base no modelo do profissional
+function getShiftRepasse(shift, prof) {
+  if (!prof) return 0;
+  const remType = prof.remuneration_type || 'hora';
+  const hours = Number(shift.duration_hours) || 12;
+
+  if (remType === 'hora') {
+    return hours * (Number(prof.hourly_rate) || 0);
+  }
+  if (remType === 'diaria') {
+    return Number(prof.daily_rate) || 0;
+  }
+  return 0; // Mensalistas têm cálculo fixo na folha
+}
 
 export default function Faturamento() {
   const { user, company, loading: appLoading } = useAppData();
   const [professionals, setProfessionals] = useState([]);
   const [shifts, setShifts] = useState([]);
-  const [billingRecords, setBillingRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [search, setSearch] = useState('');
+  const [filterCategory, setFilterCategory] = useState('all'); // 'all', 'medico', 'enfermeiro', 'pj'
+  
+  // Drawer Lateral de Detalhes
+  const [selectedProf, setSelectedProf] = useState(null);
+  const [toastMessage, setToastMessage] = useState('');
 
   const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
   const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id || 'unit_h1';
@@ -35,14 +63,12 @@ export default function Faturamento() {
     setLoading(true);
     try {
       const f = { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) };
-      const [profs, shs, bills] = await Promise.all([
-        base44.entities.Professional.filter(f, 'name', 300),
-        base44.entities.Shift.filter(f, '-date', 1000),
-        base44.entities.BillingRecord.filter(f, '-date', 1000)
+      const [profs, shs] = await Promise.all([
+        base44.entities.Professional.filter(f, 'name', 400),
+        base44.entities.Shift.filter(f, '-date', 1200)
       ]);
       setProfessionals(profs || []);
       setShifts(shs || []);
-      setBillingRecords(bills || []);
     } catch (e) {
       console.error('Erro ao carregar faturamento:', e);
     } finally {
@@ -55,230 +81,439 @@ export default function Faturamento() {
     loadData();
   }, [appLoading, companyId, unitId]);
 
-  // Consolidação de repasses por profissional no mês selecionado
-  const reportByProfessional = useMemo(() => {
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(''), 3000);
+  };
+
+  const copyPixKey = (key, e) => {
+    if (e) e.stopPropagation();
+    if (!key) {
+      showToast('Chave PIX não cadastrada');
+      return;
+    }
+    navigator.clipboard.writeText(key);
+    showToast(`Chave PIX copiada: ${key}`);
+  };
+
+  // Consolidação de repasses com a regra de plantão encerrado vs previsto
+  const reportData = useMemo(() => {
+    const now = new Date();
     const profMap = {};
 
     professionals.forEach((p) => {
       profMap[p.id] = {
-        id: p.id,
-        name: p.name,
-        specialty: p.specialty || p.category || 'Clínica Geral',
-        remunerationType: p.remuneration_type || 'hora',
-        hourlyRate: Number(p.hourly_rate) || 0,
-        dailyRate: Number(p.daily_rate) || 0,
-        monthlySalary: Number(p.monthly_salary) || 0,
-        totalShifts: 0,
-        totalHours: 0,
-        totalRepasse: 0
+        ...p,
+        completedShifts: [],
+        pendingShifts: [],
+        completedHours: 0,
+        pendingHours: 0,
+        completedValue: 0,
+        predictedValue: 0,
+        isMensal: (p.remuneration_type || 'hora') === 'mensal',
       };
     });
 
-    // Filtra plantões do mês
+    // Filtra turnos do mês selecionado que não estejam cancelados
     const monthShifts = shifts.filter((s) => {
       const sDate = (s.date || '').slice(0, 7);
       return sDate === selectedMonth && s.status !== 'cancelado';
     });
 
     monthShifts.forEach((s) => {
-      if (!s.professional_id) return;
+      // O titular atual é quem tem direito ao repasse (inclui pós-troca)
+      const profId = s.professional_id;
+      if (!profId) return;
 
-      if (!profMap[s.professional_id]) {
-        profMap[s.professional_id] = {
-          id: s.professional_id,
+      if (!profMap[profId]) {
+        profMap[profId] = {
+          id: profId,
           name: s.professional_name || 'Profissional',
-          specialty: s.sector_name || 'Geral',
-          remunerationType: 'hora',
-          hourlyRate: 120,
-          dailyRate: 1500,
-          monthlySalary: 0,
-          totalShifts: 0,
-          totalHours: 0,
-          totalRepasse: 0
+          specialty: s.sector_name || 'Clínica Geral',
+          remuneration_type: 'hora',
+          hourly_rate: 120,
+          daily_rate: 1500,
+          monthly_salary: 0,
+          pix_key: '',
+          completedShifts: [],
+          pendingShifts: [],
+          completedHours: 0,
+          pendingHours: 0,
+          completedValue: 0,
+          predictedValue: 0,
+          isMensal: false
         };
       }
 
-      const p = profMap[s.professional_id];
+      const p = profMap[profId];
       const hours = Number(s.duration_hours) || 12;
-      p.totalShifts += 1;
-      p.totalHours += hours;
+      const shiftVal = getShiftRepasse(s, p);
 
-      // Cálculo do repasse do plantão
-      if (p.remunerationType === 'hora') {
-        p.totalRepasse += hours * p.hourlyRate;
-      } else if (p.remunerationType === 'diaria') {
-        p.totalRepasse += p.dailyRate;
+      // Checa se o horário do plantão já terminou
+      const interval = getShiftInterval(s);
+      const isConcluded = interval ? now >= interval.end : new Date(s.date + 'T23:59:59') < now;
+
+      if (isConcluded) {
+        p.completedShifts.push({ ...s, calculatedValue: shiftVal });
+        p.completedHours += hours;
+        p.completedValue += shiftVal;
+      } else {
+        p.pendingShifts.push({ ...s, calculatedValue: shiftVal });
+        p.pendingHours += hours;
+        p.predictedValue += shiftVal;
       }
     });
 
-    // Para quem tem salário fixo mensal, adiciona o valor integral se teve plantão ou vínculo no mês
+    // Aplica a regra para contratos de Salário Fixo Mensal
     Object.values(profMap).forEach((p) => {
-      if (p.remunerationType === 'mensal') {
-        p.totalRepasse = p.monthlySalary;
+      if (p.isMensal) {
+        const monthly = Number(p.monthly_salary) || 0;
+        const hasShiftsInMonth = p.completedShifts.length > 0 || p.pendingShifts.length > 0;
+        if (hasShiftsInMonth) {
+          p.completedValue = monthly;
+          p.predictedValue = monthly;
+        }
+      } else {
+        // Previsão total = o que já encerrou + o que ainda vai acontecer
+        p.predictedValue = p.completedValue + p.predictedValue;
       }
     });
 
-    return Object.values(profMap).filter((item) => {
-      const matchesSearch = !search || item.name.toLowerCase().includes(search.toLowerCase()) || item.specialty.toLowerCase().includes(search.toLowerCase());
-      // Mostra quem teve plantão ou tem contrato mensal
-      const hasActivity = item.totalShifts > 0 || item.remunerationType === 'mensal';
-      return matchesSearch && hasActivity;
-    });
-  }, [professionals, shifts, selectedMonth, search]);
+    // Filtros de busca e visualização
+    return Object.values(profMap).filter((p) => {
+      const totalShifts = p.completedShifts.length + p.pendingShifts.length;
+      if (totalShifts === 0 && !p.isMensal) return false;
 
-  // Totais Consolidados
+      const matchesSearch = 
+        !search || 
+        p.name?.toLowerCase().includes(search.toLowerCase()) || 
+        p.specialty?.toLowerCase().includes(search.toLowerCase());
+
+      if (!matchesSearch) return false;
+
+      if (filterCategory === 'medico') return (p.specialty || '').toLowerCase().includes('med') || (p.role || '').toLowerCase().includes('med');
+      if (filterCategory === 'enfermeiro') return (p.specialty || '').toLowerCase().includes('enf');
+      if (filterCategory === 'fixo') return p.isMensal;
+
+      return true;
+    });
+  }, [professionals, shifts, selectedMonth, search, filterCategory]);
+
+  // Totais Gerais
   const totals = useMemo(() => {
-    return reportByProfessional.reduce(
-      (acc, item) => {
-        acc.shifts += item.totalShifts;
-        acc.hours += item.totalHours;
-        acc.value += item.totalRepasse;
+    return reportData.reduce(
+      (acc, p) => {
+        acc.completedValue += p.completedValue;
+        acc.predictedValue += p.predictedValue;
+        acc.completedShifts += p.completedShifts.length;
+        acc.totalShifts += p.completedShifts.length + p.pendingShifts.length;
+        acc.completedHours += p.completedHours;
         return acc;
       },
-      { shifts: 0, hours: 0, value: 0 }
+      { completedValue: 0, predictedValue: 0, completedShifts: 0, totalShifts: 0, completedHours: 0 }
     );
-  }, [reportByProfessional]);
+  }, [reportData]);
 
-  // Exportar Relatório em CSV/Excel
+  const avgHourlyCost = useMemo(() => {
+    if (totals.completedHours === 0) return 0;
+    return totals.completedValue / totals.completedHours;
+  }, [totals]);
+
+  // Exportação CSV Completa
   const handleExportCSV = () => {
-    const headers = ['Profissional;Especialidade;Tipo de Remuneracao;Qtd Plantoes;Total Horas;Valor Repasse (R$)'];
-    const rows = reportByProfessional.map((p) => {
-      const typeLabel = p.remunerationType === 'hora' ? 'Horista' : p.remunerationType === 'diaria' ? 'Diarista' : 'Fixo Mensal';
-      return `"${p.name}";"${p.specialty}";"${typeLabel}";${p.totalShifts};${p.totalHours};${p.totalRepasse.toFixed(2)}`;
+    const headers = ['Profissional;Especialidade;Tipo Contrato;Plantoes Concluidos;Horas Concluidas;Valor Liberado (R$);Previsao Total (R$);Chave PIX'];
+    const rows = reportData.map((p) => {
+      const typeLabel = p.remuneration_type === 'hora' ? 'Horista' : p.remuneration_type === 'diaria' ? 'Diarista' : 'Fixo Mensal';
+      return `"${p.name}";"${p.specialty}";"${typeLabel}";${p.completedShifts.length};${p.completedHours};${p.completedValue.toFixed(2)};${p.predictedValue.toFixed(2)};"${p.pix_key || p.cpf || ''}"`;
     });
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers, ...rows].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Repasses_${selectedMonth}.csv`);
+    link.setAttribute('download', `Demonstrativo_Repasses_${selectedMonth}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Exportação de Lote Bancário PIX
+  const handleExportPixLote = () => {
+    const ready = reportData.filter((p) => p.completedValue > 0);
+    const headers = ['Nome;Chave_PIX;Valor_Reais;Descricao'];
+    const rows = ready.map((p) => {
+      const key = p.pix_key || p.cpf || p.email || '';
+      return `"${p.name}";"${key}";${p.completedValue.toFixed(2)};"Repasse Plantões ${selectedMonth}"`;
+    });
+
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers, ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Lote_PIX_${selectedMonth}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   return (
-    <div className="p-4 md:p-8 space-y-6">
-      {/* Top Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+    <div className="p-4 md:p-8 space-y-6 relative">
+      {/* Toast Feedback */}
+      {toastMessage && (
+        <div className="fixed top-6 right-6 z-[9999] flex items-center gap-2 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300 font-medium text-sm">
+          <CheckCircle2 className="w-5 h-5 text-emerald-100" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Top Banner Executivo */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 text-white p-6 rounded-3xl border border-slate-800 shadow-xl">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-            <DollarSign className="w-6 h-6 text-emerald-600" /> Faturamento e Repasses Médicos
-          </h1>
-          <p className="text-sm text-slate-500">
-            Valores computados automaticamente a partir das horas e plantões de cada profissional.
+          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-emerald-400 font-bold">
+            <ShieldCheck className="w-4 h-4" /> Gestão Financeira Hospitalar
+          </div>
+          <h1 className="text-2xl md:text-3xl font-black mt-2 tracking-tight">Faturamento & Repasse Médico</h1>
+          <p className="text-sm text-slate-400 mt-1 max-w-2xl">
+            Repasses acumulados estritamente após a conclusão dos turnos e atualização em tempo real de trocas.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Input
-            type="month"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="w-40 bg-white"
-          />
-          <Button onClick={handleExportCSV} variant="outline" className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50">
-            <FileSpreadsheet className="w-4 h-4" /> Exportar Planilha
+          <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl border border-white/15">
+            <Calendar className="w-4 h-4 text-sky-400" />
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-transparent text-sm font-bold text-white outline-none cursor-pointer"
+            />
+          </div>
+          <Button onClick={handleExportPixLote} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold gap-2 text-xs h-10 px-4 rounded-xl shadow-lg shadow-emerald-950">
+            <DollarSign className="w-4 h-4" /> Lote PIX
+          </Button>
+          <Button onClick={handleExportCSV} variant="outline" className="border-white/20 text-slate-200 hover:bg-white/10 text-xs h-10 px-4 rounded-xl">
+            <FileSpreadsheet className="w-4 h-4 mr-1.5" /> Planilha Fechamento
           </Button>
         </div>
       </div>
 
-      {/* Cards de Métricas Consolidadas */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="p-5 border-slate-200 flex items-center gap-4 bg-emerald-50/40 border-emerald-200">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
-            <DollarSign className="w-6 h-6" />
+      {/* 4 Cards Estratégicos de DRE Operacional */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 1. Valor Liberado (Encerrados) */}
+        <Card className="p-5 border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+              Liberado para Pagamento
+            </span>
+            <span className="p-2 rounded-xl bg-emerald-600 text-white shadow-sm">
+              <CheckCircle2 className="w-4 h-4" />
+            </span>
           </div>
-          <div>
-            <div className="text-xs text-emerald-700 font-semibold uppercase">Total a Repassar no Mês</div>
-            <div className="text-2xl font-black text-emerald-950">
-              R$ {totals.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-            </div>
+          <div className="text-2xl md:text-3xl font-black text-emerald-950 dark:text-emerald-100 mt-3">
+            R$ {totals.completedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </div>
+          <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1">
+            Plantões já concluídos até o momento
+          </p>
         </Card>
 
-        <Card className="p-5 border-slate-200 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
-            <Calendar className="w-6 h-6" />
+        {/* 2. Previsão Total do Mês */}
+        <Card className="p-5 border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Previsão Total do Mês
+            </span>
+            <span className="p-2 rounded-xl bg-sky-50 text-sky-600">
+              <TrendingUp className="w-4 h-4" />
+            </span>
           </div>
-          <div>
-            <div className="text-xs text-slate-400 font-semibold uppercase">Total de Plantões</div>
-            <div className="text-2xl font-black text-slate-900">{totals.shifts} turnos</div>
+          <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-3">
+            R$ {totals.predictedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Concluídos + turnos futuros até o fim do mês
+          </p>
         </Card>
 
-        <Card className="p-5 border-slate-200 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-            <Clock className="w-6 h-6" />
+        {/* 3. Plantões Cumpridos */}
+        <Card className="p-5 border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Progresso Operacional
+            </span>
+            <span className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
+              <Calendar className="w-4 h-4" />
+            </span>
           </div>
-          <div>
-            <div className="text-xs text-slate-400 font-semibold uppercase">Horas Totais Cobertas</div>
-            <div className="text-2xl font-black text-slate-900">{totals.hours} horas</div>
+          <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-3">
+            {totals.completedShifts} / {totals.totalShifts}
           </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            {totals.totalShifts > 0 ? Math.round((totals.completedShifts / totals.totalShifts) * 100) : 0}% dos plantões concluídos
+          </p>
+        </Card>
+
+        {/* 4. Custo Médio Hora */}
+        <Card className="p-5 border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Custo Médio / Hora
+            </span>
+            <span className="p-2 rounded-xl bg-amber-50 text-amber-600">
+              <Clock className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-3">
+            R$ {avgHourlyCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Base: {totals.completedHours}h médicas concluídas
+          </p>
         </Card>
       </div>
 
-      {/* Tabela Detalhada de Repasses */}
-      <Card className="p-5 border-slate-200 space-y-4">
+      {/* Tabela Principal */}
+      <Card className="p-5 border-slate-200 dark:border-slate-800 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h3 className="font-bold text-base text-slate-800">Demonstrativo Individual de Repasses</h3>
-            <p className="text-xs text-slate-500">Mês de referência: {selectedMonth}</p>
+            <h3 className="font-bold text-base text-slate-900 dark:text-white">Demonstrativo por Profissional</h3>
+            <p className="text-xs text-slate-500">Clique na linha de qualquer profissional para abrir o extrato detalhado</p>
           </div>
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input
-              placeholder="Filtrar médico ou setor..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Filtro de Chips */}
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs">
+              <button
+                onClick={() => setFilterCategory('all')}
+                className={`px-3 py-1 rounded-lg font-semibold transition-all ${filterCategory === 'all' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}
+              >
+                Todos
+              </button>
+              <button
+                onClick={() => setFilterCategory('medico')}
+                className={`px-3 py-1 rounded-lg font-semibold transition-all ${filterCategory === 'medico' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}
+              >
+                Médicos
+              </button>
+              <button
+                onClick={() => setFilterCategory('enfermeiro')}
+                className={`px-3 py-1 rounded-lg font-semibold transition-all ${filterCategory === 'enfermeiro' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}
+              >
+                Enfermagem
+              </button>
+              <button
+                onClick={() => setFilterCategory('fixo')}
+                className={`px-3 py-1 rounded-lg font-semibold transition-all ${filterCategory === 'fixo' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500'}`}
+              >
+                Fixos
+              </button>
+            </div>
+
+            <div className="relative w-full sm:w-60">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input
+                placeholder="Buscar profissional..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-9 text-xs"
+              />
+            </div>
           </div>
         </div>
 
         {loading ? (
-          <div className="flex justify-center p-12">
+          <div className="flex justify-center p-16">
             <Loader2 className="w-8 h-8 animate-spin text-sky-600" />
           </div>
-        ) : reportByProfessional.length === 0 ? (
-          <div className="py-12 text-center text-slate-400 text-sm">
-            Nenhum plantão ou repasse registrado para o mês selecionado.
+        ) : reportData.length === 0 ? (
+          <div className="py-16 text-center text-slate-400 text-sm">
+            Nenhum repasse registrado para os filtros selecionados.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold border-y border-slate-200">
+              <thead className="bg-slate-50 dark:bg-slate-900/60 text-slate-500 uppercase text-[11px] font-bold border-y border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-4">Profissional</th>
-                  <th className="py-3 px-4">Especialidade</th>
-                  <th className="py-3 px-4">Modelo Remuneração</th>
-                  <th className="py-3 px-4 text-center">Plantões</th>
-                  <th className="py-3 px-4 text-center">Horas</th>
-                  <th className="py-3 px-4 text-right">Repasse Total</th>
+                  <th className="py-3 px-4">Contrato</th>
+                  <th className="py-3 px-4 text-center">Plantões Cumpridos</th>
+                  <th className="py-3 px-4 text-center">Horas Fechadas</th>
+                  <th className="py-3 px-4 text-right">Liberado (R$)</th>
+                  <th className="py-3 px-4 text-right">Previsão Mês (R$)</th>
+                  <th className="py-3 px-4 text-center">Chave PIX</th>
+                  <th className="py-3 px-4 text-center">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {reportByProfessional.map((p) => {
-                  const typeBadge =
-                    p.remunerationType === 'hora'
-                      ? `Horista (R$ ${p.hourlyRate}/h)`
-                      : p.remunerationType === 'diaria'
-                      ? `Diarista (R$ ${p.dailyRate}/plantão)`
-                      : `Fixo (R$ ${p.monthlySalary}/mês)`;
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {reportData.map((p) => {
+                  const remType = p.remuneration_type || 'hora';
+                  const badgeStyle = 
+                    remType === 'hora' ? 'bg-sky-50 text-sky-700 border-sky-200' :
+                    remType === 'diaria' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                    'bg-purple-50 text-purple-700 border-purple-200';
+
+                  const badgeLabel = 
+                    remType === 'hora' ? `Horista (R$ ${p.hourly_rate}/h)` :
+                    remType === 'diaria' ? `Diarista (R$ ${p.daily_rate}/plantão)` :
+                    `Fixo (R$ ${p.monthly_salary}/mês)`;
+
+                  const pixKeyDisplay = p.pix_key || p.cpf || p.phone || '';
 
                   return (
-                    <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3.5 px-4 font-bold text-slate-900">{p.name}</td>
-                      <td className="py-3.5 px-4 text-slate-600">{p.specialty}</td>
+                    <tr 
+                      key={p.id} 
+                      onClick={() => setSelectedProf(p)}
+                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 cursor-pointer transition-colors group"
+                    >
+                      <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
+                        <div className="flex items-center gap-2">
+                          <span>{p.name}</span>
+                          <span className="text-[11px] font-normal text-slate-400">· {p.specialty}</span>
+                        </div>
+                      </td>
+
                       <td className="py-3.5 px-4">
-                        <span className="text-xs bg-slate-100 text-slate-700 px-2.5 py-1 rounded-md font-semibold">
-                          {typeBadge}
+                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${badgeStyle}`}>
+                          {badgeLabel}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-center font-bold text-slate-800">{p.totalShifts}</td>
-                      <td className="py-3.5 px-4 text-center text-slate-600">{p.totalHours}h</td>
-                      <td className="py-3.5 px-4 text-right font-black text-emerald-700 text-base">
-                        R$ {p.totalRepasse.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+
+                      <td className="py-3.5 px-4 text-center font-bold text-slate-800 dark:text-slate-200">
+                        {p.completedShifts.length}
+                        <span className="text-xs text-slate-400 font-normal"> / {p.completedShifts.length + p.pendingShifts.length}</span>
+                      </td>
+
+                      <td className="py-3.5 px-4 text-center text-slate-600 dark:text-slate-300 font-semibold">
+                        {p.completedHours}h
+                      </td>
+
+                      <td className="py-3.5 px-4 text-right font-black text-emerald-600 dark:text-emerald-400 text-base">
+                        R$ {p.completedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </td>
+
+                      <td className="py-3.5 px-4 text-right font-bold text-slate-500 text-sm">
+                        R$ {p.predictedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </td>
+
+                      <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        {pixKeyDisplay ? (
+                          <button
+                            onClick={(e) => copyPixKey(pixKeyDisplay, e)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-mono font-medium transition-colors"
+                            title="Clique para copiar a chave PIX"
+                          >
+                            <Copy className="w-3 h-3 text-slate-400" />
+                            <span>{pixKeyDisplay.length > 14 ? `${pixKeyDisplay.slice(0, 14)}...` : pixKeyDisplay}</span>
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400">Não informada</span>
+                        )}
+                      </td>
+
+                      <td className="py-3.5 px-4 text-center">
+                        <span className="inline-flex items-center text-xs font-semibold text-sky-600 group-hover:translate-x-1 transition-transform">
+                          Extrato <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+                        </span>
                       </td>
                     </tr>
                   );
@@ -288,6 +523,151 @@ export default function Faturamento() {
           </div>
         )}
       </Card>
+
+      {/* DRAWER LATERAL: RAIO-X / EXTRATO INDIVIDUAL DO MÉDICO */}
+      {selectedProf && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-xl bg-white dark:bg-slate-900 h-full shadow-2xl p-6 overflow-y-auto space-y-6 flex flex-col justify-between animate-in slide-in-from-right duration-300">
+            <div className="space-y-5">
+              {/* Topo do Drawer */}
+              <div className="flex items-start justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.2em] text-sky-600 font-bold">Extrato Individual de Repasse</div>
+                  <h2 className="text-2xl font-black text-slate-900 dark:text-white mt-1">{selectedProf.name}</h2>
+                  <p className="text-xs text-slate-500">{selectedProf.specialty} · {selectedProf.document ? `CRM/Reg: ${selectedProf.document}` : ''}</p>
+                </div>
+                <button 
+                  onClick={() => setSelectedProf(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Cards de Resumo no Drawer */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
+                  <span className="text-[11px] font-bold text-emerald-700 uppercase">Liberado (Concluídos)</span>
+                  <div className="text-2xl font-black text-emerald-950 dark:text-emerald-100 mt-1">
+                    R$ {selectedProf.completedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </div>
+                  <span className="text-[10px] text-emerald-600">{selectedProf.completedShifts.length} plantões finalizados</span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase">Previsão Mês Todo</span>
+                  <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+                    R$ {selectedProf.predictedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </div>
+                  <span className="text-[10px] text-slate-500">{selectedProf.completedShifts.length + selectedProf.pendingShifts.length} plantões no mês</span>
+                </div>
+              </div>
+
+              {/* Dados Bancários / PIX */}
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900 space-y-2 text-xs">
+                <div className="font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between">
+                  <span>Dados para Liquidação</span>
+                  <span className="font-mono bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 px-2 py-0.5 rounded">
+                    {selectedProf.remuneration_type?.toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 pt-1">
+                  <span>Chave PIX:</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">
+                    {selectedProf.pix_key || selectedProf.cpf || 'Não informada'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Linha do Tempo de Plantões (Concluídos e Futuros) */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  Detalhamento dos Plantões ({selectedMonth})
+                </h4>
+
+                {selectedProf.completedShifts.length === 0 && selectedProf.pendingShifts.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-6">Nenhum plantão localizado neste mês.</p>
+                ) : (
+                  <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+                    {/* 1. Plantões Concluídos */}
+                    {selectedProf.completedShifts.map((s) => (
+                      <div 
+                        key={s.id}
+                        className="p-3 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/30 dark:bg-emerald-950/20 flex items-center justify-between"
+                      >
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                              {s.date?.split('-').reverse().join('/')}
+                            </span>
+                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded">
+                              Concluído
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            {s.start_time} às {s.end_time} · {s.sector_name || 'Geral'} ({s.duration_hours || 12}h)
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-black text-emerald-700 dark:text-emerald-400">
+                            + R$ {s.calculatedValue.toFixed(2)}
+                          </div>
+                          <span className="text-[9px] text-slate-400">Liberado</span>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* 2. Plantões Futuros / Pendentes de Conclusão */}
+                    {selectedProf.pendingShifts.map((s) => (
+                      <div 
+                        key={s.id}
+                        className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between opacity-80"
+                      >
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                              {s.date?.split('-').reverse().join('/')}
+                            </span>
+                            <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 font-bold px-1.5 py-0.2 rounded">
+                              Programado
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            {s.start_time} às {s.end_time} · {s.sector_name || 'Geral'} ({s.duration_hours || 12}h)
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-bold text-slate-500">
+                            R$ {s.calculatedValue.toFixed(2)}
+                          </div>
+                          <span className="text-[9px] text-slate-400">Pendente Término</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Ações no Rodapé do Drawer */}
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex gap-2">
+              <Button 
+                onClick={(e) => copyPixKey(selectedProf.pix_key || selectedProf.cpf, e)}
+                variant="outline" 
+                className="flex-1 text-xs font-bold gap-1.5"
+              >
+                <Copy className="w-3.5 h-3.5" /> Copiar PIX
+              </Button>
+              <Button 
+                onClick={() => setSelectedProf(null)}
+                className="flex-1 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold"
+              >
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
