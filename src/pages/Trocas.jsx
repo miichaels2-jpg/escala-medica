@@ -209,7 +209,6 @@ export default function Trocas() {
       setSwapType('cessao');
       await loadData();
     } catch (err) {
-      // Fallback sem swap_type se o banco ainda não tiver a coluna
       try {
         const payloadFallback = {
           company_id: companyId,
@@ -475,14 +474,21 @@ export default function Trocas() {
           {activeSwapsList.map((swap) => {
             const isTarget = String(swap.target_professional_id) === String(currentProfessionalId);
             const isRequester = String(swap.requester_professional_id) === String(currentProfessionalId);
-            const isMuralCard = !swap.target_professional_id || swap.swap_type === 'mural';
+            const isMuralCard = (!swap.target_professional_id || swap.swap_type === 'mural' || swap.target_name?.includes('Mural')) && swap.status === 'pendente';
             const canAction = isManager || isTarget;
+
+            // Define o nome correto a exibir em "Assume o Plantão"
+            const assignedName = swap.target_professional_id && !swap.target_name?.includes('Mural') 
+              ? swap.target_name 
+              : (swap.status === 'aprovada' && swap.target_name && !swap.target_name.includes('Mural') ? swap.target_name : 'Mural Aberto');
+
+            const isMuralAssigned = assignedName === 'Mural Aberto' && swap.status === 'pendente';
 
             return (
               <Card 
                 key={swap.id} 
                 className={`p-5 rounded-2xl border transition-all duration-300 flex flex-col justify-between space-y-4 shadow-sm ${
-                  isMuralCard 
+                  isMuralAssigned
                     ? 'border-sky-300 bg-sky-50/30 dark:bg-sky-950/10' 
                     : swap.status === 'pendente'
                     ? 'border-amber-300/80 bg-white dark:bg-slate-900'
@@ -522,11 +528,11 @@ export default function Trocas() {
 
                     <div className="min-w-0 flex-1 text-right">
                       <span className="text-[9px] font-bold text-slate-400 uppercase block">Assume o Plantão</span>
-                      <strong className={`text-xs block truncate ${isMuralCard ? 'text-sky-700 font-black' : 'text-slate-900 dark:text-white'}`}>
-                        {isMuralCard ? 'Mural Aberto' : toTitleCase(swap.target_name)}
+                      <strong className={`text-xs block truncate ${isMuralAssigned ? 'text-sky-700 font-black' : 'text-slate-900 dark:text-white'}`}>
+                        {toTitleCase(assignedName)}
                       </strong>
                       <span className="text-[10px] text-slate-500 truncate block">
-                        {isMuralCard ? 'Disponível' : (swap.target_specialty || 'Especialidade')}
+                        {isMuralAssigned ? 'Disponível' : (swap.target_specialty || 'Especialidade')}
                       </span>
                     </div>
                   </div>
@@ -539,7 +545,7 @@ export default function Trocas() {
                 </div>
 
                 <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
-                  {isMuralCard && swap.status === 'pendente' && !isRequester && (
+                  {isMuralAssigned && !isRequester && (
                     <Button
                       size="sm"
                       onClick={() => handleClaimMuralShift(swap)}
@@ -549,7 +555,7 @@ export default function Trocas() {
                     </Button>
                   )}
 
-                  {!isMuralCard && swap.status === 'pendente' && canAction && (
+                  {!isMuralAssigned && swap.status === 'pendente' && canAction && (
                     <>
                       <Button
                         size="sm"
@@ -569,7 +575,7 @@ export default function Trocas() {
                     </>
                   )}
 
-                  {!isMuralCard && swap.target_professional_id && (
+                  {!isMuralAssigned && swap.target_professional_id && (
                     <Button
                       size="sm"
                       variant="outline"
