@@ -26,16 +26,7 @@ function formatDateBR(dateStr) {
 }
 
 /* ============================================================
- * buildReportPayload
- * ------------------------------------------------------------
- * Fonte única de verdade: gera { título, filtros, KPIs, colunas,
- * linhas } de acordo com a aba ativa. Este MESMO objeto alimenta:
- *   1) a tira de KPIs na tela,
- *   2) o modal de pré-visualização,
- *   3) o PDF exportado,
- *   4) o CSV exportado.
- * Ou seja: o que você vê é exatamente o que baixa — não existe
- * mais divergência entre abas.
+ * buildReportPayload (Corrigido para alinhar com o faturamento real)
  * ============================================================ */
 function buildReportPayload({ tab, company, user, filtersLabel, overview, byProfessional, bySector, auditLogs, totalFinancialEstimate }) {
   const companyName = company?.name || 'Hospital';
@@ -100,7 +91,6 @@ function buildReportPayload({ tab, company, user, filtersLabel, overview, byProf
 
   if (tab === 'financeiro') {
     const totalHours = byProfessional.reduce((acc, p) => acc + (p.hours || 0), 0);
-    const avgHourly = totalHours ? totalFinancialEstimate / totalHours : 0;
     const top = byProfessional.reduce((max, p) => (p.estimatedPay > (max?.estimatedPay || 0) ? p : max), null);
 
     return {
@@ -109,13 +99,18 @@ function buildReportPayload({ tab, company, user, filtersLabel, overview, byProf
       title: 'Projeção de Repasse Financeiro',
       kpis: [
         { label: 'Total estimado', value: formatCurrency(totalFinancialEstimate) },
-        { label: 'Custo médio/hora', value: formatCurrency(avgHourly) },
+        { label: 'Profissionais faturados', value: byProfessional.length },
         { label: 'Maior repasse', value: top ? `${top.name} (${formatCurrency(top.estimatedPay)})` : '—' },
         { label: 'Horas faturáveis', value: `${totalHours}h` },
       ],
-      columns: ['Profissional', 'Horas Validadas', 'Valor/Hora', 'Total a Liquidar'],
-      rows: byProfessional.map((p) => [p.name, `${p.hours}h`, formatCurrency(p.hourlyRate), formatCurrency(p.estimatedPay)]),
-      totalsRow: ['TOTAL', `${totalHours}h`, '', formatCurrency(totalFinancialEstimate)],
+      columns: ['Profissional', 'Modelo', 'Qtd / Horas', 'Total a Liquidar'],
+      rows: byProfessional.map((p) => [
+        p.name, 
+        p.remunerationType === 'diaria' ? 'Por Plantão/Diária' : p.remunerationType === 'mensal' ? 'Fixo Mensal' : 'Horista', 
+        p.remunerationType === 'hora' ? `${p.hours}h` : `${p.confirmed} plantão(ões)`, 
+        formatCurrency(p.estimatedPay)
+      ]),
+      totalsRow: ['TOTAL', '', `${totalHours}h`, formatCurrency(totalFinancialEstimate)],
       emptyMessage: 'Nenhum valor a liquidar para os filtros selecionados.',
     };
   }
@@ -148,24 +143,20 @@ function buildReportPayload({ tab, company, user, filtersLabel, overview, byProf
       l.sector_name || 'Geral',
       l.notes || (l.status === 'cancelado' ? 'Cancelado sem observação registrada' : '—'),
       l.id,
-    ]),
-    emptyMessage: 'Nenhum evento de cancelamento ou alteração registrado no período.',
+    ],
+    emptyMessage: 'Nenhum evento de cancelamento ou alteração registrado no período.'),
   };
 }
 
 const TAB_META = {
-  produtividade: { label: '⏱️ Produtividade & Horas', icon: Clock, tone: 'sky' },
-  cobertura: { label: '🏥 Cobertura por Setor', icon: TrendingUp, tone: 'sky' },
-  financeiro: { label: '💰 Repasse Financeiro', icon: DollarSign, tone: 'emerald' },
-  auditoria: { label: '🛡️ Log de Auditoria', icon: ShieldCheck, tone: 'red' },
+  produtividade: { label: '⏱️ Produtividade & Horas', icon: Clock },
+  cobertura: { label: '🏥 Cobertura por Setor', icon: TrendingUp },
+  financeiro: { label: '💰 Repasse Financeiro', icon: DollarSign },
+  auditoria: { label: '🛡️ Log de Auditoria', icon: ShieldCheck },
 };
 
 /* ============================================================
- * Modal de pré-visualização
- * ------------------------------------------------------------
- * Mostra exatamente o que será impresso/exportado antes de gerar
- * qualquer arquivo. Só a partir daqui é possível baixar PDF/CSV —
- * evita impressão desnecessária de relatórios "só para conferir".
+ * Modal de Pré-Visualização Executiva
  * ============================================================ */
 function ReportPreviewModal({ payload, onClose, onDownloadPDF, onDownloadCSV }) {
   if (!payload) return null;
@@ -173,42 +164,37 @@ function ReportPreviewModal({ payload, onClose, onDownloadPDF, onDownloadCSV }) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
       <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
-        {/* Header do modal */}
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 p-6 bg-gradient-to-r from-slate-900 via-slate-950 to-sky-950 text-white rounded-t-3xl">
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-sky-400">
-              <Eye className="w-3.5 h-3.5" /> Pré-visualização · Nada foi baixado ainda
+              <Eye className="w-3.5 h-3.5" /> Pré-visualização Oficial · Pronto para impressão
             </div>
             <h2 className="text-xl font-black tracking-tight">{payload.title}</h2>
-            <p className="text-xs text-slate-300">Filtros: {payload.subtitle}</p>
+            <p className="text-xs text-slate-300">Filtros aplicados: {payload.subtitle}</p>
             <p className="text-[10px] text-slate-400">
-              Gerado em {payload.generatedAt.toLocaleString('pt-BR')}
-              {payload.generatedBy ? ` · por ${payload.generatedBy}` : ''}
+              Instituição: {payload.companyName} {payload.generatedBy ? `· Emitido por ${payload.generatedBy}` : ''}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="shrink-0 rounded-full p-2 bg-white/10 hover:bg-white/20 transition-colors"
-            aria-label="Fechar pré-visualização"
+            className="shrink-0 rounded-full p-2 bg-white/10 hover:bg-white/20 transition-colors text-white"
+            aria-label="Fechar"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* KPIs do relatório (idênticos ao que vai para o PDF/CSV) */}
+        {/* KPIs */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-6 pb-0">
           {payload.kpis.map((kpi, i) => (
-            <div
-              key={i}
-              className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"
-            >
+            <div key={i} className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
               <div className="text-[9px] uppercase font-bold text-slate-400">{kpi.label}</div>
               <div className="text-sm font-black text-sky-700 dark:text-sky-400 mt-0.5 truncate">{kpi.value}</div>
             </div>
           ))}
         </div>
 
-        {/* Tabela — exatamente as linhas/colunas que serão exportadas */}
+        {/* Tabela de dados */}
         <div className="p-6">
           {payload.rows.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-16">{payload.emptyMessage}</p>
@@ -245,24 +231,20 @@ function ReportPreviewModal({ payload, onClose, onDownloadPDF, onDownloadCSV }) 
           )}
         </div>
 
-        {/* Footer com ações — baixar só acontece se realmente necessário */}
+        {/* Ações do Rodapé do Modal */}
         <div className="sticky bottom-0 flex flex-col sm:flex-row items-center justify-between gap-3 p-4 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-b-3xl">
           <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-semibold">
-            <Leaf className="w-3.5 h-3.5" /> Revise antes de imprimir — evite gastos desnecessários de papel.
+            <Leaf className="w-3.5 h-3.5" /> Validado na tela — clique abaixo apenas se precisar gerar o arquivo físico.
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button variant="ghost" size="sm" onClick={onClose} className="text-xs font-bold">
-              Fechar sem baixar
+              Fechar
             </Button>
-            <Button
-              onClick={onDownloadCSV}
-              variant="outline"
-              className="text-xs font-bold h-9 gap-2 border-slate-200 dark:border-slate-700"
-            >
+            <Button onClick={onDownloadCSV} variant="outline" className="text-xs font-bold h-9 gap-2 border-slate-200 dark:border-slate-700">
               <FileSpreadsheet className="w-4 h-4 text-emerald-500" /> Exportar CSV
             </Button>
             <Button onClick={onDownloadPDF} className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold h-9 gap-2">
-              <FileText className="w-4 h-4" /> Baixar PDF
+              <FileText className="w-4 h-4" /> Baixar PDF Oficial
             </Button>
           </div>
         </div>
@@ -272,7 +254,7 @@ function ReportPreviewModal({ payload, onClose, onDownloadPDF, onDownloadCSV }) 
 }
 
 /* ============================================================
- * Componente principal
+ * Componente Principal
  * ============================================================ */
 export default function Relatorios() {
   const { user, company, loading } = useAppData();
@@ -315,7 +297,6 @@ export default function Relatorios() {
 
   useEffect(() => {
     if (!loading) loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, companyId, unitId]);
 
   const filteredShifts = useMemo(() => {
@@ -330,11 +311,18 @@ export default function Relatorios() {
     });
   }, [shifts, startDate, endDate, selectedSector]);
 
+  // Motor corrigido de faturamento real baseado na remuneração de cada profissional
   const byProfessional = useMemo(() => {
     const map = {};
     if (Array.isArray(professionals)) {
       professionals.forEach((p) => {
         if (!p || !p.id) return;
+        const remType = p.remuneration_type || 'hora';
+        let baseRate = 120;
+        if (remType === 'hora') baseRate = Number(p.hourly_rate) || 120;
+        else if (remType === 'diaria') baseRate = Number(p.daily_rate) || 1500;
+        else if (remType === 'mensal') baseRate = Number(p.monthly_salary) || 18000;
+
         map[p.id] = {
           name: p.name || 'Sem Nome',
           category: p.specialty || p.category || 'Geral',
@@ -343,7 +331,8 @@ export default function Relatorios() {
           canceled: 0,
           hours: 0,
           estimatedPay: 0,
-          hourlyRate: Number(p.hourly_rate) || 120,
+          remunerationType: remType,
+          hourlyRate: baseRate,
         };
       });
     }
@@ -359,17 +348,30 @@ export default function Relatorios() {
           canceled: 0,
           hours: 0,
           estimatedPay: 0,
+          remunerationType: 'hora',
           hourlyRate: 120,
         };
       }
+      
+      const profEntry = map[s.professional_id];
+
       if (s.status === 'confirmado') {
-        map[s.professional_id].confirmed += 1;
+        profEntry.confirmed += 1;
         const dur = Number(s.duration_hours) || 12;
-        map[s.professional_id].hours += dur;
-        map[s.professional_id].estimatedPay += dur * map[s.professional_id].hourlyRate;
+        profEntry.hours += dur;
+
+        // Cálculo correspondente ao modelo financeiro correto do profissional
+        if (profEntry.remunerationType === 'diaria') {
+          profEntry.estimatedPay += profEntry.hourlyRate; // Diária fixa por plantão
+        } else if (profEntry.remunerationType === 'mensal') {
+          // Salário mensal distribuído proporcionalmente ou exibido por total consolidado
+          profEntry.estimatedPay = profEntry.hourlyRate; 
+        } else {
+          profEntry.estimatedPay += dur * profEntry.hourlyRate; // Horista
+        }
       }
-      if (s.status === 'pendente') map[s.professional_id].pending += 1;
-      if (s.status === 'cancelado') map[s.professional_id].canceled += 1;
+      if (s.status === 'pendente') profEntry.pending += 1;
+      if (s.status === 'cancelado') profEntry.canceled += 1;
     });
 
     return Object.values(map)
@@ -418,7 +420,6 @@ export default function Relatorios() {
     return parts.join(' · ');
   }, [startDate, endDate, selectedSector]);
 
-  // Payload único: alimenta a tira de KPIs, o modal e os exports (PDF/CSV)
   const reportPayload = useMemo(
     () =>
       buildReportPayload({
@@ -440,13 +441,13 @@ export default function Relatorios() {
 
   return (
     <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans">
-      {/* HEADER EXECUTIVO HOSPITALAR */}
+      {/* HEADER EXECUTIVO */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-950 to-sky-950 p-6 rounded-3xl text-white shadow-xl">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-sky-400">
-            <BarChart3 className="w-4 h-4" /> Inteligência Gerencial & Governança
+            <BarChart3 className="w-4 h-4" /> Inteligência Executiva & Governança
           </div>
-          <h1 className="text-3xl font-black tracking-tight">Central de Relatórios</h1>
+          <h1 className="text-3xl font-black tracking-tight">Relatórios</h1>
           <p className="text-xs text-slate-300 max-w-xl">
             Painel unificado de auditoria, dimensionamento de equipes e controle de repasses da instituição.
           </p>
@@ -457,10 +458,10 @@ export default function Relatorios() {
             onClick={() => setPreviewOpen(true)}
             className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-10 px-5 gap-2 shadow-lg"
           >
-            <Eye className="w-4 h-4" /> Visualizar Relatório desta Aba
+            <Eye className="w-4 h-4" /> Visualizar Relatório Oficial
           </Button>
           <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
-            <Leaf className="w-3 h-3" /> revise antes de imprimir e economize papel
+            <Leaf className="w-3 h-3" /> valide na tela antes de imprimir
           </span>
         </div>
       </div>
@@ -518,8 +519,7 @@ export default function Relatorios() {
         )}
       </div>
 
-      {/* RESUMO EXECUTIVO CONTEXTUAL — muda conforme a aba, é a mesma
-          fonte de dados usada no PDF/CSV, então nunca fica "solto" */}
+      {/* RESUMO EXECUTIVO CONTEXTUAL */}
       <div className="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
         <Sparkles className="w-3.5 h-3.5 text-sky-500" /> Resumo executivo · {TAB_META[activeTab].label.replace(/^\S+\s/, '')}
       </div>
@@ -532,129 +532,32 @@ export default function Relatorios() {
         ))}
       </div>
 
-      {/* CORPO DO RELATÓRIO */}
+      {/* CORPO PRINCIPAL INTERATIVO */}
       {loadingData ? (
         <div className="flex justify-center p-20"><Loader2 className="w-8 h-8 animate-spin text-sky-600" /></div>
       ) : (
         <div className="space-y-6">
-          {/* ABA 1: PRODUTIVIDADE & HORAS */}
           {activeTab === 'produtividade' && (
             <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 rounded-2xl">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-                <div>
-                  <h3 className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-sky-600" /> Carga Horária & Produtividade do Corpo Clínico
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Total de horas válidas e plantões confirmados por profissional.</p>
-                </div>
-                <span className="text-xs font-bold px-3 py-1 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300 border border-sky-200">
-                  {byProfessional.length} ativos no período
+                <h3 className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-sky-600" /> Produtividade & Carga Horária
+                </h3>
+                <span className="text-xs font-bold px-3 py-1 rounded-full bg-sky-50 text-sky-700 border border-sky-200">
+                  {byProfessional.length} profissionais
                 </span>
               </div>
-
-              {byProfessional.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-12">Nenhum dado encontrado para os filtros selecionados.</p>
-              ) : (
-                <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
-                  <table className="w-full text-left text-sm whitespace-nowrap">
-                    <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 border-b border-slate-200 dark:border-slate-800 text-xs uppercase tracking-wider">
-                      <tr>
-                        <th className="p-3.5 font-bold">Profissional</th>
-                        <th className="p-3.5 font-bold">Especialidade</th>
-                        <th className="p-3.5 font-bold text-center">Confirmados</th>
-                        <th className="p-3.5 font-bold text-center">Pendentes</th>
-                        <th className="p-3.5 font-bold text-right">Horas Totais</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                      {byProfessional.map((p, i) => (
-                        <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                          <td className="p-3.5 font-bold text-slate-900 dark:text-white">{p.name}</td>
-                          <td className="p-3.5 text-sky-600 font-semibold uppercase text-xs">{p.category}</td>
-                          <td className="p-3.5 text-center font-bold text-emerald-600">{p.confirmed}</td>
-                          <td className="p-3.5 text-center font-bold text-amber-600">{p.pending}</td>
-                          <td className="p-3.5 text-right font-black text-slate-800 dark:text-white">{p.hours}h</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
-          )}
-
-          {/* ABA 2: COBERTURA POR SETOR */}
-          {activeTab === 'cobertura' && (
-            <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 rounded-2xl">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-                <div>
-                  <h3 className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-sky-600" /> Cobertura Operacional por Setor
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Mapeamento de furos de escala e postos descobertos por ala hospitalar.</p>
-                </div>
-              </div>
-
-              {bySector.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-12">Sem dados suficientes.</p>
-              ) : (
-                <div className="space-y-4">
-                  {bySector.map(([name, data]) => {
-                    const pct = data.total ? Math.round((data.filled / data.total) * 100) : 0;
-                    return (
-                      <div key={name} className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-800 dark:text-white text-sm flex items-center gap-2">
-                            <Building2 className="w-4 h-4 text-sky-600" /> {name}
-                          </span>
-                          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
-                            {pct}% preenchido · <span className="text-red-600 font-black">{data.open} vagas abertas</span> · {data.total} turnos totais
-                          </span>
-                        </div>
-                        <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden p-0.5">
-                          <div className={`h-full rounded-full transition-all duration-500 ${pct < 70 ? 'bg-red-500' : pct < 90 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </Card>
-          )}
-
-          {/* ABA 3: REPASSE FINANCEIRO */}
-          {activeTab === 'financeiro' && (
-            <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 rounded-2xl">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-                <div>
-                  <h3 className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">
-                    <DollarSign className="w-5 h-5 text-emerald-600" /> Projeção de Repasse & Honorários
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Cálculo automatizado do montante a ser liquidado ao corpo clínico.</p>
-                </div>
-                <div className="text-right bg-emerald-50 dark:bg-emerald-950/40 px-4 py-2 rounded-2xl border border-emerald-200 dark:border-emerald-800">
-                  <div className="text-2xl font-black text-emerald-600">{formatCurrency(totalFinancialEstimate)}</div>
-                  <div className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-400">Total Global Estimado</div>
-                </div>
-              </div>
-
               <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
-                <table className="w-full text-left text-sm whitespace-nowrap">
-                  <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 border-b border-slate-200 dark:border-slate-800 text-xs uppercase tracking-wider">
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider">
                     <tr>
-                      <th className="p-3.5 font-bold">Profissional</th>
-                      <th className="p-3.5 font-bold text-center">Horas Validadas</th>
-                      <th className="p-3.5 font-bold text-center">Valor Base / Hora</th>
-                      <th className="p-3.5 font-bold text-right">Total a Liquidar</th>
+                      {reportPayload.columns.map(col => <th key={col} className="p-3 font-bold">{col}</th>)}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                    {byProfessional.map((p, i) => (
-                      <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                        <td className="p-3.5 font-bold text-slate-900 dark:text-white">{p.name}</td>
-                        <td className="p-3.5 text-center font-semibold">{p.hours}h</td>
-                        <td className="p-3.5 text-center text-slate-500">{formatCurrency(p.hourlyRate)}</td>
-                        <td className="p-3.5 text-right font-black text-emerald-600">{formatCurrency(p.estimatedPay)}</td>
+                    {reportPayload.rows.map((row, i) => (
+                      <tr key={i} className="hover:bg-slate-50/50">
+                        {row.map((cell, j) => <td key={j} className="p-3 text-slate-700 dark:text-slate-200">{cell}</td>)}
                       </tr>
                     ))}
                   </tbody>
@@ -663,52 +566,89 @@ export default function Relatorios() {
             </Card>
           )}
 
-          {/* ABA 4: LOG DE AUDITORIA */}
+          {activeTab === 'cobertura' && (
+            <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 rounded-2xl">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                <h3 className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-sky-600" /> Cobertura Operacional por Setor
+                </h3>
+              </div>
+              <div className="space-y-4">
+                {bySector.map(([name, data]) => {
+                  const pct = data.total ? Math.round((data.filled / data.total) * 100) : 0;
+                  return (
+                    <div key={name} className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/60 dark:bg-slate-800/30 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800 dark:text-white text-sm flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-sky-600" /> {name}
+                        </span>
+                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                          {pct}% preenchido · <span className="text-red-600 font-black">{data.open} vagas abertas</span>
+                        </span>
+                      </div>
+                      <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden p-0.5">
+                        <div className={`h-full rounded-full ${pct < 70 ? 'bg-red-500' : pct < 90 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
+          {activeTab === 'financeiro' && (
+            <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 rounded-2xl">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                <h3 className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-emerald-600" /> Projeção de Repasse & Honorários
+                </h3>
+                <div className="text-right bg-emerald-50 px-4 py-2 rounded-2xl border border-emerald-200">
+                  <div className="text-xl font-black text-emerald-600">{formatCurrency(totalFinancialEstimate)}</div>
+                  <div className="text-[10px] uppercase font-bold text-emerald-700">Total Global Estimado</div>
+                </div>
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead className="bg-slate-50 text-slate-500 border-b uppercase">
+                    <tr>
+                      {reportPayload.columns.map(col => <th key={col} className="p-3.5 font-bold">{col}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y font-medium">
+                    {reportPayload.rows.map((row, i) => (
+                      <tr key={i} className="hover:bg-slate-50/50">
+                        {row.map((cell, j) => <td key={j} className="p-3.5 text-slate-700 dark:text-slate-200">{cell}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
           {activeTab === 'auditoria' && (
             <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 rounded-2xl">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-                <div>
-                  <h3 className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5 text-sky-600" /> Log de Auditoria & Modificações
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Rastreabilidade completa de cancelamentos e alterações em plantões.</p>
-                </div>
-                <span className="text-xs font-bold px-3 py-1 rounded-full bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300 border border-red-200">
-                  {auditLogs.length} eventos registrados
-                </span>
+                <h3 className="font-black text-lg text-slate-800 dark:text-white flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-sky-600" /> Log de Auditoria & Modificações
+                </h3>
               </div>
-
-              {auditLogs.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-12">Nenhum evento de cancelamento ou alteração registrado no período.</p>
-              ) : (
-                <div className="space-y-3">
-                  {auditLogs.map((log) => (
-                    <div key={log.id} className="p-4 rounded-2xl border border-red-200 dark:border-red-950/60 bg-red-50/30 dark:bg-red-950/20 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
-                            Plantão Cancelado / Ajustado
-                          </span>
-                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                            Data: {log.date} ({log.start_time} - {log.end_time})
-                          </span>
-                        </div>
-                        <div className="text-xs text-slate-600 dark:text-slate-400 font-medium">
-                          Profissional: <b className="text-slate-800 dark:text-white">{log.professional_name || 'Vago'}</b> · Setor: <b className="text-slate-800 dark:text-white">{log.sector_name || 'Geral'}</b>
-                        </div>
-                        {log.notes && (
-                          <div className="text-xs text-red-700 dark:text-red-300 font-mono mt-1 bg-white/80 dark:bg-slate-900/80 p-2.5 rounded-xl border border-red-100 dark:border-red-900">
-                            📝 {log.notes}
-                          </div>
-                        )}
+              <div className="space-y-3">
+                {auditLogs.length === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-12">Nenhum evento registrado no período.</p>
+                ) : (
+                  auditLogs.map((log) => (
+                    <div key={log.id} className="p-4 rounded-2xl border border-red-200 bg-red-50/30 flex justify-between items-center gap-3">
+                      <div>
+                        <div className="text-xs font-bold text-red-800">Cancelado em {formatDateBR(log.date)} ({log.start_time} - {log.end_time})</div>
+                        <div className="text-xs text-slate-600">Profissional: <b>{log.professional_name || 'Vago'}</b> · Setor: <b>{log.sector_name}</b></div>
+                        {log.notes && <div className="text-xs text-red-700 font-mono mt-1">📝 {log.notes}</div>}
                       </div>
-                      <div className="text-[10px] font-mono text-slate-400 shrink-0 bg-white dark:bg-slate-800 px-2 py-1 rounded border border-slate-200 dark:border-slate-700">
-                        ID: {log.id}
-                      </div>
+                      <div className="text-[10px] font-mono text-slate-400">ID: {log.id}</div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  ))
+                )}
+              </div>
             </Card>
           )}
         </div>
