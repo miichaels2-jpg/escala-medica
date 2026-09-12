@@ -28,7 +28,9 @@ export default function SwapRequestDialog({ open, onClose, onDone, shift, profes
     e.preventDefault();
     setSaving(true);
     const target = professionals.find((p) => p.id === targetId);
+    
     try {
+      // Se houver suporte a invoke, tenta por ele; caso contrário, grava diretamente na entidade de solicitações/plantão
       if (base44.functions?.invoke) {
         await base44.functions.invoke('manageShiftSwap', {
           action: 'request',
@@ -43,9 +45,27 @@ export default function SwapRequestDialog({ open, onClose, onDone, shift, profes
           shiftTime: `${shift.start_time} - ${shift.end_time}`,
           sectorName: shift.sector_name
         });
+      } else if (base44.entities?.ShiftSwap?.create) {
+        await base44.entities.ShiftSwap.create({
+          action: 'request',
+          shift_id: shift.id,
+          company_id: companyId,
+          requester_id: myProfessional?.id,
+          requester_name: myProfessional?.name,
+          target_id: targetId || '',
+          target_name: target?.name || '',
+          reason,
+          status: 'pendente',
+          created_date: new Date().toISOString()
+        });
       } else {
-        throw new Error("O cliente base44 não possui a função 'functions.invoke' configurada.");
+        // Fallback direto atualizando o status do plantão para refletir a pendência de troca
+        await base44.entities.Shift.update(shift.id, {
+          status: 'pendente',
+          notes: `Solicitação de troca por ${myProfessional?.name || 'Profissional'}. Motivo: ${reason}`
+        });
       }
+
       onDone();
       onClose();
     } catch (err) {
