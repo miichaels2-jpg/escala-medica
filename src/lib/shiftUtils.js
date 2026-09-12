@@ -1,12 +1,12 @@
 /**
- * Converte data e hora (ex: "2026-09-11" e "07:00") em objeto Date local
+ * Converte data e hora (ex: "2026-09-10" e "07:00") em objeto Date local
  */
 export function parseShiftDateTime(dateStr, timeStr) {
-  if (!dateStr || !timeStr) return null;
+  if (!dateStr) return null;
   const cleanDate = dateStr.split('T')[0];
   const [year, month, day] = cleanDate.split('-').map(Number);
-  const [hour, minute] = timeStr.split(':').map(Number);
-  return new Date(year, month - 1, day, hour, minute, 0);
+  const [hour, minute] = (timeStr || '07:00').split(':').map(Number);
+  return new Date(year, month - 1, day, hour || 0, minute || 0, 0);
 }
 
 /**
@@ -28,15 +28,15 @@ export function getShiftInterval(shift) {
 }
 
 /**
- * Calcula o ciclo de vida do plantão no Modo TV:
- * - 'active': Plantão em andamento neste instante
- * - 'upcoming': Plantão programado que ainda não iniciou
- * - 'recently_finished': Encerrou há menos de 2 horas (histórico recente de passagem de plantão)
- * - 'expired': Encerrou há mais de 2 horas (deve sair da TV)
+ * Ciclo de vida do plantão:
+ * - 'upcoming': Ainda não começou (Futuro)
+ * - 'active': Em andamento neste exato instante
+ * - 'recently_finished': Encerrou há menos de 2 horas (passagem de plantão na TV)
+ * - 'concluded': Encerrado há mais de 2 horas ou de dias anteriores
  */
 export function getShiftTvLifecycle(shift, now = new Date()) {
   const interval = getShiftInterval(shift);
-  if (!interval) return { state: 'upcoming', label: 'Programado' };
+  if (!interval) return { state: 'upcoming', label: 'Programado', detail: 'Horário a definir' };
 
   const { start, end } = interval;
   const nowMs = now.getTime();
@@ -55,7 +55,7 @@ export function getShiftTvLifecycle(shift, now = new Date()) {
   if (nowMs >= startMs && nowMs <= endMs) {
     return { 
       state: 'active', 
-      label: 'Em Plantão Ativo', 
+      label: 'Ativo no Plantão', 
       detail: `Término às ${shift.end_time || '--:--'}` 
     };
   }
@@ -68,10 +68,11 @@ export function getShiftTvLifecycle(shift, now = new Date()) {
     };
   }
 
+  // Qualquer plantão que encerrou há mais de 2 horas ou de dias anteriores
   return { 
-    state: 'expired', 
-    label: 'Finalizado', 
-    detail: 'Expirado da exibição' 
+    state: 'concluded', 
+    label: 'Plantão Concluído', 
+    detail: `Finalizado às ${shift.end_time || '--:--'}` 
   };
 }
 
