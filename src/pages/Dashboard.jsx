@@ -529,7 +529,7 @@ export default function Painel() {
 
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 flex items-center justify-between">
             <span>Passagens auditadas em tempo real</span>
-            <span className="font-bold text-sky-600">ScaleMedic Cockpit</span>
+            <span className="font-bold text-sky-600">ScaleMedic</span>
           </div>
         </Card>
 
