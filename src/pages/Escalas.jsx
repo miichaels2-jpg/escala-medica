@@ -23,10 +23,13 @@ import {
   X,
   Sun,
   Moon,
-  FileSpreadsheet
+  Building2,
+  Activity,
+  ShieldAlert,
+  ArrowRight
 } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
-import { exportSchedulePDF, exportReportCSV } from '@/lib/exportReport';
+import { exportSchedulePDF } from '@/lib/exportReport';
 import { getShiftTvLifecycle } from '@/lib/shiftUtils';
 
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -205,6 +208,46 @@ export default function Escalas() {
       });
   }, [shifts, search, sectorFilter, quickFilter, selectedMonth, selectedDate, profMap, isManager, myProfessional, userFullName, currentTime]);
 
+  // AGRUPAMENTO DO MODO TV POR SETOR CLÍNICO
+  const tvSectorsGrouped = useMemo(() => {
+    // Filtra apenas o que é relevante para o momento na TV (não mostra concluídos há mais de 2h)
+    const tvVisible = filtered.filter((s) => s.lifecycle.state !== 'concluded');
+    
+    const groups = {};
+    tvVisible.forEach((shift) => {
+      const secKey = shift.sector_id || shift.sector_name || 'geral';
+      const secName = shift.sector_name || 'Geral';
+
+      if (!groups[secKey]) {
+        groups[secKey] = {
+          id: secKey,
+          name: toTitleCase(secName),
+          active: [],
+          upcoming: [],
+          recentlyFinished: [],
+          vacant: []
+        };
+      }
+
+      if (shift.isVacant) {
+        groups[secKey].vacant.push(shift);
+      } else if (shift.lifecycle.state === 'active') {
+        groups[secKey].active.push(shift);
+      } else if (shift.lifecycle.state === 'upcoming') {
+        groups[secKey].upcoming.push(shift);
+      } else if (shift.lifecycle.state === 'recently_finished') {
+        groups[secKey].recentlyFinished.push(shift);
+      }
+    });
+
+    return Object.values(groups).sort((a, b) => {
+      // Setores com vagas ou ativos primeiro
+      const scoreA = a.vacant.length * 10 + a.active.length * 2 + a.upcoming.length;
+      const scoreB = b.vacant.length * 10 + b.active.length * 2 + b.upcoming.length;
+      return scoreB - scoreA;
+    });
+  }, [filtered]);
+
   const auditStats = useMemo(() => {
     const total = filtered.length;
     const vacant = filtered.filter((s) => s.isVacant).length;
@@ -230,7 +273,6 @@ export default function Escalas() {
     load();
   };
 
-  // Exportação única e oficial da escala em PDF
   const handleExportSchedule = () => {
     const sorted = [...filtered].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     const dateLabel = selectedDate ? `${fmtDate(selectedDate)}` : (selectedMonth || 'Período Atual');
@@ -339,6 +381,7 @@ export default function Escalas() {
 
   const personalHeadline = myProfessional?.name || userFullName || 'Seu calendário';
 
+  // Helper de cores da grade normal
   const getCardStyle = (shift) => {
     if (shift.isVacant) {
       return 'border-amber-400/80 bg-amber-500/[0.04] dark:bg-amber-500/[0.08] border-dashed shadow-sm ring-1 ring-amber-400/20';
@@ -354,153 +397,237 @@ export default function Escalas() {
 
   const getBadgeScheduleTime = (shift) => {
     const isNight = shift.shift_type === 'noturno' || (shift.start_time >= '18:00' || shift.start_time < '06:00');
-    
-    if (shift.isVacant) {
-      return 'bg-amber-500/15 text-amber-900 dark:text-amber-200 border border-amber-500/30';
-    }
-    if (shift.lifecycle.state === 'active') {
-      return 'bg-emerald-500 text-white font-black shadow-sm';
-    }
-    if (shift.lifecycle.state === 'concluded' || shift.lifecycle.state === 'recently_finished') {
-      return 'bg-blue-500/10 text-blue-800 dark:text-blue-300 border border-blue-500/20';
-    }
-    if (isNight) {
-      return 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20';
-    }
+    if (shift.isVacant) return 'bg-amber-500/15 text-amber-900 dark:text-amber-200 border border-amber-500/30';
+    if (shift.lifecycle.state === 'active') return 'bg-emerald-500 text-white font-black shadow-sm';
+    if (shift.lifecycle.state === 'concluded' || shift.lifecycle.state === 'recently_finished') return 'bg-blue-500/10 text-blue-800 dark:text-blue-300 border border-blue-500/20';
+    if (isNight) return 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20';
     return 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20';
   };
 
   const getStatusBadge = (shift) => {
-    if (shift.isVacant) {
-      return {
-        label: '⚠️ Vaga Aberta',
-        className: 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40 animate-pulse'
-      };
-    }
-    if (shift.lifecycle.state === 'active') {
-      return {
-        label: '● Ativo no Plantão',
-        className: 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/40 animate-pulse'
-      };
-    }
-    if (shift.lifecycle.state === 'concluded' || shift.lifecycle.state === 'recently_finished') {
-      return {
-        label: '✓ Concluído',
-        className: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20'
-      };
-    }
-    return {
-      label: '⏳ Programado',
-      className: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20'
-    };
+    if (shift.isVacant) return { label: '⚠️ Vaga Aberta', className: 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/40 animate-pulse' };
+    if (shift.lifecycle.state === 'active') return { label: '● Ativo no Plantão', className: 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/40 animate-pulse' };
+    if (shift.lifecycle.state === 'concluded' || shift.lifecycle.state === 'recently_finished') return { label: '✓ Concluído', className: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20' };
+    return { label: '⏳ Programado', className: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20' };
   };
 
-  // Modo TV
+  // =========================================================================
+  // NOVO MODO TV REVOLUCIONÁRIO: ORGANIZADO POR SETOR HOSPITALAR (COCKPIT)
+  // =========================================================================
   if (tvMode && isManager) {
-    const tvVisible = filtered.filter((s) => s.lifecycle.state !== 'concluded');
+    const totalActiveNow = tvSectorsGrouped.reduce((sum, g) => sum + g.active.length, 0);
+    const totalVacantNow = tvSectorsGrouped.reduce((sum, g) => sum + g.vacant.length, 0);
+
     return (
-      <div className="min-h-full bg-slate-950 p-5 text-white md:p-8 select-none">
-        <div className="mx-auto max-w-[1800px]">
-          <div className="mb-6 flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
+      <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col justify-between p-6 select-none overflow-hidden font-sans">
+        {/* Topo Oficial da TV */}
+        <div className="flex items-center justify-between border-b border-white/10 pb-4 shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400 shadow-lg shadow-sky-950">
+              <Activity className="w-7 h-7 animate-pulse" />
+            </div>
             <div>
-              <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.24em] text-sky-300">
-                <CalendarDays className="h-5 w-5" /> Escala Hospitalar ao Vivo
+              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.25em] text-sky-400">
+                <span>{company?.name || 'Hospital Santa Clara'}</span>
+                <span>•</span>
+                <span>Monitoramento Clínico ao Vivo</span>
               </div>
-              <h1 className="mt-2 text-4xl font-black tracking-tight md:text-6xl">
+              <h1 className="text-3xl lg:text-4xl font-black tracking-tight text-white mt-0.5">
                 {fmtDateLong(selectedDate)}
               </h1>
-              <p className="mt-1 text-lg text-slate-400">
-                {fmtDate(selectedDate)} · {tvVisible.length} profissionais na operação do dia
+              <p className="text-xs text-slate-400 font-medium">
+                {fmtDate(selectedDate)} · {tvSectorsGrouped.length} setores ativos em operação
               </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <div className="flex items-center justify-end gap-2 text-3xl font-black tabular-nums md:text-5xl text-sky-400">
-                  <Clock3 className="h-7 w-7" />
-                  {currentTime.toLocaleTimeString('pt-BR')}
-                </div>
-                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Horário Oficial Local</div>
-              </div>
-              <button 
-                title="Fechar modo TV" 
-                onClick={closeTvMode} 
-                className="rounded-xl border border-white/15 p-3 text-slate-300 hover:bg-white/10 transition-colors"
-              >
-                <Minimize2 className="h-5 w-5" />
-              </button>
             </div>
           </div>
 
-          {tvVisible.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/15 p-16 text-center text-xl text-slate-400">
-              Nenhum plantão ativo ou programado para esta data.
+          {/* Relógio Digital de Alta Visibilidade */}
+          <div className="flex items-center gap-5">
+            <div className="bg-white/[0.04] border border-white/10 px-5 py-2.5 rounded-2xl flex items-center gap-3">
+              <div className="w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
+              <div className="text-right">
+                <div className="text-3xl lg:text-4xl font-black font-mono tracking-tight text-sky-300">
+                  {currentTime.toLocaleTimeString('pt-BR')}
+                </div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Horário Oficial</div>
+              </div>
+            </div>
+
+            <button 
+              title="Sair da tela cheia" 
+              onClick={closeTvMode} 
+              className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 transition-colors"
+            >
+              <Minimize2 className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+
+        {/* CORPO DA TV: COLUNAS DE SETORES HOSPITALARES */}
+        <div className="flex-1 my-5 overflow-y-auto pr-1">
+          {tvSectorsGrouped.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 p-12 text-slate-400 text-xl font-medium">
+              <CalendarDays className="w-12 h-12 text-slate-600 mb-3" />
+              Nenhum plantão ativo ou programado para esta unidade na data selecionada.
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {tvVisible.map((shift) => {
-                const isActive = shift.lifecycle.state === 'active';
-                const isFinished = shift.lifecycle.state === 'recently_finished';
-                const isVacant = shift.isVacant;
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 h-full">
+              {tvSectorsGrouped.map((sector) => {
+                const hasVacant = sector.vacant.length > 0;
+                const hasActive = sector.active.length > 0;
 
                 return (
                   <div
-                    key={shift.id}
-                    className={`rounded-2xl border p-5 shadow-2xl transition-all duration-500 ${
-                      isVacant
-                        ? 'border-amber-500/80 bg-amber-950/20 border-dashed'
-                        : isActive
-                        ? 'border-emerald-500/60 bg-emerald-950/30 shadow-emerald-950/50 scale-[1.01]'
-                        : isFinished
-                        ? 'border-blue-900/40 bg-blue-950/20'
-                        : 'border-white/10 bg-white/[0.07]'
+                    key={sector.id}
+                    className={`rounded-3xl border p-5 flex flex-col justify-between transition-all duration-500 shadow-2xl ${
+                      hasVacant
+                        ? 'border-amber-500/60 bg-amber-950/20 shadow-amber-950/30'
+                        : hasActive
+                        ? 'border-emerald-500/40 bg-white/[0.03] shadow-emerald-950/20'
+                        : 'border-white/10 bg-white/[0.02]'
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className={`rounded-xl px-3 py-2 text-center text-base font-black ${
-                        isVacant
-                          ? 'bg-amber-500 text-slate-950'
-                          : isActive 
-                          ? 'bg-emerald-500 text-slate-950' 
-                          : isFinished
-                          ? 'bg-blue-900/60 text-blue-200 border border-blue-700/50'
-                          : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
-                      }`}>
-                        <div>{shift.start_time || '--:--'}</div>
-                        <div className="text-[11px] font-normal opacity-80">até {shift.end_time || '--:--'}</div>
-                      </div>
+                    {/* Topo do Setor */}
+                    <div>
+                      <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`p-2 rounded-xl ${hasVacant ? 'bg-amber-500/20 text-amber-400' : 'bg-sky-500/20 text-sky-400'}`}>
+                            <Building2 className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h2 className="text-xl font-black text-white tracking-tight">{sector.name}</h2>
+                            <span className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">
+                              {sector.active.length} ativo(s) · {sector.upcoming.length} a assumir
+                            </span>
+                          </div>
+                        </div>
 
-                      <div className="text-right">
-                        <span
-                          className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider ${
-                            isVacant
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
-                              : isActive
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse'
-                              : isFinished
-                              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
-                              : 'bg-white/10 text-slate-300'
-                          }`}
-                        >
-                          {isActive && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />}
-                          {isVacant ? '⚠️ Vaga em Aberto' : isActive ? '● Ativo no Plantão' : isFinished ? '✓ Concluído' : '⏳ Programado'}
+                        {/* Indicador de Status do Setor */}
+                        <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${
+                          hasVacant 
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+                            : hasActive
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : 'bg-white/10 text-slate-400 border-white/10'
+                        }`}>
+                          {hasVacant ? '⚠️ Desfalque' : hasActive ? '● Guarnecido' : '⏳ Aguardando'}
                         </span>
-                        <div className="text-[10px] text-slate-400 mt-1">{shift.lifecycle.detail}</div>
+                      </div>
+
+                      {/* Plantões Dentro do Setor */}
+                      <div className="space-y-3">
+                        {/* 1. Vagas em Aberto no Setor (Prioridade Máxima) */}
+                        {sector.vacant.map((s) => (
+                          <div 
+                            key={s.id}
+                            className="p-3.5 rounded-2xl bg-amber-500/20 border-2 border-dashed border-amber-500/60 text-amber-200 flex items-center justify-between animate-pulse"
+                          >
+                            <div>
+                              <span className="text-[10px] uppercase tracking-wider font-black text-amber-400 block">Vaga em Aberto</span>
+                              <strong className="text-base font-black text-white">Posto Descoberto</strong>
+                              <div className="text-[11px] text-amber-300 font-mono mt-0.5">
+                                {s.start_time} às {s.end_time} ({s.duration_hours || 12}h)
+                              </div>
+                            </div>
+                            <span className="text-xs font-black uppercase px-2.5 py-1 bg-amber-500 text-slate-950 rounded-lg">
+                              Alocar
+                            </span>
+                          </div>
+                        ))}
+
+                        {/* 2. Plantonista Ativo Agora (Destaque Principal) */}
+                        {sector.active.map((s) => (
+                          <div 
+                            key={s.id}
+                            className="p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-white flex items-center justify-between shadow-lg shadow-emerald-950/40"
+                          >
+                            <div>
+                              <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                                <span>Ativo no Plantão</span>
+                              </div>
+                              <strong className="text-lg lg:text-xl font-black text-white block mt-0.5 truncate max-w-[220px]">
+                                {toTitleCase(s.professional_name)}
+                              </strong>
+                              <div className="text-xs text-slate-300 font-mono mt-0.5">
+                                Turno: <b>{s.start_time}</b> até <b>{s.end_time}</b>
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-emerald-500 text-slate-950">
+                                Presente
+                              </span>
+                              <div className="text-[10px] text-emerald-300 mt-1 font-semibold">
+                                {s.lifecycle.detail}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* 3. Próximo Plantonista a Assumir (Passagem de Turno) */}
+                        {sector.upcoming.map((s) => (
+                          <div 
+                            key={s.id}
+                            className="p-3 rounded-2xl bg-white/[0.04] border border-white/10 text-slate-300 flex items-center justify-between"
+                          >
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-sky-400 block">Próximo Turno</span>
+                              <strong className="text-sm font-bold text-white block truncate max-w-[200px]">
+                                {toTitleCase(s.professional_name)}
+                              </strong>
+                              <div className="text-[11px] text-slate-400 font-mono">
+                                Inicia às {s.start_time} (até {s.end_time})
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                              Escalado
+                            </span>
+                          </div>
+                        ))}
+
+                        {/* 4. Recém-Concluído (Até 2h para Passagem de Plantão) */}
+                        {sector.recentlyFinished.map((s) => (
+                          <div 
+                            key={s.id}
+                            className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5 text-slate-400 flex items-center justify-between opacity-60 text-xs"
+                          >
+                            <span className="truncate max-w-[180px]">Passou: {toTitleCase(s.professional_name)}</span>
+                            <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                              Concluído
+                            </span>
+                          </div>
+                        ))}
                       </div>
                     </div>
 
-                    <div className="mt-5 truncate text-2xl font-black text-white">
-                      {toTitleCase(shift.professional_name) || 'Vaga Descoberta'}
-                    </div>
-
-                    <div className="mt-2 flex items-center gap-2 text-base text-slate-300">
-                      <Stethoscope className={`h-4 w-4 ${isVacant ? 'text-amber-400' : isActive ? 'text-emerald-400' : 'text-sky-400'}`} />
-                      <span>{toTitleCase(shift.sector_name) || 'Setor Geral'}</span>
+                    {/* Rodapé do Card do Setor */}
+                    <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px] text-slate-400 font-medium">
+                      <span>Capacidade: <b>{sector.active.length + sector.upcoming.length} turnos</b></span>
+                      <span className="text-sky-400 font-semibold">{s.duration_hours ? `${s.duration_hours}h` : '12h'}</span>
                     </div>
                   </div>
                 );
               })}
             </div>
           )}
+        </div>
+
+        {/* RODAPÉ HOSPITALAR DA TV (LETREIRO DE STATUS) */}
+        <div className="border-t border-white/10 pt-3 shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1.5 font-bold text-white">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" /> {totalActiveNow} Plantonistas Ativos
+            </span>
+            <span>•</span>
+            <span className={`font-bold ${totalVacantNow > 0 ? 'text-amber-400 animate-pulse' : 'text-slate-400'}`}>
+              {totalVacantNow > 0 ? `⚠️ ${totalVacantNow} Vaga(s) com Alerta` : '100% dos Postos Cobertos'}
+            </span>
+          </div>
+
+          <div className="font-mono text-[11px] tracking-wide text-slate-500">
+            ScaleMedic Enterprise TV · Sincronização em Tempo Real Ativa
+          </div>
         </div>
       </div>
     );
@@ -577,14 +704,6 @@ export default function Escalas() {
   // Visão Gestão Plena
   return (
     <div className="p-4 md:p-8 space-y-5">
-      {/* Estilos para impressão nativa limpa (caso aperte Ctrl+P) */}
-      <style>{`
-        @media print {
-          nav, aside, header, .print\\:hidden { display: none !important; }
-          body { background: white !important; color: #0f172a !important; }
-        }
-      `}</style>
-
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-lg">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -593,7 +712,7 @@ export default function Escalas() {
             </div>
             <h2 className="mt-3 text-3xl font-black tracking-tight">Gestão Operacional de Escala</h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              Alocação diária, identificação precoce de furos de escala e emissão de escalas homologadas.
+              Alocação diária, identificação precoce de furos de escala e monitoramento setorial.
             </p>
           </div>
           <div className="flex items-center gap-3 text-right">
@@ -649,7 +768,7 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* Ações do Topo */}
+      {/* Ações */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">Operação da Unidade</p>
@@ -666,7 +785,7 @@ export default function Escalas() {
       </div>
 
       <Card className="p-4 border-slate-200 space-y-4">
-        {/* Barra de Filtros com Ação Única de PDF Executivo */}
+        {/* Barra de Filtros */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -736,15 +855,13 @@ export default function Escalas() {
             ))}
           </select>
 
-          <Button variant="outline" onClick={openTvMode} className="border-sky-200 text-sky-700 hover:bg-sky-50 font-bold text-xs h-10">
-            <Maximize2 className="w-4 h-4 mr-1.5" /> Modo TV
+          <Button onClick={openTvMode} className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-10 px-4 shadow-sm gap-1.5">
+            <Maximize2 className="w-4 h-4" /> Modo TV Setorial
           </Button>
 
-          {/* Botão Único de Exportação Hospitalar */}
           <Button 
             onClick={handleExportSchedule} 
             className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs h-10 px-4 shadow-sm"
-            title="Baixar escala oficial em PDF formatado para impressão A4"
           >
             <Download className="w-4 h-4 mr-1.5 text-sky-400" /> Exportar Escala (PDF)
           </Button>
