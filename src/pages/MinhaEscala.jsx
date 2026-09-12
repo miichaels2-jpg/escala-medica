@@ -1,421 +1,448 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useAppData } from '@/lib/useAppData';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Calendar, Repeat, DollarSign, User, Clock, MapPin, CheckCircle2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import SwapRequestDialog from '@/components/shifts/SwapRequestDialog';
-import NotificationBell from '@/components/NotificationBell';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
+} from '@/components/ui/dialog';
+import {
+  CalendarDays,
+  Clock,
+  Repeat,
+  AlertTriangle,
+  CheckCircle2,
+  Building2,
+  Stethoscope,
+  Globe,
+  UserCheck,
+  Loader2,
+  Moon,
+  Sun,
+  ShieldAlert,
+  ArrowRight
+} from 'lucide-react';
+import { getShiftTvLifecycle } from '@/lib/shiftUtils';
 
-const shiftTypeStyle = {
-  diurno: 'bg-sky-50 text-sky-700',
-  noturno: 'bg-purple-50 text-purple-700',
-  intermediario: 'bg-amber-50 text-amber-700',
-};
-
-const WEEKDAYS_PT = [
-  'domingo',
-  'segunda-feira',
-  'terça-feira',
-  'quarta-feira',
-  'quinta-feira',
-  'sexta-feira',
-  'sábado'
-];
-
-const MONTHS_PT = [
-  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
-];
-
-function getLocalDateString(d = new Date()) {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function fmtFull(dateStr) {
+function fmtDate(dateStr) {
   if (!dateStr) return '';
   const clean = dateStr.split('T')[0];
   const [y, m, d] = clean.split('-');
-  const dateObj = new Date(Number(y), Number(m) - 1, Number(d));
-  const weekday = WEEKDAYS_PT[dateObj.getDay()] || '';
-  const monthName = MONTHS_PT[dateObj.getMonth()] || '';
-  return `${weekday}, ${d} de ${monthName}`;
+  const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const dt = new Date(Number(y), Number(m) - 1, Number(d));
+  return `${d}/${m} (${weekdays[dt.getDay()] || ''})`;
+}
+
+function toTitleCase(str) {
+  if (!str) return '';
+  const acr = ['UTI', 'UCO', 'PA', 'PS', 'CRM', 'COREN'];
+  return str
+    .toLowerCase()
+    .split(' ')
+    .map((w) => {
+      const u = w.toUpperCase();
+      if (acr.includes(u)) return u;
+      if (['de', 'da', 'do', 'das', 'dos', 'e'].includes(w)) return w;
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    })
+    .join(' ');
 }
 
 export default function MinhaEscala() {
   const { user, company, loading: appLoading } = useAppData();
-  const [myShifts, setMyShifts] = useState([]);
-  const [companyShifts, setCompanyShifts] = useState([]);
-  const [myProfessional, setMyProfessional] = useState(null);
+  const [shifts, setShifts] = useState([]);
+  const [allUnitShifts, setAllUnitShifts] = useState([]);
   const [professionals, setProfessionals] = useState([]);
-  const [swapShift, setSwapShift] = useState(null);
-  const [tab, setTab] = useState('escala');
+  const [loading, setLoading] = useState(true);
 
-  const userId = user?.id;
-  const userEmail = user?.email;
-  const userFullName = user?.full_name;
+  // Modal de Troca / Doação
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedShift, setSelectedShift] = useState(null);
+  const [modalMode, setModalMode] = useState('direta'); // 'direta' (alguém) ou 'mural' (deixar vago)
+  const [targetProfId, setTargetProfId] = useState('');
+  const [swapReason, setSwapReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
   const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
   const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id || 'unit_h1';
-  const isManager = user?.role === 'admin' || user?.data?.app_role === 'manager' || user?.data?.app_role === 'gestor';
 
-  // Função centralizada para carregar e atualizar os dados instantaneamente
-  const loadEscalaData = useCallback(async () => {
-    if (!userId) return;
+  // Identifica o profissional logado com segurança
+  const myProfessional = useMemo(() => {
+    const uId = user?.id;
+    const uEmail = user?.email;
+    const uName = user?.full_name;
+    return (professionals || []).find(
+      (p) => p.user_id === uId || (p.email && p.email === uEmail) || p.name === uName
+    );
+  }, [professionals, user]);
+
+  const currentProfId = myProfessional?.id || user?.data?.professional_id;
+
+  const loadData = useCallback(async () => {
+    if (!companyId) return;
+    setLoading(true);
     try {
-      const filterQuery = companyId ? { company_id: companyId } : {};
-      const [profs, shifts] = await Promise.all([
-        base44.entities.Professional.filter(filterQuery, '-created_date', 200),
-        base44.entities.Shift.filter(filterQuery, 'date', 500)
+      const filterBase = { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) };
+
+      const [profsRes, shiftsRes] = await Promise.all([
+        base44.entities.Professional.filter(filterBase, '-created_date', 500).catch(() => []),
+        base44.entities.Shift.filter(filterBase, '-date', 800).catch(() => [])
       ]);
 
-      const me = profs.find((p) => p.user_id === userId || (p.email && p.email === userEmail));
-      setMyProfessional(me || null);
-      setProfessionals(profs || []);
-      setCompanyShifts(shifts || []);
+      setProfessionals(profsRes || []);
+      setAllUnitShifts(shiftsRes || []);
 
-      const profId = me?.id;
-      const mine = (shifts || [])
-        .filter((s) => s.professional_id === profId || (!profId && s.professional_name === userFullName))
-        .filter((s) => s.status === 'confirmado' || s.status === 'pendente')
-        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      // Filtra estritamente os plantões do usuário atual
+      const myShiftsOnly = (shiftsRes || []).filter((s) => {
+        if (currentProfId && String(s.professional_id) === String(currentProfId)) return true;
+        if (myProfessional?.name && s.professional_name === myProfessional.name) return true;
+        if (user?.full_name && s.professional_name === user.full_name) return true;
+        return false;
+      });
 
-      setMyShifts(mine);
+      setShifts(myShiftsOnly);
     } catch (e) {
-      console.error('Erro ao carregar escala do profissional:', e);
+      console.error('Erro ao carregar Minha Escala:', e);
+    } finally {
+      setLoading(false);
     }
-  }, [userId, companyId, userEmail, userFullName]);
+  }, [companyId, unitId, currentProfId, myProfessional, user]);
 
   useEffect(() => {
-    if (appLoading) return;
-    loadEscalaData();
-  }, [appLoading, loadEscalaData]);
+    if (!appLoading) loadData();
+  }, [appLoading, loadData]);
 
-  // CORREÇÃO: Mostra todos os plantões a partir de HOJE (incluindo o que começa às 07h)
-  const upcoming = useMemo(() => {
-    const todayStr = getLocalDateString();
-    return myShifts.filter((s) => {
+  // Colegas da mesma especialidade disponíveis para troca
+  const eligibleColleagues = useMemo(() => {
+    if (!selectedShift && !myProfessional) return [];
+    const mySpec = (myProfessional?.specialty || selectedShift?.sector_name || '').trim().toLowerCase();
+    const myCat = (myProfessional?.category || '').trim().toLowerCase();
+
+    return professionals.filter((p) => {
+      if (String(p.id) === String(currentProfId)) return false;
+      if (p.status === 'inativo') return false;
+
+      const pSpec = (p.specialty || '').trim().toLowerCase();
+      const pCat = (p.category || '').trim().toLowerCase();
+
+      if (mySpec && pSpec) return pSpec === mySpec;
+      return pCat === myCat;
+    });
+  }, [professionals, myProfessional, currentProfId, selectedShift]);
+
+  // Validação: colega escolhido já está de plantão no mesmo dia?
+  const colleagueHasConflict = useMemo(() => {
+    if (!selectedShift || !targetProfId || modalMode !== 'direta') return false;
+    const shiftDate = (selectedShift.date || '').split('T')[0];
+
+    return allUnitShifts.some((s) => {
       const sDate = (s.date || '').split('T')[0];
-      return sDate >= todayStr;
+      return (
+        sDate === shiftDate &&
+        String(s.professional_id) === String(targetProfId) &&
+        s.status !== 'cancelado'
+      );
     });
-  }, [myShifts]);
+  }, [allUnitShifts, selectedShift, targetProfId, modalMode]);
 
-  const next = upcoming[0];
-
-  const availableOpenShifts = useMemo(() => {
-    if (!myProfessional) return [];
-    return companyShifts.filter((shift) => {
-      if (shift.status !== 'vago' || shift.company_id !== companyId) return false;
-      const target = shift.sector_name || shift.sector_id || '';
-      const specialty = (myProfessional.specialty || '').toLowerCase();
-      const category = (myProfessional.category || '').toLowerCase();
-      const targetLower = target.toLowerCase();
-
-      const matchesRole =
-        !specialty ||
-        specialty.includes(targetLower) ||
-        targetLower.includes(specialty) ||
-        category.includes(targetLower) ||
-        targetLower.includes(category);
-
-      if (!matchesRole) return false;
-
-      const alreadyAssigned = companyShifts.some((existingShift) => {
-        if (!existingShift || existingShift.professional_id !== myProfessional.id) return false;
-        if (existingShift.status === 'cancelado') return false;
-        return (existingShift.date || '').split('T')[0] === (shift.date || '').split('T')[0];
-      });
-
-      return !alreadyAssigned;
-    });
-  }, [companyShifts, myProfessional, companyId]);
-
-  const totalHours = useMemo(() => {
-    return myShifts.reduce((s, sh) => s + (sh.duration_hours || 12), 0);
-  }, [myShifts]);
-
-  const handleAcceptOpenShift = async (shiftId) => {
-    try {
-      if (!myProfessional) {
-        alert('Você precisa estar vinculado a um profissional para aceitar uma vaga.');
-        return;
-      }
-
-      await base44.entities.Shift.update(shiftId, {
-        professional_id: myProfessional.id,
-        professional_name: myProfessional.name,
-        status: 'confirmado'
-      });
-
-      await loadEscalaData();
-    } catch (e) {
-      alert('Não foi possível aceitar a vaga no momento.');
-    }
+  const openSwapModal = (shift) => {
+    setSelectedShift(shift);
+    setModalMode('direta');
+    setTargetProfId('');
+    setSwapReason('');
+    setModalOpen(true);
   };
 
-  const handleConfirmShift = async (shiftId) => {
-    try {
-      await base44.entities.Shift.update(shiftId, { status: 'confirmado' });
-      await loadEscalaData();
-    } catch (e) {
-      alert('Não foi possível confirmar o plantão agora.');
-    }
-  };
+  const handleSendSwap = async (e) => {
+    e.preventDefault();
+    if (!selectedShift) return;
 
-  const handleCheckIn = async (shift) => {
-    if (!navigator.geolocation) {
-      alert('Este navegador não suporta geolocalização.');
+    const isMural = modalMode === 'mural';
+    if (!isMural && !targetProfId) {
+      alert('Por favor, selecione para qual colega deseja passar o plantão, ou escolha "Deixar Vago (Mural)".');
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          if (!position?.coords?.latitude) {
-            alert('Não foi possível confirmar a localização.');
-            return;
-          }
-          await base44.entities.Shift.update(shift.id, {
-            checked_in: true,
-            location_verified: true,
-            checkin_lat: position.coords.latitude,
-            checkin_lng: position.coords.longitude,
-            status: 'confirmado'
-          });
-          await loadEscalaData();
-        } catch (e) {
-          alert('Não foi possível registrar o check-in.');
-        }
-      },
-      () => {
-        alert('Para o check-in funcionar, permita o acesso à localização.');
-      },
-      { enableHighAccuracy: true, timeout: 15000 }
-    );
+    if (colleagueHasConflict) {
+      const proceed = confirm('Atenção: O profissional selecionado já possui plantão escalado neste mesmo dia. Deseja prosseguir com o envio mesmo assim?');
+      if (!proceed) return;
+    }
+
+    const targetProf = !isMural ? professionals.find((p) => String(p.id) === String(targetProfId)) : null;
+
+    setSubmitting(true);
+    try {
+      const payload = {
+        company_id: companyId,
+        unit_id: unitId || selectedShift.unit_id,
+        shift_id: selectedShift.id,
+        shift_date: selectedShift.date,
+        shift_time: `${selectedShift.start_time || '07:00'} - ${selectedShift.end_time || '19:00'}`,
+        sector_name: selectedShift.sector_name || 'Geral',
+        requester_professional_id: currentProfId,
+        requester_name: myProfessional?.name || user?.full_name || 'Plantonista',
+        requester_specialty: myProfessional?.specialty || myProfessional?.category || 'Clínica Médica',
+        target_professional_id: isMural ? null : targetProf?.id,
+        target_name: isMural ? 'Mural Aberto (Qualquer Colega)' : targetProf?.name,
+        target_specialty: isMural ? (myProfessional?.specialty || 'Geral') : (targetProf?.specialty || targetProf?.category),
+        swap_type: isMural ? 'mural' : 'cessao',
+        reason: swapReason.trim(),
+        status: 'pendente',
+        created_date: new Date().toISOString()
+      };
+
+      // Gravação direta e segura na entidade
+      await base44.entities.ShiftSwap.create(payload);
+
+      setModalOpen(false);
+      setSelectedShift(null);
+      alert(
+        isMural
+          ? 'Plantão publicado com sucesso no Mural de Oportunidades!'
+          : `Solicitação enviada com sucesso para ${targetProf?.name}! Aguardando aceite.`
+      );
+      loadData();
+    } catch (err) {
+      console.error('Erro ao enviar troca:', err);
+      alert(err.message || 'Erro ao registrar solicitação de troca.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <div className="min-h-full bg-slate-100 flex justify-center">
-      <div className="w-full max-w-5xl bg-slate-50 min-h-full flex flex-col">
-        {/* Header Superior */}
-        <div className="bg-white px-5 py-4 flex items-center justify-between border-b border-slate-100 sticky top-0 z-10">
+    <div className="p-4 md:p-8 space-y-6">
+      {/* Banner Superior */}
+      <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-xl">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="text-xs text-slate-400">Olá,</div>
-            <div className="text-base font-bold text-slate-800">{myProfessional?.name || userFullName || userEmail}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <NotificationBell />
-            <div className="w-10 h-10 rounded-full bg-sky-100 flex items-center justify-center text-sm font-semibold text-sky-700">
-              {(myProfessional?.name || userFullName || '?').slice(0, 2).toUpperCase()}
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-sky-400">
+              <CalendarDays className="w-4 h-4" /> Minha Grade Operacional
             </div>
-          </div>
-        </div>
-
-        <div className="mx-auto flex-1 w-full max-w-4xl p-4 space-y-4 overflow-y-auto pb-24 md:p-8">
-          <div className="flex items-center justify-between gap-2 rounded-2xl border border-sky-100 bg-sky-50 px-3 py-2">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.2em] text-sky-600">Sua agenda</div>
-              <div className="text-sm font-semibold text-slate-700">{myProfessional?.name || userFullName || 'Profissional'}</div>
-            </div>
-            {!isManager && (
-              <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
-                Perfil profissional
-              </span>
-            )}
+            <h1 className="mt-2 text-2xl md:text-3xl font-black tracking-tight">
+              {myProfessional?.name || user?.full_name || 'Meu Painel de Escala'}
+            </h1>
+            <p className="mt-1 text-sm text-slate-300">
+              {myProfessional?.specialty ? `Especialidade: ${myProfessional.specialty} · ` : ''}
+              {shifts.length} plantão(ões) confirmados em sua carteira.
+            </p>
           </div>
 
-          {/* Destaque do Próximo Plantão */}
-          {next ? (
-            <div className="bg-sky-600 text-white p-5 rounded-2xl shadow-sm">
-              <div className="text-xs opacity-80 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5" /> Próximo Plantão Agendado
-              </div>
-              <div className="text-lg font-bold mt-1 capitalize">{fmtFull(next.date)}</div>
-              <div className="text-sm mt-0.5">{next.start_time} às {next.end_time}</div>
-              <div className="text-xs mt-2 opacity-90 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5" /> {company?.name || 'Hospital'} · {next.sector_name || '—'}
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="bg-white/10 px-4 py-2.5 rounded-2xl text-right">
+              <div className="text-2xl font-black text-white">{shifts.length}</div>
+              <div className="text-[10px] uppercase font-bold text-slate-300">Plantões Alocados</div>
             </div>
-          ) : (
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 text-center text-sm text-slate-400">
-              Nenhum plantão futuro atribuído a você.
-            </div>
-          )}
-
-          {tab === 'escala' && (
-            <>
-              <div className="font-semibold text-slate-700 text-sm">Meus Próximos Plantões</div>
-              {availableOpenShifts.length > 0 && (
-                <div className="space-y-2">
-                  <div className="text-xs uppercase tracking-[0.2em] text-amber-600">Vagas abertas para você</div>
-                  {availableOpenShifts.map((shift) => (
-                    <div key={shift.id} className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-[10px] uppercase tracking-[0.18em] text-amber-700">Vaga disponível</div>
-                          <div className="mt-1 text-sm font-bold text-slate-800 capitalize">
-                            {shift.sector_name || 'Especialidade'} · {fmtFull(shift.date)}
-                          </div>
-                        </div>
-                        <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700">
-                          {shift.shift_type}
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-600">{shift.start_time} às {shift.end_time}</div>
-                      <Button size="sm" className="w-full text-xs h-8 bg-amber-600 hover:bg-amber-700 text-white" onClick={() => handleAcceptOpenShift(shift.id)}>
-                        Aceitar vaga
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {upcoming.length === 0 && (
-                <div className="bg-white p-5 rounded-xl border border-slate-200 text-center text-sm text-slate-400">
-                  Sem plantões agendados.
-                </div>
-              )}
-
-              {upcoming.map((s) => (
-                <div key={s.id} className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2.5 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-sky-600 uppercase">{fmtFull(s.date)}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${shiftTypeStyle[s.shift_type] || 'bg-slate-100 text-slate-600'}`}>
-                      {s.duration_hours || 12}h
-                    </span>
-                  </div>
-                  <div className="text-sm font-semibold text-slate-800">{s.start_time} às {s.end_time} · {s.sector_name || '—'}</div>
-                  <div className="text-xs text-slate-500 flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5" /> {company?.name || 'Hospital'}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs">
-                    {s.status === 'confirmado' || s.checked_in ? (
-                      <span className="text-emerald-600 flex items-center gap-1 font-medium">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> {s.checked_in ? 'Check-in validado' : 'Confirmado'}
-                      </span>
-                    ) : (
-                      <span className="text-amber-600 flex items-center gap-1 font-medium">
-                        <Clock className="w-3.5 h-3.5" /> Aguardando confirmação
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <Button variant="outline" size="sm" className="flex-1 text-xs h-8" onClick={() => setSwapShift(s)}>
-                      Solicitar Troca
-                    </Button>
-                    {s.status !== 'confirmado' ? (
-                      <Button size="sm" className="flex-1 text-xs h-8 bg-sky-600 hover:bg-sky-700 text-white" onClick={() => handleConfirmShift(s.id)}>
-                        Confirmar
-                      </Button>
-                    ) : (
-                      <Button size="sm" className="flex-1 text-xs h-8" onClick={() => handleCheckIn(s)}>
-                        {s.checked_in ? 'Confirmado' : 'Check-in'}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </>
-          )}
-
-          {tab === 'trocas' && (
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 text-center">
-              <Repeat className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm text-slate-400">Nenhuma solicitação de troca no momento.</p>
-            </div>
-          )}
-
-          {tab === 'extrato' && (
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-500">Horas no mês</span>
-                <span className="text-lg font-bold text-slate-800">{totalHours}h</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-500">Plantões confirmados</span>
-                <span className="text-lg font-bold text-emerald-600">
-                  {myShifts.filter((s) => s.status === 'confirmado').length}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-500">Pendentes</span>
-                <span className="text-lg font-bold text-amber-600">
-                  {myShifts.filter((s) => s.status === 'pendente').length}
-                </span>
-              </div>
-              <div className="pt-2 border-t border-slate-100 text-xs text-slate-400">
-                Valores de repasse são gerados no módulo de Faturamento pelo gestor.
-              </div>
-            </div>
-          )}
-
-          {tab === 'perfil' && (
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-3">
-              <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-sky-100 flex items-center justify-center text-xl font-bold text-sky-700 mx-auto">
-                  {(myProfessional?.name || userFullName || '?').slice(0, 2).toUpperCase()}
-                </div>
-                <div className="font-semibold text-slate-800 mt-2">{myProfessional?.name || userFullName}</div>
-                <div className="text-xs text-slate-500">{userEmail}</div>
-              </div>
-              {myProfessional && (
-                <div className="space-y-1.5 pt-2 border-t border-slate-100 text-sm">
-                  {myProfessional.specialty && (
-                    <div className="text-slate-600">Especialidade: <span className="font-medium">{myProfessional.specialty}</span></div>
-                  )}
-                  {myProfessional.document && (
-                    <div className="text-slate-600">Documento: <span className="font-medium">{myProfessional.document}</span></div>
-                  )}
-                  {myProfessional.phone && (
-                    <div className="text-slate-600">Telefone: <span className="font-medium">{myProfessional.phone}</span></div>
-                  )}
-                </div>
-              )}
-              <Link to="/configuracoes">
-                <Button variant="outline" size="sm" className="w-full mt-2">Editar perfil</Button>
-              </Link>
-            </div>
-          )}
-        </div>
-
-        {/* Barra de Navegação Inferior */}
-        <div className="bg-white border-t border-slate-200 flex justify-around items-center h-16 sticky bottom-0">
-          {[
-            { key: 'escala', icon: Calendar, label: 'Minha Escala' },
-            { key: 'trocas', icon: Repeat, label: 'Trocas' },
-            { key: 'extrato', icon: DollarSign, label: 'Extrato/Horas' },
-            { key: 'perfil', icon: User, label: 'Perfil' },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.key}
-                onClick={() => setTab(item.key)}
-                className={`flex flex-col items-center text-[10px] gap-0.5 ${tab === item.key ? 'text-sky-600 font-bold' : 'text-slate-400'}`}
-              >
-                <Icon className="w-5 h-5" />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
+          </div>
         </div>
       </div>
 
-      <SwapRequestDialog
-        open={!!swapShift}
-        onClose={() => setSwapShift(null)}
-        onDone={() => {
-          setSwapShift(null);
-          loadEscalaData(); // ATUALIZAÇÃO INSTANTÂNEA APÓS SOLICITAR A TROCA
-        }}
-        shift={swapShift}
-        professionals={professionals}
-        myProfessional={myProfessional}
-        companyId={companyId}
-        unitId={unitId}
-      />
+      {/* Lista de Plantões do Usuário */}
+      <Card className="p-5 border-slate-200 dark:border-slate-800 space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">Meus Próximos Plantões</h2>
+            <p className="text-xs text-slate-500">Selecione um plantão para transferir a um colega ou abrir no mural</p>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-8 h-8 text-sky-600 animate-spin" />
+          </div>
+        ) : shifts.length === 0 ? (
+          <div className="py-16 text-center text-slate-400 space-y-2">
+            <CalendarDays className="w-10 h-10 mx-auto opacity-40 text-slate-400" />
+            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Nenhum plantão agendado para o seu perfil no momento.</p>
+            <p className="text-xs text-slate-400">Fique atento ao mural de oportunidades para assumir vagas abertas.</p>
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {shifts.map((s) => {
+              const isNight = s.shift_type === 'noturno' || (s.start_time >= '18:00' || s.start_time < '06:00');
+
+              return (
+                <div
+                  key={s.id}
+                  className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-3 hover:border-sky-300 transition-all"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <CalendarDays className="w-4 h-4 text-sky-600" />
+                        {fmtDate(s.date)}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                        isNight ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300' : 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300'
+                      }`}>
+                        {isNight ? <Moon className="w-3 h-3" /> : <Sun className="w-3 h-3" />}
+                        {s.start_time} às {s.end_time}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+                      <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Setor: <b>{toTitleCase(s.sector_name) || 'Geral'}</b></span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                    <span className="text-[10px] uppercase font-bold text-emerald-600 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Confirmado
+                    </span>
+
+                    <Button
+                      size="sm"
+                      onClick={() => openSwapModal(s)}
+                      className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold h-8 px-3 rounded-xl gap-1.5 shadow-sm"
+                    >
+                      <Repeat className="w-3.5 h-3.5 text-sky-400" /> Passar / Trocar
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      {/* MODAL DE SOLICITAÇÃO DE TROCA (COMPLETAMENTE BLINDADO) */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="sm:max-w-md dark:bg-slate-900 dark:border-slate-800">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-black dark:text-white flex items-center gap-2">
+              <Repeat className="w-5 h-5 text-sky-600" /> Solicitar Troca de Plantão
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedShift && (
+            <form onSubmit={handleSendSwap} className="space-y-4 py-2">
+              {/* Resumo do Plantão */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs space-y-1">
+                <div className="font-bold text-slate-900 dark:text-white flex items-center justify-between">
+                  <span>{fmtDate(selectedShift.date)}</span>
+                  <span>{selectedShift.start_time} às {selectedShift.end_time}</span>
+                </div>
+                <div className="text-slate-500">
+                  Setor: <b>{toTitleCase(selectedShift.sector_name)}</b>
+                </div>
+              </div>
+
+              {/* Escolha do Destino: Colega ou Deixar Vago (Mural) */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                  Como deseja passar este plantão?
+                </Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalMode('direta');
+                      setTargetProfId('');
+                    }}
+                    className={`p-3 rounded-xl border text-xs font-bold text-center transition-all ${
+                      modalMode === 'direta'
+                        ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 ring-2 ring-sky-500/20'
+                        : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    Passar para Alguém
+                    <span className="block text-[10px] font-normal text-slate-400 mt-0.5">Colega específico</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalMode('mural');
+                      setTargetProfId('');
+                    }}
+                    className={`p-3 rounded-xl border text-xs font-bold text-center transition-all ${
+                      modalMode === 'mural'
+                        ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 ring-2 ring-sky-500/20'
+                        : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    Deixar Vago (Mural)
+                    <span className="block text-[10px] font-normal text-slate-400 mt-0.5">Livre p/ especialidade</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Se for Direcionado para um Colega */}
+              {modalMode === 'direta' && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">Selecione o profissional substituto</Label>
+                  <select
+                    value={targetProfId}
+                    onChange={(e) => setTargetProfId(e.target.value)}
+                    required
+                    className="w-full h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs text-slate-800 dark:text-slate-100"
+                  >
+                    <option value="">Selecione um colega da mesma especialidade...</option>
+                    {eligibleColleagues.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.specialty || p.category || 'Geral'})
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* ALERTA DE DUPLICIDADE / PLANTONISTA JÁ ESCALADO NO DIA */}
+                  {colleagueHasConflict && (
+                    <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2 mt-2 animate-pulse">
+                      <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <strong>Atenção: Profissional já está de plantão neste dia!</strong>
+                        <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
+                          Este colega já possui outro turno alocado nesta mesma data. Verifique se não haverá choque ou sobrecarga.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Se for para o Mural */}
+              {modalMode === 'mural' && (
+                <div className="p-3 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 text-xs text-slate-600 dark:text-slate-300 space-y-1">
+                  <span className="font-bold text-sky-700 dark:text-sky-300 flex items-center gap-1.5">
+                    <Globe className="w-4 h-4" /> Mural de Oportunidades do Setor
+                  </span>
+                  <p className="text-[11px] text-slate-500">
+                    O plantão ficará disponível para qualquer colega credenciado na especialidade <b>{myProfessional?.specialty || 'compatível'}</b> assumir com 1 clique.
+                  </p>
+                </div>
+              )}
+
+              {/* Motivo */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Motivo da solicitação (opcional)</Label>
+                <Input
+                  value={swapReason}
+                  onChange={(e) => setSwapReason(e.target.value)}
+                  placeholder="Ex: Conflito de agenda, emergência pessoal ou congresso"
+                  className="h-9 text-xs"
+                />
+              </div>
+
+              <DialogFooter className="pt-3 gap-2">
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs">
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={submitting || (modalMode === 'direta' && !targetProfId)}
+                  className="bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold px-5"
+                >
+                  {submitting && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
+                  {modalMode === 'mural' ? 'Publicar no Mural' : 'Enviar Solicitação'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
