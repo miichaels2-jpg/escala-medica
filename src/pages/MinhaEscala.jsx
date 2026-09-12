@@ -24,7 +24,6 @@ import {
   ShieldAlert,
   ArrowRight
 } from 'lucide-react';
-import { getShiftTvLifecycle } from '@/lib/shiftUtils';
 
 function fmtDate(dateStr) {
   if (!dateStr) return '';
@@ -68,7 +67,7 @@ export default function MinhaEscala() {
   const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
   const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id || 'unit_h1';
 
-  // Identifica o profissional logado com segurança
+  // Identifica o profissional logado com segurança (Apenas para o modal e regras de tela)
   const myProfessional = useMemo(() => {
     const uId = user?.id;
     const uEmail = user?.email;
@@ -80,6 +79,7 @@ export default function MinhaEscala() {
 
   const currentProfId = myProfessional?.id || user?.data?.professional_id;
 
+  // CORREÇÃO AQUI: Removemos currentProfId e myProfessional das dependências para evitar o loop infinito
   const loadData = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
@@ -94,11 +94,20 @@ export default function MinhaEscala() {
       setProfessionals(profsRes || []);
       setAllUnitShifts(shiftsRes || []);
 
+      // Calcula quem é o profissional logado AQUI DENTRO para blindar a dependência
+      const uId = user?.id;
+      const uEmail = user?.email;
+      const uName = user?.full_name;
+      const me = (profsRes || []).find(
+        (p) => p.user_id === uId || (p.email && p.email === uEmail) || p.name === uName
+      );
+      const myId = me?.id || user?.data?.professional_id;
+
       // Filtra estritamente os plantões do usuário atual
       const myShiftsOnly = (shiftsRes || []).filter((s) => {
-        if (currentProfId && String(s.professional_id) === String(currentProfId)) return true;
-        if (myProfessional?.name && s.professional_name === myProfessional.name) return true;
-        if (user?.full_name && s.professional_name === user.full_name) return true;
+        if (myId && String(s.professional_id) === String(myId)) return true;
+        if (me?.name && s.professional_name === me.name) return true;
+        if (uName && s.professional_name === uName) return true;
         return false;
       });
 
@@ -108,7 +117,7 @@ export default function MinhaEscala() {
     } finally {
       setLoading(false);
     }
-  }, [companyId, unitId, currentProfId, myProfessional, user]);
+  }, [companyId, unitId, user]); // <- Dependências super curtas e imutáveis
 
   useEffect(() => {
     if (!appLoading) loadData();
@@ -193,7 +202,6 @@ export default function MinhaEscala() {
         created_date: new Date().toISOString()
       };
 
-      // Gravação direta e segura na entidade
       await base44.entities.ShiftSwap.create(payload);
 
       setModalOpen(false);
@@ -308,7 +316,7 @@ export default function MinhaEscala() {
         )}
       </Card>
 
-      {/* MODAL DE SOLICITAÇÃO DE TROCA (COMPLETAMENTE BLINDADO) */}
+      {/* MODAL DE SOLICITAÇÃO DE TROCA */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-md dark:bg-slate-900 dark:border-slate-800">
           <DialogHeader>
@@ -319,7 +327,6 @@ export default function MinhaEscala() {
 
           {selectedShift && (
             <form onSubmit={handleSendSwap} className="space-y-4 py-2">
-              {/* Resumo do Plantão */}
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs space-y-1">
                 <div className="font-bold text-slate-900 dark:text-white flex items-center justify-between">
                   <span>{fmtDate(selectedShift.date)}</span>
@@ -330,7 +337,6 @@ export default function MinhaEscala() {
                 </div>
               </div>
 
-              {/* Escolha do Destino: Colega ou Deixar Vago (Mural) */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                   Como deseja passar este plantão?
@@ -370,7 +376,6 @@ export default function MinhaEscala() {
                 </div>
               </div>
 
-              {/* Se for Direcionado para um Colega */}
               {modalMode === 'direta' && (
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold">Selecione o profissional substituto</Label>
@@ -388,7 +393,6 @@ export default function MinhaEscala() {
                     ))}
                   </select>
 
-                  {/* ALERTA DE DUPLICIDADE / PLANTONISTA JÁ ESCALADO NO DIA */}
                   {colleagueHasConflict && (
                     <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2 mt-2 animate-pulse">
                       <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -403,7 +407,6 @@ export default function MinhaEscala() {
                 </div>
               )}
 
-              {/* Se for para o Mural */}
               {modalMode === 'mural' && (
                 <div className="p-3 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 text-xs text-slate-600 dark:text-slate-300 space-y-1">
                   <span className="font-bold text-sky-700 dark:text-sky-300 flex items-center gap-1.5">
@@ -415,7 +418,6 @@ export default function MinhaEscala() {
                 </div>
               )}
 
-              {/* Motivo */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Motivo da solicitação (opcional)</Label>
                 <Input
