@@ -18,7 +18,11 @@ import {
   Activity,
   DollarSign,
   Building2,
-  ShieldAlert
+  ShieldAlert,
+  Radio,
+  Timer,
+  ShieldCheck,
+  TrendingUp
 } from 'lucide-react';
 import { getShiftTvLifecycle, getShiftInterval } from '@/lib/shiftUtils';
 
@@ -45,11 +49,9 @@ function fmtDateLong(d = new Date()) {
   return WEEKDAYS_LONG[d.getDay()] || '';
 }
 
-// Formata texto para Title Case elegante (Ex: "UTI ADULTO" -> "UTI Adulto")
 function toTitleCase(str) {
   if (!str) return '';
-  // Preserva siglas médicas comuns em maiúsculo
-  const acr = ['UTI', 'UCO', 'PA', 'PS', 'CRM', 'COREN', 'SLA'];
+  const acr = ['UTI', 'UCO', 'PA', 'PS', 'CRM', 'COREN', 'SLA', 'CCO'];
   return str
     .toLowerCase()
     .split(' ')
@@ -99,7 +101,7 @@ export default function Painel() {
     loadData();
   }, [appLoading, loadData]);
 
-  // Atualizador em tempo real para TV e status de plantões
+  // Relógio em tempo real
   useEffect(() => {
     const id = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(id);
@@ -108,12 +110,10 @@ export default function Painel() {
   const todayStr = useMemo(() => getLocalDateString(currentTime), [currentTime]);
   const currentMonthKey = useMemo(() => todayStr.slice(0, 7), [todayStr]);
 
-  // Mapa de profissionais
   const profMap = useMemo(() => {
     return Object.fromEntries((professionals || []).map((p) => [p.id, p]));
   }, [professionals]);
 
-  // Contagem de plantões de cada profissional no mês para cálculo seguro de mensalistas
   const monthlyShiftsCountByProf = useMemo(() => {
     const counts = {};
     shifts.forEach((s) => {
@@ -125,7 +125,7 @@ export default function Painel() {
     return counts;
   }, [shifts, currentMonthKey]);
 
-  // Plantões do dia com inteligência de status
+  // Plantões de Hoje
   const todayShifts = useMemo(() => {
     return shifts
       .filter((s) => {
@@ -143,17 +143,15 @@ export default function Painel() {
       });
   }, [shifts, todayStr, currentTime]);
 
-  // Categorização de status
   const activeNowList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'active'), [todayShifts]);
   const upcomingList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'upcoming'), [todayShifts]);
   const recentlyFinishedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'recently_finished'), [todayShifts]);
 
-  // Vagas Descobertas
   const vacantShifts = useMemo(() => {
     return todayShifts.filter((s) => !s.professional_id || s.professional_name?.toLowerCase().includes('vaga') || s.status === 'pendente');
   }, [todayShifts]);
 
-  // CÁLCULO FINANCEIRO REAL E CONFIÁVEL DO DIA
+  // Indicador Financeiro do Dia
   const todayFinancials = useMemo(() => {
     let executedValue = 0;
     let plannedValue = 0;
@@ -175,10 +173,7 @@ export default function Painel() {
         }
       }
 
-      // Soma na previsão geral do dia
       plannedValue += shiftCost;
-
-      // Soma no valor já realizado/em execução
       if (s.lifecycle.state === 'active' || s.lifecycle.state === 'recently_finished') {
         executedValue += shiftCost;
       }
@@ -187,7 +182,7 @@ export default function Painel() {
     return { executedValue, plannedValue, totalToday: plannedValue };
   }, [todayShifts, profMap, monthlyShiftsCountByProf]);
 
-  // Cobertura de Setores
+  // Cobertura por Setor
   const sectorsCoverage = useMemo(() => {
     const map = {};
     sectors.forEach((sec) => {
@@ -252,125 +247,284 @@ export default function Painel() {
     if (document.fullscreenElement) await document.exitFullscreen?.();
   };
 
-  // ==========================================
-  // MODO TV (RELOGIO EXCLUSIVO DE TELA CHEIA)
-  // ==========================================
+  // =========================================================================
+  // MODO TV EXECUTIVO: CENTRO DE COMANDO HOSPITALAR (SITUATION ROOM / CCO)
+  // =========================================================================
   if (tvMode) {
+    const overallFillRate = todayShifts.length > 0 
+      ? Math.round(((todayShifts.length - vacantShifts.length) / todayShifts.length) * 100) 
+      : 100;
+
     return (
-      <div className="min-h-full bg-slate-950 p-5 text-white md:p-8 select-none">
-        <div className="mx-auto max-w-[1800px]">
-          <div className="mb-6 flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.24em] text-sky-300">
-                <CalendarDays className="h-5 w-5" /> Painel Operacional Hospitalar
-              </div>
-              <h1 className="mt-2 text-4xl font-black tracking-tight md:text-6xl">
-                {fmtDateLong(currentTime)}
-              </h1>
-              <p className="mt-1 text-lg text-slate-400">
-                {fmtDate(todayStr)} · {todayShifts.length} plantões na operação · {activeNowList.length} ativos neste instante
-              </p>
+      <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col justify-between p-6 lg:p-8 select-none overflow-hidden font-sans">
+        {/* Topo Executivo CCO */}
+        <div className="flex items-center justify-between border-b border-white/10 pb-5 shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-xl shadow-sky-950/50">
+              <Radio className="w-7 h-7 animate-pulse" />
             </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <div className="flex items-center justify-end gap-2 text-3xl font-black tabular-nums md:text-5xl text-sky-400">
-                  <Clock3 className="h-7 w-7" />
-                  {currentTime.toLocaleTimeString('pt-BR')}
-                </div>
-                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Horário Oficial Local</div>
+            <div>
+              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.25em] text-sky-400">
+                <span>{company?.name || 'Hospital Santa Clara'}</span>
+                <span>•</span>
+                <span>CCO — Centro de Comando Operacional</span>
               </div>
-              <button title="Fechar modo TV" onClick={closeTvMode} className="rounded-xl border border-white/15 p-3 text-slate-300 hover:bg-white/10 transition-colors">
-                <Minimize2 className="h-5 w-5" />
-              </button>
+              <h1 className="text-3xl lg:text-4xl font-black tracking-tight text-white mt-0.5">
+                Painel Executivo de Situação
+              </h1>
+              <p className="text-xs text-slate-400 font-medium">
+                {fmtDateLong(currentTime)}, {fmtDate(todayStr)} · Visão Geral da Unidade
+              </p>
             </div>
           </div>
 
-          {todayShifts.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/15 p-16 text-center text-xl text-slate-400">
-              Nenhum plantão agendado para as próximas horas.
+          <div className="flex items-center gap-5">
+            {/* Status da Operação */}
+            <div className={`px-4 py-2 rounded-2xl border flex items-center gap-2.5 ${
+              vacantShifts.length > 0 
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' 
+                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+            }`}>
+              <div className={`w-3 h-3 rounded-full ${vacantShifts.length > 0 ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
+              <div className="text-left">
+                <div className="text-xs font-black uppercase tracking-wider">
+                  {vacantShifts.length > 0 ? 'Alerta de Cobertura' : 'Operação Estável'}
+                </div>
+                <div className="text-[10px] opacity-80">
+                  {vacantShifts.length > 0 ? `${vacantShifts.length} vaga(s) pendente(s)` : 'Todos os postos cobertos'}
+                </div>
+              </div>
             </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {todayShifts.map((shift) => {
-                const state = shift.lifecycle.state;
-                const isActive = state === 'active';
-                const isFinished = state === 'recently_finished';
 
-                return (
-                  <div
-                    key={shift.id}
-                    className={`rounded-2xl border p-5 shadow-xl transition-all duration-500 ${
-                      isActive
-                        ? 'border-emerald-500/60 bg-emerald-950/30 shadow-emerald-950/40 scale-[1.01]'
-                        : isFinished
-                        ? 'border-slate-800 bg-white/[0.03] opacity-60'
-                        : 'border-white/10 bg-white/[0.07]'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className={`rounded-xl px-3 py-2 text-center text-base font-black ${
-                        isActive 
-                          ? 'bg-emerald-500 text-slate-950' 
-                          : isFinished
-                          ? 'bg-slate-800 text-slate-400'
-                          : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
-                      }`}>
-                        <div>{shift.start_time || '--:--'}</div>
-                        <div className="text-[11px] font-normal opacity-80">até {shift.end_time || '--:--'}</div>
+            {/* Relógio Digital */}
+            <div className="bg-white/[0.04] border border-white/10 px-5 py-2.5 rounded-2xl text-right">
+              <div className="text-3xl lg:text-4xl font-black font-mono tracking-tight text-sky-300">
+                {currentTime.toLocaleTimeString('pt-BR')}
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Tempo Real</div>
+            </div>
+
+            <button 
+              title="Sair da tela cheia" 
+              onClick={closeTvMode} 
+              className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 transition-colors"
+            >
+              <Minimize2 className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+
+        {/* CORPO DO COCKPIT: 3 BLOCOS ESTRATÉGICOS */}
+        <div className="flex-1 my-6 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden">
+          {/* BLOCO 1: TERMÔMETRO DE COBERTURA DOS SETORES (2 COLUNAS DE ESPAÇO) */}
+          <div className="lg:col-span-2 flex flex-col justify-between rounded-3xl border border-white/10 bg-white/[0.02] p-6 shadow-2xl">
+            <div>
+              <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4">
+                <div className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-sky-400">
+                  <Building2 className="w-5 h-5" /> Capacidade e Ocupação por Setor Clínico
+                </div>
+                <span className="text-xs font-bold px-3 py-1 rounded-full bg-white/10 text-slate-300">
+                  {sectorsCoverage.length} setores monitorados
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[460px] overflow-y-auto pr-1">
+                {sectorsCoverage.map((sec) => {
+                  const percent = sec.total > 0 ? Math.round((sec.active / sec.total) * 100) : 0;
+                  const hasVacant = sec.vacant > 0;
+
+                  return (
+                    <div 
+                      key={sec.id}
+                      className={`p-4 rounded-2xl border transition-all ${
+                        hasVacant
+                          ? 'border-amber-500/60 bg-amber-950/20 shadow-lg shadow-amber-950/30'
+                          : sec.active > 0
+                          ? 'border-emerald-500/40 bg-emerald-950/10'
+                          : 'border-white/10 bg-white/[0.02]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-black text-lg text-white truncate">{sec.name}</h3>
+                        <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
+                          hasVacant 
+                            ? 'bg-amber-500/20 text-amber-300' 
+                            : sec.active > 0 
+                            ? 'bg-emerald-500/20 text-emerald-300' 
+                            : 'bg-white/10 text-slate-400'
+                        }`}>
+                          {sec.active} ativo(s)
+                        </span>
                       </div>
 
-                      <div className="text-right">
-                        <span
-                          className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider ${
-                            isActive
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse'
-                              : isFinished
-                              ? 'bg-slate-800 text-slate-400 border border-slate-700'
-                              : 'bg-white/10 text-slate-300'
-                          }`}
-                        >
-                          {isActive && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />}
-                          {isActive ? '● Ativo no Plantão' : isFinished ? '✓ Plantão Concluído' : '⏳ Programado'}
-                        </span>
-                        <div className="text-[10px] text-slate-400 mt-1">{shift.lifecycle.detail}</div>
+                      <div className="flex items-center justify-between text-xs text-slate-400 mt-3 font-medium">
+                        <span>Ocupação dos Postos</span>
+                        <strong className="text-white font-mono">{sec.active} / {sec.total} turnos</strong>
+                      </div>
+
+                      {/* Barra de Cobertura */}
+                      <div className="w-full h-2 bg-white/10 rounded-full mt-2 overflow-hidden">
+                        <div 
+                          className={`h-full transition-all duration-500 ${hasVacant ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                          style={{ width: `${Math.min(100, Math.max(10, percent))}%` }}
+                        />
+                      </div>
+
+                      {hasVacant ? (
+                        <div className="text-xs text-amber-400 font-bold mt-2.5 flex items-center gap-1.5 animate-pulse">
+                          <AlertTriangle className="w-4 h-4" /> {sec.vacant} posto(s) sem médico
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-slate-500 mt-2.5 font-medium">
+                          {sec.upcoming} plantonista(s) a assumir no próximo turno
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Rodapé da Matriz de Setores */}
+            <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-xs text-slate-400 font-medium">
+              <span>Taxa de Cobertura Global da Unidade: <b className="text-white text-sm font-mono">{overallFillRate}%</b></span>
+              <span className="text-sky-400">Auditoria Contínua CCO</span>
+            </div>
+          </div>
+
+          {/* BLOCO 2: PASSAGEM DE TURNO + RADAR FINANCEIRO DIÁRIO */}
+          <div className="flex flex-col justify-between gap-6">
+            {/* Próxima Transição de Escala */}
+            <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-5 shadow-2xl flex-1 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3">
+                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-sky-400">
+                    <ArrowRightLeft className="w-4 h-4" /> Próxima Passagem de Turno
+                  </div>
+                  {nextHandover && (
+                    <span className="text-xs font-mono font-black px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                      {nextHandover.targetTime}
+                    </span>
+                  )}
+                </div>
+
+                {nextHandover ? (
+                  <div className="space-y-3">
+                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                      <span className="text-[10px] uppercase font-bold text-emerald-400 block">
+                        Equipe que Assume ({nextHandover.incoming.length})
+                      </span>
+                      <div className="mt-1.5 space-y-1">
+                        {nextHandover.incoming.slice(0, 3).map((s) => (
+                          <div key={s.id} className="text-xs flex items-center justify-between">
+                            <span className="font-bold text-white truncate max-w-[140px]">{toTitleCase(s.professional_name) || 'Vaga Aberta'}</span>
+                            <span className="text-[10px] text-slate-400 truncate max-w-[90px]">{toTitleCase(s.sector_name)}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
 
-                    <div className="mt-5 truncate text-2xl font-black text-white">{toTitleCase(shift.professional_name) || 'Vaga Aberta'}</div>
-                    <div className="mt-2 flex items-center gap-2 text-base text-slate-300">
-                      <Stethoscope className={`h-4 w-4 ${isActive ? 'text-emerald-400' : 'text-sky-400'}`} />
-                      {toTitleCase(shift.sector_name) || 'Setor Geral'}
+                    <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                        Equipe que Entrega ({nextHandover.outgoing.length})
+                      </span>
+                      <div className="mt-1.5 space-y-1">
+                        {nextHandover.outgoing.length === 0 ? (
+                          <span className="text-xs text-slate-500 italic">Nenhum plantão encerrando às {nextHandover.targetTime}.</span>
+                        ) : (
+                          nextHandover.outgoing.slice(0, 3).map((s) => (
+                            <div key={s.id} className="text-xs flex items-center justify-between">
+                              <span className="font-medium text-slate-300 truncate max-w-[140px]">{toTitleCase(s.professional_name)}</span>
+                              <span className="text-[10px] text-slate-500 truncate max-w-[90px]">{toTitleCase(s.sector_name)}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
                   </div>
-                );
-              })}
+                ) : (
+                  <div className="py-8 text-center text-xs text-slate-500">
+                    Nenhuma transição de turno pendente para hoje.
+                  </div>
+                )}
+              </div>
+
+              <div className="text-[10px] text-slate-500 pt-2 border-t border-white/5 flex items-center justify-between">
+                <span>Passagem auditada</span>
+                <span className="text-sky-400 font-mono">Próximo bloco</span>
+              </div>
             </div>
-          )}
+
+            {/* Resumo Financeiro & Produtividade Hoje */}
+            <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-950 p-5 shadow-2xl space-y-3">
+              <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                <span className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  <DollarSign className="w-4 h-4" /> Custo Operacional do Dia
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">HOJE</span>
+              </div>
+
+              <div className="flex items-baseline justify-between">
+                <div>
+                  <div className="text-2xl font-black font-mono text-white">
+                    R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </div>
+                  <span className="text-[10px] text-emerald-400 font-semibold">Executado até o momento</span>
+                </div>
+                <div className="text-right">
+                  <div className="text-base font-bold font-mono text-slate-400">
+                    R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </div>
+                  <span className="text-[10px] text-slate-500">Previsão 24h</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* RODAPÉ DO CENTRO DE COMANDO (STATUS BAR) */}
+        <div className="border-t border-white/10 pt-3 shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400 font-medium">
+          <div className="flex items-center gap-6">
+            <span className="flex items-center gap-2 font-bold text-white">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+              {activeNowList.length} Médicos Ativos Agora
+            </span>
+            <span>•</span>
+            <span>{todayShifts.length} Plantões Programados no Dia</span>
+            <span>•</span>
+            <span className={vacantShifts.length > 0 ? 'text-amber-400 font-bold animate-pulse' : 'text-slate-400'}>
+              {vacantShifts.length > 0 ? `⚠️ ${vacantShifts.length} Desfalque(s) na Unidade` : 'Zero Desfalques'}
+            </span>
+          </div>
+
+          <div className="font-mono text-[11px] text-slate-500">
+            ScaleMedic Enterprise CCO · Sincronização Contínua
+          </div>
         </div>
       </div>
     );
   }
 
   // ==========================================
-  // PAINEL DE CONTROLE EXECUTIVO
+  // PAINEL DE CONTROLE EXECUTIVO FORA DA TV
   // ==========================================
   return (
     <div className="p-4 md:p-8 space-y-6">
-      {/* Header Cockpit (Sem relógio duplicado) */}
+      {/* Header Cockpit */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white p-6 rounded-3xl border border-slate-800 shadow-xl">
         <div>
-          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-sky-400 font-bold">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-sky-400 font-bold">
             <Activity className="w-4 h-4" /> Centro de Operações Clínicas
           </div>
           <h1 className="text-2xl md:text-3xl font-black mt-2 tracking-tight">Painel Operacional Hospitalar</h1>
           <p className="text-sm text-slate-300 mt-1 max-w-2xl">
-            Acompanhamento contínuo de presença médica, transições de turno e alocação setorial.
+            Acompanhamento contínuo de presença médica, transições de turno e capacidade instalada.
           </p>
         </div>
 
         <div>
           <Button onClick={openTvMode} className="bg-sky-600 hover:bg-sky-500 text-white font-bold gap-2 text-xs h-10 px-5 rounded-xl shadow-lg shadow-sky-950">
-            <Maximize2 className="w-4 h-4" /> Modo TV
+            <Radio className="w-4 h-4" /> Modo TV — Centro de Comando (CCO)
           </Button>
         </div>
       </div>
@@ -395,7 +549,7 @@ export default function Painel() {
         </div>
       )}
 
-      {/* 4 Cards de Métricas com Custo Operacional Real */}
+      {/* 4 Cards de Métricas */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20 relative overflow-hidden">
           <div className="flex items-center justify-between">
@@ -407,7 +561,7 @@ export default function Painel() {
             </span>
           </div>
           <div className="text-2xl md:text-3xl font-black text-emerald-950 dark:text-emerald-100 mt-3">
-            {activeNowList.length} Profissionais
+            {activeNowList.length} profissionais
           </div>
           <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1 font-medium">
             Em jornada presencial ativa na unidade
@@ -424,10 +578,10 @@ export default function Painel() {
             </span>
           </div>
           <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-3">
-            {todayShifts.length} Turnos
+            {todayShifts.length} turnos
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            {upcomingList.length} Programados · {recentlyFinishedList.length} recém-concluídos
+            {upcomingList.length} programados · {recentlyFinishedList.length} recém-concluídos
           </p>
         </Card>
 
@@ -441,14 +595,13 @@ export default function Painel() {
             </span>
           </div>
           <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-3">
-            {professionals.length} Cadastrados
+            {professionals.length} cadastrados
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
             Profissionais vinculados a escalas
           </p>
         </Card>
 
-        {/* Card de Custo Real: Executado vs Previsão Total */}
         <Card className="p-5 border-slate-200 dark:border-slate-800">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -469,7 +622,6 @@ export default function Painel() {
 
       {/* Passagem de Turno + Termômetro de Cobertura */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Passagem de Turno */}
         <Card className="p-5 border-slate-200 dark:border-slate-800 lg:col-span-1 flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -529,7 +681,7 @@ export default function Painel() {
 
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 flex items-center justify-between">
             <span>Passagens auditadas em tempo real</span>
-            <span className="font-bold text-sky-600">ScaleMedic</span>
+            <span className="font-bold text-sky-600">ScaleMedic Cockpit</span>
           </div>
         </Card>
 
