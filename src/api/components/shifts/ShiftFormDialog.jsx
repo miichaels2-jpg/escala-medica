@@ -17,7 +17,7 @@ const empty = {
   status: 'vago', notes: ''
 };
 
-export default function ShiftFormDialog({ open, onClose, onSaved, shift, sectors, professionals, companyId }) {
+export default function ShiftFormDialog({ open, onClose, onSaved, shift, sectors, professionals, companyId, unitId }) {
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const isEdit = !!shift;
@@ -40,18 +40,23 @@ export default function ShiftFormDialog({ open, onClose, onSaved, shift, sectors
     setSaving(true);
     const sector = sectors.find((s) => s.id === form.sector_id);
     const prof = professionals.find((p) => p.id === form.professional_id);
+    
     const payload = {
       ...form,
       sector_name: sector?.name || '',
-      professional_name: prof?.name || (form.professional_id ? '' : ''),
+      professional_name: prof?.name || '',
       status: form.professional_id ? (form.status === 'vago' ? 'pendente' : form.status) : 'vago',
-      company_id: companyId
+      company_id: companyId,
+      ...(unitId ? { unit_id: unitId } : {}),
+      updated_date: new Date().toISOString()
     };
+
     try {
       if (isEdit) {
-        await base44.functions.invoke('saveShift', { action: 'update', shiftId: shift.id, shiftData: payload });
+        await base44.entities.Shift.update(shift.id, payload);
       } else {
-        await base44.functions.invoke('saveShift', { action: 'create', shiftData: payload });
+        payload.created_date = new Date().toISOString();
+        await base44.entities.Shift.create(payload);
       }
       onSaved();
       onClose();
@@ -138,7 +143,7 @@ export default function ShiftFormDialog({ open, onClose, onSaved, shift, sectors
             </Button>
           </DialogFooter>
         </form>
-      </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
