@@ -15,7 +15,6 @@ import {
   Maximize2, 
   Minimize2, 
   Clock3, 
-  Printer,
   Stethoscope,
   AlertTriangle,
   MessageCircle,
@@ -23,10 +22,11 @@ import {
   UserPlus,
   X,
   Sun,
-  Moon
+  Moon,
+  FileSpreadsheet
 } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
-import { exportSchedulePDF } from '@/lib/exportReport';
+import { exportSchedulePDF, exportReportCSV } from '@/lib/exportReport';
 import { getShiftTvLifecycle } from '@/lib/shiftUtils';
 
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -230,16 +230,11 @@ export default function Escalas() {
     load();
   };
 
+  // Exportação única e oficial da escala em PDF
   const handleExportSchedule = () => {
     const sorted = [...filtered].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    const dateLabel = selectedDate ? `${fmtDate(selectedDate)}` : 'Período Selecionado';
+    const dateLabel = selectedDate ? `${fmtDate(selectedDate)}` : (selectedMonth || 'Período Atual');
     exportSchedulePDF({ company: company || { name: 'ScaleMedic CGT', app_name: 'ScaleMedic CGT' }, shifts: sorted, dateLabel });
-  };
-
-  const handlePrintSchedule = () => {
-    document.body.classList.add('printing-schedule');
-    window.print();
-    window.setTimeout(() => document.body.classList.remove('printing-schedule'), 1000);
   };
 
   const handleNotifyWhatsApp = (shift, e) => {
@@ -344,7 +339,6 @@ export default function Escalas() {
 
   const personalHeadline = myProfessional?.name || userFullName || 'Seu calendário';
 
-  // Helper de estilos harmoniosos
   const getCardStyle = (shift) => {
     if (shift.isVacant) {
       return 'border-amber-400/80 bg-amber-500/[0.04] dark:bg-amber-500/[0.08] border-dashed shadow-sm ring-1 ring-amber-400/20';
@@ -353,10 +347,8 @@ export default function Escalas() {
       return 'border-emerald-500/50 bg-emerald-500/[0.06] dark:bg-emerald-500/[0.12] shadow-sm shadow-emerald-500/10 ring-1 ring-emerald-500/30';
     }
     if (shift.lifecycle.state === 'concluded' || shift.lifecycle.state === 'recently_finished') {
-      // Concluído: fundo limpo com tom suave de ardósia azulada (sem cinza sujo)
       return 'border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 hover:border-slate-300';
     }
-    // Programado futuro
     return 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-sky-300 dark:hover:border-sky-700 shadow-sm';
   };
 
@@ -373,10 +365,8 @@ export default function Escalas() {
       return 'bg-blue-500/10 text-blue-800 dark:text-blue-300 border border-blue-500/20';
     }
     if (isNight) {
-      // Noturno suave: Índigo Crepúsculo
       return 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20';
     }
-    // Diurno suave: Azul Céu
     return 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20';
   };
 
@@ -587,6 +577,14 @@ export default function Escalas() {
   // Visão Gestão Plena
   return (
     <div className="p-4 md:p-8 space-y-5">
+      {/* Estilos para impressão nativa limpa (caso aperte Ctrl+P) */}
+      <style>{`
+        @media print {
+          nav, aside, header, .print\\:hidden { display: none !important; }
+          body { background: white !important; color: #0f172a !important; }
+        }
+      `}</style>
+
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-lg">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -595,7 +593,7 @@ export default function Escalas() {
             </div>
             <h2 className="mt-3 text-3xl font-black tracking-tight">Gestão Operacional de Escala</h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              Alocação diária, identificação precoce de furos de escala e notificação instantânea de plantonistas.
+              Alocação diária, identificação precoce de furos de escala e emissão de escalas homologadas.
             </p>
           </div>
           <div className="flex items-center gap-3 text-right">
@@ -651,7 +649,7 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* Botões de Ação */}
+      {/* Ações do Topo */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">Operação da Unidade</p>
@@ -668,7 +666,7 @@ export default function Escalas() {
       </div>
 
       <Card className="p-4 border-slate-200 space-y-4">
-        {/* Barra de Filtros */}
+        {/* Barra de Filtros com Ação Única de PDF Executivo */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -741,11 +739,14 @@ export default function Escalas() {
           <Button variant="outline" onClick={openTvMode} className="border-sky-200 text-sky-700 hover:bg-sky-50 font-bold text-xs h-10">
             <Maximize2 className="w-4 h-4 mr-1.5" /> Modo TV
           </Button>
-          <Button variant="outline" onClick={handlePrintSchedule} className="border-slate-200 text-slate-700 hover:bg-slate-50 text-xs h-10">
-            <Printer className="w-4 h-4 mr-1.5" /> Imprimir
-          </Button>
-          <Button variant="outline" onClick={handleExportSchedule} className="border-slate-200 text-slate-700 hover:bg-slate-50 text-xs h-10">
-            <Download className="w-4 h-4 mr-1.5" /> PDF
+
+          {/* Botão Único de Exportação Hospitalar */}
+          <Button 
+            onClick={handleExportSchedule} 
+            className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs h-10 px-4 shadow-sm"
+            title="Baixar escala oficial em PDF formatado para impressão A4"
+          >
+            <Download className="w-4 h-4 mr-1.5 text-sky-400" /> Exportar Escala (PDF)
           </Button>
         </div>
 
@@ -819,7 +820,6 @@ export default function Escalas() {
                         key={s.id} 
                         className={`flex items-center gap-3 rounded-xl border p-3.5 transition-all duration-300 ${cardClass}`}
                       >
-                        {/* Bloco de Horário Sofisticado */}
                         <div className={`min-w-[92px] rounded-xl px-2.5 py-2 text-center text-xs font-black shrink-0 ${scheduleTimeClass}`}>
                           <div className="flex items-center justify-center gap-1">
                             {isNight ? <Moon className="w-3 h-3 opacity-70" /> : <Sun className="w-3 h-3 opacity-70" />}
@@ -828,14 +828,12 @@ export default function Escalas() {
                           <div className="text-[10px] font-normal opacity-85 mt-0.5">até {s.end_time || '--:--'}</div>
                         </div>
 
-                        {/* Dados do Médico & Setor */}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className={`truncate text-sm font-black ${s.isVacant ? 'text-amber-900 dark:text-amber-200' : 'text-slate-900 dark:text-white'}`}>
                               {toTitleCase(s.professional_name) || 'Vaga Descoberta'}
                             </span>
                             
-                            {/* Badges de Status Refinadas */}
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 ${statusInfo.className}`}>
                               {statusInfo.label}
                             </span>
@@ -847,7 +845,6 @@ export default function Escalas() {
                           </div>
                         </div>
 
-                        {/* Ações */}
                         <div className="flex items-center gap-1 shrink-0">
                           {s.isVacant ? (
                             <Button
