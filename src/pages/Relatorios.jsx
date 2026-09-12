@@ -17,8 +17,6 @@ import {
 import {
   Activity,
   AlertTriangle,
-  ArrowDownRight,
-  ArrowUpRight,
   BarChart3,
   Building2,
   CalendarDays,
@@ -37,7 +35,6 @@ import {
   LayoutDashboard,
   Loader2,
   LockKeyhole,
-  LogOut,
   Menu,
   Moon,
   Printer,
@@ -47,16 +44,10 @@ import {
   Sun,
   SlidersHorizontal,
   TrendingDown,
-  TrendingUp,
   UserCheck,
   Users,
   X,
 } from 'lucide-react';
-
-/* ============================================================
-   CENTRAL DE INTELIGÊNCIA HOSPITALAR
-   FASES 1 + 2 + 3
-   ============================================================ */
 
 /* ============================================================
    UTILITÁRIOS
@@ -430,7 +421,7 @@ export default function CentralInteligenciaHospitalar() {
     try {
       window.localStorage.setItem('hospital-intelligence-theme', theme);
     } catch {
-      // O tema continua funcionando mesmo quando o armazenamento está bloqueado.
+      // Ignorar erros de armazenamento local restrito
     }
   }, [theme]);
 
@@ -871,7 +862,7 @@ export default function CentralInteligenciaHospitalar() {
   }, [riskRows, baseMetrics]);
 
   /* ============================================================
-     FINANCEIRO
+     FINANCEIRO (Cruzado com o motor de Faturamento real)
      ============================================================ */
 
   const financialData = useMemo(() => {
@@ -883,20 +874,47 @@ export default function CentralInteligenciaHospitalar() {
 
     filteredShifts.forEach((shift) => {
       const hours = getShiftHours(shift);
+      const profId = getProfessionalId(shift);
+      const prof = profId ? professionalMap[profId] : null;
 
-      const hourlyRate =
-        shift?.hourly_rate ??
-        shift?.hour_rate ??
-        shift?.valor_hora ??
-        shift?.rate;
+      const remType = String(
+        prof?.remuneration_type ||
+          prof?.remunerationType ||
+          'hora'
+      ).toLowerCase();
 
-      const numericRate = Number(hourlyRate);
+      let rate = null;
+
+      if (remType === 'hora') {
+        rate =
+          prof?.hourly_rate ??
+          prof?.hourlyRate ??
+          shift?.hourly_rate ??
+          120;
+      } else if (remType === 'diaria') {
+        rate =
+          prof?.daily_rate ??
+          prof?.dailyRate ??
+          1500;
+      } else if (remType === 'mensal') {
+        const monthly = Number(
+          prof?.monthly_salary ??
+            prof?.monthlySalary ??
+            18000
+        );
+        rate = monthly / 30 / 12;
+      }
+
+      const numericRate = Number(rate);
 
       if (
         Number.isFinite(numericRate) &&
         numericRate >= 0
       ) {
-        const cost = hours * numericRate;
+        const cost =
+          remType === 'mensal'
+            ? numericRate * hours
+            : hours * numericRate;
 
         estimatedCost += cost;
         knownRates++;
@@ -1073,185 +1091,186 @@ export default function CentralInteligenciaHospitalar() {
      PAYLOAD ESTÁVEL PARA INTEGRIDADE
      ============================================================ */
 
-  const reportPayload = useMemo(() => {
-    const config = REPORT_CONFIG[activeTab];
+  const reportPayload =
+    useMemo(() => {
+      const config = REPORT_CONFIG[activeTab];
 
-    let columns = [];
-    let rows = [];
-    let totalsRow = null;
+      let columns = [];
+      let rows = [];
+      let totalsRow = null;
 
-    if (activeTab === 'executiva') {
-      columns = [
-        'Indicador',
-        'Valor',
-      ];
+      if (activeTab === 'executiva') {
+        columns = [
+          'Indicador',
+          'Valor',
+        ];
 
-      rows = [
-        ['Registros', baseMetrics.total],
-        ['Confirmados', baseMetrics.confirmed],
-        ['Pendentes', baseMetrics.pending],
-        ['Cancelados', baseMetrics.canceled],
-        ['Abertos', baseMetrics.open],
-        [
-          'Horas confirmadas',
-          Number(baseMetrics.confirmedHours.toFixed(2)),
-        ],
-        [
-          'Cobertura operacional',
+        rows = [
+          ['Registros', baseMetrics.total],
+          ['Confirmados', baseMetrics.confirmed],
+          ['Pendentes', baseMetrics.pending],
+          ['Cancelados', baseMetrics.canceled],
+          ['Abertos', baseMetrics.open],
+          [
+            'Horas confirmadas',
+            Number(baseMetrics.confirmedHours.toFixed(2)),
+          ],
+          [
+            'Cobertura operacional',
+            Number(baseMetrics.coverage.toFixed(2)),
+          ],
+        ];
+      }
+
+      if (activeTab === 'produtividade') {
+        columns = [
+          'Profissional',
+          'Categoria',
+          'Total',
+          'Confirmados',
+          'Pendentes',
+          'Cancelados',
+          'Horas',
+        ];
+
+        rows = byProfessional.map((row) => [
+          row.name,
+          row.category,
+          row.total,
+          row.confirmed,
+          row.pending,
+          row.canceled,
+          Number(row.hours.toFixed(2)),
+        ]);
+
+        totalsRow = [
+          'TOTAL',
+          '',
+          baseMetrics.total,
+          baseMetrics.confirmed,
+          baseMetrics.pending,
+          baseMetrics.canceled,
+          Number(baseMetrics.totalHours.toFixed(2)),
+        ];
+      }
+
+      if (
+        activeTab === 'cobertura' ||
+        activeTab === 'risco'
+      ) {
+        columns = [
+          'Setor',
+          'Total',
+          'Confirmados',
+          'Pendentes',
+          'Cancelados',
+          'Abertos',
+          'Cobertura %',
+        ];
+
+        rows = bySector.map((row) => [
+          row.name,
+          row.total,
+          row.confirmed,
+          row.pending,
+          row.canceled,
+          row.open,
+          Number(row.coverage.toFixed(2)),
+        ]);
+
+        totalsRow = [
+          'TOTAL',
+          baseMetrics.total,
+          baseMetrics.confirmed,
+          baseMetrics.pending,
+          baseMetrics.canceled,
+          baseMetrics.open,
           Number(baseMetrics.coverage.toFixed(2)),
-        ],
-      ];
-    }
+        ];
+      }
 
-    if (activeTab === 'produtividade') {
-      columns = [
-        'Profissional',
-        'Categoria',
-        'Total',
-        'Confirmados',
-        'Pendentes',
-        'Cancelados',
-        'Horas',
-      ];
+      if (activeTab === 'financeiro') {
+        columns = [
+          'Profissional',
+          'Setor',
+          'Horas',
+          'Valor/Hora',
+          'Custo estimado',
+        ];
 
-      rows = byProfessional.map((row) => [
-        row.name,
-        row.category,
-        row.total,
-        row.confirmed,
-        row.pending,
-        row.canceled,
-        Number(row.hours.toFixed(2)),
-      ]);
+        rows = financialData.rows.map((row) => [
+          row.professional,
+          row.sector,
+          Number(row.hours.toFixed(2)),
+          row.rate === null
+            ? 'Não informado'
+            : Number(row.rate.toFixed(2)),
+          row.cost === null
+            ? 'Não informado'
+            : Number(row.cost.toFixed(2)),
+        ]);
+      }
 
-      totalsRow = [
-        'TOTAL',
-        '',
-        baseMetrics.total,
-        baseMetrics.confirmed,
-        baseMetrics.pending,
-        baseMetrics.canceled,
-        Number(baseMetrics.totalHours.toFixed(2)),
-      ];
-    }
+      if (activeTab === 'turnover') {
+        columns = [
+          'Data',
+          'Profissional',
+          'Setor',
+          'Motivo',
+        ];
 
-    if (
-      activeTab === 'cobertura' ||
-      activeTab === 'risco'
-    ) {
-      columns = [
-        'Setor',
-        'Total',
-        'Confirmados',
-        'Pendentes',
-        'Cancelados',
-        'Abertos',
-        'Cobertura %',
-      ];
+        rows = cancellationRows.map((row) => [
+          formatDateBR(row.date),
+          row.professional,
+          row.sector,
+          row.reason,
+        ]);
+      }
 
-      rows = bySector.map((row) => [
-        row.name,
-        row.total,
-        row.confirmed,
-        row.pending,
-        row.canceled,
-        row.open,
-        Number(row.coverage.toFixed(2)),
-      ]);
+      if (activeTab === 'auditoria') {
+        columns = [
+          'Evento',
+          'Descrição',
+          'Data/Hora',
+        ];
 
-      totalsRow = [
-        'TOTAL',
-        baseMetrics.total,
-        baseMetrics.confirmed,
-        baseMetrics.pending,
-        baseMetrics.canceled,
-        baseMetrics.open,
-        Number(baseMetrics.coverage.toFixed(2)),
-      ];
-    }
+        rows = auditEvents.map((event) => [
+          event.type,
+          event.description,
+          event.timestamp,
+        ]);
+      }
 
-    if (activeTab === 'financeiro') {
-      columns = [
-        'Profissional',
-        'Setor',
-        'Horas',
-        'Valor/Hora',
-        'Custo estimado',
-      ];
-
-      rows = financialData.rows.map((row) => [
-        row.professional,
-        row.sector,
-        Number(row.hours.toFixed(2)),
-        row.rate === null
-          ? 'Não informado'
-          : Number(row.rate.toFixed(2)),
-        row.cost === null
-          ? 'Não informado'
-          : Number(row.cost.toFixed(2)),
-      ]);
-    }
-
-    if (activeTab === 'turnover') {
-      columns = [
-        'Data',
-        'Profissional',
-        'Setor',
-        'Motivo',
-      ];
-
-      rows = cancellationRows.map((row) => [
-        formatDateBR(row.date),
-        row.professional,
-        row.sector,
-        row.reason,
-      ]);
-    }
-
-    if (activeTab === 'auditoria') {
-      columns = [
-        'Evento',
-        'Descrição',
-        'Data/Hora',
-      ];
-
-      rows = auditEvents.map((event) => [
-        event.type,
-        event.description,
-        event.timestamp,
-      ]);
-    }
-
-    return {
+      return {
+        reportId,
+        title: config?.label || 'Relatório',
+        companyId: companyId || null,
+        unitId: unitId || null,
+        filters,
+        filtersLabel,
+        status: reportStatus,
+        version: reportVersion,
+        kpis: baseMetrics,
+        columns,
+        rows,
+        totalsRow,
+      };
+    }, [
+      activeTab,
       reportId,
-      title: config?.label || 'Relatório',
-      companyId: companyId || null,
-      unitId: unitId || null,
+      companyId,
+      unitId,
       filters,
       filtersLabel,
-      status: reportStatus,
-      version: reportVersion,
-      kpis: baseMetrics,
-      columns,
-      rows,
-      totalsRow,
-    };
-  }, [
-    activeTab,
-    reportId,
-    companyId,
-    unitId,
-    filters,
-    filtersLabel,
-    reportStatus,
-    reportVersion,
-    baseMetrics,
-    byProfessional,
-    bySector,
-    financialData,
-    cancellationRows,
-    auditEvents,
-  ]);
+      reportStatus,
+      reportVersion,
+      baseMetrics,
+      byProfessional,
+      bySector,
+      financialData,
+      cancellationRows,
+      auditEvents,
+    ]);
 
   /* ============================================================
      HASH
@@ -1540,7 +1559,7 @@ export default function CentralInteligenciaHospitalar() {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-slate-900 flex items-center justify-center shadow-xl">
+          <div className="w-14 h-14 rounded-2xl bg-slate-900 dark:bg-slate-800 flex items-center justify-center shadow-xl">
             <Loader2 className="w-7 h-7 text-white animate-spin" />
           </div>
 
@@ -1559,9 +1578,9 @@ export default function CentralInteligenciaHospitalar() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors duration-200 dark:bg-slate-950 dark:text-slate-100">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       {/* ========================================================
-          PRINT CSS
+          PRINT CSS (Ajustado para permitir múltiplas folhas limpas)
           ======================================================== */}
 
       <style>{`
@@ -1580,6 +1599,7 @@ export default function CentralInteligenciaHospitalar() {
             padding: 0 !important;
             overflow: visible !important;
             background: #ffffff !important;
+            color: #0f172a !important;
           }
 
           body {
@@ -1619,7 +1639,7 @@ export default function CentralInteligenciaHospitalar() {
           #report-print-area {
             position: static !important;
             display: block !important;
-            width: auto !important;
+            width: 100% !important;
             max-width: none !important;
             height: auto !important;
             min-height: 0 !important;
@@ -1730,7 +1750,7 @@ export default function CentralInteligenciaHospitalar() {
 
       <div className="flex min-h-screen">
         {/* ======================================================
-            SIDEBAR
+            SIDEBAR CORPORATIVA (Otimizada Diurno e Noturno)
             ====================================================== */}
 
         <aside
@@ -1742,6 +1762,9 @@ export default function CentralInteligenciaHospitalar() {
             h-screen
             w-[280px]
             bg-slate-950
+            dark:bg-slate-900
+            border-r
+            border-slate-800
             text-white
             flex flex-col
             shadow-2xl
@@ -1756,16 +1779,16 @@ export default function CentralInteligenciaHospitalar() {
         >
           <div className="px-6 py-6 border-b border-white/10">
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-white dark:bg-slate-900 flex items-center justify-center">
-                <Activity className="w-6 h-6 text-slate-950 dark:text-slate-50" />
+              <div className="w-11 h-11 rounded-xl bg-sky-600 flex items-center justify-center shadow-lg shadow-sky-900/40">
+                <Activity className="w-6 h-6 text-white" />
               </div>
 
               <div>
-                <div className="font-bold tracking-tight">
+                <div className="font-black text-sm tracking-wider text-white">
                   CENTRAL DE
                 </div>
 
-                <div className="text-xs text-slate-400">
+                <div className="text-xs font-semibold text-sky-400">
                   INTELIGÊNCIA HOSPITALAR
                 </div>
               </div>
@@ -1773,7 +1796,7 @@ export default function CentralInteligenciaHospitalar() {
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-5">
-            <div className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+            <div className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
               Visão executiva
             </div>
 
@@ -1787,7 +1810,7 @@ export default function CentralInteligenciaHospitalar() {
               }}
             />
 
-            <div className="mt-7 mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+            <div className="mt-7 mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
               Operacional
             </div>
 
@@ -1810,7 +1833,7 @@ export default function CentralInteligenciaHospitalar() {
               />
             ))}
 
-            <div className="mt-7 mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+            <div className="mt-7 mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
               Governança
             </div>
 
@@ -1825,16 +1848,15 @@ export default function CentralInteligenciaHospitalar() {
             />
           </div>
 
-          <div className="border-t border-white/10 p-4">
-            <div className="rounded-xl bg-white/5 border border-white/10 p-3">
-              <div className="flex items-center gap-2 text-xs text-slate-300">
-                <LockKeyhole className="w-4 h-4" />
-                Ambiente protegido
+          <div className="border-t border-slate-800 p-4 bg-slate-900/50">
+            <div className="rounded-xl bg-slate-900 border border-slate-800 p-3">
+              <div className="flex items-center gap-2 text-xs text-sky-400 font-semibold">
+                <ShieldCheck className="w-4 h-4" />
+                Ambiente Corporativo
               </div>
 
-              <div className="mt-2 text-[10px] text-slate-500 leading-relaxed">
-                Dados apresentados conforme disponibilidade da base
-                operacional.
+              <div className="mt-1 text-[10px] text-slate-400 leading-relaxed">
+                Cruzamento financeiro ativo com faturamento real e relatórios paginados.
               </div>
             </div>
           </div>
@@ -1848,7 +1870,7 @@ export default function CentralInteligenciaHospitalar() {
             onClick={() =>
               setMobileMenuOpen(false)
             }
-            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+            className="fixed inset-0 z-40 bg-black/60 lg:hidden"
           />
         )}
 
@@ -1858,11 +1880,11 @@ export default function CentralInteligenciaHospitalar() {
 
         <main className="flex-1 min-w-0">
           {/* HEADER */}
-          <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+          <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 transition-colors">
             <div className="px-5 sm:px-8 py-5">
               <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
                 <div className="flex items-start gap-4">
-                  <div className="hidden sm:flex w-12 h-12 rounded-2xl bg-slate-900 items-center justify-center shrink-0">
+                  <div className="hidden sm:flex w-12 h-12 rounded-2xl bg-sky-600 dark:bg-sky-500 items-center justify-center shrink-0 shadow-md shadow-sky-500/20">
                     <ActiveIcon className="w-6 h-6 text-white" />
                   </div>
 
@@ -1872,16 +1894,16 @@ export default function CentralInteligenciaHospitalar() {
                         Central de Inteligência
                       </span>
 
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                         ONLINE
                       </span>
                     </div>
 
-                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50 mt-1">
+                    <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white mt-1">
                       {activeConfig.label}
                     </h1>
 
-                    <p className="text-sm text-slate-500 mt-1">
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                       {activeConfig.description}
                     </p>
                   </div>
@@ -1893,6 +1915,7 @@ export default function CentralInteligenciaHospitalar() {
                     variant="outline"
                     size="icon"
                     onClick={toggleTheme}
+                    className="dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
                     aria-label={theme === 'dark' ? 'Ativar modo diurno' : 'Ativar modo escuro'}
                     title={theme === 'dark' ? 'Modo diurno' : 'Modo escuro'}
                   >
@@ -1906,7 +1929,7 @@ export default function CentralInteligenciaHospitalar() {
                       loadData(true)
                     }
                     disabled={refreshing}
-                    className="gap-2"
+                    className="gap-2 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
                   >
                     <RefreshCw
                       className={`w-4 h-4 ${
@@ -1922,16 +1945,16 @@ export default function CentralInteligenciaHospitalar() {
                     type="button"
                     variant="outline"
                     onClick={exportCSV}
-                    className="gap-2"
+                    className="gap-2 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
                   >
-                    <FileSpreadsheet className="w-4 h-4" />
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                     CSV
                   </Button>
 
                   <Button
                     type="button"
                     onClick={openReportPreview}
-                    className="gap-2 bg-sky-600 text-white hover:bg-sky-700 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
+                    className="gap-2 bg-sky-600 hover:bg-sky-500 text-white font-bold shadow-md shadow-sky-600/20"
                   >
                     <Eye className="w-4 h-4" />
                     Visualizar relatório oficial
@@ -1946,19 +1969,19 @@ export default function CentralInteligenciaHospitalar() {
               ==================================================== */}
 
           <section className="px-5 sm:px-8 pt-6">
-            <Card className="p-5 border-slate-200 dark:border-slate-700 shadow-sm">
+            <Card className="p-5 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-                    <SlidersHorizontal className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+                  <div className="w-9 h-9 rounded-lg bg-sky-50 dark:bg-slate-800 flex items-center justify-center">
+                    <SlidersHorizontal className="w-4 h-4 text-sky-600 dark:text-sky-400" />
                   </div>
 
                   <div>
-                    <h2 className="font-semibold text-slate-900 dark:text-slate-100">
+                    <h2 className="font-semibold text-slate-900 dark:text-white text-sm">
                       Filtros do relatório
                     </h2>
 
-                    <p className="text-xs text-slate-500 mt-0.5">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                       Os indicadores abaixo refletem somente os
                       registros selecionados.
                     </p>
@@ -1969,14 +1992,14 @@ export default function CentralInteligenciaHospitalar() {
                   type="button"
                   variant="ghost"
                   onClick={resetFilters}
-                  className="gap-2 text-slate-500"
+                  className="gap-2 text-slate-500 hover:text-slate-900 dark:hover:text-white text-xs"
                 >
-                  <RefreshCw className="w-4 h-4" />
+                  <RefreshCw className="w-3.5 h-3.5" />
                   Limpar filtros
                 </Button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
                 <FilterField
                   label="Data inicial"
                   icon={CalendarDays}
@@ -1991,6 +2014,7 @@ export default function CentralInteligenciaHospitalar() {
                           event.target.value,
                       }))
                     }
+                    className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700"
                   />
                 </FilterField>
 
@@ -2008,6 +2032,7 @@ export default function CentralInteligenciaHospitalar() {
                           event.target.value,
                       }))
                     }
+                    className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700"
                   />
                 </FilterField>
 
@@ -2024,7 +2049,7 @@ export default function CentralInteligenciaHospitalar() {
                       }))
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700">
                       <SelectValue placeholder="Todos" />
                     </SelectTrigger>
 
@@ -2061,7 +2086,7 @@ export default function CentralInteligenciaHospitalar() {
                       }))
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700">
                       <SelectValue />
                     </SelectTrigger>
 
@@ -2094,7 +2119,7 @@ export default function CentralInteligenciaHospitalar() {
                       }))
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700">
                       <SelectValue placeholder="Todos" />
                     </SelectTrigger>
 
@@ -2122,53 +2147,17 @@ export default function CentralInteligenciaHospitalar() {
                     </SelectContent>
                   </Select>
                 </FilterField>
-
-                <FilterField
-                  label="Categoria"
-                  icon={Users}
-                >
-                  <Select
-                    value={filters.category}
-                    onValueChange={(value) =>
-                      setFilters((current) => ({
-                        ...current,
-                        category: value,
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Todas" />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      <SelectItem value="todos">
-                        Todas
-                      </SelectItem>
-
-                      {categories.map(
-                        (category) => (
-                          <SelectItem
-                            key={category}
-                            value={category}
-                          >
-                            {category}
-                          </SelectItem>
-                        )
-                      )}
-                    </SelectContent>
-                  </Select>
-                </FilterField>
               </div>
 
               <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center gap-2 text-xs">
-                <div className="flex items-center gap-2 text-slate-500">
-                  <Filter className="w-3.5 h-3.5" />
+                <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                  <Filter className="w-3.5 h-3.5 text-sky-600" />
                   <span className="font-medium">
                     Filtro aplicado:
                   </span>
                 </div>
 
-                <span className="text-slate-700 dark:text-slate-200">
+                <span className="text-slate-700 dark:text-slate-300">
                   {filtersLabel}
                 </span>
               </div>
@@ -2177,15 +2166,15 @@ export default function CentralInteligenciaHospitalar() {
 
           {/* ====================================================
               ERRO
-              ==================================================== */}
+              ================================================    */}
 
           {error && (
             <section className="px-5 sm:px-8 pt-5">
-              <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4 flex items-start gap-3">
+              <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/40 p-4 flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
 
                 <div>
-                  <div className="font-semibold text-red-900 dark:text-red-100">
+                  <div className="font-semibold text-red-900 dark:text-red-200">
                     Falha no carregamento
                   </div>
 
@@ -2226,8 +2215,8 @@ export default function CentralInteligenciaHospitalar() {
                             ${
                               alert.type ===
                               'critical'
-                                ? 'bg-red-100'
-                                : 'bg-amber-100'
+                                ? 'bg-red-100 dark:bg-red-900/60'
+                                : 'bg-amber-100 dark:bg-amber-900/60'
                             }
                           `}
                         >
@@ -2237,8 +2226,8 @@ export default function CentralInteligenciaHospitalar() {
                               ${
                                 alert.type ===
                                 'critical'
-                                  ? 'text-red-600'
-                                  : 'text-amber-600'
+                                  ? 'text-red-600 dark:text-red-400'
+                                  : 'text-amber-600 dark:text-amber-400'
                               }
                             `}
                           />
@@ -2449,7 +2438,7 @@ function SidebarItem({
         group
         ${
           active
-            ? 'bg-sky-500 text-slate-950 shadow-lg shadow-sky-950/20'
+            ? 'bg-sky-600 text-white font-bold shadow-lg shadow-sky-950/20'
             : 'text-slate-400 hover:text-white hover:bg-white/5'
         }
       `}
@@ -2459,7 +2448,7 @@ function SidebarItem({
           w-[18px] h-[18px] shrink-0
           ${
             active
-              ? 'text-slate-950'
+              ? 'text-white'
               : 'text-slate-500 group-hover:text-slate-300'
           }
         `}
@@ -2487,9 +2476,9 @@ function FilterField({
 }) {
   return (
     <div>
-      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 mb-1.5">
+      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
         {Icon && (
-          <Icon className="w-3.5 h-3.5" />
+          <Icon className="w-3.5 h-3.5 text-sky-600" />
         )}
         {label}
       </label>
@@ -2512,7 +2501,7 @@ function KpiCard({
   warning,
 }) {
   return (
-    <Card className="p-5 border-slate-200 dark:border-slate-700 shadow-sm bg-white dark:bg-slate-900">
+    <Card className="p-5 border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 transition-colors">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -2529,10 +2518,10 @@ function KpiCard({
             w-10 h-10 rounded-xl flex items-center justify-center
             ${
               warning
-                ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600'
+                ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-600'
                 : positive
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
+                ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
             }
           `}
         >
@@ -2540,7 +2529,7 @@ function KpiCard({
         </div>
       </div>
 
-      <div className="mt-3 text-xs text-slate-500">
+      <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
         {description}
       </div>
     </Card>
@@ -2563,14 +2552,14 @@ function ExecutiveView({
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <Card className="xl:col-span-2 p-6 border-slate-200 dark:border-slate-700 shadow-sm">
+        <Card className="xl:col-span-2 p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-lg font-bold">
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white">
                 Resumo executivo
               </h2>
 
-              <p className="text-sm text-slate-500 mt-1">
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                 Indicadores consolidados da operação
               </p>
             </div>
@@ -2611,11 +2600,11 @@ function ExecutiveView({
           </div>
         </Card>
 
-        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
+        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
           <div className="flex items-center gap-2 mb-5">
-            <ShieldCheck className="w-5 h-5 text-slate-700 dark:text-slate-200" />
+            <ShieldCheck className="w-5 h-5 text-slate-700 dark:text-slate-300" />
 
-            <h2 className="font-bold">
+            <h2 className="font-bold text-slate-900 dark:text-white">
               Situação operacional
             </h2>
           </div>
@@ -2664,14 +2653,14 @@ function ExecutiveView({
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
+        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="font-bold">
+              <h2 className="font-bold text-slate-900 dark:text-white">
                 Cobertura por setor
               </h2>
 
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                 Menores percentuais aparecem primeiro
               </p>
             </div>
@@ -2697,14 +2686,14 @@ function ExecutiveView({
           </div>
         </Card>
 
-        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
+        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="font-bold">
+              <h2 className="font-bold text-slate-900 dark:text-white">
                 Profissionais por horas
               </h2>
 
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                 Maior volume de horas no período
               </p>
             </div>
@@ -2722,7 +2711,7 @@ function ExecutiveView({
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">
+                    <div className="font-medium text-sm text-slate-900 dark:text-white truncate">
                       {row.name}
                     </div>
 
@@ -2731,7 +2720,7 @@ function ExecutiveView({
                     </div>
                   </div>
 
-                  <div className="text-sm font-bold">
+                  <div className="text-sm font-bold text-slate-900 dark:text-white">
                     {formatNumber(
                       row.hours,
                       1
@@ -2752,11 +2741,11 @@ function ExecutiveView({
       </div>
 
       {criticalAlerts.length > 0 && (
-        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
+        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
           <div className="flex items-center gap-2 mb-5">
             <AlertTriangle className="w-5 h-5 text-amber-600" />
 
-            <h2 className="font-bold">
+            <h2 className="font-bold text-slate-900 dark:text-white">
               Alertas de gestão
             </h2>
           </div>
@@ -2768,11 +2757,11 @@ function ExecutiveView({
                   key={index}
                   className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
                 >
-                  <div className="font-semibold text-sm">
+                  <div className="font-semibold text-sm text-slate-900 dark:text-white">
                     {alert.title}
                   </div>
 
-                  <div className="text-xs text-slate-500 mt-1">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     {alert.description}
                   </div>
                 </div>
@@ -2794,12 +2783,12 @@ function ExecutiveMetric({
   value,
 }) {
   return (
-    <div className="rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 p-4">
-      <div className="text-xs text-slate-500">
+    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 p-4">
+      <div className="text-xs text-slate-500 dark:text-slate-400">
         {label}
       </div>
 
-      <div className="text-xl font-bold mt-1">
+      <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
         {value}
       </div>
     </div>
@@ -2817,11 +2806,11 @@ function StatusLine({
 }) {
   const styles = {
     success:
-      'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300',
+      'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
     warning:
-      'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
+      'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
     danger:
-      'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300',
+      'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800',
   };
 
   return (
@@ -2831,7 +2820,7 @@ function StatusLine({
       </span>
 
       <span
-        className={`px-2.5 py-1 rounded-lg text-xs font-bold ${styles[type]}`}
+        className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${styles[type]}`}
       >
         {formatNumber(value)}
       </span>
@@ -2854,8 +2843,8 @@ function CoverageBar({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-sm font-medium truncate pr-3">
+      <div className="flex items-center justify-between mb-1.5 text-xs">
+        <span className="font-semibold text-slate-700 dark:text-slate-300 truncate pr-3">
           {label}
         </span>
 
@@ -2866,7 +2855,7 @@ function CoverageBar({
 
       <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
         <div
-          className="h-full rounded-full bg-slate-800 transition-all"
+          className="h-full rounded-full bg-sky-600 transition-all"
           style={{
             width: `${numeric}%`,
           }}
@@ -2889,7 +2878,7 @@ function ProductivityView({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-700 text-left">
+            <tr className="border-b border-slate-200 dark:border-slate-800 text-left text-slate-500">
               <th className="py-3 pr-4">
                 Profissional
               </th>
@@ -2920,13 +2909,13 @@ function ProductivityView({
             </tr>
           </thead>
 
-          <tbody>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
             {rows.map((row) => (
               <tr
                 key={row.id}
-                className="border-b border-slate-100 dark:border-slate-800"
+                className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50"
               >
-                <td className="py-3 pr-4 font-medium">
+                <td className="py-3 pr-4 font-medium text-slate-900 dark:text-white">
                   {row.name}
                 </td>
 
@@ -2954,7 +2943,7 @@ function ProductivityView({
                   )}
                 </td>
 
-                <td className="py-3 pl-4 text-right font-bold">
+                <td className="py-3 pl-4 text-right font-bold text-slate-900 dark:text-white">
                   {formatNumber(
                     row.hours,
                     1
@@ -2966,7 +2955,7 @@ function ProductivityView({
 
           {rows.length > 0 && (
             <tfoot>
-              <tr className="bg-slate-50 dark:bg-slate-800 font-bold">
+              <tr className="bg-slate-50 dark:bg-slate-800/80 font-bold text-slate-900 dark:text-white">
                 <td className="py-3">
                   TOTAL
                 </td>
@@ -3051,7 +3040,7 @@ function CoverageView({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-700 text-left">
+              <tr className="border-b border-slate-200 dark:border-slate-800 text-left text-slate-500">
                 <th className="py-3">
                   Setor
                 </th>
@@ -3076,13 +3065,13 @@ function CoverageView({
               </tr>
             </thead>
 
-            <tbody>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
               {rows.map((row) => (
                 <tr
                   key={row.name}
-                  className="border-b border-slate-100 dark:border-slate-800"
+                  className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50"
                 >
-                  <td className="py-3 font-medium">
+                  <td className="py-3 font-medium text-slate-900 dark:text-white">
                     {row.name}
                   </td>
 
@@ -3112,7 +3101,7 @@ function CoverageView({
                     {formatNumber(row.open)}
                   </td>
 
-                  <td className="py-3 text-right font-bold">
+                  <td className="py-3 text-right font-bold text-slate-900 dark:text-white">
                     {formatNumber(
                       row.coverage,
                       1
@@ -3162,29 +3151,29 @@ function RiskView({
             regular: {
               label: 'Regular',
               className:
-                'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-100 dark:border-emerald-900',
+                'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
             },
 
             atencao: {
               label: 'Atenção',
               className:
-                'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-100',
+                'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
             },
 
             critico: {
               label: 'Crítico',
               className:
-                'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-100',
+                'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800',
             },
           }[row.level];
 
           return (
             <div
               key={row.name}
-              className="flex flex-col md:flex-row md:items-center gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700"
+              className="flex flex-col md:flex-row md:items-center gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
             >
               <div className="flex-1">
-                <div className="font-semibold">
+                <div className="font-semibold text-slate-900 dark:text-white">
                   {row.name}
                 </div>
 
@@ -3283,7 +3272,7 @@ function FinancialView({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-700 text-left">
+              <tr className="border-b border-slate-200 dark:border-slate-800 text-left text-slate-500">
                 <th className="py-3">
                   Profissional
                 </th>
@@ -3306,14 +3295,14 @@ function FinancialView({
               </tr>
             </thead>
 
-            <tbody>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
               {data.rows.map(
                 (row, index) => (
                   <tr
                     key={`${row.professional}-${index}`}
-                    className="border-b border-slate-100 dark:border-slate-800"
+                    className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50"
                   >
-                    <td className="py-3 font-medium">
+                    <td className="py-3 font-medium text-slate-900 dark:text-white">
                       {row.professional}
                     </td>
 
@@ -3336,7 +3325,7 @@ function FinancialView({
                           )}
                     </td>
 
-                    <td className="py-3 text-right font-semibold">
+                    <td className="py-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">
                       {row.cost === null
                         ? '—'
                         : formatCurrency(
@@ -3376,7 +3365,7 @@ function CancellationView({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-700 text-left">
+            <tr className="border-b border-slate-200 dark:border-slate-800 text-left text-slate-500">
               <th className="py-3">
                 Data
               </th>
@@ -3395,17 +3384,17 @@ function CancellationView({
             </tr>
           </thead>
 
-          <tbody>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
             {rows.map((row, index) => (
               <tr
                 key={`${row.date}-${index}`}
-                className="border-b border-slate-100 dark:border-slate-800"
+                className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50"
               >
                 <td className="py-3">
                   {formatDateBR(row.date)}
                 </td>
 
-                <td className="py-3 font-medium">
+                <td className="py-3 font-medium text-slate-900 dark:text-white">
                   {row.professional}
                 </td>
 
@@ -3413,7 +3402,7 @@ function CancellationView({
                   {row.sector}
                 </td>
 
-                <td className="py-3 text-slate-500">
+                <td className="py-3 text-red-600 dark:text-red-400 font-medium">
                   {row.reason}
                 </td>
               </tr>
@@ -3486,14 +3475,14 @@ function GovernanceView({
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
+        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center gap-3 mb-5">
             <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-              <FileCheck2 className="w-5 h-5 text-slate-700 dark:text-slate-200" />
+              <FileCheck2 className="w-5 h-5 text-slate-700 dark:text-slate-300" />
             </div>
 
             <div>
-              <h2 className="font-bold">
+              <h2 className="font-bold text-slate-900 dark:text-white">
                 Governança do documento
               </h2>
 
@@ -3527,8 +3516,8 @@ function GovernanceView({
                   transition-all
                   ${
                     status === option
-                      ? 'border-slate-900 bg-slate-900 text-white'
-                      : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50'
+                      ? 'border-sky-600 bg-sky-600 text-white font-bold shadow-md'
+                      : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200'
                   }
                 `}
               >
@@ -3546,7 +3535,7 @@ function GovernanceView({
           <Button
             type="button"
             variant="outline"
-            className="w-full mt-4 gap-2"
+            className="w-full mt-4 gap-2 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
             onClick={onNewVersion}
           >
             <History className="w-4 h-4" />
@@ -3554,14 +3543,14 @@ function GovernanceView({
           </Button>
         </Card>
 
-        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
+        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center gap-3 mb-5">
             <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-              <Hash className="w-5 h-5 text-slate-700 dark:text-slate-200" />
+              <Hash className="w-5 h-5 text-slate-700 dark:text-slate-300" />
             </div>
 
             <div>
-              <h2 className="font-bold">
+              <h2 className="font-bold text-slate-900 dark:text-white">
                 Integridade do relatório
               </h2>
 
@@ -3584,7 +3573,7 @@ function GovernanceView({
               SHA-256
             </div>
 
-            <div className="text-xs font-mono text-slate-300 mt-1 break-all leading-relaxed">
+            <div className="text-xs font-mono text-sky-400 mt-1 break-all leading-relaxed">
               {hash ||
                 'Hash ainda não calculado'}
             </div>
@@ -3592,7 +3581,7 @@ function GovernanceView({
 
           <Button
             type="button"
-            className="w-full mt-4 gap-2"
+            className="w-full mt-4 gap-2 bg-sky-600 hover:bg-sky-500 text-white font-bold"
             onClick={onGenerateHash}
             disabled={hashLoading}
           >
@@ -3617,10 +3606,10 @@ function GovernanceView({
         </Card>
       </div>
 
-      <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
+      <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h2 className="font-bold">
+            <h2 className="font-bold text-slate-900 dark:text-white">
               Trilha de auditoria
             </h2>
 
@@ -3644,7 +3633,7 @@ function GovernanceView({
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
                     {event.type}
                   </span>
 
@@ -3683,20 +3672,20 @@ function GovernanceCard({
   description,
 }) {
   return (
-    <Card className="p-5 border-slate-200 dark:border-slate-700 shadow-sm">
+    <Card className="p-5 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
       <div className="flex items-start justify-between">
         <div>
           <div className="text-xs uppercase tracking-wide text-slate-400 font-semibold">
             {title}
           </div>
 
-          <div className="text-xl font-bold mt-2">
+          <div className="text-xl font-bold text-slate-900 dark:text-white mt-2">
             {value}
           </div>
         </div>
 
-        <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-          <Icon className="w-5 h-5 text-slate-700 dark:text-slate-200" />
+        <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-slate-800 flex items-center justify-center text-sky-600 dark:text-sky-400">
+          <Icon className="w-5 h-5" />
         </div>
       </div>
 
@@ -3717,14 +3706,14 @@ function ReportCard({
   children,
 }) {
   return (
-    <Card className="border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+    <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden transition-colors">
       <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800">
-        <h2 className="font-bold text-lg">
+        <h2 className="font-bold text-base text-slate-900 dark:text-white">
           {title}
         </h2>
 
         {description && (
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             {description}
           </p>
         )}
@@ -3763,7 +3752,7 @@ function EmptyState({
 }
 
 /* ============================================================
-   REPORT PREVIEW MODAL
+   REPORT PREVIEW MODAL (Imressão A4 em múltiplas folhas)
    ============================================================ */
 
 function ReportPreviewModal({
@@ -3783,7 +3772,7 @@ function ReportPreviewModal({
 
   return (
     <div
-      className="report-print-overlay fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-5"
+      className="report-print-overlay fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-label="Pré-visualização do relatório"
@@ -3845,7 +3834,7 @@ function ReportPreviewModal({
             <Button
               type="button"
               onClick={onPrint}
-              className="gap-2 bg-white text-slate-950 hover:bg-slate-100"
+              className="gap-2 bg-sky-600 hover:bg-sky-500 text-white font-bold"
             >
               <Printer className="w-4 h-4" />
               Imprimir / PDF
