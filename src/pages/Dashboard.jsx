@@ -18,7 +18,6 @@ import {
   Activity,
   DollarSign,
   Building2,
-  TrendingUp,
   ShieldAlert
 } from 'lucide-react';
 import { getShiftTvLifecycle, getShiftInterval } from '@/lib/shiftUtils';
@@ -46,6 +45,23 @@ function fmtDateLong(d = new Date()) {
   return WEEKDAYS_LONG[d.getDay()] || '';
 }
 
+// Formata texto para Title Case elegante (Ex: "UTI ADULTO" -> "UTI Adulto")
+function toTitleCase(str) {
+  if (!str) return '';
+  // Preserva siglas médicas comuns em maiúsculo
+  const acr = ['UTI', 'UCO', 'PA', 'PS', 'CRM', 'COREN', 'SLA'];
+  return str
+    .toLowerCase()
+    .split(' ')
+    .map((word) => {
+      const upper = word.toUpperCase();
+      if (acr.includes(upper)) return upper;
+      if (['de', 'da', 'do', 'das', 'dos', 'e'].includes(word)) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+}
+
 export default function Painel() {
   const { user, company, loading: appLoading } = useAppData();
   const [shifts, setShifts] = useState([]);
@@ -64,9 +80,9 @@ export default function Painel() {
     try {
       const f = { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) };
       const [s, sec, p] = await Promise.all([
-        base44.entities.Shift.filter(f, '-date', 800),
+        base44.entities.Shift.filter(f, '-date', 1000),
         base44.entities.Sector.filter(f, '-created_date', 100),
-        base44.entities.Professional.filter(f, '-created_date', 300),
+        base44.entities.Professional.filter(f, '-created_date', 400),
       ]);
       setShifts(s || []);
       setSectors(sec || []);
@@ -83,20 +99,33 @@ export default function Painel() {
     loadData();
   }, [appLoading, loadData]);
 
-  // Atualizador de relógio em tempo real
+  // Atualizador em tempo real para TV e status de plantões
   useEffect(() => {
     const id = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
 
   const todayStr = useMemo(() => getLocalDateString(currentTime), [currentTime]);
+  const currentMonthKey = useMemo(() => todayStr.slice(0, 7), [todayStr]);
 
-  // Mapa rápido de profissionais para consulta de remuneração
+  // Mapa de profissionais
   const profMap = useMemo(() => {
     return Object.fromEntries((professionals || []).map((p) => [p.id, p]));
   }, [professionals]);
 
-  // Plantões de Hoje com ciclo de vida
+  // Contagem de plantões de cada profissional no mês para cálculo seguro de mensalistas
+  const monthlyShiftsCountByProf = useMemo(() => {
+    const counts = {};
+    shifts.forEach((s) => {
+      const sDate = (s.date || '').slice(0, 7);
+      if (sDate === currentMonthKey && s.status !== 'cancelado' && s.professional_id) {
+        counts[s.professional_id] = (counts[s.professional_id] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [shifts, currentMonthKey]);
+
+  // Plantões do dia com inteligência de status
   const todayShifts = useMemo(() => {
     return shifts
       .filter((s) => {
@@ -114,49 +143,57 @@ export default function Painel() {
       });
   }, [shifts, todayStr, currentTime]);
 
-  // Contadores Operacionais
+  // Categorização de status
   const activeNowList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'active'), [todayShifts]);
   const upcomingList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'upcoming'), [todayShifts]);
   const recentlyFinishedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'recently_finished'), [todayShifts]);
 
-  // Vagas Descobertas / Alerta de Risco
+  // Vagas Descobertas
   const vacantShifts = useMemo(() => {
     return todayShifts.filter((s) => !s.professional_id || s.professional_name?.toLowerCase().includes('vaga') || s.status === 'pendente');
   }, [todayShifts]);
 
-  // Indicador Financeiro do Dia (Burn-rate de plantões de hoje)
+  // CÁLCULO FINANCEIRO REAL E CONFIÁVEL DO DIA
   const todayFinancials = useMemo(() => {
     let executedValue = 0;
-    let predictedTotal = 0;
+    let plannedValue = 0;
 
     todayShifts.forEach((s) => {
       const p = profMap[s.professional_id];
       const hours = Number(s.duration_hours) || 12;
-      let val = 0;
+      let shiftCost = 0;
 
       if (p) {
         const remType = p.remuneration_type || 'hora';
-        if (remType === 'hora') val = hours * (Number(p.hourly_rate) || 0);
-        else if (remType === 'diaria') val = Number(p.daily_rate) || 0;
-        else if (remType === 'mensal') val = (Number(p.monthly_salary) || 0) / 20; // Estimativa média diária
+        if (remType === 'hora') {
+          shiftCost = hours * (Number(p.hourly_rate) || 0);
+        } else if (remType === 'diaria') {
+          shiftCost = Number(p.daily_rate) || 0;
+        } else if (remType === 'mensal') {
+          const totalMonthPlanned = monthlyShiftsCountByProf[p.id] || 1;
+          shiftCost = (Number(p.monthly_salary) || 0) / (totalMonthPlanned > 0 ? totalMonthPlanned : 1);
+        }
       }
 
-      predictedTotal += val;
+      // Soma na previsão geral do dia
+      plannedValue += shiftCost;
+
+      // Soma no valor já realizado/em execução
       if (s.lifecycle.state === 'active' || s.lifecycle.state === 'recently_finished') {
-        executedValue += val;
+        executedValue += shiftCost;
       }
     });
 
-    return { executedValue, predictedTotal };
-  }, [todayShifts, profMap]);
+    return { executedValue, plannedValue, totalToday: plannedValue };
+  }, [todayShifts, profMap, monthlyShiftsCountByProf]);
 
-  // Análise de Cobertura por Setor
+  // Cobertura de Setores
   const sectorsCoverage = useMemo(() => {
     const map = {};
     sectors.forEach((sec) => {
       map[sec.id] = {
         id: sec.id,
-        name: sec.name,
+        name: toTitleCase(sec.name),
         specialty: sec.specialty || 'Geral',
         total: 0,
         active: 0,
@@ -170,7 +207,7 @@ export default function Painel() {
       if (!map[secId]) {
         map[secId] = {
           id: secId,
-          name: s.sector_name || 'Geral',
+          name: toTitleCase(s.sector_name || 'Setor Geral'),
           specialty: 'Geral',
           total: 0,
           active: 0,
@@ -189,7 +226,7 @@ export default function Painel() {
     return Object.values(map).filter((sec) => sec.total > 0 || sectors.some((s) => s.id === sec.id));
   }, [sectors, todayShifts]);
 
-  // Próxima Passagem de Turno (Next Shift Handover)
+  // Próxima Passagem de Turno
   const nextHandover = useMemo(() => {
     if (upcomingList.length === 0) return null;
     const nextStart = upcomingList[0].start_time;
@@ -216,7 +253,7 @@ export default function Painel() {
   };
 
   // ==========================================
-  // MODO TV (FULLSCREEN OPERACIONAL)
+  // MODO TV (RELOGIO EXCLUSIVO DE TELA CHEIA)
   // ==========================================
   if (tvMode) {
     return (
@@ -240,7 +277,7 @@ export default function Painel() {
                   <Clock3 className="h-7 w-7" />
                   {currentTime.toLocaleTimeString('pt-BR')}
                 </div>
-                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Tempo Real</div>
+                <div className="text-xs uppercase tracking-[0.18em] text-slate-400">Horário Oficial Local</div>
               </div>
               <button title="Fechar modo TV" onClick={closeTvMode} className="rounded-xl border border-white/15 p-3 text-slate-300 hover:bg-white/10 transition-colors">
                 <Minimize2 className="h-5 w-5" />
@@ -299,10 +336,10 @@ export default function Painel() {
                       </div>
                     </div>
 
-                    <div className="mt-5 truncate text-2xl font-black text-white">{shift.professional_name || 'Vaga Aberta'}</div>
+                    <div className="mt-5 truncate text-2xl font-black text-white">{toTitleCase(shift.professional_name) || 'Vaga Aberta'}</div>
                     <div className="mt-2 flex items-center gap-2 text-base text-slate-300">
                       <Stethoscope className={`h-4 w-4 ${isActive ? 'text-emerald-400' : 'text-sky-400'}`} />
-                      {shift.sector_name || 'Setor não informado'}
+                      {toTitleCase(shift.sector_name) || 'Setor Geral'}
                     </div>
                   </div>
                 );
@@ -319,30 +356,26 @@ export default function Painel() {
   // ==========================================
   return (
     <div className="p-4 md:p-8 space-y-6">
-      {/* Header Cockpit */}
+      {/* Header Cockpit (Sem relógio duplicado) */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white p-6 rounded-3xl border border-slate-800 shadow-xl">
         <div>
-          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-sky-400 font-bold">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-sky-400 font-bold">
             <Activity className="w-4 h-4" /> Centro de Operações Clínicas
           </div>
           <h1 className="text-2xl md:text-3xl font-black mt-2 tracking-tight">Painel Operacional Hospitalar</h1>
           <p className="text-sm text-slate-300 mt-1 max-w-2xl">
-            Monitoramento em tempo real de presença médica, passagens de turno e cobertura setorial.
+            Acompanhamento contínuo de presença médica, transições de turno e alocação setorial.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="text-right hidden sm:block">
-            <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Horário do Sistema</div>
-            <div className="text-xl font-mono font-black text-sky-400">{currentTime.toLocaleTimeString('pt-BR')}</div>
-          </div>
-          <Button onClick={openTvMode} className="bg-sky-600 hover:bg-sky-500 text-white font-bold gap-2 text-xs h-10 px-4 rounded-xl shadow-lg shadow-sky-950">
+        <div>
+          <Button onClick={openTvMode} className="bg-sky-600 hover:bg-sky-500 text-white font-bold gap-2 text-xs h-10 px-5 rounded-xl shadow-lg shadow-sky-950">
             <Maximize2 className="w-4 h-4" /> Modo TV
           </Button>
         </div>
       </div>
 
-      {/* BANNER 1: ALERTA DE RISCO OPERACIONAL / DESFALQUES */}
+      {/* Alerta de Desfalques / Risco de Vagas */}
       {vacantShifts.length > 0 && (
         <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
           <div className="flex items-center gap-3">
@@ -352,7 +385,7 @@ export default function Painel() {
             <div>
               <strong className="text-sm font-black block">Atenção: {vacantShifts.length} vaga(s) com risco de cobertura hoje</strong>
               <p className="text-xs opacity-90">
-                Setores afetados: {Array.from(new Set(vacantShifts.map((s) => s.sector_name || 'Geral'))).join(', ')}.
+                Setores afetados: {Array.from(new Set(vacantShifts.map((s) => toTitleCase(s.sector_name) || 'Geral'))).join(', ')}.
               </p>
             </div>
           </div>
@@ -362,7 +395,7 @@ export default function Painel() {
         </div>
       )}
 
-      {/* 4 CARDS DE MÉTRICAS EXECUTIVAS */}
+      {/* 4 Cards de Métricas com Custo Operacional Real */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20 relative overflow-hidden">
           <div className="flex items-center justify-between">
@@ -411,10 +444,11 @@ export default function Painel() {
             {professionals.length} cadastrados
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            Profissionais disponíveis para alocação
+            Profissionais vinculados a escalas
           </p>
         </Card>
 
+        {/* Card de Custo Real: Executado vs Previsão Total */}
         <Card className="p-5 border-slate-200 dark:border-slate-800">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -428,12 +462,12 @@ export default function Painel() {
             R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            Previsto total do dia: R$ {todayFinancials.predictedTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            Previsão total do dia: <b>R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</b>
           </p>
         </Card>
       </div>
 
-      {/* SEÇÃO 2 COLUNAS: PASSAGEM DE TURNO + TERMÔMETRO SETORIAL */}
+      {/* Passagem de Turno + Termômetro de Cobertura */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Passagem de Turno */}
         <Card className="p-5 border-slate-200 dark:border-slate-800 lg:col-span-1 flex flex-col justify-between space-y-4">
@@ -454,7 +488,6 @@ export default function Painel() {
 
             {nextHandover ? (
               <div className="mt-4 space-y-4">
-                {/* Quem Entra */}
                 <div className="p-3 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
                   <div className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 uppercase flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Equipe que Assume ({nextHandover.incoming.length})
@@ -462,14 +495,13 @@ export default function Painel() {
                   <div className="mt-2 space-y-1.5">
                     {nextHandover.incoming.map((s) => (
                       <div key={s.id} className="text-xs flex items-center justify-between">
-                        <span className="font-bold text-slate-900 dark:text-white truncate">{s.professional_name || 'Vaga Aberta'}</span>
-                        <span className="text-[10px] text-slate-500 shrink-0 font-medium">{s.sector_name || 'Geral'}</span>
+                        <span className="font-bold text-slate-900 dark:text-white truncate">{toTitleCase(s.professional_name) || 'Vaga Aberta'}</span>
+                        <span className="text-[10px] text-slate-500 shrink-0 font-medium">{toTitleCase(s.sector_name) || 'Geral'}</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Quem Sai */}
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
                   <div className="text-[11px] font-bold text-slate-500 uppercase">
                     Equipe que Entrega ({nextHandover.outgoing.length})
@@ -480,8 +512,8 @@ export default function Painel() {
                     ) : (
                       nextHandover.outgoing.map((s) => (
                         <div key={s.id} className="text-xs flex items-center justify-between">
-                          <span className="font-medium text-slate-700 dark:text-slate-300 truncate">{s.professional_name}</span>
-                          <span className="text-[10px] text-slate-400 shrink-0">{s.sector_name || 'Geral'}</span>
+                          <span className="font-medium text-slate-700 dark:text-slate-300 truncate">{toTitleCase(s.professional_name)}</span>
+                          <span className="text-[10px] text-slate-400 shrink-0">{toTitleCase(s.sector_name) || 'Geral'}</span>
                         </div>
                       ))
                     )}
@@ -501,7 +533,7 @@ export default function Painel() {
           </div>
         </Card>
 
-        {/* Termômetro de Cobertura por Setores */}
+        {/* Termômetro por Setor */}
         <Card className="p-5 border-slate-200 dark:border-slate-800 lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
             <div>
@@ -552,7 +584,6 @@ export default function Painel() {
                       <span className="font-bold text-slate-800 dark:text-slate-200">{sec.active} / {sec.total} turnos</span>
                     </div>
 
-                    {/* Barra de Progresso */}
                     <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full mt-1.5 overflow-hidden">
                       <div 
                         className={`h-full transition-all duration-500 ${hasVacant ? 'bg-amber-500' : 'bg-emerald-500'}`}
@@ -562,7 +593,7 @@ export default function Painel() {
 
                     {hasVacant && (
                       <div className="text-[10px] text-amber-700 dark:text-amber-400 font-bold mt-2 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> {sec.vacant} vaga(s) descoberta(s)
+                        <AlertTriangle className="w-3 h-3" /> {sec.vacant} vaga(s) com desfalque
                       </div>
                     )}
                   </div>
@@ -573,7 +604,7 @@ export default function Painel() {
         </Card>
       </div>
 
-      {/* LISTA DINÂMICA DE PLANTÕES EM OPERAÇÃO HOJE */}
+      {/* Lista de Plantões do Dia */}
       <Card className="p-5 border-slate-200 dark:border-slate-800 space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div>
@@ -625,11 +656,11 @@ export default function Painel() {
                   </div>
 
                   <div className="font-bold text-sm text-slate-900 dark:text-white truncate">
-                    {shift.professional_name || 'Vaga Aberta'}
+                    {toTitleCase(shift.professional_name) || 'Vaga Aberta'}
                   </div>
 
                   <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
-                    <span className="truncate">{shift.sector_name || 'Geral'}</span>
+                    <span className="truncate">{toTitleCase(shift.sector_name) || 'Setor Geral'}</span>
                     <span className="text-[10px] text-slate-400">{shift.lifecycle.detail}</span>
                   </div>
                 </div>
