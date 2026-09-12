@@ -144,9 +144,9 @@ export default function CorpoClinico() {
     setLoading(true);
     try {
       const [profs, secs, specs] = await Promise.all([
-        base44.entities.Professional.filter({ company_id: companyId }, '-created_date', 300),
-        base44.entities.Sector.filter({ company_id: companyId }, 'name', 100),
-        base44.entities.Specialty ? base44.entities.Specialty.filter({ company_id: companyId }, 'name', 100) : []
+        base44.entities.Professional.filter({ company_id: companyId }, '-created_date', 300).catch(() => []),
+        base44.entities.Sector.filter({ company_id: companyId }, 'name', 100).catch(() => []),
+        base44.entities.Specialty ? base44.entities.Specialty.filter({ company_id: companyId }, 'name', 100).catch(() => []) : Promise.resolve([])
       ]);
       setProfessionals(profs || []);
       setSectors((secs && secs.length > 0) ? secs : DEFAULT_SECTORS);
@@ -183,14 +183,6 @@ export default function CorpoClinico() {
     }
   };
 
-  const handlePermissionChange = (permId, checked) => {
-    if (checked) {
-      setPermissions((prev) => [...prev, permId]);
-    } else {
-      setPermissions((prev) => prev.filter((p) => p !== permId));
-    }
-  };
-
   const handleBirthDateChange = (newDate) => {
     setBirthDate(newDate);
     if (!editingId) {
@@ -205,7 +197,7 @@ export default function CorpoClinico() {
     }
   };
 
-  // BOTÃO WHATSAPP DIRETO
+  // BOTÃO WHATSAPP DIRETO BLINDADO
   const handleWhatsApp = (prof) => {
     let rawPhone = prof.phone ? String(prof.phone).replace(/\D/g, '') : '';
     if (!rawPhone) {
@@ -264,7 +256,7 @@ export default function CorpoClinico() {
     setPhone('');
     setUsername('');
     setPassword('123456');
-    setUnitId(units[0]?.id || 'unit_h1');
+    setUnitId(String(units[0]?.id || 'unit_h1'));
     setIsManager(false);
     setPermissions(['painel', 'escalas', 'trocas']);
     
@@ -284,7 +276,7 @@ export default function CorpoClinico() {
     setStartTime('07:00');
     setEndTime('19:00');
     setDurationHours(12);
-    setDefaultSectorId(sectors[0]?.id || DEFAULT_SECTORS[0].id);
+    setDefaultSectorId(String(sectors[0]?.id || DEFAULT_SECTORS[0].id));
     setAutoGenerateShifts(true);
     setDialogOpen(true);
   };
@@ -299,7 +291,7 @@ export default function CorpoClinico() {
     setDocument(prof.document || '');
     setEmail(prof.email || '');
     setPhone(prof.phone || '');
-    setUnitId(prof.unit_id || units[0]?.id || 'unit_h1');
+    setUnitId(String(prof.unit_id || units[0]?.id || 'unit_h1'));
 
     setRemunerationType(prof.remuneration_type || 'hora');
     setHourlyRate(String(prof.hourly_rate || '120'));
@@ -334,7 +326,7 @@ export default function CorpoClinico() {
     setSchedulePattern(prof.schedule_pattern || '12x36');
     setStartTime(prof.schedule_start_time || '07:00');
     setEndTime(prof.schedule_end_time || '19:00');
-    setDefaultSectorId(prof.default_sector_id || sectors[0]?.id || DEFAULT_SECTORS[0].id);
+    setDefaultSectorId(String(prof.default_sector_id || sectors[0]?.id || DEFAULT_SECTORS[0].id));
     setAutoGenerateShifts(false);
 
     const matchingPreset = HOSPITAL_SCHEDULE_PATTERNS.find(
@@ -508,7 +500,7 @@ export default function CorpoClinico() {
         const year = parseInt(yearStr, 10);
         const month = parseInt(monthStr, 10) - 1;
         const totalDays = new Date(year, month + 1, 0).getDate();
-        const sectorObj = sectors.find((s) => s.id === defaultSectorId) || DEFAULT_SECTORS[0];
+        const sectorObj = sectors.find((s) => String(s.id) === String(defaultSectorId)) || DEFAULT_SECTORS[0];
 
         const existingShifts = await base44.entities.Shift.filter({
           company_id: companyId,
@@ -542,7 +534,7 @@ export default function CorpoClinico() {
 
           if (isWorkDay) {
             const conflict = existingShifts.find(
-              (sh) => sh.date === dateStr && sh.unit_id !== unitId && sh.status !== 'cancelado'
+              (sh) => sh.date === dateStr && String(sh.unit_id) !== String(unitId) && sh.status !== 'cancelado'
             );
 
             if (conflict) continue;
@@ -588,7 +580,7 @@ export default function CorpoClinico() {
         </div>
       )}
 
-      {/* Header com os botões de Alternar Visão */}
+      {/* Header com Alternador de Visão (Cartões vs Lista) */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Corpo Clínico & Escalas</h1>
@@ -596,7 +588,7 @@ export default function CorpoClinico() {
             Gerencie profissionais, defina regras de repasse e dados bancários para liquidação de plantões.
           </p>
         </div>
-        
+
         <div className="flex flex-wrap items-center gap-3">
           {/* Alternador de Visão */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shrink-0">
@@ -637,7 +629,7 @@ export default function CorpoClinico() {
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {professionals.map((prof) => {
-            const unitName = units.find((u) => u.id === prof.unit_id)?.name || 'Hospital Santa Clara';
+            const unitName = units.find((u) => String(u.id) === String(prof.unit_id))?.name || 'Hospital Santa Clara';
             const isGestor = String(prof.role || '').toLowerCase().includes('gestor');
 
             const remType = prof.remuneration_type || 'hora';
@@ -693,7 +685,7 @@ export default function CorpoClinico() {
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center gap-2">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -786,6 +778,7 @@ export default function CorpoClinico() {
           </DialogHeader>
 
           <form onSubmit={handleSave} className="space-y-5 py-2">
+            {/* Dados Pessoais & Documentos */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Label className="text-xs font-semibold">Nome completo</Label>
@@ -797,21 +790,30 @@ export default function CorpoClinico() {
               </div>
               <div>
                 <Label className="text-xs font-semibold">Data de Nascimento</Label>
-                <Input type="date" required value={birthDate} onChange={(e) => handleBirthDateChange(e.target.value)} />
+                <Input 
+                  type="date" 
+                  required 
+                  value={birthDate} 
+                  onChange={(e) => handleBirthDateChange(e.target.value)} 
+                />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <Label className="text-xs font-semibold">Especialidade</Label>
-                  <button type="button" onClick={() => setNewSpecialtyModal(true)} className="text-[11px] text-sky-600 hover:underline flex items-center gap-1 font-medium">
+                  <button
+                    type="button"
+                    onClick={() => setNewSpecialtyModal(true)}
+                    className="text-[11px] text-sky-600 hover:underline flex items-center gap-1 font-medium"
+                  >
                     <PlusCircle className="w-3 h-3" /> Criar nova
                   </button>
                 </div>
-                <Select value={specialty} onValueChange={setSpecialty}>
-                  <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <Select value={String(specialty || '')} onValueChange={setSpecialty}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a especialidade..." /></SelectTrigger>
                   <SelectContent>
                     {specialties.map((esp) => (
-                      <SelectItem key={esp.id || esp.name} value={esp.name}>{esp.name}</SelectItem>
+                      <SelectItem key={esp.id || esp.name} value={String(esp.name)}>{esp.name}</SelectItem>
                     ))}
                     {specialties.length === 0 && (
                       <SelectItem value="Clínica Médica">Clínica Médica</SelectItem>
@@ -822,11 +824,11 @@ export default function CorpoClinico() {
 
               <div>
                 <Label className="text-xs font-semibold">Seção / Setor</Label>
-                <Input required placeholder="Ex: UTI Adulto, PA" value={section} onChange={(e) => setSection(e.target.value)} />
+                <Input required placeholder="Ex: UTI Adulto, Bloco Cirúrgico, PA" value={section} onChange={(e) => setSection(e.target.value)} />
               </div>
 
               <div>
-                <Label className="text-xs font-semibold">Registro (CRM / COREN)</Label>
+                <Label className="text-xs font-semibold">Registro / Conselho (CRM / COREN)</Label>
                 <Input required value={document} onChange={(e) => setDocument(e.target.value)} />
               </div>
 
@@ -836,107 +838,184 @@ export default function CorpoClinico() {
               </div>
             </div>
 
-            {/* Remuneração */}
+            {/* SEÇÃO 1: REMUNERAÇÃO DE PLANTÃO */}
             <div className="p-4 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-xl border border-emerald-200 dark:border-emerald-800 space-y-3">
               <h4 className="text-sm font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-emerald-600" /> Modelo de Remuneração
               </h4>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-xs font-semibold">Tipo de Remuneração</Label>
-                  <Select value={remunerationType} onValueChange={setRemunerationType}>
+                  <Select value={String(remunerationType || 'hora')} onValueChange={setRemunerationType}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="hora">Horista (Valor por Hora)</SelectItem>
-                      <SelectItem value="diaria">Diarista (Fixo por Plantão)</SelectItem>
-                      <SelectItem value="mensal">Salário Fixo Mensal</SelectItem>
+                      <SelectItem value="hora">Horista (Valor por Hora Trabalhada)</SelectItem>
+                      <SelectItem value="diaria">Diarista (Valor Fixo por Plantão / Diária)</SelectItem>
+                      <SelectItem value="mensal">Salário Fixo Mensal (Contrato Mensal)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
                 {remunerationType === 'hora' && (
-                  <div><Label className="text-xs font-semibold">Valor da Hora (R$)</Label><Input type="number" value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} /></div>
+                  <div>
+                    <Label className="text-xs font-semibold">Valor da Hora (R$)</Label>
+                    <Input
+                      type="number"
+                      placeholder="Ex: 120.00"
+                      value={hourlyRate}
+                      onChange={(e) => setHourlyRate(e.target.value)}
+                    />
+                  </div>
                 )}
+
                 {remunerationType === 'diaria' && (
-                  <div><Label className="text-xs font-semibold">Valor por Plantão (R$)</Label><Input type="number" value={dailyRate} onChange={(e) => setDailyRate(e.target.value)} /></div>
+                  <div>
+                    <Label className="text-xs font-semibold">Valor por Diária / Plantão (R$)</Label>
+                    <Input
+                      type="number"
+                      placeholder="Ex: 1500.00"
+                      value={dailyRate}
+                      onChange={(e) => setDailyRate(e.target.value)}
+                    />
+                  </div>
                 )}
+
                 {remunerationType === 'mensal' && (
-                  <div><Label className="text-xs font-semibold">Salário Mensal (R$)</Label><Input type="number" value={monthlySalary} onChange={(e) => setMonthlySalary(e.target.value)} /></div>
+                  <div>
+                    <Label className="text-xs font-semibold">Salário Fixo Mensal (R$)</Label>
+                    <Input
+                      type="number"
+                      placeholder="Ex: 18000.00"
+                      value={monthlySalary}
+                      onChange={(e) => setMonthlySalary(e.target.value)}
+                    />
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* PIX */}
+            {/* SEÇÃO 2: DADOS BANCÁRIOS E CHAVE PIX DEFINIDOS */}
             <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
-              <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                <Landmark className="w-4 h-4 text-emerald-600" /> Dados para Pagamento & Chave PIX
-              </h4>
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Landmark className="w-4 h-4 text-emerald-600" /> Dados para Pagamento & Chave PIX
+                </h4>
+                <span className="text-[11px] text-slate-400">Utilizado no módulo de Faturamento & Repasse</span>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <Label className="text-xs font-semibold">Tipo da Chave PIX</Label>
-                  <Select value={pixType} onValueChange={setPixType}>
+                  <Select value={String(pixType || 'cpf')} onValueChange={setPixType}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="cpf">CPF</SelectItem>
-                      <SelectItem value="cnpj">CNPJ</SelectItem>
+                      <SelectItem value="cnpj">CNPJ (PJ)</SelectItem>
                       <SelectItem value="email">E-mail</SelectItem>
                       <SelectItem value="telefone">Telefone</SelectItem>
-                      <SelectItem value="aleatoria">Aleatória</SelectItem>
+                      <SelectItem value="aleatoria">Chave Aleatória</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div className="sm:col-span-2">
                   <Label className="text-xs font-semibold">Chave PIX Oficial</Label>
-                  <Input placeholder="Digite a chave..." value={pixKey} onChange={(e) => setPixKey(e.target.value)} />
+                  <Input
+                    placeholder="Digite a chave PIX exata para recebimento..."
+                    value={pixKey}
+                    onChange={(e) => setPixKey(e.target.value)}
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Esta chave aparecerá diretamente no faturamento e na geração de lote bancário.
+                  </p>
                 </div>
+
                 <div className="sm:col-span-3">
-                  <Label className="text-xs font-semibold">Dados Bancários Opcionais</Label>
-                  <Input placeholder="Ex: Itaú - Ag: 0123 - CC: 45678-9" value={bankInfo} onChange={(e) => setBankInfo(e.target.value)} />
+                  <Label className="text-xs font-semibold">Dados Bancários Opcionais (Banco / Agência / Conta)</Label>
+                  <Input
+                    placeholder="Ex: Banco Itaú (341) - Agência: 0123 - CC: 45678-9"
+                    value={bankInfo}
+                    onChange={(e) => setBankInfo(e.target.value)}
+                  />
                 </div>
               </div>
             </div>
 
-            {/* Credenciais */}
+            {/* Credenciais de Acesso */}
             <div className="p-4 bg-sky-50/50 dark:bg-sky-950/20 rounded-xl border border-sky-200 dark:border-sky-800 space-y-3">
-              <div className="flex justify-between items-center">
-                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                  <User className="w-4 h-4 text-sky-600" /> Acesso ao Sistema
-                </h4>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <User className="w-4 h-4 text-sky-600" /> Acesso ao Sistema (Login & Senha Padrão)
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    Senha padrão calculada: <b>Data de Nascimento + 1ª letra do nome</b>.
+                  </p>
+                </div>
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={handleResetPassword} className="text-xs bg-amber-50 border-amber-300 text-amber-800">
-                    <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reiniciar Senha
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetPassword}
+                    className="text-xs font-medium gap-1.5 bg-amber-50 dark:bg-slate-900 border-amber-300 text-amber-800 hover:bg-amber-100"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                    Reiniciar Senha
                   </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={handleCopyAccess} className="text-xs bg-white border-sky-300 text-sky-700">
-                    <Share2 className="w-3.5 h-3.5 mr-1" /> Copiar Acesso
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyAccess}
+                    className="text-xs font-medium gap-1.5 bg-white dark:bg-slate-900 border-sky-300 text-sky-700 hover:bg-sky-50"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    Copiar WhatsApp
                   </Button>
                 </div>
               </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div><Label className="text-xs font-semibold">Usuário</Label><Input required value={username} onChange={(e) => setUsername(e.target.value)} /></div>
-                <div><Label className="text-xs font-semibold">Senha Inicial</Label><Input required value={password} onChange={(e) => setPassword(e.target.value)} /></div>
-                <div><Label className="text-xs font-semibold">E-mail</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+                <div>
+                  <Label className="text-xs font-semibold">Usuário / Apelido</Label>
+                  <Input required value={username} onChange={(e) => setUsername(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold">Senha Inicial</Label>
+                  <Input required type="text" value={password} onChange={(e) => setPassword(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold">E-mail</Label>
+                  <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                </div>
               </div>
             </div>
 
-            {/* Unidade e Gestor */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                <Label className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-sky-600" /> Unidade Hospitalar
-                </Label>
-                <Select value={unitId} onValueChange={setUnitId}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {units.map((u) => (<SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>))}
-                  </SelectContent>
-                </Select>
-              </div>
+            {/* Unidade */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+              <Label className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-sky-600" /> Unidade Hospitalar
+              </Label>
+              <Select value={String(unitId || '')} onValueChange={setUnitId}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {units.map((u) => (
+                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-              <div className="border border-indigo-100 dark:border-indigo-950 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 rounded-xl flex items-center justify-between">
+            {/* Gestor */}
+            <div className="border border-indigo-100 dark:border-indigo-950 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
                 <div>
                   <div className="font-bold text-sm text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-indigo-600" /> Gestor Pleno
+                    <ShieldCheck className="w-4 h-4 text-indigo-600" /> Cadastrar como Gestor Pleno
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">Acesso irrestrito.</p>
+                  <p className="text-xs text-slate-500">Acesso irrestrito a configurações e aprovações.</p>
                 </div>
                 <Switch checked={isManager} onCheckedChange={handleToggleManager} />
               </div>
@@ -949,22 +1028,22 @@ export default function CorpoClinico() {
                   <div className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
                     <Calendar className="w-4 h-4 text-emerald-600" /> Escala e Grade do Mês
                   </div>
-                  <p className="text-xs text-slate-500">Gere a grade automaticamente.</p>
+                  <p className="text-xs text-slate-500">Gere a grade do mês automaticamente.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-600">Gerar grade mensal:</span>
+                  <span className="text-xs font-semibold text-slate-600">Preencher mês:</span>
                   <Switch checked={autoGenerateShifts} onCheckedChange={setAutoGenerateShifts} />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs font-semibold">Padrão de Escala</Label>
-                  <Select value={selectedPatternPreset} onValueChange={handlePatternPresetChange}>
+                  <Label className="text-xs font-semibold">Padrão de Escala Hospitalar</Label>
+                  <Select value={String(selectedPatternPreset || '12x36_D')} onValueChange={handlePatternPresetChange}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {HOSPITAL_SCHEDULE_PATTERNS.map((pattern) => (
-                        <SelectItem key={pattern.id} value={pattern.id}>{pattern.label}</SelectItem>
+                        <SelectItem key={pattern.id} value={String(pattern.id)}>{pattern.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -972,11 +1051,11 @@ export default function CorpoClinico() {
 
                 <div>
                   <Label className="text-xs font-semibold">Setor Padrão</Label>
-                  <Select value={defaultSectorId} onValueChange={setDefaultSectorId}>
+                  <Select value={String(defaultSectorId || '')} onValueChange={setDefaultSectorId}>
                     <SelectTrigger><SelectValue placeholder="Selecione o setor..." /></SelectTrigger>
                     <SelectContent>
                       {sectors.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                        <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -985,8 +1064,14 @@ export default function CorpoClinico() {
 
               {autoGenerateShifts && (
                 <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div><Label className="text-xs font-semibold">Mês da Grade</Label><Input type="month" value={monthReference} onChange={(e) => setMonthReference(e.target.value)} /></div>
-                  <div><Label className="text-xs font-semibold">Data do 1º Plantão</Label><Input type="date" value={cycleStartDate} onChange={(e) => setCycleStartDate(e.target.value)} /></div>
+                  <div>
+                    <Label className="text-xs font-semibold">Mês da Grade</Label>
+                    <Input type="month" value={monthReference} onChange={(e) => setMonthReference(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold">Data do 1º Plantão</Label>
+                    <Input type="date" value={cycleStartDate} onChange={(e) => setCycleStartDate(e.target.value)} />
+                  </div>
                 </div>
               )}
             </div>
@@ -994,7 +1079,7 @@ export default function CorpoClinico() {
             <DialogFooter className="gap-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
               <Button type="submit" disabled={saving} className="bg-sky-600 hover:bg-sky-700 text-white px-6">
-                {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null} {editingId ? 'Salvar Alterações' : 'Concluir Cadastro'}
+                {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Gravando...</> : (editingId ? 'Salvar Alterações' : 'Concluir Cadastro')}
               </Button>
             </DialogFooter>
           </form>
@@ -1004,10 +1089,17 @@ export default function CorpoClinico() {
       {/* Modal Criar Nova Especialidade */}
       <Dialog open={newSpecialtyModal} onOpenChange={setNewSpecialtyModal}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Nova Especialidade Médica</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Nova Especialidade Médica</DialogTitle>
+          </DialogHeader>
           <div className="space-y-3 py-2">
             <Label className="text-xs font-semibold">Nome da Especialidade</Label>
-            <Input autoFocus placeholder="Ex: Neurocirurgia" value={newSpecialtyName} onChange={(e) => setNewSpecialtyName(e.target.value)} />
+            <Input
+              autoFocus
+              placeholder="Ex: Neurocirurgia, Radiologia, Nefrologia"
+              value={newSpecialtyName}
+              onChange={(e) => setNewSpecialtyName(e.target.value)}
+            />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewSpecialtyModal(false)}>Cancelar</Button>
