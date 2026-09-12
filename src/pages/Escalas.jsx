@@ -16,7 +16,12 @@ import {
   Minimize2, 
   Clock3, 
   Printer,
-  Stethoscope
+  Stethoscope,
+  AlertTriangle,
+  MessageCircle,
+  CheckCircle2,
+  Filter,
+  UserPlus
 } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
 import { exportSchedulePDF } from '@/lib/exportReport';
@@ -62,6 +67,21 @@ function getMonthKey(dateStr) {
   return `${year}-${month}`;
 }
 
+function toTitleCase(str) {
+  if (!str) return '';
+  const acr = ['UTI', 'UCO', 'PA', 'PS', 'CRM', 'COREN'];
+  return str
+    .toLowerCase()
+    .split(' ')
+    .map((word) => {
+      const upper = word.toUpperCase();
+      if (acr.includes(upper)) return upper;
+      if (['de', 'da', 'do', 'das', 'dos', 'e'].includes(word)) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+}
+
 export default function Escalas() {
   const { user, company, loading: appLoading } = useAppData();
   const [shifts, setShifts] = useState([]);
@@ -71,6 +91,7 @@ export default function Escalas() {
   const [editing, setEditing] = useState(null);
   const [search, setSearch] = useState('');
   const [sectorFilter, setSectorFilter] = useState('all');
+  const [quickFilter, setQuickFilter] = useState('all'); // 'all', 'active', 'upcoming', 'vacant', 'diurno', 'noturno'
   const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
   const [tvMode, setTvMode] = useState(false);
@@ -89,9 +110,9 @@ export default function Escalas() {
     try {
       const f = { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) };
       const [s, sec, p] = await Promise.all([
-        base44.entities.Shift.filter(f, '-date', 500),
+        base44.entities.Shift.filter(f, '-date', 800),
         base44.entities.Sector.filter(f, '-created_date', 100),
-        base44.entities.Professional.filter(f, '-created_date', 200),
+        base44.entities.Professional.filter(f, '-created_date', 300),
       ]);
       setShifts(s || []);
       setSectors(sec || []);
@@ -106,7 +127,6 @@ export default function Escalas() {
     load();
   }, [appLoading, load]);
 
-  // Atualiza o relógio em tempo real tanto no modo TV quanto na visualização padrão
   useEffect(() => {
     const id = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(id);
@@ -116,6 +136,10 @@ export default function Escalas() {
     return professionals.find((p) => p.user_id === userId || (p.email && p.email === userEmail) || p.name === userFullName);
   }, [professionals, userId, userEmail, userFullName]);
 
+  const profMap = useMemo(() => {
+    return Object.fromEntries((professionals || []).map((p) => [p.id, p]));
+  }, [professionals]);
+
   const monthOptions = useMemo(() => {
     const values = [...new Set(shifts.map((s) => (s.date ? s.date.slice(0, 7) : '')))].filter(Boolean).sort().reverse();
     return values;
@@ -124,11 +148,8 @@ export default function Escalas() {
   const categoryPriority = { medico: 0, enfermeiro: 1, tecnico: 2, outro: 3 };
   const todayStr = useMemo(() => getLocalDateString(currentTime), [currentTime]);
 
-  // FILTRO INTELIGENTE UNIFICADO:
-  // Se for o dia de hoje, remove plantões expirados há mais de 2h
+  // Filtragem completa com quick-filters (Chips)
   const filtered = useMemo(() => {
-    const professionalMap = Object.fromEntries((professionals || []).map((p) => [p.id, p]));
-
     return shifts
       .filter((s) => {
         const sDate = (s.date || '').split('T')[0];
@@ -148,7 +169,7 @@ export default function Escalas() {
           return false;
         }
 
-        // Se estiver filtrando pelo dia de hoje, aplica a regra de remoção de +2h encerrado
+        // Se estiver filtrando pelo dia de hoje, expira após 2h do término
         if (selectedDate === todayStr || (!selectedDate && sDate === todayStr)) {
           const lifecycle = getShiftTvLifecycle(s, currentTime);
           if (lifecycle.state === 'expired') {
@@ -160,17 +181,29 @@ export default function Escalas() {
       })
       .map((s) => ({
         ...s,
-        lifecycle: getShiftTvLifecycle(s, currentTime)
+        lifecycle: getShiftTvLifecycle(s, currentTime),
+        isVacant: !s.professional_id || (s.professional_name || '').toLowerCase().includes('vaga')
       }))
+      .filter((s) => {
+        if (quickFilter === 'active') return s.lifecycle.state === 'active';
+        if (quickFilter === 'upcoming') return s.lifecycle.state === 'upcoming';
+        if (quickFilter === 'vacant') return s.isVacant;
+        if (quickFilter === 'diurno') return s.shift_type === 'diurno' || (s.start_time >= '06:00' && s.start_time < '18:00');
+        if (quickFilter === 'noturno') return s.shift_type === 'noturno' || (s.start_time >= '18:00' || s.start_time < '06:00');
+        return true;
+      })
       .sort((a, b) => {
-        // Ordenação inteligente: Ativos primeiro, depois Programados, depois Concluídos recentes
+        // Vagas abertas têm prioridade de atenção no topo
+        if (a.isVacant && !b.isVacant) return -1;
+        if (!a.isVacant && b.isVacant) return 1;
+
         const orderPriority = { active: 0, upcoming: 1, recently_finished: 2, expired: 3 };
         const prioA = orderPriority[a.lifecycle.state] ?? 99;
         const prioB = orderPriority[b.lifecycle.state] ?? 99;
         if (prioA !== prioB) return prioA - prioB;
 
-        const aCategory = categoryPriority[professionalMap[a.professional_id]?.category || 'outro'] ?? 99;
-        const bCategory = categoryPriority[professionalMap[b.professional_id]?.category || 'outro'] ?? 99;
+        const aCategory = categoryPriority[profMap[a.professional_id]?.category || 'outro'] ?? 99;
+        const bCategory = categoryPriority[profMap[b.professional_id]?.category || 'outro'] ?? 99;
         const aDate = new Date(`${a.date}T00:00:00`).getTime();
         const bDate = new Date(`${b.date}T00:00:00`).getTime();
 
@@ -178,7 +211,18 @@ export default function Escalas() {
         if (aCategory !== bCategory) return aCategory - bCategory;
         return (a.professional_name || '').localeCompare(b.professional_name || '') || (a.sector_name || '').localeCompare(b.sector_name || '');
       });
-  }, [shifts, search, sectorFilter, selectedMonth, selectedDate, professionals, isManager, myProfessional, userFullName, currentTime, todayStr]);
+  }, [shifts, search, sectorFilter, quickFilter, selectedMonth, selectedDate, profMap, isManager, myProfessional, userFullName, currentTime, todayStr]);
+
+  // Auditoria do Filtro Ativo
+  const auditStats = useMemo(() => {
+    const total = filtered.length;
+    const vacant = filtered.filter((s) => s.isVacant).length;
+    const filled = total - vacant;
+    const fillRate = total > 0 ? Math.round((filled / total) * 100) : 100;
+    const totalHours = filtered.reduce((acc, s) => acc + (Number(s.duration_hours) || 12), 0);
+
+    return { total, filled, vacant, fillRate, totalHours };
+  }, [filtered]);
 
   const days = useMemo(() => {
     const grouped = filtered.reduce((result, shift) => {
@@ -190,14 +234,14 @@ export default function Escalas() {
   }, [filtered]);
 
   const handleDelete = async (id) => {
-    if (!confirm('Excluir este plantão?')) return;
+    if (!confirm('Excluir este plantão da escala?')) return;
     await base44.entities.Shift.delete(id);
     load();
   };
 
   const handleExportSchedule = () => {
     const sorted = [...filtered].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    const dateLabel = selectedDate ? `${fmtDate(selectedDate)}` : 'Dia selecionado';
+    const dateLabel = selectedDate ? `${fmtDate(selectedDate)}` : 'Período Selecionado';
     exportSchedulePDF({ company: company || { name: 'ScaleMedic CGT', app_name: 'ScaleMedic CGT' }, shifts: sorted, dateLabel });
   };
 
@@ -205,6 +249,23 @@ export default function Escalas() {
     document.body.classList.add('printing-schedule');
     window.print();
     window.setTimeout(() => document.body.classList.remove('printing-schedule'), 1000);
+  };
+
+  // Notificar Plantonista no WhatsApp
+  const handleNotifyWhatsApp = (shift, e) => {
+    if (e) e.stopPropagation();
+    const prof = profMap[shift.professional_id];
+    const phone = prof?.phone?.replace(/\D/g, '');
+    const shiftDateFmt = shift.date ? shift.date.split('-').reverse().join('/') : '';
+    const text = encodeURIComponent(
+      `Olá, Dr(a). ${shift.professional_name || ''}!\n\nConfirmando a sua escala no *${company?.name || 'Hospital'}*:\n📅 Data: *${shiftDateFmt}*\n⏰ Horário: *${shift.start_time} às ${shift.end_time}*\n🏥 Setor: *${shift.sector_name || 'Geral'}*\n\nPor favor, confirme o recebimento deste aviso. Bom plantão!`
+    );
+
+    if (phone) {
+      window.open(`https://wa.me/55${phone}?text=${text}`, '_blank');
+    } else {
+      window.open(`https://wa.me/?text=${text}`, '_blank');
+    }
   };
 
   const openTvMode = async () => {
@@ -223,6 +284,12 @@ export default function Escalas() {
     setEditing(null);
     setDialogOpen(true);
   };
+
+  const openFillVacancy = (s) => {
+    setEditing(s);
+    setDialogOpen(true);
+  };
+
   const openEdit = (s) => {
     setEditing(s);
     setDialogOpen(true);
@@ -334,12 +401,15 @@ export default function Escalas() {
                 const state = shift.lifecycle.state;
                 const isActive = state === 'active';
                 const isFinished = state === 'recently_finished';
+                const isVacant = shift.isVacant;
 
                 return (
                   <div
                     key={shift.id}
                     className={`rounded-2xl border p-5 shadow-2xl transition-all duration-500 ${
-                      isActive
+                      isVacant
+                        ? 'border-amber-500/80 bg-amber-950/20 border-dashed'
+                        : isActive
                         ? 'border-emerald-500/60 bg-emerald-950/30 shadow-emerald-950/50 scale-[1.01]'
                         : isFinished
                         ? 'border-slate-800 bg-white/[0.03] opacity-60'
@@ -348,7 +418,9 @@ export default function Escalas() {
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className={`rounded-xl px-3 py-2 text-center text-base font-black ${
-                        isActive 
+                        isVacant
+                          ? 'bg-amber-500 text-slate-950'
+                          : isActive 
                           ? 'bg-emerald-500 text-slate-950' 
                           : isFinished
                           ? 'bg-slate-800 text-slate-400'
@@ -361,7 +433,9 @@ export default function Escalas() {
                       <div className="text-right">
                         <span
                           className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider ${
-                            isActive
+                            isVacant
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
+                              : isActive
                               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse'
                               : isFinished
                               ? 'bg-slate-800 text-slate-400 border border-slate-700'
@@ -369,19 +443,19 @@ export default function Escalas() {
                           }`}
                         >
                           {isActive && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />}
-                          {isActive ? '● Ativo no Plantão' : isFinished ? '✓ Plantão Concluído' : '⏳ Programado'}
+                          {isVacant ? '⚠️ Vaga em Aberto' : isActive ? '● Ativo no Plantão' : isFinished ? '✓ Plantão Concluído' : '⏳ Programado'}
                         </span>
                         <div className="text-[10px] text-slate-400 mt-1">{shift.lifecycle.detail}</div>
                       </div>
                     </div>
 
                     <div className="mt-5 truncate text-2xl font-black text-white">
-                      {shift.professional_name || 'Vaga Aberta'}
+                      {toTitleCase(shift.professional_name) || 'Vaga Descoberta'}
                     </div>
 
                     <div className="mt-2 flex items-center gap-2 text-base text-slate-300">
-                      <Stethoscope className={`h-4 w-4 ${isActive ? 'text-emerald-400' : 'text-sky-400'}`} />
-                      <span>{shift.sector_name || 'Setor Geral'}</span>
+                      <Stethoscope className={`h-4 w-4 ${isVacant ? 'text-amber-400' : isActive ? 'text-emerald-400' : 'text-sky-400'}`} />
+                      <span>{toTitleCase(shift.sector_name) || 'Setor Geral'}</span>
                     </div>
                   </div>
                 );
@@ -394,60 +468,165 @@ export default function Escalas() {
   }
 
   // ==========================================
-  // MODO PADRÃO FORA DA TV (ESCALAS & PLANTÕES)
+  // VISÃO INDIVIDUAL DO PROFISSIONAL
+  // ==========================================
+  if (!isManager) {
+    return (
+      <div className="p-4 md:p-8 space-y-5">
+        <div className="rounded-[28px] border border-sky-200 bg-gradient-to-br from-sky-600 to-sky-700 p-6 text-white shadow-lg shadow-sky-100">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.22em] text-sky-100 font-bold">Minha Escala</p>
+              <h2 className="mt-3 text-2xl font-black">{personalHeadline}</h2>
+            </div>
+            <div className="rounded-2xl bg-white/10 px-3 py-2 text-right">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-sky-100">Plantões</div>
+              <div className="text-xl font-black">{filtered.length}</div>
+            </div>
+          </div>
+        </div>
+
+        <Card className="border-slate-200 p-4">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-400 font-bold">Agenda Pessoal</p>
+              <h3 className="mt-1 text-lg font-bold text-slate-800">Plantões do Período</h3>
+            </div>
+            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+              Visão Individual
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {filtered.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm text-slate-500">
+                Você não possui plantões atribuídos para este filtro.
+              </div>
+            ) : (
+              filtered.map((s) => (
+                <div key={s.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.18em] text-slate-400 font-bold">{fmtDate(s.date)}</div>
+                      <div className="mt-1 text-base font-bold text-slate-800">
+                        {s.start_time} às {s.end_time}
+                      </div>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${shiftTypeStyle[s.shift_type] || 'bg-slate-100 text-slate-600'}`}>
+                      {s.shift_type || 'Turno'}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                    <span>Setor Hospitalar:</span>
+                    <strong className="text-slate-800">{toTitleCase(s.sector_name) || 'Não informado'}</strong>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VISÃO GESTÃO PLENA (ESCALAS & PLANTÕES)
   // ==========================================
   return (
     <div className="p-4 md:p-8 space-y-5">
+      {/* Banner Cockpit */}
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-lg">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-sky-200">
-              <CalendarDays className="h-4 w-4" /> Quadro operacional
+              <CalendarDays className="h-4 w-4" /> Quadro de Escalas Hospitalares
             </div>
-            <h2 className="mt-3 text-3xl font-black tracking-tight">Escala hospitalar</h2>
+            <h2 className="mt-3 text-3xl font-black tracking-tight">Gestão Operacional de Escala</h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              Visualização por dia, turno, setor e status de jornada (Ativo no Plantão, Programado e Recém-Concluído).
+              Alocação diária, identificação precoce de furos de escala e notificação instantânea de plantonistas.
             </p>
           </div>
           <div className="flex items-center gap-3 text-right">
             <div>
               <div className="text-3xl font-black">{filtered.length}</div>
-              <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">plantões exibidos</div>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">plantões no filtro</div>
             </div>
             <div className="h-10 w-px bg-white/15" />
             <div>
-              <div className="text-3xl font-black">{new Set(filtered.map((shift) => (shift.date || '').split('T')[0])).size}</div>
-              <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">dias cobertos</div>
+              <div className="text-3xl font-black text-emerald-400">{auditStats.fillRate}%</div>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">cobertura da escala</div>
             </div>
           </div>
         </div>
       </div>
 
+      {/* BARRA DE AUDITORIA OPERACIONAL DO FILTRO */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+          <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block">Turnos na Grade</span>
+          <div className="text-2xl font-black text-slate-900 mt-1">{auditStats.total}</div>
+          <span className="text-[10px] text-slate-500">{auditStats.totalHours}h de escala total</span>
+        </div>
+
+        <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+          <span className="text-[10.5px] font-bold text-emerald-700 uppercase tracking-wider block">Vagas Preenchidas</span>
+          <div className="text-2xl font-black text-emerald-600 mt-1">{auditStats.filled}</div>
+          <span className="text-[10px] text-emerald-700 font-semibold">{auditStats.fillRate}% preenchidos</span>
+        </div>
+
+        <div className={`p-3.5 rounded-2xl border shadow-sm transition-all ${
+          auditStats.vacant > 0 ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'
+        }`}>
+          <span className={`text-[10.5px] font-bold uppercase tracking-wider block ${
+            auditStats.vacant > 0 ? 'text-amber-800' : 'text-slate-400'
+          }`}>
+            Vagas Descobertas
+          </span>
+          <div className={`text-2xl font-black mt-1 ${auditStats.vacant > 0 ? 'text-amber-900' : 'text-slate-400'}`}>
+            {auditStats.vacant}
+          </div>
+          <span className={`text-[10px] font-semibold ${auditStats.vacant > 0 ? 'text-amber-700' : 'text-slate-400'}`}>
+            {auditStats.vacant > 0 ? 'Requer alocação urgente' : 'Nenhum desfalque'}
+          </span>
+        </div>
+
+        <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-sm">
+          <span className="text-[10.5px] font-bold text-sky-700 uppercase tracking-wider block">Dias Cobertos</span>
+          <div className="text-2xl font-black text-sky-900 mt-1">
+            {new Set(filtered.map((s) => (s.date || '').split('T')[0])).size}
+          </div>
+          <span className="text-[10px] text-slate-500">Distribuição no período</span>
+        </div>
+      </div>
+
+      {/* Botões de Ação */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Gestão de escala</p>
-          <p className="mt-1 text-sm text-slate-500">Acompanhe a presença dos profissionais em tempo real</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">Operação da Unidade</p>
+          <p className="mt-1 text-sm text-slate-500">Filtre por turno, verifique vagas abertas ou publique novas grades</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={handleDuplicatePreviousMonth} disabled={duplicating} className="border-sky-200 text-sky-700 hover:bg-sky-50">
+          <Button variant="outline" onClick={handleDuplicatePreviousMonth} disabled={duplicating} className="border-sky-200 text-sky-700 hover:bg-sky-50 text-xs h-9">
             {duplicating ? 'Duplicando...' : 'Duplicar mês anterior'}
           </Button>
-          <Button onClick={openNew} className="bg-sky-600 hover:bg-sky-700 text-white">
+          <Button onClick={openNew} className="bg-sky-600 hover:bg-sky-700 text-white text-xs h-9 font-bold">
             <Plus className="w-4 h-4 mr-1.5" /> Publicar / Alocar Plantão
           </Button>
         </div>
       </div>
 
-      <Card className="p-4 border-slate-200">
-        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+      <Card className="p-4 border-slate-200 space-y-4">
+        {/* FILTROS PRINCIPAIS */}
+        <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input placeholder="Buscar por profissional ou setor..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+            <Input placeholder="Buscar médico ou setor..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-10 text-xs" />
           </div>
+
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="h-10 rounded-md border border-slate-200 px-3 text-sm bg-white"
+            className="h-10 rounded-md border border-slate-200 px-3 text-xs bg-white"
           >
             <option value="">Todos os meses</option>
             {monthOptions.map((month) => {
@@ -460,36 +639,69 @@ export default function Escalas() {
               );
             })}
           </select>
-          <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-10 w-auto" />
-          <Button variant="outline" onClick={() => setSelectedDate('')} className="border-slate-200">
+
+          <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-10 w-auto text-xs" />
+          
+          <Button variant="outline" onClick={() => setSelectedDate('')} className="border-slate-200 text-xs h-10">
             Todos os dias
           </Button>
+
           <select
             value={sectorFilter}
             onChange={(e) => setSectorFilter(e.target.value)}
-            className="h-10 rounded-md border border-slate-200 px-3 text-sm bg-white"
+            className="h-10 rounded-md border border-slate-200 px-3 text-xs bg-white"
           >
             <option value="all">Todos os setores</option>
             {sectors.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.name}
+                {toTitleCase(s.name)}
               </option>
             ))}
           </select>
-          <Button variant="outline" onClick={openTvMode} className="border-sky-200 text-sky-700 hover:bg-sky-50 font-bold">
+
+          <Button variant="outline" onClick={openTvMode} className="border-sky-200 text-sky-700 hover:bg-sky-50 font-bold text-xs h-10">
             <Maximize2 className="w-4 h-4 mr-1.5" /> Modo TV
           </Button>
-          <Button variant="outline" onClick={handlePrintSchedule} className="border-sky-200 text-sky-700 hover:bg-sky-50">
+          <Button variant="outline" onClick={handlePrintSchedule} className="border-slate-200 text-slate-700 hover:bg-slate-50 text-xs h-10">
             <Printer className="w-4 h-4 mr-1.5" /> Imprimir
           </Button>
-          <Button variant="outline" onClick={handleExportSchedule} className="border-sky-200 text-sky-700 hover:bg-sky-50">
-            <Download className="w-4 h-4 mr-1.5" /> PDF da escala
+          <Button variant="outline" onClick={handleExportSchedule} className="border-slate-200 text-slate-700 hover:bg-slate-50 text-xs h-10">
+            <Download className="w-4 h-4 mr-1.5" /> PDF
           </Button>
         </div>
 
+        {/* BARRA DE FILTROS RÁPIDOS POR CHIPS */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-t border-slate-100 pt-3">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mr-1">
+            <Filter className="w-3 h-3" /> Filtro Rápido:
+          </span>
+
+          {[
+            { id: 'all', label: 'Todos os Plantões' },
+            { id: 'active', label: '● Ativos no Plantão' },
+            { id: 'upcoming', label: '⏳ Programados' },
+            { id: 'vacant', label: '⚠️ Vagas Abertas' },
+            { id: 'diurno', label: '☀️ Turno Diurno' },
+            { id: 'noturno', label: '🌙 Turno Noturno' },
+          ].map((chip) => (
+            <button
+              key={chip.id}
+              onClick={() => setQuickFilter(chip.id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                quickFilter === chip.id
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
+        {/* LISTAGEM DE DIAS */}
         {filtered.length === 0 ? (
-          <div className="py-10 text-center text-sm text-slate-400">
-            Nenhum plantão ativo ou programado para este filtro ou data selecionada.
+          <div className="py-12 text-center text-sm text-slate-400">
+            Nenhum plantão localizado para os filtros selecionados.
           </div>
         ) : (
           <div className="space-y-5">
@@ -501,8 +713,8 @@ export default function Escalas() {
                       <CalendarDays className="h-5 w-5" />
                     </div>
                     <div>
-                      <div className="text-sm font-bold text-slate-800">{fmtDate(date)}</div>
-                      <div className="text-xs text-slate-500">{dateShifts.length} plantão(ões) na escala</div>
+                      <div className="text-sm font-bold text-slate-900">{fmtDate(date)}</div>
+                      <div className="text-xs text-slate-500">{dateShifts.length} plantão(ões) agendados</div>
                     </div>
                   </div>
                   <UsersRound className="h-5 w-5 text-slate-300" />
@@ -513,12 +725,15 @@ export default function Escalas() {
                     const state = s.lifecycle.state;
                     const isActive = state === 'active';
                     const isFinished = state === 'recently_finished';
+                    const isVacant = s.isVacant;
 
                     return (
                       <div 
                         key={s.id} 
-                        className={`flex items-center gap-3 rounded-xl border p-3 shadow-sm transition-all duration-300 ${
-                          isActive 
+                        className={`flex items-center gap-3 rounded-xl border p-3.5 shadow-sm transition-all duration-300 ${
+                          isVacant
+                            ? 'border-amber-400 bg-amber-50/70 border-dashed ring-1 ring-amber-300/50'
+                            : isActive 
                             ? 'border-emerald-300 bg-emerald-50/70' 
                             : isFinished 
                             ? 'border-slate-200 bg-slate-100/60 opacity-75' 
@@ -526,8 +741,10 @@ export default function Escalas() {
                         }`}
                       >
                         {/* Bloco de Horário */}
-                        <div className={`min-w-[92px] rounded-lg px-2.5 py-2 text-center text-xs font-bold ${
-                          isActive 
+                        <div className={`min-w-[92px] rounded-xl px-2.5 py-2 text-center text-xs font-black ${
+                          isVacant
+                            ? 'bg-amber-500 text-slate-950 font-black'
+                            : isActive 
                             ? 'bg-emerald-600 text-white' 
                             : isFinished 
                             ? 'bg-slate-200 text-slate-600' 
@@ -540,30 +757,51 @@ export default function Escalas() {
                         {/* Dados do Médico & Setor */}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="truncate text-sm font-bold text-slate-800">
-                              {s.professional_name || 'Vaga disponível'}
+                            <span className={`truncate text-sm font-black ${isVacant ? 'text-amber-950' : 'text-slate-900'}`}>
+                              {toTitleCase(s.professional_name) || 'Vaga Descoberta'}
                             </span>
                             
-                            {/* Badge Idêntica à TV */}
+                            {/* Badges de Status */}
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 ${
-                              isActive 
+                              isVacant
+                                ? 'bg-amber-200 text-amber-900 border border-amber-400 animate-pulse'
+                                : isActive 
                                 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse' 
                                 : isFinished 
                                 ? 'bg-slate-200 text-slate-700' 
                                 : 'bg-sky-50 text-sky-700 border border-sky-200'
                             }`}>
-                              {isActive ? '● Ativo no Plantão' : isFinished ? '✓ Concluído' : '⏳ Programado'}
+                              {isVacant ? '⚠️ Vaga Aberta' : isActive ? '● Ativo no Plantão' : isFinished ? '✓ Concluído' : '⏳ Programado'}
                             </span>
                           </div>
 
                           <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
-                            <span className="truncate">{s.sector_name || 'Setor não informado'}</span>
+                            <span className="truncate font-medium">{toTitleCase(s.sector_name) || 'Setor Geral'}</span>
                             <span className="text-[10px] text-slate-400">{s.lifecycle.detail}</span>
                           </div>
                         </div>
 
-                        {/* Ações */}
-                        <div className="flex gap-1">
+                        {/* Ações Rápidas por Plantão */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {isVacant ? (
+                            <Button
+                              size="sm"
+                              onClick={() => openFillVacancy(s)}
+                              className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs h-8 px-2.5 rounded-lg gap-1 shadow-sm"
+                              title="Preencher vaga com um profissional"
+                            >
+                              <UserPlus className="w-3.5 h-3.5" /> Alocar
+                            </Button>
+                          ) : (
+                            <button
+                              title="Enviar aviso do plantão no WhatsApp"
+                              onClick={(e) => handleNotifyWhatsApp(s, e)}
+                              className="rounded-lg p-2 text-emerald-600 hover:bg-emerald-50 transition-colors"
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </button>
+                          )}
+
                           <button title="Editar plantão" onClick={() => openEdit(s)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
                             <Pencil className="h-4 w-4" />
                           </button>
