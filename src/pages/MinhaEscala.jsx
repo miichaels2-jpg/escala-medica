@@ -22,7 +22,8 @@ import {
   Moon,
   Sun,
   ShieldAlert,
-  ArrowRight
+  ArrowRight,
+  Handshake
 } from 'lucide-react';
 
 function fmtDate(dateStr) {
@@ -67,7 +68,7 @@ export default function MinhaEscala() {
   const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
   const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id || 'unit_h1';
 
-  // Identifica o profissional logado com segurança (Apenas para o modal e regras de tela)
+  // Identifica o profissional logado
   const myProfessional = useMemo(() => {
     const uId = user?.id;
     const uEmail = user?.email;
@@ -79,7 +80,6 @@ export default function MinhaEscala() {
 
   const currentProfId = myProfessional?.id || user?.data?.professional_id;
 
-  // CORREÇÃO AQUI: Removemos currentProfId e myProfessional das dependências para evitar o loop infinito
   const loadData = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
@@ -88,13 +88,12 @@ export default function MinhaEscala() {
 
       const [profsRes, shiftsRes] = await Promise.all([
         base44.entities.Professional.filter(filterBase, '-created_date', 500).catch(() => []),
-        base44.entities.Shift.filter(filterBase, '-date', 800).catch(() => [])
+        base44.entities.Shift.filter(filterBase, 'date', 800).catch(() => []) 
       ]);
 
       setProfessionals(profsRes || []);
       setAllUnitShifts(shiftsRes || []);
 
-      // Calcula quem é o profissional logado AQUI DENTRO para blindar a dependência
       const uId = user?.id;
       const uEmail = user?.email;
       const uName = user?.full_name;
@@ -103,13 +102,23 @@ export default function MinhaEscala() {
       );
       const myId = me?.id || user?.data?.professional_id;
 
-      // Filtra estritamente os plantões do usuário atual
-      const myShiftsOnly = (shiftsRes || []).filter((s) => {
-        if (myId && String(s.professional_id) === String(myId)) return true;
-        if (me?.name && s.professional_name === me.name) return true;
-        if (uName && s.professional_name === uName) return true;
-        return false;
-      });
+      const myShiftsOnly = (shiftsRes || [])
+        .filter((s) => {
+          if (myId && String(s.professional_id) === String(myId)) return true;
+          if (me?.name && s.professional_name === me.name) return true;
+          if (uName && s.professional_name === uName) return true;
+          return false;
+        })
+        .sort((a, b) => {
+          const dateA = a.date ? a.date.split('T')[0] : '';
+          const dateB = b.date ? b.date.split('T')[0] : '';
+          if (dateA < dateB) return -1;
+          if (dateA > dateB) return 1;
+          
+          const timeA = a.start_time || '00:00';
+          const timeB = b.start_time || '00:00';
+          return timeA.localeCompare(timeB);
+        });
 
       setShifts(myShiftsOnly);
     } catch (e) {
@@ -117,13 +126,12 @@ export default function MinhaEscala() {
     } finally {
       setLoading(false);
     }
-  }, [companyId, unitId, user]); // <- Dependências super curtas e imutáveis
+  }, [companyId, unitId, user]);
 
   useEffect(() => {
     if (!appLoading) loadData();
   }, [appLoading, loadData]);
 
-  // Colegas da mesma especialidade disponíveis para troca
   const eligibleColleagues = useMemo(() => {
     if (!selectedShift && !myProfessional) return [];
     const mySpec = (myProfessional?.specialty || selectedShift?.sector_name || '').trim().toLowerCase();
@@ -141,7 +149,6 @@ export default function MinhaEscala() {
     });
   }, [professionals, myProfessional, currentProfId, selectedShift]);
 
-  // Validação: colega escolhido já está de plantão no mesmo dia?
   const colleagueHasConflict = useMemo(() => {
     if (!selectedShift || !targetProfId || modalMode !== 'direta') return false;
     const shiftDate = (selectedShift.date || '').split('T')[0];
@@ -222,7 +229,6 @@ export default function MinhaEscala() {
 
   return (
     <div className="p-4 md:p-8 space-y-6">
-      {/* Banner Superior */}
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -247,7 +253,6 @@ export default function MinhaEscala() {
         </div>
       </div>
 
-      {/* Lista de Plantões do Usuário */}
       <Card className="p-5 border-slate-200 dark:border-slate-800 space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div>
@@ -270,6 +275,8 @@ export default function MinhaEscala() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {shifts.map((s) => {
               const isNight = s.shift_type === 'noturno' || (s.start_time >= '18:00' || s.start_time < '06:00');
+              // Verifica se o plantão possui anotações de troca
+              const isSwap = s.notes && (s.notes.toLowerCase().includes('transferido') || s.notes.toLowerCase().includes('mural') || s.notes.toLowerCase().includes('troca'));
 
               return (
                 <div
@@ -296,6 +303,16 @@ export default function MinhaEscala() {
                     </div>
                   </div>
 
+                  {/* IDENTIFICAÇÃO DE TROCA / ORIGEM DO PLANTÃO */}
+                  {isSwap && (
+                    <div className="flex items-start gap-1.5 mt-1 p-2.5 rounded-xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-100 dark:border-sky-900/50">
+                      <Handshake className="w-3.5 h-3.5 text-sky-600 shrink-0 mt-0.5" />
+                      <span className="text-[10px] text-sky-800 dark:text-sky-300 font-semibold leading-relaxed">
+                        {s.notes}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
                     <span className="text-[10px] uppercase font-bold text-emerald-600 flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" /> Confirmado
@@ -316,7 +333,6 @@ export default function MinhaEscala() {
         )}
       </Card>
 
-      {/* MODAL DE SOLICITAÇÃO DE TROCA */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-md dark:bg-slate-900 dark:border-slate-800">
           <DialogHeader>
