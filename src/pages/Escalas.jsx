@@ -158,6 +158,9 @@ export default function Escalas() {
 
     return shifts
       .filter((s) => {
+        // Ignora plantões cancelados para não inflar a visão (Soft Delete)
+        if (s.status === 'cancelado') return false;
+
         const sDate = (s.date || '').split('T')[0];
         const monthMatch = !selectedMonth || sDate.startsWith(selectedMonth);
         const dateMatch = !selectedDate || sDate === selectedDate;
@@ -267,10 +270,19 @@ export default function Escalas() {
     return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);
 
+  // CANCELAMENTO LÓGICO DE PLANTÃO
   const handleDelete = async (id) => {
-    if (!confirm('Excluir este plantão da escala?')) return;
-    await base44.entities.Shift.delete(id);
-    load();
+    if (!confirm('Tem certeza que deseja cancelar este plantão?\nEle não aparecerá na escala, mas ficará salvo para auditoria.')) return;
+    try {
+        const cancelNote = `Cancelado por ${userFullName || 'Gestor'} em ${new Date().toLocaleString('pt-BR')} para ajustes de escala.`;
+        await base44.entities.Shift.update(id, { 
+            status: 'cancelado',
+            notes: cancelNote 
+        });
+        load();
+    } catch (e) {
+        alert(e.message || 'Erro ao cancelar o plantão.');
+    }
   };
 
   const handleExportSchedule = () => {
@@ -279,20 +291,27 @@ export default function Escalas() {
     exportSchedulePDF({ company: company || { name: 'ScaleMedic CGT', app_name: 'ScaleMedic CGT' }, shifts: sorted, dateLabel });
   };
 
+  // BOTÃO WHATSAPP CORRIGIDO
   const handleNotifyWhatsApp = (shift, e) => {
     if (e) e.stopPropagation();
     const prof = profMap[shift.professional_id];
-    const phone = prof?.phone?.replace(/\D/g, '');
+    let phone = prof?.phone?.replace(/\D/g, '');
+    
+    if (!phone) {
+        alert('Este profissional não possui telefone cadastrado.');
+        return;
+    }
+
+    if (phone.length === 10 || phone.length === 11) {
+        phone = `55${phone}`;
+    }
+
     const shiftDateFmt = shift.date ? shift.date.split('-').reverse().join('/') : '';
     const text = encodeURIComponent(
       `Olá, Dr(a). ${shift.professional_name || ''}!\n\nConfirmando a sua escala no *${company?.name || 'Hospital'}*:\n📅 Data: *${shiftDateFmt}*\n⏰ Horário: *${shift.start_time} às ${shift.end_time}*\n🏥 Setor: *${shift.sector_name || 'Geral'}*\n\nPor favor, confirme o recebimento deste aviso. Bom plantão!`
     );
 
-    if (phone) {
-      window.open(`https://wa.me/55${phone}?text=${text}`, '_blank');
-    } else {
-      window.open(`https://wa.me/?text=${text}`, '_blank');
-    }
+    window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
   };
 
   const openTvMode = async () => {

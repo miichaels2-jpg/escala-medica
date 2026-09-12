@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from '@/components/ui/dialog';
@@ -8,244 +8,40 @@ import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import { base44 } from '@/api/base44Client';
 import { Loader2 } from 'lucide-react';
 
-const defaultPermissions = ['dashboard', 'escalas', 'trocas', 'relatorios'];
-
-const permissionOptions = [
-  { key: 'dashboard', label: 'Painel' },
-  { key: 'escalas', label: 'Escalas' },
-  { key: 'trocas', label: 'Trocas' },
-  { key: 'corpo_clinico', label: 'Corpo clínico' },
-  { key: 'relatorios', label: 'Relatórios' },
-  { key: 'faturamento', label: 'Faturamento' },
-  { key: 'configuracoes', label: 'Configurações' }
-];
-
 const empty = {
   name: '', document: '', document_uf: '', specialty: '',
-  category: 'medico', role: 'Médico', phone: '', email: '', access_email: '', access_password: '', access_password_confirm: '',
-  unit_id: '', hourly_rate: '', daily_rate: '',
-  shift_preference: 'qualquer', status: 'ativo',
-  schedule_pattern: '5x2',
-  schedule_start_time: '07:00',
-  schedule_end_time: '19:00',
-  schedule_reference_date: '',
-  schedule_days: ['seg', 'ter', 'qua', 'qui', 'sex'],
-  schedule_custom_config: '',
-  default_sector_id: '',
-  schedule_month: '',
-  permissions: [...defaultPermissions]
+  category: 'medico', role: 'Médico', phone: '', email: '', hourly_rate: '', daily_rate: '',
+  shift_preference: 'qualquer', status: 'ativo'
 };
 
-const dayLabels = {
-  dom: 'Dom', seg: 'Seg', ter: 'Ter', qua: 'Qua', qui: 'Qui', sex: 'Sex', sab: 'Sáb'
-};
-
-const patternConfig = {
-  manual: { label: 'Manual', shift_type: 'diurno', durationHours: null },
-  '12x36': { label: '12x36', shift_type: 'diurno', durationHours: 12, cycleDays: 2 },
-  '24x72': { label: '24x72', shift_type: 'diurno', durationHours: 24, cycleDays: 4 },
-  '24x78': { label: '24x78', shift_type: 'diurno', durationHours: 24, cycleDays: 4 },
-  '12x60': { label: '12x60', shift_type: 'noturno', durationHours: 12, cycleDays: 3 },
-  '7x7': { label: '7x7', shift_type: 'diurno', durationHours: 12, cycleDays: 14 },
-  '5x2': { label: '5x2', shift_type: 'diurno', durationHours: 8 },
-  custom: { label: 'Personalizado', shift_type: 'diurno', durationHours: null }
-};
-
-function addHours(time, hours) {
-  if (!time || !Number.isFinite(hours)) return time || '19:00';
-  const [hour, minute] = time.split(':').map(Number);
-  const totalMinutes = (hour * 60) + minute + (hours * 60);
-  const normalized = ((totalMinutes % 1440) + 1440) % 1440;
-  return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
-}
-
-function getMonthKey(date) {
-  const current = date ? new Date(date + '-01T00:00:00') : new Date();
-  return `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function buildScheduleDates(monthKey) {
-  if (!monthKey || !/^\d{4}-\d{2}$/.test(monthKey)) return [];
-
-  const [year, month] = monthKey.split('-').map(Number);
-  const totalDays = new Date(year, month, 0).getDate();
-  const list = [];
-  for (let day = 1; day <= totalDays; day += 1) {
-    const date = new Date(year, month - 1, day);
-    list.push({
-      date: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
-      weekday: ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'][date.getDay()]
-    });
-  }
-  return list;
-}
-
-function generateTemporaryPassword() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
-  let password = '';
-  for (let index = 0; index < 12; index += 1) {
-    password += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return password;
-}
-
-export default function ProfessionalFormDialog({ open, onClose, onSaved, professional, companyId, unitId, sectors = [] }) {
+export default function ProfessionalFormDialog({ open, onClose, onSaved, professional, companyId }) {
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
-  const [companyUnits, setCompanyUnits] = useState([]);
   const isEdit = !!professional;
 
-  const monthOptions = useMemo(() => {
-    const now = new Date();
-    const options = [];
-    for (let i = 0; i < 12; i += 1) {
-      const value = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      options.push({
-        value: `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`,
-        label: value.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-      });
-    }
-    return options;
-  }, []);
-
   useEffect(() => {
-    if (!companyId) return;
-    base44.entities.Company.get(companyId)
-      .then((company) => setCompanyUnits(company?.units || []))
-      .catch(() => setCompanyUnits([]));
-  }, [companyId]);
-
-  useEffect(() => {
-    if (open) {
-      const nextForm = professional ? {
-        ...empty,
-        ...professional,
-        email: professional.email || '',
-        access_email: professional.access_email || professional.email || '',
-        access_password: '',
-        access_password_confirm: '',
-        unit_id: professional.unit_id || unitId || companyUnits[0]?.id || '',
-        schedule_days: professional.schedule_days || empty.schedule_days,
-        schedule_custom_config: professional.schedule_custom_config || '',
-        permissions: Array.isArray(professional.permissions) && professional.permissions.length ? professional.permissions : [...defaultPermissions],
-        default_sector_id: professional.default_sector_id || '',
-        schedule_pattern: professional.schedule_pattern || '5x2',
-        schedule_start_time: professional.schedule_start_time || '07:00',
-        schedule_end_time: professional.schedule_end_time || '19:00',
-        schedule_reference_date: professional.schedule_reference_date || (professional.schedule_month ? `${professional.schedule_month}-01` : ''),
-        schedule_month: professional.schedule_month || getMonthKey(new Date().toISOString().slice(0, 10))
-      } : {
-        ...empty,
-        unit_id: unitId || companyUnits[0]?.id || '',
-        schedule_month: getMonthKey(new Date().toISOString().slice(0, 10)),
-        schedule_reference_date: `${getMonthKey(new Date().toISOString().slice(0, 10))}-01`
-      };
-      setForm(nextForm);
-    }
-  }, [open, professional, companyUnits, unitId]);
+    if (open) setForm(professional ? { ...empty, ...professional } : empty);
+  }, [open, professional]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const handlePatternChange = (newPattern) => {
-    const plan = patternConfig[newPattern];
-    setForm((current) => ({
-      ...current,
-      schedule_pattern: newPattern,
-      schedule_days: newPattern === '5x2' ? ['seg', 'ter', 'qua', 'qui', 'sex'] : current.schedule_days,
-      schedule_end_time: plan?.durationHours ? addHours(current.schedule_start_time, plan.durationHours) : current.schedule_end_time
-    }));
-  };
-
-  const handleStartTimeChange = (newStartTime) => {
-    const plan = patternConfig[form.schedule_pattern];
-    setForm((current) => ({
-      ...current,
-      schedule_start_time: newStartTime,
-      schedule_end_time: plan?.durationHours ? addHours(newStartTime, plan.durationHours) : current.schedule_end_time
-    }));
-  };
-
-  const toggleDay = (dayKey) => {
-    set('schedule_days', form.schedule_days.includes(dayKey)
-      ? form.schedule_days.filter((d) => d !== dayKey)
-      : [...form.schedule_days, dayKey]);
-  };
-
-  const togglePermission = (permissionKey) => {
-    set('permissions', form.permissions.includes(permissionKey)
-      ? form.permissions.filter((permission) => permission !== permissionKey)
-      : [...form.permissions, permissionKey]);
-  };
-
-  const isCyclePattern = ['12x36', '24x72', '24x78', '12x60', '7x7'].includes(form.schedule_pattern);
-  const schedulePreview = isCyclePattern
-    ? `${patternConfig[form.schedule_pattern]?.label || 'Ciclo'} a partir de ${form.schedule_reference_date || 'data de referência'}`
-    : form.schedule_pattern === '5x2'
-      ? `${form.schedule_days.map((day) => dayLabels[day]).join(', ') || 'Nenhum dia'} · ${form.schedule_start_time} às ${form.schedule_end_time}`
-      : 'Defina os dias e horários manualmente';
-
-  const generateSchedule = async (professionalId, professionalName, professionalData) => {
-    const monthKey = professionalData.schedule_month || getMonthKey(new Date().toISOString().slice(0, 10));
-    const selectedDays = [...new Set(professionalData.schedule_days || [])];
-    const selectedPattern = professionalData.schedule_pattern || 'manual';
-    const plan = patternConfig[selectedPattern] || patternConfig.manual;
-    const sectorId = professionalData.default_sector_id;
-    const sector = sectors.find((item) => item.id === sectorId);
-
-    if (!sectorId || selectedDays.length === 0) return;
-
-    const monthDates = buildScheduleDates(monthKey);
-    const createQueue = [];
-
-    const previousAutomaticShifts = await base44.entities.Shift.filter({
-      company_id: companyId,
-      professional_id: professionalId,
-      unit_id: professionalData.unit_id || unitId
-    }, '-created_date', 500);
-
-    await Promise.all(previousAutomaticShifts
-      .filter((shift) => getMonthKey(shift.date) === monthKey && String(shift.notes || '').startsWith('Escala gerada automaticamente'))
-      .map((shift) => base44.entities.Shift.delete(shift.id)));
-
-    const referenceDate = new Date(`${professionalData.schedule_reference_date || `${monthKey}-01`}T00:00:00`);
-    monthDates.forEach(({ date, weekday }) => {
-      const dateValue = new Date(`${date}T00:00:00`);
-      const cycleMatch = !plan.cycleDays || Math.floor((dateValue - referenceDate) / 86400000) % plan.cycleDays === 0;
-      const weekdayMatch = plan.cycleDays ? true : selectedDays.includes(weekday);
-      if (!cycleMatch || !weekdayMatch) return;
-      if (selectedPattern === '5x2' && !selectedDays.includes(weekday)) return;
-      createQueue.push({
-        date,
-        start_time: professionalData.schedule_start_time || '07:00',
-        end_time: professionalData.schedule_end_time || addHours(professionalData.schedule_start_time, plan.durationHours),
-        shift_type: plan.shift_type,
-        sector_id: sectorId,
-        sector_name: sector?.name || '',
-        professional_id: professionalId,
-        professional_name: professionalName,
-        status: 'pendente',
-        company_id: companyId,
-        unit_id: professionalData.unit_id || unitId,
-        notes: `Escala gerada automaticamente (${plan.label})`
-      });
-    });
-
-    for (const item of createQueue) {
-      const existing = await base44.entities.Shift.filter({
-        company_id: companyId,
-        professional_id: professionalId,
-        date: item.date,
-        sector_id: sectorId
-      }, '-created_date', 20);
-
-      if (existing.length === 0) {
-        await base44.entities.Shift.create(item);
-      }
+  const handlePhoneChange = (val) => {
+    let r = val.replace(/\D/g, "");
+    if (r.length > 11) r = r.slice(0, 11);
+    
+    if (r.length > 10) {
+      r = r.replace(/^(\d\d)(\d{5})(\d{4}).*/, "($1) $2-$3");
+    } else if (r.length > 5) {
+      r = r.replace(/^(\d\d)(\d{4})(\d{0,4}).*/, "($1) $2-$3");
+    } else if (r.length > 2) {
+      r = r.replace(/^(\d\d)(\d{0,5})/, "($1) $2");
+    } else if (r.length > 0) {
+      r = r.replace(/^(\d*)/, "($1");
     }
+    set('phone', r);
   };
 
   const handleSubmit = async (e) => {
@@ -260,110 +56,19 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
         ? Number(form.daily_rate)
         : valueFromHourly;
 
-      const selectedUnitId = form.unit_id || unitId || companyUnits[0]?.id || '';
-      const loginEmail = (form.access_email || form.email || '').trim().toLowerCase();
-      const loginPassword = (form.access_password || '').trim();
-      const confirmPassword = (form.access_password_confirm || '').trim();
-
-      if (loginPassword && loginPassword !== confirmPassword) {
-        throw new Error('As senhas de acesso não conferem.');
-      }
-
       const payload = {
+        ...form,
         name: form.name.trim(),
-        document: form.document ? form.document.trim() : '',
-        document_uf: form.document_uf ? form.document_uf.trim().toUpperCase() : '',
-        category: form.category || 'medico',
-        specialty: form.specialty ? form.specialty.trim() : '',
         role: form.role || 'Profissional',
-        phone: form.phone ? form.phone.trim() : '',
-        email: loginEmail || (form.email ? form.email.trim() : ''),
         hourly_rate: valueFromHourly,
         daily_rate: valueFromDaily,
-        shift_preference: form.shift_preference || 'qualquer',
-        status: form.status || 'ativo',
-        company_id: companyId,
-        unit_id: selectedUnitId,
-        unit_ids: [selectedUnitId],
-        schedule_days: Array.isArray(form.schedule_days) ? form.schedule_days : [],
-        schedule_custom_config: form.schedule_pattern === 'custom' ? (form.schedule_custom_config || '').trim() : '',
-        permissions: Array.isArray(form.permissions) && form.permissions.length ? form.permissions : [...defaultPermissions],
-        default_sector_id: form.default_sector_id || '',
-        schedule_start_time: form.schedule_start_time || '07:00',
-        schedule_end_time: form.schedule_end_time || '19:00',
-        schedule_reference_date: form.schedule_reference_date || `${form.schedule_month || getMonthKey(new Date().toISOString().slice(0, 10))}-01`,
-        schedule_pattern: form.schedule_pattern || 'manual'
+        company_id: companyId
       };
 
-      let savedProfessional;
-
       if (isEdit) {
-        savedProfessional = await base44.entities.Professional.update(professional.id, payload);
+        await base44.entities.Professional.update(professional.id, payload);
       } else {
-        savedProfessional = await base44.entities.Professional.create(payload);
-      }
-
-      if (loginEmail && savedProfessional?.id) {
-        try {
-          const resolvedPassword = loginPassword || generateTemporaryPassword();
-          const existingUser = (await base44.entities.User.filter({ email: loginEmail }, '-created_date', 20))[0];
-          const username = loginEmail.split('@')[0] || `prof-${savedProfessional.id}`;
-          
-          const userData = {
-            company_id: companyId,
-            selected_unit_id: selectedUnitId,
-            unit_id: selectedUnitId,
-            unit_ids: [selectedUnitId],
-            app_role: 'professional',
-            professional_id: savedProfessional.id,
-            professional_role: payload.role || 'Profissional',
-            permissions: payload.permissions || [...defaultPermissions]
-          };
-
-          if (!existingUser) {
-            const createdUser = await base44.entities.User.create({
-              username,
-              email: loginEmail,
-              password: resolvedPassword,
-              full_name: payload.name,
-              role: 'user',
-              data: userData
-            });
-
-            await base44.entities.Professional.update(savedProfessional.id, {
-              user_id: createdUser.id
-            });
-
-            if (loginPassword) {
-              alert(`Credenciais criadas para ${payload.name}\nE-mail: ${loginEmail}\nSenha: ${resolvedPassword}`);
-            }
-          } else {
-            await base44.entities.User.update(existingUser.id, {
-              username: existingUser.username || username,
-              email: loginEmail,
-              ...(loginPassword ? { password: loginPassword } : {}),
-              full_name: payload.name,
-              role: 'user',
-              data: {
-                ...(existingUser.data || {}),
-                ...userData
-              }
-            });
-
-            await base44.entities.Professional.update(savedProfessional.id, {
-              user_id: existingUser.id
-            });
-          }
-        } catch (authError) {
-          console.warn('Profissional salvo, mas falha ao vincular usuário de login:', authError);
-        }
-      }
-
-      if (payload.schedule_pattern !== 'manual' && (payload.schedule_days?.length || ['12x36', '24x72', '24x78', '12x60', '7x7'].includes(payload.schedule_pattern)) && payload.default_sector_id) {
-        await generateSchedule(savedProfessional.id, payload.name, {
-          ...payload,
-          schedule_month: form.schedule_month
-        });
+        await base44.entities.Professional.create(payload);
       }
 
       onSaved();
@@ -377,7 +82,7 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Editar Profissional' : 'Novo Profissional'}</DialogTitle>
         </DialogHeader>
@@ -389,11 +94,11 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>CBO</Label>
-              <Input value={form.document} onChange={(e) => set('document', e.target.value)} placeholder="2231-05" />
+              <Label>Registro (CRM/Coren)</Label>
+              <Input value={form.document} onChange={(e) => set('document', e.target.value)} placeholder="12345" />
             </div>
             <div className="space-y-1.5">
-              <Label>UF / Registro</Label>
+              <Label>UF</Label>
               <Input value={form.document_uf} onChange={(e) => set('document_uf', e.target.value.toUpperCase())} placeholder="SP" maxLength={2} />
             </div>
           </div>
@@ -407,81 +112,29 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
                   <SelectItem value="medico">Médico</SelectItem>
                   <SelectItem value="enfermeiro">Enfermeiro</SelectItem>
                   <SelectItem value="tecnico">Técnico</SelectItem>
-                  <SelectItem value="auxiliar">Auxiliar</SelectItem>
-                  <SelectItem value="administrativo">Administrativo</SelectItem>
                   <SelectItem value="outro">Outro</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Especialidade / Setor</Label>
-              <Input value={form.specialty} onChange={(e) => set('specialty', e.target.value)} placeholder="Cardiologia, UTI, Clínica Médica" />
+              <Label>Especialidade</Label>
+              <Input value={form.specialty} onChange={(e) => set('specialty', e.target.value)} placeholder="Clínica Médica" />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <Label>Função / Cargo</Label>
-            <Input value={form.role} onChange={(e) => set('role', e.target.value)} placeholder="Diretor Médico, Enfermeiro, Coordenador, Residente..." />
+            <Label>Cargo / Função</Label>
+            <Input value={form.role} onChange={(e) => set('role', e.target.value)} placeholder="Diretor Médico, Enfermeiro, Coordenador..." />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Telefone</Label>
-              <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="(11) 99999-9999" />
+              <Input value={form.phone} onChange={(e) => handlePhoneChange(e.target.value)} placeholder="(11) 99999-9999" maxLength={15} />
             </div>
             <div className="space-y-1.5">
-              <Label>E-mail de contato</Label>
+              <Label>E-mail</Label>
               <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-3 space-y-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-800">Credenciais de acesso do app</p>
-              <p className="text-[11px] text-slate-500">O gestor pode entregar esse e-mail e senha para o profissional entrar na unidade correta.</p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>E-mail para login</Label>
-              <Input
-                type="email"
-                value={form.access_email}
-                onChange={(e) => set('access_email', e.target.value)}
-                placeholder="profissional@hospital.com"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Senha temporária</Label>
-                <Input
-                  type="text"
-                  value={form.access_password}
-                  onChange={(e) => set('access_password', e.target.value)}
-                  placeholder="Opcional: informe ou gere"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Confirmar senha</Label>
-                <Input
-                  type="text"
-                  value={form.access_password_confirm}
-                  onChange={(e) => set('access_password_confirm', e.target.value)}
-                  placeholder="Repetir senha"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Unidade de acesso</Label>
-              <Select value={form.unit_id} onValueChange={(v) => set('unit_id', v)}>
-                <SelectTrigger><SelectValue placeholder="Selecione a unidade" /></SelectTrigger>
-                <SelectContent>
-                  {companyUnits.map((unit) => (
-                    <SelectItem key={unit.id} value={unit.id}>{unit.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
           </div>
 
@@ -518,142 +171,6 @@ export default function ProfessionalFormDialog({ open, onClose, onSaved, profess
                 <SelectItem value="inativo">Inativo</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-
-          {/* Configuração de Escala e Turnos - Layout Estável */}
-          <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-4 space-y-4">
-            <div>
-              <p className="text-sm font-semibold text-slate-800">Escala mensal e turnos</p>
-              <p className="text-[11px] text-slate-500">Defina o padrão de trabalho e os horários de início e término do turno.</p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Padrão de escala</Label>
-                <Select value={form.schedule_pattern} onValueChange={handlePatternChange}>
-                  <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="manual">Manual / livre</SelectItem>
-                    <SelectItem value="12x36">12x36</SelectItem>
-                    <SelectItem value="24x72">24x72</SelectItem>
-                    <SelectItem value="24x78">24x78</SelectItem>
-                    <SelectItem value="12x60">12x60</SelectItem>
-                    <SelectItem value="7x7">7x7</SelectItem>
-                    <SelectItem value="5x2">5x2</SelectItem>
-                    <SelectItem value="custom">Personalizado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label>Mês de referência</Label>
-                <Select value={form.schedule_month} onValueChange={(v) => set('schedule_month', v)}>
-                  <SelectTrigger className="bg-white"><SelectValue placeholder="Selecione o mês" /></SelectTrigger>
-                  <SelectContent>
-                    {monthOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {form.schedule_pattern === 'custom' && (
-              <div className="space-y-1.5">
-                <Label>Descrição do padrão personalizado</Label>
-                <textarea
-                  value={form.schedule_custom_config}
-                  onChange={(e) => set('schedule_custom_config', e.target.value)}
-                  placeholder="Ex.: 2 noites seg/qua, 1 dia de folga a cada 4 dias..."
-                  className="min-h-[80px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-                />
-              </div>
-            )}
-
-            {form.schedule_pattern !== 'manual' && form.schedule_pattern !== 'custom' && (
-              <div className="space-y-1.5">
-                <Label>Primeiro dia do ciclo</Label>
-                <Input 
-                  type="date" 
-                  value={form.schedule_reference_date} 
-                  onChange={(e) => set('schedule_reference_date', e.target.value)} 
-                  className="bg-white"
-                />
-              </div>
-            )}
-
-            {/* Início e Término do Turno com campos desimpedidos */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Início do turno</Label>
-                <Input 
-                  type="time" 
-                  value={form.schedule_start_time} 
-                  onChange={(e) => handleStartTimeChange(e.target.value)}
-                  className="bg-white"
-                  required
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Fim do turno</Label>
-                <Input 
-                  type="time" 
-                  value={form.schedule_end_time} 
-                  onChange={(e) => set('schedule_end_time', e.target.value)}
-                  className="bg-white"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Setor padrão da escala</Label>
-              <Select value={form.default_sector_id} onValueChange={(v) => set('default_sector_id', v)}>
-                <SelectTrigger className="bg-white"><SelectValue placeholder="Selecione o setor da escala" /></SelectTrigger>
-                <SelectContent>
-                  {sectors.map((sector) => (
-                    <SelectItem key={sector.id} value={sector.id}>{sector.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Dias da semana trabalhados</Label>
-              <div className={`grid grid-cols-7 gap-1.5 ${isCyclePattern ? 'pointer-events-none opacity-45' : ''}`}>
-                {['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'].map((day) => (
-                  <label key={day} className={`flex flex-col items-center gap-1 rounded-lg border p-2 text-center text-[10px] font-medium transition cursor-pointer ${form.schedule_days.includes(day) ? 'border-sky-400 bg-sky-50 text-sky-700 shadow-sm' : 'border-slate-200 bg-white text-slate-600'}`}>
-                    <Checkbox
-                      checked={form.schedule_days.includes(day)}
-                      onCheckedChange={() => toggleDay(day)}
-                    />
-                    {dayLabels[day]}
-                  </label>
-                ))}
-              </div>
-              <div className="rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300">
-                Prévia: {schedulePreview}
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-3 space-y-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-800">Permissões do acesso</p>
-              <p className="text-[11px] text-slate-500">Controle o que este profissional pode visualizar e alterar dentro do sistema.</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              {permissionOptions.map((permission) => (
-                <label key={permission.key} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-700 cursor-pointer">
-                  <Checkbox
-                    checked={form.permissions.includes(permission.key)}
-                    onCheckedChange={() => togglePermission(permission.key)}
-                  />
-                  {permission.label}
-                </label>
-              ))}
-            </div>
           </div>
 
           <DialogFooter>
