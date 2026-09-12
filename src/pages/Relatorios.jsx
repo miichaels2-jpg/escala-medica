@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Clock, Calendar, TrendingUp, FileText, FileSpreadsheet, 
-  ShieldCheck, AlertTriangle, Users, Building2, Activity, Filter, RefreshCw
+  ShieldCheck, AlertTriangle, Users, Building2, Activity, Filter, Loader2
 } from 'lucide-react';
 import { exportReportPDF, exportReportCSV } from '@/lib/exportReport';
 
@@ -18,29 +18,32 @@ export default function Relatorios() {
   const [sectors, setSectors] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
 
-  // Filtros Avançados de Relatório
-  const [activeTab, setActiveTab] = useState('produtividade'); // produtividade, financeiro, auditoria, cobertura
+  const [activeTab, setActiveTab] = useState('produtividade');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedSector, setSelectedSector] = useState('all');
 
-  const companyId = user?.data?.company_id;
+  const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
   const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id;
 
   const loadData = async () => {
+    if (!companyId) return;
     setLoadingData(true);
     try {
-      const f = companyId ? { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) } : {};
+      const f = { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) };
       const [s, p, sec] = await Promise.all([
         base44.entities.Shift.filter(f, '-date', 1000).catch(() => []),
         base44.entities.Professional.filter(f, '-created_date', 500).catch(() => []),
         base44.entities.Sector.filter(f, '-created_date', 100).catch(() => [])
       ]);
-      setShifts(s || []);
-      setProfessionals(p || []);
-      setSectors(sec || []);
+      setShifts(Array.isArray(s) ? s : []);
+      setProfessionals(Array.isArray(p) ? p : []);
+      setSectors(Array.isArray(sec) ? sec : []);
     } catch (e) {
       console.error('Erro ao carregar dados de relatório:', e);
+      setShifts([]);
+      setProfessionals([]);
+      setSectors([]);
     } finally {
       setLoadingData(false);
     }
@@ -50,10 +53,12 @@ export default function Relatorios() {
     if (!loading) loadData();
   }, [loading, companyId, unitId]);
 
-  // Filtragem de plantões por Data e Setor
+  // Filtro blindado
   const filteredShifts = useMemo(() => {
+    if (!Array.isArray(shifts)) return [];
     return shifts.filter((s) => {
-      const sDate = s.date ? s.date.split('T')[0] : '';
+      if (!s) return false;
+      const sDate = typeof s.date === 'string' ? s.date.split('T')[0] : '';
       const matchStart = !startDate || sDate >= startDate;
       const matchEnd = !endDate || sDate <= endDate;
       const matchSector = selectedSector === 'all' || String(s.sector_id) === String(selectedSector) || s.sector_name === selectedSector;
@@ -61,24 +66,26 @@ export default function Relatorios() {
     });
   }, [shifts, startDate, endDate, selectedSector]);
 
-  // 1. Container de Produtividade & Horas por Profissional
   const byProfessional = useMemo(() => {
     const map = {};
-    professionals.forEach((p) => {
-      map[p.id] = { 
-        name: p.name, 
-        category: p.specialty || p.category || 'Geral', 
-        confirmed: 0, 
-        pending: 0, 
-        canceled: 0,
-        hours: 0,
-        estimatedPay: 0,
-        hourlyRate: Number(p.hourly_rate) || 120
-      };
-    });
+    if (Array.isArray(professionals)) {
+      professionals.forEach((p) => {
+        if (!p || !p.id) return;
+        map[p.id] = { 
+          name: p.name || 'Sem Nome', 
+          category: p.specialty || p.category || 'Geral', 
+          confirmed: 0, 
+          pending: 0, 
+          canceled: 0,
+          hours: 0,
+          estimatedPay: 0,
+          hourlyRate: Number(p.hourly_rate) || 120
+        };
+      });
+    }
 
     filteredShifts.forEach((s) => {
-      if (!s.professional_id) return;
+      if (!s || !s.professional_id) return;
       if (!map[s.professional_id]) {
         map[s.professional_id] = { 
           name: s.professional_name || '—', 
@@ -106,10 +113,10 @@ export default function Relatorios() {
       .sort((a, b) => b.hours - a.hours);
   }, [filteredShifts, professionals]);
 
-  // 2. Container de Cobertura por Setor
   const bySector = useMemo(() => {
     const map = {};
     filteredShifts.forEach((s) => {
+      if (!s) return;
       const key = s.sector_name || 'Geral';
       if (!map[key]) map[key] = { total: 0, filled: 0, open: 0, canceled: 0 };
       map[key].total += 1;
@@ -120,26 +127,24 @@ export default function Relatorios() {
     return Object.entries(map).sort((a, b) => b[1].total - a[1].total);
   }, [filteredShifts]);
 
-  // 3. Container de Auditoria de Alterações / Exclusões (Soft Deletes / Cancelados)
   const auditLogs = useMemo(() => {
-    return filteredShifts.filter(s => s.status === 'cancelado' || s.notes);
+    return filteredShifts.filter(s => s && (s.status === 'cancelado' || s.notes));
   }, [filteredShifts]);
 
-  const overview = {
+  const overview = useMemo(() => ({
     total: filteredShifts.length,
-    confirmed: filteredShifts.filter((s) => s.status === 'confirmado').length,
-    pending: filteredShifts.filter((s) => s.status === 'pendente').length,
-    open: filteredShifts.filter((s) => s.status === 'vago').length,
-    canceled: filteredShifts.filter((s) => s.status === 'cancelado').length,
-  };
+    confirmed: filteredShifts.filter((s) => s?.status === 'confirmado').length,
+    pending: filteredShifts.filter((s) => s?.status === 'pendente').length,
+    open: filteredShifts.filter((s) => s?.status === 'vago').length,
+    canceled: filteredShifts.filter((s) => s?.status === 'cancelado').length,
+  }), [filteredShifts]);
 
   const totalFinancialEstimate = useMemo(() => {
-    return byProfessional.reduce((acc, p) => acc + p.estimatedPay, 0);
+    return byProfessional.reduce((acc, p) => acc + (p?.estimatedPay || 0), 0);
   }, [byProfessional]);
 
   return (
     <div className="p-4 md:p-8 space-y-6">
-      {/* HEADER ENTERPRISE */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Central de Relatórios & Auditoria</h1>
@@ -148,7 +153,6 @@ export default function Relatorios() {
           </p>
         </div>
 
-        {/* Abas de Navegação dos Relatórios */}
         <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shrink-0 overflow-x-auto">
           <button
             onClick={() => setActiveTab('produtividade')}
@@ -177,7 +181,6 @@ export default function Relatorios() {
         </div>
       </div>
 
-      {/* BARRA DE FILTROS CRUZADOS */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center gap-3">
         <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0">
           <Filter className="w-4 h-4 text-sky-600" /> Filtros:
@@ -194,12 +197,12 @@ export default function Relatorios() {
           </div>
           <div>
             <label className="text-[10px] font-semibold text-slate-400 block mb-1">Setor / Ala</label>
-            <Select value={selectedSector} onValueChange={setSelectedSector}>
+            <Select value={String(selectedSector)} onValueChange={setSelectedSector}>
               <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Todos os setores" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os setores</SelectItem>
                 {sectors.map((s) => (
-                  <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                  <SelectItem key={s.id} value={String(s.name)}>{s.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -213,7 +216,6 @@ export default function Relatorios() {
         )}
       </div>
 
-      {/* CONTAINER DE VISÃO GERAL (KPIs) */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="text-[10px] uppercase font-bold text-slate-400">Total Analisado</div>
@@ -236,18 +238,16 @@ export default function Relatorios() {
           <div className="text-[10px] text-red-600 font-semibold">Furos de escala</div>
         </Card>
         <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm col-span-2 sm:col-span-1">
-          <div className="text-[10px] uppercase font-bold text-sky-600">Cancelados / Auditados</div>
+          <div className="text-[10px] uppercase font-bold text-sky-600">Cancelados</div>
           <div className="text-2xl font-black text-sky-600 mt-1">{overview.canceled}</div>
           <div className="text-[10px] text-sky-600 font-semibold">Soft deletes</div>
         </Card>
       </div>
 
-      {/* CONTEÚDO DINÂMICO CONFORME ABA SELECIONADA */}
       {loadingData ? (
         <div className="flex justify-center p-16"><Loader2 className="w-8 h-8 animate-spin text-sky-600" /></div>
       ) : (
         <div className="space-y-6">
-          {/* ABA 1: PRODUTIVIDADE */}
           {activeTab === 'produtividade' && (
             <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
@@ -265,7 +265,7 @@ export default function Relatorios() {
                     <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 border-b border-slate-200 dark:border-slate-800">
                       <tr>
                         <th className="p-3 font-semibold">Profissional</th>
-                        <th className="p-3 font-semibold">Especialidade / Categoria</th>
+                        <th className="p-3 font-semibold">Especialidade</th>
                         <th className="p-3 font-semibold text-center">Confirmados</th>
                         <th className="p-3 font-semibold text-center">Pendentes</th>
                         <th className="p-3 font-semibold text-right">Horas Trabalhadas</th>
@@ -288,7 +288,6 @@ export default function Relatorios() {
             </Card>
           )}
 
-          {/* ABA 2: COBERTURA POR SETOR */}
           {activeTab === 'cobertura' && (
             <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
@@ -322,7 +321,6 @@ export default function Relatorios() {
             </Card>
           )}
 
-          {/* ABA 3: REPASSE FINANCEIRO */}
           {activeTab === 'financeiro' && (
             <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
@@ -330,7 +328,7 @@ export default function Relatorios() {
                   <h3 className="font-bold text-base text-slate-800 dark:text-white flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5 text-emerald-600" /> Projeção de Repasse & Faturamento Clínico
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Estimativa baseada nas horas confirmadas e valor hora padrão do profissional.</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Estimativa baseada nas horas confirmadas.</p>
                 </div>
                 <div className="text-right">
                   <div className="text-xl font-black text-emerald-600">R$ {totalFinancialEstimate.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
@@ -363,7 +361,6 @@ export default function Relatorios() {
             </Card>
           )}
 
-          {/* ABA 4: LOG DE AUDITORIA */}
           {activeTab === 'auditoria' && (
             <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
@@ -371,7 +368,7 @@ export default function Relatorios() {
                   <h3 className="font-bold text-base text-slate-800 dark:text-white flex items-center gap-2">
                     <Activity className="w-5 h-5 text-sky-600" /> Log de Auditoria & Plantões Cancelados
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Rastreabilidade completa de ações administrativas e exclusões lógicas (Soft Deletes).</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Rastreabilidade completa de ações administrativas.</p>
                 </div>
                 <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                   {auditLogs.length} registros auditados
@@ -390,7 +387,7 @@ export default function Relatorios() {
                             Cancelado / Modificado
                           </span>
                           <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            Data do Plantão: <b>{log.date}</b> ({log.start_time} - {log.end_time})
+                            Data: <b>{log.date}</b> ({log.start_time} - {log.end_time})
                           </span>
                         </div>
                         <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
@@ -414,7 +411,6 @@ export default function Relatorios() {
         </div>
       )}
 
-      {/* BOTÕES FLUTUANTES DE DOWNLOAD (PADRÃO ESTABELECIDO) */}
       <div className="fixed bottom-6 right-6 flex flex-col gap-3 z-40">
         <button
           onClick={() => exportReportPDF({ company, byProfessional, bySector, overview })}
