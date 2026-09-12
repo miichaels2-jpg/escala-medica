@@ -21,13 +21,12 @@ import {
   ShieldCheck,
   Stethoscope,
   Building2,
-  Lock,
-  FileCheck,
+  Landmark,
+  CreditCard,
   AlertCircle
 } from 'lucide-react';
 import { getShiftInterval } from '@/lib/shiftUtils';
 
-// Helper para calcular o valor de repasse de um turno com base no modelo do profissional
 function getShiftRepasse(shift, prof) {
   if (!prof) return 0;
   const remType = prof.remuneration_type || 'hora';
@@ -39,7 +38,7 @@ function getShiftRepasse(shift, prof) {
   if (remType === 'diaria') {
     return Number(prof.daily_rate) || 0;
   }
-  return 0; // Mensalistas têm cálculo fixo na folha
+  return 0;
 }
 
 export default function Faturamento() {
@@ -49,9 +48,8 @@ export default function Faturamento() {
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [search, setSearch] = useState('');
-  const [filterCategory, setFilterCategory] = useState('all'); // 'all', 'medico', 'enfermeiro', 'pj'
+  const [filterCategory, setFilterCategory] = useState('all');
   
-  // Drawer Lateral de Detalhes
   const [selectedProf, setSelectedProf] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
 
@@ -88,15 +86,15 @@ export default function Faturamento() {
 
   const copyPixKey = (key, e) => {
     if (e) e.stopPropagation();
-    if (!key) {
-      showToast('Chave PIX não cadastrada');
+    if (!key || !key.trim()) {
+      showToast('Nenhuma chave PIX cadastrada para este profissional');
       return;
     }
-    navigator.clipboard.writeText(key);
+    navigator.clipboard.writeText(key.trim());
     showToast(`Chave PIX copiada: ${key}`);
   };
 
-  // Consolidação de repasses com a regra de plantão encerrado vs previsto
+  // Consolidação de repasses considerando estritamente plantões encerrados e PIX real
   const reportData = useMemo(() => {
     const now = new Date();
     const profMap = {};
@@ -114,14 +112,12 @@ export default function Faturamento() {
       };
     });
 
-    // Filtra turnos do mês selecionado que não estejam cancelados
     const monthShifts = shifts.filter((s) => {
       const sDate = (s.date || '').slice(0, 7);
       return sDate === selectedMonth && s.status !== 'cancelado';
     });
 
     monthShifts.forEach((s) => {
-      // O titular atual é quem tem direito ao repasse (inclui pós-troca)
       const profId = s.professional_id;
       if (!profId) return;
 
@@ -134,7 +130,9 @@ export default function Faturamento() {
           hourly_rate: 120,
           daily_rate: 1500,
           monthly_salary: 0,
+          pix_type: '',
           pix_key: '',
+          bank_info: '',
           completedShifts: [],
           pendingShifts: [],
           completedHours: 0,
@@ -149,7 +147,6 @@ export default function Faturamento() {
       const hours = Number(s.duration_hours) || 12;
       const shiftVal = getShiftRepasse(s, p);
 
-      // Checa se o horário do plantão já terminou
       const interval = getShiftInterval(s);
       const isConcluded = interval ? now >= interval.end : new Date(s.date + 'T23:59:59') < now;
 
@@ -164,7 +161,6 @@ export default function Faturamento() {
       }
     });
 
-    // Aplica a regra para contratos de Salário Fixo Mensal
     Object.values(profMap).forEach((p) => {
       if (p.isMensal) {
         const monthly = Number(p.monthly_salary) || 0;
@@ -174,12 +170,10 @@ export default function Faturamento() {
           p.predictedValue = monthly;
         }
       } else {
-        // Previsão total = o que já encerrou + o que ainda vai acontecer
         p.predictedValue = p.completedValue + p.predictedValue;
       }
     });
 
-    // Filtros de busca e visualização
     return Object.values(profMap).filter((p) => {
       const totalShifts = p.completedShifts.length + p.pendingShifts.length;
       if (totalShifts === 0 && !p.isMensal) return false;
@@ -199,7 +193,6 @@ export default function Faturamento() {
     });
   }, [professionals, shifts, selectedMonth, search, filterCategory]);
 
-  // Totais Gerais
   const totals = useMemo(() => {
     return reportData.reduce(
       (acc, p) => {
@@ -219,12 +212,11 @@ export default function Faturamento() {
     return totals.completedValue / totals.completedHours;
   }, [totals]);
 
-  // Exportação CSV Completa
   const handleExportCSV = () => {
-    const headers = ['Profissional;Especialidade;Tipo Contrato;Plantoes Concluidos;Horas Concluidas;Valor Liberado (R$);Previsao Total (R$);Chave PIX'];
+    const headers = ['Profissional;Especialidade;Tipo Contrato;Plantoes Concluidos;Horas Concluidas;Valor Liberado (R$);Previsao Total (R$);Chave PIX;Tipo PIX;Dados Bancarios'];
     const rows = reportData.map((p) => {
       const typeLabel = p.remuneration_type === 'hora' ? 'Horista' : p.remuneration_type === 'diaria' ? 'Diarista' : 'Fixo Mensal';
-      return `"${p.name}";"${p.specialty}";"${typeLabel}";${p.completedShifts.length};${p.completedHours};${p.completedValue.toFixed(2)};${p.predictedValue.toFixed(2)};"${p.pix_key || p.cpf || ''}"`;
+      return `"${p.name}";"${p.specialty}";"${typeLabel}";${p.completedShifts.length};${p.completedHours};${p.completedValue.toFixed(2)};${p.predictedValue.toFixed(2)};"${p.pix_key || ''}";"${p.pix_type || ''}";"${p.bank_info || ''}"`;
     });
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers, ...rows].join('\n');
@@ -237,13 +229,16 @@ export default function Faturamento() {
     document.body.removeChild(link);
   };
 
-  // Exportação de Lote Bancário PIX
   const handleExportPixLote = () => {
-    const ready = reportData.filter((p) => p.completedValue > 0);
-    const headers = ['Nome;Chave_PIX;Valor_Reais;Descricao'];
+    const ready = reportData.filter((p) => p.completedValue > 0 && p.pix_key);
+    if (ready.length === 0) {
+      alert('Nenhum profissional com valor liberado possui chave PIX cadastrada para exportação em lote.');
+      return;
+    }
+
+    const headers = ['Nome;Chave_PIX;Tipo_Chave;Valor_Reais;Descricao'];
     const rows = ready.map((p) => {
-      const key = p.pix_key || p.cpf || p.email || '';
-      return `"${p.name}";"${key}";${p.completedValue.toFixed(2)};"Repasse Plantões ${selectedMonth}"`;
+      return `"${p.name}";"${p.pix_key}";"${p.pix_type || 'PIX'}";${p.completedValue.toFixed(2)};"Repasse Plantões ${selectedMonth}"`;
     });
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers, ...rows].join('\n');
@@ -274,7 +269,7 @@ export default function Faturamento() {
           </div>
           <h1 className="text-2xl md:text-3xl font-black mt-2 tracking-tight">Faturamento & Repasse Médico</h1>
           <p className="text-sm text-slate-400 mt-1 max-w-2xl">
-            Repasses acumulados estritamente após a conclusão dos turnos e atualização em tempo real de trocas.
+            Repasses acumulados estritamente após a conclusão dos turnos e liquidação via PIX cadastrado.
           </p>
         </div>
 
@@ -297,9 +292,8 @@ export default function Faturamento() {
         </div>
       </div>
 
-      {/* 4 Cards Estratégicos de DRE Operacional */}
+      {/* 4 Cards Estratégicos */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. Valor Liberado (Encerrados) */}
         <Card className="p-5 border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 relative overflow-hidden">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
@@ -317,7 +311,6 @@ export default function Faturamento() {
           </p>
         </Card>
 
-        {/* 2. Previsão Total do Mês */}
         <Card className="p-5 border-slate-200 dark:border-slate-800">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -335,7 +328,6 @@ export default function Faturamento() {
           </p>
         </Card>
 
-        {/* 3. Plantões Cumpridos */}
         <Card className="p-5 border-slate-200 dark:border-slate-800">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -353,7 +345,6 @@ export default function Faturamento() {
           </p>
         </Card>
 
-        {/* 4. Custo Médio Hora */}
         <Card className="p-5 border-slate-200 dark:border-slate-800">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -381,7 +372,6 @@ export default function Faturamento() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Filtro de Chips */}
             <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs">
               <button
                 onClick={() => setFilterCategory('all')}
@@ -440,7 +430,7 @@ export default function Faturamento() {
                   <th className="py-3 px-4 text-center">Horas Fechadas</th>
                   <th className="py-3 px-4 text-right">Liberado (R$)</th>
                   <th className="py-3 px-4 text-right">Previsão Mês (R$)</th>
-                  <th className="py-3 px-4 text-center">Chave PIX</th>
+                  <th className="py-3 px-4 text-center">Chave PIX Cadastrada</th>
                   <th className="py-3 px-4 text-center">Ações</th>
                 </tr>
               </thead>
@@ -457,7 +447,7 @@ export default function Faturamento() {
                     remType === 'diaria' ? `Diarista (R$ ${p.daily_rate}/plantão)` :
                     `Fixo (R$ ${p.monthly_salary}/mês)`;
 
-                  const pixKeyDisplay = p.pix_key || p.cpf || p.phone || '';
+                  const hasPix = !!(p.pix_key && p.pix_key.trim());
 
                   return (
                     <tr 
@@ -495,18 +485,21 @@ export default function Faturamento() {
                         R$ {p.predictedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </td>
 
+                      {/* Chave PIX Estritamente Real */}
                       <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
-                        {pixKeyDisplay ? (
+                        {hasPix ? (
                           <button
-                            onClick={(e) => copyPixKey(pixKeyDisplay, e)}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-mono font-medium transition-colors"
+                            onClick={(e) => copyPixKey(p.pix_key, e)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-mono font-medium transition-colors"
                             title="Clique para copiar a chave PIX"
                           >
-                            <Copy className="w-3 h-3 text-slate-400" />
-                            <span>{pixKeyDisplay.length > 14 ? `${pixKeyDisplay.slice(0, 14)}...` : pixKeyDisplay}</span>
+                            <Copy className="w-3 h-3 text-emerald-600" />
+                            <span>{p.pix_key.length > 15 ? `${p.pix_key.slice(0, 15)}...` : p.pix_key}</span>
                           </button>
                         ) : (
-                          <span className="text-xs text-slate-400">Não informada</span>
+                          <span className="text-xs text-slate-400 italic bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                            Não cadastrada
+                          </span>
                         )}
                       </td>
 
@@ -524,12 +517,11 @@ export default function Faturamento() {
         )}
       </Card>
 
-      {/* DRAWER LATERAL: RAIO-X / EXTRATO INDIVIDUAL DO MÉDICO */}
+      {/* DRAWER LATERAL: EXTRATO INDIVIDUAL */}
       {selectedProf && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-xl bg-white dark:bg-slate-900 h-full shadow-2xl p-6 overflow-y-auto space-y-6 flex flex-col justify-between animate-in slide-in-from-right duration-300">
             <div className="space-y-5">
-              {/* Topo do Drawer */}
               <div className="flex items-start justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
                 <div>
                   <div className="text-xs uppercase tracking-[0.2em] text-sky-600 font-bold">Extrato Individual de Repasse</div>
@@ -544,7 +536,6 @@ export default function Faturamento() {
                 </button>
               </div>
 
-              {/* Cards de Resumo no Drawer */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
                   <span className="text-[11px] font-bold text-emerald-700 uppercase">Liberado (Concluídos)</span>
@@ -563,23 +554,40 @@ export default function Faturamento() {
                 </div>
               </div>
 
-              {/* Dados Bancários / PIX */}
-              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900 space-y-2 text-xs">
-                <div className="font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between">
-                  <span>Dados para Liquidação</span>
-                  <span className="font-mono bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 px-2 py-0.5 rounded">
+              {/* Dados Bancários & PIX no Drawer */}
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900 space-y-2.5 text-xs">
+                <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                  <span className="flex items-center gap-1.5">
+                    <Landmark className="w-3.5 h-3.5 text-emerald-600" /> Dados para Liquidação Bancária
+                  </span>
+                  <span className="font-mono bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 px-2 py-0.5 rounded text-[10px] font-bold">
                     {selectedProf.remuneration_type?.toUpperCase()}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-slate-600 dark:text-slate-400 pt-1">
-                  <span>Chave PIX:</span>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-slate-500">Chave PIX:</span>
                   <span className="font-mono font-bold text-slate-900 dark:text-white">
-                    {selectedProf.pix_key || selectedProf.cpf || 'Não informada'}
+                    {selectedProf.pix_key || <i className="text-slate-400 font-normal">Não cadastrada</i>}
                   </span>
                 </div>
+
+                {selectedProf.pix_type && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Tipo de Chave:</span>
+                    <span className="uppercase text-slate-700 dark:text-slate-300 font-semibold">{selectedProf.pix_type}</span>
+                  </div>
+                )}
+
+                {selectedProf.bank_info && (
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
+                    <span className="text-slate-500">Conta / Agência:</span>
+                    <span className="text-slate-700 dark:text-slate-300 font-medium">{selectedProf.bank_info}</span>
+                  </div>
+                )}
               </div>
 
-              {/* Linha do Tempo de Plantões (Concluídos e Futuros) */}
+              {/* Detalhamento de Plantões */}
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                   Detalhamento dos Plantões ({selectedMonth})
@@ -588,8 +596,7 @@ export default function Faturamento() {
                 {selectedProf.completedShifts.length === 0 && selectedProf.pendingShifts.length === 0 ? (
                   <p className="text-xs text-slate-400 text-center py-6">Nenhum plantão localizado neste mês.</p>
                 ) : (
-                  <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
-                    {/* 1. Plantões Concluídos */}
+                  <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
                     {selectedProf.completedShifts.map((s) => (
                       <div 
                         key={s.id}
@@ -617,7 +624,6 @@ export default function Faturamento() {
                       </div>
                     ))}
 
-                    {/* 2. Plantões Futuros / Pendentes de Conclusão */}
                     {selectedProf.pendingShifts.map((s) => (
                       <div 
                         key={s.id}
@@ -649,10 +655,10 @@ export default function Faturamento() {
               </div>
             </div>
 
-            {/* Ações no Rodapé do Drawer */}
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex gap-2">
               <Button 
-                onClick={(e) => copyPixKey(selectedProf.pix_key || selectedProf.cpf, e)}
+                onClick={(e) => copyPixKey(selectedProf.pix_key, e)}
+                disabled={!selectedProf.pix_key}
                 variant="outline" 
                 className="flex-1 text-xs font-bold gap-1.5"
               >

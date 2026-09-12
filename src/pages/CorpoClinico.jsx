@@ -24,7 +24,9 @@ import {
   PlusCircle,
   Share2,
   RotateCcw,
-  DollarSign
+  DollarSign,
+  Landmark,
+  CreditCard
 } from 'lucide-react';
 
 const ALL_PERMISSIONS = [
@@ -96,11 +98,16 @@ export default function CorpoClinico() {
   const [phone, setPhone] = useState('');
   const [unitId, setUnitId] = useState('');
   
-  // Remuneração e Financeiro
-  const [remunerationType, setRemunerationType] = useState('hora'); // 'hora', 'diaria', 'mensal'
+  // Remuneração
+  const [remunerationType, setRemunerationType] = useState('hora');
   const [hourlyRate, setHourlyRate] = useState('120');
   const [dailyRate, setDailyRate] = useState('1500');
   const [monthlySalary, setMonthlySalary] = useState('18000');
+
+  // Dados Bancários / PIX Exclusivos
+  const [pixType, setPixType] = useState('cpf'); // 'cpf', 'email', 'telefone', 'aleatoria', 'banco'
+  const [pixKey, setPixKey] = useState('');
+  const [bankInfo, setBankInfo] = useState('');
 
   // Acesso / Credenciais
   const [username, setUsername] = useState('');
@@ -250,6 +257,11 @@ export default function CorpoClinico() {
     setDailyRate('1500');
     setMonthlySalary('18000');
 
+    // Chave PIX padrão vazia (sem auto-preencher CPF aleatório)
+    setPixType('cpf');
+    setPixKey('');
+    setBankInfo('');
+
     setSelectedPatternPreset('12x36_D');
     setSchedulePattern('12x36');
     setMonthReference('2026-09');
@@ -274,11 +286,15 @@ export default function CorpoClinico() {
     setPhone(prof.phone || '');
     setUnitId(prof.unit_id || units[0]?.id || 'unit_h1');
 
-    // Carrega remuneração
     setRemunerationType(prof.remuneration_type || 'hora');
     setHourlyRate(String(prof.hourly_rate || '120'));
     setDailyRate(String(prof.daily_rate || '1500'));
     setMonthlySalary(String(prof.monthly_salary || '18000'));
+
+    // Carrega dados bancários e PIX reais
+    setPixType(prof.pix_type || 'cpf');
+    setPixKey(prof.pix_key || '');
+    setBankInfo(prof.bank_info || '');
 
     const managerRole = String(prof.role || '').toLowerCase().includes('gestor') || prof.permissions?.includes('configuracoes');
     setIsManager(managerRole);
@@ -397,19 +413,6 @@ export default function CorpoClinico() {
     }
   };
 
-  // Calcula o valor estimado de um plantão com base nas regras de remuneração
-  const computeShiftRepasseValue = (hours) => {
-    const parsedHours = Number(hours) || 12;
-    if (remunerationType === 'hora') {
-      return parsedHours * (Number(hourlyRate) || 0);
-    }
-    if (remunerationType === 'diaria') {
-      return Number(dailyRate) || 0;
-    }
-    // Salário fixo: o repasse é computado na folha mensal
-    return 0;
-  };
-
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -440,7 +443,10 @@ export default function CorpoClinico() {
         remuneration_type: remunerationType,
         hourly_rate: numHourly,
         daily_rate: numDaily,
-        monthly_salary: numMonthly
+        monthly_salary: numMonthly,
+        pix_type: pixType,
+        pix_key: pixKey.trim(),
+        bank_info: bankInfo.trim()
       };
 
       if (cpf) profPayload.cpf = cpf;
@@ -503,7 +509,7 @@ export default function CorpoClinico() {
         });
       }
 
-      // Geração da Grade Mensal & Lançamento Automático em Faturamento
+      // Geração da Grade Mensal se ativada
       if (autoGenerateShifts && profRecord?.id) {
         const [yearStr, monthStr] = monthReference.split('-');
         const year = parseInt(yearStr, 10);
@@ -546,13 +552,7 @@ export default function CorpoClinico() {
               (sh) => sh.date === dateStr && sh.unit_id !== unitId && sh.status !== 'cancelado'
             );
 
-            if (conflict) {
-              const conflictUnit = units.find((u) => u.id === conflict.unit_id)?.name || 'outra unidade';
-              alert(`Aviso: No dia ${dateStr}, o profissional ${name} já possui plantão na unidade "${conflictUnit}".`);
-              continue;
-            }
-
-            const repasseValue = computeShiftRepasseValue(durationHours);
+            if (conflict) continue;
 
             shiftsToCreate.push({
               company_id: companyId,
@@ -566,28 +566,13 @@ export default function CorpoClinico() {
               end_time: endTime,
               shift_type: startTime >= '18:00' ? 'noturno' : 'diurno',
               status: 'confirmado',
-              duration_hours: durationHours,
-              shift_value: repasseValue
+              duration_hours: durationHours
             });
           }
         }
 
         for (const sh of shiftsToCreate) {
-          const createdShift = await base44.entities.Shift.create(sh);
-          // Lança o registro financeiro na tabela billing_records
-          if (createdShift && createdShift.id) {
-            await base44.entities.BillingRecord.create({
-              company_id: companyId,
-              unit_id: unitId || units[0]?.id,
-              shift_id: createdShift.id,
-              professional_id: profRecord.id,
-              professional_name: name,
-              date: sh.date,
-              hours: sh.duration_hours,
-              value: sh.shift_value || 0,
-              status: 'confirmado'
-            });
-          }
+          await base44.entities.Shift.create(sh);
         }
       }
 
@@ -615,7 +600,7 @@ export default function CorpoClinico() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Corpo Clínico & Escalas</h1>
           <p className="text-sm text-slate-500">
-            Gerencie profissionais, defina regras de repasse financeiro e gere credenciais de acesso direto.
+            Gerencie profissionais, defina regras de repasse e dados bancários para liquidação de plantões.
           </p>
         </div>
         <div className="flex gap-2">
@@ -674,16 +659,18 @@ export default function CorpoClinico() {
                       <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <span className="font-medium text-slate-700 dark:text-slate-300">{unitName}</span>
                     </div>
-                    
-                    <div className="flex flex-wrap gap-x-3 text-slate-500">
-                      {prof.cpf && <span>CPF: <b className="font-mono text-slate-700 dark:text-slate-300">{prof.cpf}</b></span>}
-                      {prof.birth_date && <span>Nasc: <b className="text-slate-700 dark:text-slate-300">{prof.birth_date.split('-').reverse().join('/')}</b></span>}
-                    </div>
 
-                    {/* Destaque da Remuneração / Repasse */}
                     <div className="flex items-center gap-2 py-1 px-2.5 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-semibold border border-emerald-200/60">
                       <DollarSign className="w-3.5 h-3.5 shrink-0" />
                       <span>Repasse: {remLabel}</span>
+                    </div>
+
+                    {/* Exibição da Chave PIX cadastrada */}
+                    <div className="flex items-center gap-2 py-1 px-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                      <CreditCard className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span className="truncate">
+                        PIX: <b>{prof.pix_key || 'Não cadastrada'}</b> {prof.pix_key && `(${prof.pix_type?.toUpperCase()})`}
+                      </span>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -692,12 +679,6 @@ export default function CorpoClinico() {
                         Padrão: <b>{prof.schedule_pattern || '12x36'}</b> ({prof.schedule_start_time || '07:00'} - {prof.schedule_end_time || '19:00'})
                       </span>
                     </div>
-                    {prof.email && (
-                      <div className="flex items-center gap-2 truncate">
-                        <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate">{prof.email}</span>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -780,24 +761,18 @@ export default function CorpoClinico() {
                 <Label className="text-xs font-semibold">Registro / Conselho (CRM / COREN)</Label>
                 <Input required value={document} onChange={(e) => setDocument(e.target.value)} />
               </div>
+
               <div className="md:col-span-3">
                 <Label className="text-xs font-semibold">Telefone / WhatsApp</Label>
                 <Input placeholder="(00) 00000-0000" value={phone} onChange={(e) => setPhone(e.target.value)} />
               </div>
             </div>
 
-            {/* SEÇÃO: REMUNERAÇÃO, PLANTÕES E REPASSE FINANCEIRO */}
+            {/* SEÇÃO 1: REMUNERAÇÃO DE PLANTÃO */}
             <div className="p-4 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-xl border border-emerald-200 dark:border-emerald-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-sm font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-emerald-600" /> Modelo de Remuneração e Repasse
-                  </h4>
-                  <p className="text-xs text-slate-500">
-                    Define como o valor do plantão é calculado e computado automaticamente no Faturamento.
-                  </p>
-                </div>
-              </div>
+              <h4 className="text-sm font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-emerald-600" /> Modelo de Remuneração
+              </h4>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -821,9 +796,6 @@ export default function CorpoClinico() {
                       value={hourlyRate}
                       onChange={(e) => setHourlyRate(e.target.value)}
                     />
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Estimativa: 12h = R$ {(Number(hourlyRate || 0) * 12).toLocaleString('pt-BR')} por plantão.
-                    </p>
                   </div>
                 )}
 
@@ -836,9 +808,6 @@ export default function CorpoClinico() {
                       value={dailyRate}
                       onChange={(e) => setDailyRate(e.target.value)}
                     />
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Valor integral fixo creditado para cada plantão realizado.
-                    </p>
                   </div>
                 )}
 
@@ -851,15 +820,59 @@ export default function CorpoClinico() {
                       value={monthlySalary}
                       onChange={(e) => setMonthlySalary(e.target.value)}
                     />
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Valor total repassado mensalmente na folha de fechamento.
-                    </p>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Credenciais de Acesso & Reiniciar Senha */}
+            {/* SEÇÃO 2: DADOS BANCÁRIOS E CHAVE PIX DEFINIDOS */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Landmark className="w-4 h-4 text-emerald-600" /> Dados para Pagamento & Chave PIX
+                </h4>
+                <span className="text-[11px] text-slate-400">Utilizado no módulo de Faturamento & Repasse</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs font-semibold">Tipo da Chave PIX</Label>
+                  <Select value={pixType} onValueChange={setPixType}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cpf">CPF</SelectItem>
+                      <SelectItem value="cnpj">CNPJ (PJ)</SelectItem>
+                      <SelectItem value="email">E-mail</SelectItem>
+                      <SelectItem value="telefone">Telefone</SelectItem>
+                      <SelectItem value="aleatoria">Chave Aleatória</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <Label className="text-xs font-semibold">Chave PIX Oficial</Label>
+                  <Input
+                    placeholder="Digite a chave PIX exata para recebimento..."
+                    value={pixKey}
+                    onChange={(e) => setPixKey(e.target.value)}
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Esta chave aparecerá diretamente no faturamento e na geração de lote bancário.
+                  </p>
+                </div>
+
+                <div className="sm:col-span-3">
+                  <Label className="text-xs font-semibold">Dados Bancários Opcionais (Banco / Agência / Conta)</Label>
+                  <Input
+                    placeholder="Ex: Banco Itaú (341) - Agência: 0123 - CC: 45678-9"
+                    value={bankInfo}
+                    onChange={(e) => setBankInfo(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Credenciais de Acesso */}
             <div className="p-4 bg-sky-50/50 dark:bg-sky-950/20 rounded-xl border border-sky-200 dark:border-sky-800 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
@@ -867,7 +880,7 @@ export default function CorpoClinico() {
                     <User className="w-4 h-4 text-sky-600" /> Acesso ao Sistema (Login & Senha Padrão)
                   </h4>
                   <p className="text-xs text-slate-500">
-                    Senha padrão calculada: <b>Data de Nascimento + 1ª letra do nome</b> (Ex: 02051993m).
+                    Senha padrão calculada: <b>Data de Nascimento + 1ª letra do nome</b>.
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -877,7 +890,6 @@ export default function CorpoClinico() {
                     size="sm"
                     onClick={handleResetPassword}
                     className="text-xs font-medium gap-1.5 bg-amber-50 dark:bg-slate-900 border-amber-300 text-amber-800 hover:bg-amber-100"
-                    title="Reinicia para a senha padrão da data de nascimento"
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
                     Reiniciar Senha
@@ -897,37 +909,21 @@ export default function CorpoClinico() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <Label className="text-xs font-semibold">Nome de Usuário / Apelido</Label>
-                  <Input
-                    required
-                    placeholder="Ex: dr.silva ou michael"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                  />
+                  <Label className="text-xs font-semibold">Usuário / Apelido</Label>
+                  <Input required value={username} onChange={(e) => setUsername(e.target.value)} />
                 </div>
                 <div>
-                  <Label className="text-xs font-semibold">Senha Inicial / Provisória</Label>
-                  <Input
-                    required
-                    type="text"
-                    placeholder="Ex: 02051993m"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
+                  <Label className="text-xs font-semibold">Senha Inicial</Label>
+                  <Input required type="text" value={password} onChange={(e) => setPassword(e.target.value)} />
                 </div>
                 <div>
-                  <Label className="text-xs font-semibold">E-mail (para login e recuperação)</Label>
-                  <Input
-                    type="email"
-                    placeholder="medico@hospital.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
+                  <Label className="text-xs font-semibold">E-mail</Label>
+                  <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
               </div>
             </div>
 
-            {/* Unidade Hospitalar de Lotação */}
+            {/* Unidade */}
             <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
               <Label className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-sky-600" /> Unidade Hospitalar
@@ -942,48 +938,27 @@ export default function CorpoClinico() {
               </Select>
             </div>
 
-            {/* Acesso de Gestor */}
+            {/* Gestor */}
             <div className="border border-indigo-100 dark:border-indigo-950 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 rounded-xl space-y-3">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-bold text-sm text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
                     <ShieldCheck className="w-4 h-4 text-indigo-600" /> Cadastrar como Gestor Pleno
                   </div>
-                  <p className="text-xs text-slate-500">
-                    Ao ativar, o profissional tem acesso irrestrito a todos os menus e aprovações.
-                  </p>
+                  <p className="text-xs text-slate-500">Acesso irrestrito a configurações e aprovações.</p>
                 </div>
                 <Switch checked={isManager} onCheckedChange={handleToggleManager} />
               </div>
-
-              <div>
-                <Label className="text-xs font-semibold mb-2 block">Permissões Específicas</Label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {ALL_PERMISSIONS.map((perm) => (
-                    <div key={perm.id} className="flex items-center space-x-2 bg-white dark:bg-slate-900 p-2 rounded-lg border text-xs">
-                      <Checkbox
-                        id={`perm-${perm.id}`}
-                        checked={permissions.includes(perm.id)}
-                        disabled={isManager}
-                        onCheckedChange={(checked) => handlePermissionChange(perm.id, !!checked)}
-                      />
-                      <label htmlFor={`perm-${perm.id}`} className="cursor-pointer select-none font-medium">{perm.label}</label>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
 
-            {/* Padrão da Escala Hospitalar */}
+            {/* Padrão de Escala */}
             <div className="border border-slate-200 dark:border-slate-800 p-4 rounded-xl space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
                     <Calendar className="w-4 h-4 text-emerald-600" /> Escala e Grade do Mês
                   </div>
-                  <p className="text-xs text-slate-500">
-                    Defina o turno padrão e gere todos os plantões do mês sem esforço manual.
-                  </p>
+                  <p className="text-xs text-slate-500">Gere a grade do mês automaticamente.</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-slate-600">Preencher mês:</span>
@@ -1005,16 +980,7 @@ export default function CorpoClinico() {
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <Label className="text-xs font-semibold">Setor Padrão</Label>
-                    <button
-                      type="button"
-                      onClick={handleCreateSectorPrompt}
-                      className="text-[11px] text-sky-600 hover:underline flex items-center gap-1 font-medium"
-                    >
-                      <PlusCircle className="w-3 h-3" /> Criar novo setor
-                    </button>
-                  </div>
+                  <Label className="text-xs font-semibold">Setor Padrão</Label>
                   <Select value={defaultSectorId} onValueChange={setDefaultSectorId}>
                     <SelectTrigger><SelectValue placeholder="Selecione o setor..." /></SelectTrigger>
                     <SelectContent>
@@ -1029,11 +995,11 @@ export default function CorpoClinico() {
               {autoGenerateShifts && (
                 <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">Mês da Grade</Label>
+                    <Label className="text-xs font-semibold">Mês da Grade</Label>
                     <Input type="month" value={monthReference} onChange={(e) => setMonthReference(e.target.value)} />
                   </div>
                   <div>
-                    <Label className="text-xs font-semibold text-emerald-900 dark:text-emerald-200">Data do 1º Plantão</Label>
+                    <Label className="text-xs font-semibold">Data do 1º Plantão</Label>
                     <Input type="date" value={cycleStartDate} onChange={(e) => setCycleStartDate(e.target.value)} />
                   </div>
                 </div>
