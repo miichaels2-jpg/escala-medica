@@ -17,37 +17,32 @@ export default function SwapRequestDialog({ open, onClose, onDone, shift, profes
   const [saving, setSaving] = useState(false);
   const [allShifts, setAllShifts] = useState([]);
 
-  // Carrega os plantões do sistema para verificar conflitos de agenda do colega
   useEffect(() => {
-    if (open) {
+    if (open && shift) {
       setTargetId('');
       setReason('');
       base44.entities.Shift.filter({ company_id: companyId }, '-date', 500)
         .then((res) => setAllShifts(res || []))
         .catch(() => setAllShifts([]));
     }
-  }, [open, companyId]);
+  }, [open, shift, companyId]);
 
   if (!shift) return null;
 
-  // Filtra apenas profissionais ativos e da mesma especialidade/categoria
+  // Filtra profissionais da mesma especialidade ou categoria
   const eligibleOthers = useMemo(() => {
-    if (!professionals || !shift) return [];
-    const requesterSpecialty = (myProfessional?.specialty || myProfessional?.category || '').trim().toLowerCase();
+    if (!professionals || !myProfessional) return professionals || [];
+    const requesterSpecialty = (myProfessional.specialty || myProfessional.category || '').trim().toLowerCase();
 
     return professionals.filter((p) => {
-      if (p.id === myProfessional?.id || p.status === 'inativo') return false;
+      if (String(p.id) === String(myProfessional.id) || p.status === 'inativo') return false;
       if (!requesterSpecialty) return true;
       const pSpec = (p.specialty || p.category || '').trim().toLowerCase();
-      return pSpec === requesterSpecialty;
+      return !pSpec || pSpec === requesterSpecialty;
     });
-  }, [professionals, myProfessional, shift]);
+  }, [professionals, myProfessional]);
 
-  // Verifica se o profissional selecionado já possui plantão no mesmo dia
-  const selectedTargetProfessional = useMemo(() => {
-    return professionals.find((p) => String(p.id) === String(targetId)) || null;
-  }, [professionals, targetId]);
-
+  // Validação de conflito: verifica se o colega escolhido já tem plantão no mesmo dia
   const targetHasShiftOnSameDay = useMemo(() => {
     if (!targetId || !shift?.date) return false;
     const shiftDateClean = shift.date.split('T')[0];
@@ -58,26 +53,30 @@ export default function SwapRequestDialog({ open, onClose, onDone, shift, profes
     });
   }, [allShifts, targetId, shift]);
 
+  const targetProf = useMemo(() => {
+    return professionals.find((p) => String(p.id) === String(targetId)) || null;
+  }, [professionals, targetId]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
 
     try {
-      const isMural = !targetId; // Se deixar em branco, vai para o mural aberto
-      
+      const isMural = !targetId;
+
       const payload = {
         company_id: companyId,
         unit_id: shift.unit_id,
         shift_id: shift.id,
         shift_date: shift.date,
-        shift_time: `${shift.start_time} - ${shift.end_time}`,
+        shift_time: `${shift.start_time || '07:00'} - ${shift.end_time || '19:00'}`,
         sector_name: shift.sector_name || 'Geral',
         requester_professional_id: myProfessional?.id,
         requester_name: myProfessional?.name || 'Profissional',
         requester_specialty: myProfessional?.specialty || myProfessional?.category || 'Clínica Geral',
-        target_professional_id: isMural ? null : selectedTargetProfessional?.id,
-        target_name: isMural ? 'Mural Aberto (Qualquer Colega)' : selectedTargetProfessional?.name,
-        target_specialty: isMural ? (myProfessional?.specialty || myProfessional?.category) : (selectedTargetProfessional?.specialty || selectedTargetProfessional?.category),
+        target_professional_id: isMural ? null : targetProf?.id,
+        target_name: isMural ? 'Mural Aberto (Qualquer Colega)' : targetProf?.name,
+        target_specialty: isMural ? (myProfessional?.specialty || myProfessional?.category) : (targetProf?.specialty || targetProf?.category),
         swap_type: isMural ? 'mural' : 'direta',
         reason: reason.trim(),
         status: 'pendente',
@@ -86,16 +85,16 @@ export default function SwapRequestDialog({ open, onClose, onDone, shift, profes
 
       await base44.entities.ShiftSwap.create(payload);
 
-      // Atualiza o status do plantão para refletir a pendência
+      // Atualiza o status do plantão original para pendente
       await base44.entities.Shift.update(shift.id, {
         status: 'pendente',
         notes: isMural 
-          ? `Disponibilizado no Mural Aberto por ${myProfessional?.name}.` 
-          : `Solicitação de troca direcionada para ${selectedTargetProfessional?.name}.`
+          ? `Disponibilizado no Mural Aberto por ${myProfessional?.name || 'Profissional'}.` 
+          : `Solicitação de troca direcionada para ${targetProf?.name}.`
       });
 
-      onDone();
-      onClose();
+      if (onDone) onDone();
+      if (onClose) onClose();
     } catch (err) {
       alert(err.response?.data?.error || err.message || 'Erro ao solicitar troca');
     } finally {
@@ -107,11 +106,11 @@ export default function SwapRequestDialog({ open, onClose, onDone, shift, profes
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md bg-white border-slate-200 text-slate-900 shadow-xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-slate-900 font-semibold">
-            <Repeat className="w-5 h-5 text-sky-600" /> Solicitar Troca ou Cessão
+          <DialogTitle className="flex items-center gap-2 text-slate-900 font-semibold text-base">
+            <Repeat className="w-5 h-5 text-sky-600" /> Solicitar Troca ou Cessão de Plantão
           </DialogTitle>
         </DialogHeader>
-        
+
         <div className="mb-3 p-3 rounded-lg bg-sky-50 border border-sky-100 text-sm text-slate-700">
           <div className="font-semibold text-slate-800">{shift.date} · {shift.start_time} às {shift.end_time}</div>
           <div className="text-xs text-slate-500 mt-0.5">{shift.sector_name || 'Setor Geral'}</div>
@@ -138,27 +137,26 @@ export default function SwapRequestDialog({ open, onClose, onDone, shift, profes
               </SelectContent>
             </Select>
             <p className="text-[10px] text-slate-400 mt-0.5">
-              * Se selecionar um colega, o pedido irá para a aba de homologação/aprovação dele. Se deixar em branco, irá para o Mural de Oportunidades restrito à especialidade.
+              * Se selecionar um colega, o pedido irá para a aba de homologação dele. Se deixar em branco, irá para o Mural de Oportunidades.
             </p>
           </div>
 
-          {/* ALERTA DE CONFLITO DE PLANTÃO NO MESMO DIA */}
           {targetHasShiftOnSameDay && (
             <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2 text-amber-800 text-xs animate-in fade-in">
               <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold block">Atenção: Profissional de plantão nesse dia!</span>
-                O colega selecionado já possui escala registrada nesta mesma data. Enviar a solicitação pode gerar duplicidade de plantão para ele.
+                O colega selecionado já possui escala registrada nesta mesma data.
               </div>
             </div>
           )}
 
           <div className="space-y-1.5">
-            <Label className="text-slate-700 font-medium text-xs">Motivo</Label>
+            <Label className="text-slate-700 font-medium text-xs">Motivo da solicitação (opcional)</Label>
             <Input 
               value={reason} 
               onChange={(e) => setReason(e.target.value)} 
-              placeholder="Ex: motivo pessoal, congresso..." 
+              placeholder="Ex: motivo pessoal, saúde..." 
               className="bg-white border-slate-300 text-slate-900 text-xs focus:ring-sky-500 focus:border-sky-500"
             />
           </div>
