@@ -1,13 +1,9 @@
 import { useEffect, useState } from 'react';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { base44 } from '@/api/base44Client';
 import { Loader2 } from 'lucide-react';
 
@@ -39,25 +35,24 @@ export default function ShiftFormDialog({ open, onClose, onSaved, shift, sectors
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
-    const sector = sectors.find((s) => String(s.id) === String(form.sector_id));
     
-    // Identifica se escolheu deixar a vaga em aberto no painel
-    const isVago = form.professional_id === 'vago' || !form.professional_id;
-    const prof = !isVago ? professionals.find((p) => String(p.id) === String(form.professional_id)) : null;
-    
-    const payload = {
-      ...form,
-      professional_id: isVago ? null : form.professional_id,
-      sector_name: sector?.name || '',
-      professional_name: prof?.name || '',
-      status: isVago ? 'vago' : (form.status === 'vago' ? 'pendente' : form.status),
-      company_id: companyId,
-      ...(unitId ? { unit_id: unitId } : {}),
-      updated_date: new Date().toISOString()
-    };
-
     try {
-      // Usando a entidade direta (Sem usar o .invoke antigo)
+      const sector = sectors.find((s) => String(s.id) === String(form.sector_id));
+      const isVago = form.professional_id === 'vago' || !form.professional_id;
+      const prof = !isVago ? professionals.find((p) => String(p.id) === String(form.professional_id)) : null;
+      
+      const payload = {
+        ...form,
+        professional_id: isVago ? null : form.professional_id,
+        sector_name: sector?.name || '',
+        professional_name: prof?.name || '',
+        status: isVago ? 'vago' : (form.status === 'vago' ? 'pendente' : form.status),
+        company_id: companyId,
+        ...(unitId ? { unit_id: unitId } : {}),
+        updated_date: new Date().toISOString()
+      };
+
+      // Fim absoluto do .invoke aqui
       if (isEdit) {
         await base44.entities.Shift.update(shift.id, payload);
       } else {
