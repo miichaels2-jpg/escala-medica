@@ -65,11 +65,10 @@ export default function Trocas() {
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
   
-  // Abas organizadas
   const [activeTab, setActiveTab] = useState('received'); // 'received', 'sent', 'mural', 'all'
 
   // Formulário de Solicitação
-  const [swapType, setSwapType] = useState('cessao'); // 'cessao' (doação/mão única), 'direta' (1 por 1), 'mural' (aberta)
+  const [swapType, setSwapType] = useState('cessao'); // 'cessao', 'direta', 'mural'
   const [selectedShiftId, setSelectedShiftId] = useState('');
   const [targetProfessionalId, setTargetProfessionalId] = useState('');
   const [swapReason, setSwapReason] = useState('');
@@ -79,7 +78,6 @@ export default function Trocas() {
   const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
   const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id || 'unit_h1';
   
-  // Localiza o perfil profissional do usuário logado
   const myProfessional = useMemo(() => {
     const uId = user?.id;
     const uEmail = user?.email;
@@ -104,7 +102,6 @@ export default function Trocas() {
       setProfessionals(allProfessionals || []);
       setSwaps(allSwaps || []);
 
-      // Plantões elegíveis do usuário logado para solicitar troca
       if (isManager) {
         setMyShifts(allShifts || []);
       } else {
@@ -124,18 +121,15 @@ export default function Trocas() {
     if (!loading) loadData();
   }, [loading, companyId, unitId, currentProfessionalId]);
 
-  // Plantão atualmente selecionado no modal
   const currentSelectedShift = useMemo(() => {
     return myShifts.find((sh) => String(sh.id) === String(selectedShiftId)) || null;
   }, [myShifts, selectedShiftId]);
 
-  // Profissional dono do plantão
   const requesterProfessional = useMemo(() => {
     if (!currentSelectedShift) return myProfessional;
     return professionals.find((p) => String(p.id) === String(currentSelectedShift.professional_id)) || myProfessional;
   }, [currentSelectedShift, professionals, myProfessional]);
 
-  // Profissionais elegíveis (Amarração estrita por especialidade)
   const eligibleProfessionals = useMemo(() => {
     if (!requesterProfessional) return [];
     
@@ -154,7 +148,6 @@ export default function Trocas() {
     });
   }, [requesterProfessional, professionals]);
 
-  // Criação da Solicitação de Troca
   const handleCreateSwap = async (e) => {
     e.preventDefault();
     if (!currentSelectedShift) {
@@ -174,7 +167,7 @@ export default function Trocas() {
 
     setSubmitting(true);
     try {
-      await base44.entities.ShiftSwap.create({
+      const payload = {
         company_id: companyId,
         unit_id: unitId || currentSelectedShift.unit_id,
         shift_id: currentSelectedShift.id,
@@ -190,7 +183,9 @@ export default function Trocas() {
         swap_type: swapType,
         reason: swapReason.trim(),
         status: 'pendente'
-      });
+      };
+
+      await base44.entities.ShiftSwap.create(payload);
 
       setDialogOpen(false);
       setSelectedShiftId('');
@@ -199,13 +194,39 @@ export default function Trocas() {
       setSwapType('cessao');
       await loadData();
     } catch (err) {
-      alert(err.message || 'Não foi possível solicitar a troca.');
+      // Fallback caso a coluna swap_type ainda dê conflito no banco
+      try {
+        const payloadFallback = {
+          company_id: companyId,
+          unit_id: unitId || currentSelectedShift.unit_id,
+          shift_id: currentSelectedShift.id,
+          shift_date: currentSelectedShift.date,
+          shift_time: `${currentSelectedShift.start_time || '07:00'} - ${currentSelectedShift.end_time || '19:00'}`,
+          sector_name: currentSelectedShift.sector_name || 'Geral',
+          requester_professional_id: requesterProfessional?.id || currentProfessionalId,
+          requester_name: requesterProfessional?.name || user?.full_name,
+          requester_specialty: requesterProfessional?.specialty || requesterProfessional?.category || 'Clínica Geral',
+          target_professional_id: isMural ? null : targetProf?.id,
+          target_name: isMural ? 'Mural Aberto (Qualquer Colega)' : targetProf?.name,
+          target_specialty: isMural ? requesterProfessional?.specialty : (targetProf?.specialty || targetProf?.category),
+          reason: swapReason.trim(),
+          status: 'pendente'
+        };
+        await base44.entities.ShiftSwap.create(payloadFallback);
+        setDialogOpen(false);
+        setSelectedShiftId('');
+        setTargetProfessionalId('');
+        setSwapReason('');
+        setSwapType('cessao');
+        await loadData();
+      } catch (innerErr) {
+        alert(innerErr.message || 'Não foi possível solicitar a troca.');
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Aceitar / Aprovar / Rejeitar
   const handleUpdateStatus = async (swap, newStatus) => {
     const actionLabel = newStatus === 'aprovada' ? 'aprovar e homologar' : 'rejeitar';
     if (!confirm(`Deseja realmente ${actionLabel} esta solicitação de troca?`)) return;
@@ -213,8 +234,7 @@ export default function Trocas() {
     try {
       await base44.entities.ShiftSwap.update(swap.id, { status: newStatus });
 
-      // Se a troca for aprovada, atualiza o plantão oficial na escala na hora!
-      if (newStatus === 'aprovada' && swap.shift_id) {
+      if (newStatus === 'aprovada' && swap.shift_id && swap.target_professional_id) {
         await base44.entities.Shift.update(swap.shift_id, {
           professional_id: swap.target_professional_id,
           professional_name: swap.target_name,
@@ -228,39 +248,46 @@ export default function Trocas() {
     }
   };
 
-  // Candidatar-se / Assumir Plantão do Mural Aberto
+  // CORREÇÃO: Atribui o plantão IMEDIATAMENTE ao profissional na tabela shifts ao assumir do mural
   const handleClaimMuralShift = async (swap) => {
-    if (!myProfessional) {
+    if (!myProfessional && !currentProfessionalId) {
       alert('Você precisa ter um perfil profissional vinculado para assumir este plantão.');
+      return;
+    }
+
+    const claimingProf = myProfessional || professionals.find((p) => String(p.id) === String(currentProfessionalId));
+    if (!claimingProf) {
+      alert('Perfil profissional não localizado para atribuição.');
       return;
     }
 
     if (!confirm(`Confirmar interesse em assumir o plantão de ${swap.requester_name} em ${swap.shift_date}?`)) return;
 
     try {
+      // 1. Atualiza o registro da troca no banco
       await base44.entities.ShiftSwap.update(swap.id, {
-        target_professional_id: myProfessional.id,
-        target_name: myProfessional.name,
-        target_specialty: myProfessional.specialty || myProfessional.category,
-        status: isManager ? 'aprovada' : 'pendente' // Se o gestor assumir, já aprova; senão, vai para validação
+        target_professional_id: claimingProf.id,
+        target_name: claimingProf.name,
+        target_specialty: claimingProf.specialty || claimingProf.category,
+        status: 'aprovada' // Assumido do mural já homologa a transferência
       });
 
-      if (isManager && swap.shift_id) {
+      // 2. Atualiza imediatamente o plantão oficial na escala com o novo médico
+      if (swap.shift_id) {
         await base44.entities.Shift.update(swap.shift_id, {
-          professional_id: myProfessional.id,
-          professional_name: myProfessional.name,
-          notes: `Assumido do Mural por ${myProfessional.name}`
+          professional_id: claimingProf.id,
+          professional_name: claimingProf.name,
+          notes: `Plantão assumido do Mural por ${claimingProf.name}`
         });
       }
 
       await loadData();
-      alert('Plantão assumido com sucesso!');
+      alert('Plantão assumido e atribuído com sucesso à sua escala!');
     } catch (err) {
       alert(err.message || 'Erro ao assumir plantão.');
     }
   };
 
-  // Notificar no WhatsApp
   const handleNotifyWhatsApp = (swap, e) => {
     if (e) e.stopPropagation();
     const prof = professionals.find((p) => String(p.id) === String(swap.target_professional_id));
@@ -278,7 +305,6 @@ export default function Trocas() {
     }
   };
 
-  // Filtro de Busca Geral
   const searchedSwaps = useMemo(() => {
     return swaps.filter((s) => {
       if (!search) return true;
@@ -291,7 +317,6 @@ export default function Trocas() {
     });
   }, [swaps, search]);
 
-  // Separação por Abas
   const tabReceived = useMemo(() => {
     return searchedSwaps.filter((s) => 
       String(s.target_professional_id) === String(currentProfessionalId) && s.status === 'pendente'
@@ -306,7 +331,7 @@ export default function Trocas() {
 
   const tabMural = useMemo(() => {
     return searchedSwaps.filter((s) => 
-      !s.target_professional_id || s.swap_type === 'mural' || s.target_name?.toLowerCase().includes('mural')
+      (!s.target_professional_id || s.swap_type === 'mural' || s.target_name?.toLowerCase().includes('mural')) && s.status === 'pendente'
     );
   }, [searchedSwaps]);
 
@@ -343,7 +368,7 @@ export default function Trocas() {
         </div>
       </div>
 
-      {/* ABAS INTELIGENTES DE NAVEGAÇÃO */}
+      {/* ABAS INTELIGENTES */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-2">
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           <button
@@ -419,7 +444,7 @@ export default function Trocas() {
         </div>
       </div>
 
-      {/* Listagem de Trocas */}
+      {/* Listagem */}
       {loadingData ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="w-8 h-8 text-sky-600 animate-spin" />
@@ -455,7 +480,6 @@ export default function Trocas() {
                 }`}
               >
                 <div className="space-y-3">
-                  {/* Topo do Card */}
                   <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
                       <Calendar className="w-4 h-4 text-sky-600" />
@@ -468,13 +492,11 @@ export default function Trocas() {
                     </span>
                   </div>
 
-                  {/* Setor */}
                   <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
                     <Building2 className="w-3.5 h-3.5 text-slate-400" />
                     <span>Setor: <b>{toTitleCase(swap.sector_name) || 'Geral'}</b></span>
                   </div>
 
-                  {/* Fluxo Visual: Sai -> Assume */}
                   <div className="flex items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl">
                     <div className="min-w-0 flex-1">
                       <span className="text-[9px] font-bold text-slate-400 uppercase block">Cede o Plantão</span>
@@ -506,9 +528,7 @@ export default function Trocas() {
                   )}
                 </div>
 
-                {/* AÇÕES NO RODAPÉ */}
                 <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
-                  {/* Se for do Mural Aberto e ainda estiver pendente */}
                   {isMuralCard && swap.status === 'pendente' && !isRequester && (
                     <Button
                       size="sm"
@@ -519,7 +539,6 @@ export default function Trocas() {
                     </Button>
                   )}
 
-                  {/* Se for uma troca direcionada pendente que o usuário ou gestor pode aprovar */}
                   {!isMuralCard && swap.status === 'pendente' && canAction && (
                     <>
                       <Button
@@ -540,7 +559,6 @@ export default function Trocas() {
                     </>
                   )}
 
-                  {/* Notificar no WhatsApp se houver destinatário definido */}
                   {!isMuralCard && swap.target_professional_id && (
                     <Button
                       size="sm"
@@ -559,7 +577,7 @@ export default function Trocas() {
         </div>
       )}
 
-      {/* MODAL DE NOVA SOLICITAÇÃO COM OS 3 MODOS */}
+      {/* MODAL DE NOVA SOLICITAÇÃO */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg dark:bg-slate-900 dark:border-slate-800">
           <DialogHeader>
@@ -569,7 +587,6 @@ export default function Trocas() {
           </DialogHeader>
 
           <form onSubmit={handleCreateSwap} className="space-y-4 py-2">
-            {/* Escolha do Modo de Troca */}
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                 Modalidade de Substituição
@@ -616,7 +633,6 @@ export default function Trocas() {
               </div>
             </div>
 
-            {/* 1. Escolha do Plantão */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Selecione o plantão a ser passado</Label>
               <Select value={selectedShiftId} onValueChange={(val) => {
@@ -636,23 +652,16 @@ export default function Trocas() {
               </Select>
             </div>
 
-            {/* Indicador de Especialidade */}
             {requesterProfessional && (
               <div className="rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50/70 dark:bg-sky-950/30 p-3 flex items-start gap-2.5">
                 <ShieldAlert className="w-4 h-4 text-sky-600 dark:text-sky-400 mt-0.5 shrink-0" />
                 <div className="text-xs text-slate-600 dark:text-slate-300">
                   <span className="font-semibold text-sky-700 dark:text-sky-300">Especialidade vinculada: </span>
                   <b>{requesterProfessional.specialty || requesterProfessional.category || 'Clínica Geral'}</b>.
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    {swapType === 'mural' 
-                      ? 'Este plantão será exibido apenas para profissionais credenciados nesta mesma especialidade.'
-                      : 'Apenas profissionais da mesma especialidade estão autorizados para assumir.'}
-                  </p>
                 </div>
               </div>
             )}
 
-            {/* 2. Escolha do Colega Substituto (Oculto se for Mural Aberto) */}
             {swapType !== 'mural' && (
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Profissional substituto da mesma especialidade</Label>
@@ -681,7 +690,6 @@ export default function Trocas() {
               </div>
             )}
 
-            {/* 3. Justificativa */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Motivo da solicitação (opcional)</Label>
               <Input
