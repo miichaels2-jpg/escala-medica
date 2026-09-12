@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useAppData } from '@/lib/useAppData';
 import { Button } from '@/components/ui/button';
@@ -61,41 +61,37 @@ export default function MinhaEscala() {
   const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id || 'unit_h1';
   const isManager = user?.role === 'admin' || user?.data?.app_role === 'manager' || user?.data?.app_role === 'gestor';
 
+  // Função centralizada para carregar e atualizar os dados instantaneamente
+  const loadEscalaData = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const filterQuery = companyId ? { company_id: companyId } : {};
+      const [profs, shifts] = await Promise.all([
+        base44.entities.Professional.filter(filterQuery, '-created_date', 200),
+        base44.entities.Shift.filter(filterQuery, 'date', 500)
+      ]);
+
+      const me = profs.find((p) => p.user_id === userId || (p.email && p.email === userEmail));
+      setMyProfessional(me || null);
+      setProfessionals(profs || []);
+      setCompanyShifts(shifts || []);
+
+      const profId = me?.id;
+      const mine = (shifts || [])
+        .filter((s) => s.professional_id === profId || (!profId && s.professional_name === userFullName))
+        .filter((s) => s.status === 'confirmado' || s.status === 'pendente')
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+      setMyShifts(mine);
+    } catch (e) {
+      console.error('Erro ao carregar escala do profissional:', e);
+    }
+  }, [userId, companyId, userEmail, userFullName]);
+
   useEffect(() => {
-    if (appLoading || !userId) return;
-
-    let isMounted = true;
-    (async () => {
-      try {
-        const filterQuery = companyId ? { company_id: companyId } : {};
-        const [profs, shifts] = await Promise.all([
-          base44.entities.Professional.filter(filterQuery, '-created_date', 200),
-          base44.entities.Shift.filter(filterQuery, 'date', 500)
-        ]);
-
-        if (!isMounted) return;
-
-        const me = profs.find((p) => p.user_id === userId || (p.email && p.email === userEmail));
-        setMyProfessional(me || null);
-        setProfessionals(profs || []);
-        setCompanyShifts(shifts || []);
-
-        const profId = me?.id;
-        const mine = (shifts || [])
-          .filter((s) => s.professional_id === profId || (!profId && s.professional_name === userFullName))
-          .filter((s) => s.status === 'confirmado' || s.status === 'pendente')
-          .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-
-        setMyShifts(mine);
-      } catch (e) {
-        console.error('Erro ao carregar escala do profissional:', e);
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [appLoading, userId, userEmail, userFullName, companyId, unitId]);
+    if (appLoading) return;
+    loadEscalaData();
+  }, [appLoading, loadEscalaData]);
 
   // CORREÇÃO: Mostra todos os plantões a partir de HOJE (incluindo o que começa às 07h)
   const upcoming = useMemo(() => {
@@ -153,13 +149,7 @@ export default function MinhaEscala() {
         status: 'confirmado'
       });
 
-      const updated = await base44.entities.Shift.filter({ company_id: companyId }, 'date', 500);
-      setCompanyShifts(updated);
-      const mine = updated
-        .filter((s) => s.professional_id === myProfessional.id || (!myProfessional && s.professional_name === userFullName))
-        .filter((s) => s.status === 'confirmado' || s.status === 'pendente')
-        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-      setMyShifts(mine);
+      await loadEscalaData();
     } catch (e) {
       alert('Não foi possível aceitar a vaga no momento.');
     }
@@ -168,12 +158,7 @@ export default function MinhaEscala() {
   const handleConfirmShift = async (shiftId) => {
     try {
       await base44.entities.Shift.update(shiftId, { status: 'confirmado' });
-      const updated = await base44.entities.Shift.filter({ company_id: companyId }, 'date', 500);
-      const mine = updated
-        .filter((s) => s.professional_id === myProfessional?.id || (!myProfessional && s.professional_name === userFullName))
-        .filter((s) => s.status === 'confirmado' || s.status === 'pendente')
-        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-      setMyShifts(mine);
+      await loadEscalaData();
     } catch (e) {
       alert('Não foi possível confirmar o plantão agora.');
     }
@@ -199,12 +184,7 @@ export default function MinhaEscala() {
             checkin_lng: position.coords.longitude,
             status: 'confirmado'
           });
-          const updated = await base44.entities.Shift.filter({ company_id: companyId }, 'date', 500);
-          const mine = updated
-            .filter((s) => s.professional_id === myProfessional?.id || (!myProfessional && s.professional_name === userFullName))
-            .filter((s) => s.status === 'confirmado' || s.status === 'pendente')
-            .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-          setMyShifts(mine);
+          await loadEscalaData();
         } catch (e) {
           alert('Não foi possível registrar o check-in.');
         }
@@ -246,7 +226,7 @@ export default function MinhaEscala() {
             )}
           </div>
 
-          {/* Destaque do Próximo Plantão (aparece mesmo antes das 07h) */}
+          {/* Destaque do Próximo Plantão */}
           {next ? (
             <div className="bg-sky-600 text-white p-5 rounded-2xl shadow-sm">
               <div className="text-xs opacity-80 flex items-center gap-1.5">
@@ -426,7 +406,10 @@ export default function MinhaEscala() {
       <SwapRequestDialog
         open={!!swapShift}
         onClose={() => setSwapShift(null)}
-        onDone={() => setSwapShift(null)}
+        onDone={() => {
+          setSwapShift(null);
+          loadEscalaData(); // ATUALIZAÇÃO INSTANTÂNEA APÓS SOLICITAR A TROCA
+        }}
         shift={swapShift}
         professionals={professionals}
         myProfessional={myProfessional}
