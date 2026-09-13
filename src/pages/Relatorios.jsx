@@ -17,6 +17,8 @@ import {
 import {
   Activity,
   AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
   BarChart3,
   Building2,
   CalendarDays,
@@ -35,6 +37,7 @@ import {
   LayoutDashboard,
   Loader2,
   LockKeyhole,
+  LogOut,
   Menu,
   Moon,
   Printer,
@@ -44,10 +47,16 @@ import {
   Sun,
   SlidersHorizontal,
   TrendingDown,
+  TrendingUp,
   UserCheck,
   Users,
   X,
 } from 'lucide-react';
+
+/* ============================================================
+   CENTRAL DE INTELIGÊNCIA HOSPITALAR
+   FASES 1 + 2 + 3
+   ============================================================ */
 
 /* ============================================================
    UTILITÁRIOS
@@ -128,194 +137,19 @@ function sanitizeFilename(value) {
 }
 
 function downloadFile(content, filename, type = 'text/csv;charset=utf-8;') {
-  try {
-    const blob = new Blob([content], { type });
-    const url = URL.createObjectURL(blob);
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
 
-    const link = document.createElement('a');
+  const link = document.createElement('a');
 
-    link.href = url;
-    link.download = filename;
+  link.href = url;
+  link.download = filename;
 
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 1000);
-  } catch (error) {
-    console.error('Erro ao baixar arquivo:', error);
-  }
-}
-
-function calculatePercentage(value, total) {
-  const safeTotal = safeNumber(total);
-  if (safeTotal <= 0) return 0;
-  return Math.round((safeNumber(value) / safeTotal) * 100);
-}
-
-function getRemunerationType(professional) {
-  const value = String(
-    professional?.remuneration_type ||
-      professional?.remunerationType ||
-      'hora'
-  ).toLowerCase();
-
-  if (value === 'diaria') {
-    return 'diaria';
-  }
-
-  if (value === 'mensal') {
-    return 'mensal';
-  }
-
-  return 'hora';
-}
-
-function getProfessionalName(shift, professionalMap) {
-  if (shift?.professional_name) {
-    return shift.professional_name;
-  }
-
-  if (shift?.professional?.name) {
-    return shift.professional.name;
-  }
-
-  if (shift?.professional_id && professionalMap[shift.professional_id]) {
-    const professional = professionalMap[shift.professional_id];
-
-    return (
-      professional.name ||
-      professional.full_name ||
-      professional.nome ||
-      professional.email ||
-      'Profissional'
-    );
-  }
-
-  return 'Não identificado';
-}
-
-function getSectorName(shift, sectorMap) {
-  if (shift?.sector_name) {
-    return shift.sector_name;
-  }
-
-  if (shift?.sector?.name) {
-    return shift.sector.name;
-  }
-
-  if (shift?.sector_id && sectorMap[shift.sector_id]) {
-    const sector = sectorMap[shift.sector_id];
-
-    return (
-      sector.name ||
-      sector.nome ||
-      sector.title ||
-      'Setor não identificado'
-    );
-  }
-
-  return 'Não informado';
-}
-
-function getCategoryName(shift, professionalMap) {
-  if (shift?.category_name) return shift.category_name;
-  if (shift?.category) return shift.category;
-
-  if (shift?.professional_id && professionalMap[shift.professional_id]) {
-    const professional = professionalMap[shift.professional_id];
-
-    return (
-      professional.category ||
-      professional.profession ||
-      professional.role ||
-      professional.cargo ||
-      'Não informado'
-    );
-  }
-
-  return 'Não informado';
-}
-
-function getShiftStatus(shift) {
-  return String(shift?.status || '').toLowerCase().trim();
-}
-
-function getStatusKey(status) {
-  return String(status || '')
-    .trim()
-    .toLowerCase();
-}
-
-function getStatusLabel(status) {
-  const map = {
-    confirmado: 'Confirmado',
-    confirmed: 'Confirmado',
-    pendente: 'Pendente',
-    pending: 'Pendente',
-    cancelado: 'Cancelado',
-    canceled: 'Cancelado',
-    aberto: 'Aberto',
-    open: 'Aberto',
-    concluido: 'Concluído',
-    completed: 'Concluído',
-  };
-
-  return map[String(status || '').toLowerCase()] || status || 'Não informado';
-}
-
-function getShiftHours(shift) {
-  if (
-    shift?.hours !== undefined &&
-    shift?.hours !== null &&
-    Number.isFinite(Number(shift.hours))
-  ) {
-    return Number(shift.hours);
-  }
-
-  if (
-    shift?.total_hours !== undefined &&
-    shift?.total_hours !== null &&
-    Number.isFinite(Number(shift.total_hours))
-  ) {
-    return Number(shift.total_hours);
-  }
-
-  if (shift?.start_time && shift?.end_time) {
-    const start = new Date(`1970-01-01T${shift.start_time}`);
-    const end = new Date(`1970-01-01T${shift.end_time}`);
-
-    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
-      let diff = (end - start) / 3600000;
-
-      if (diff < 0) diff += 24;
-
-      return Math.max(0, diff);
-    }
-  }
-
-  return 0;
-}
-
-function getShiftDate(shift) {
-  return normalizeDate(
-    shift?.date ||
-      shift?.shift_date ||
-      shift?.start_date ||
-      shift?.data ||
-      shift?.created_date
-  );
-}
-
-function getProfessionalId(shift) {
-  return (
-    shift?.professional_id ||
-    shift?.professionalId ||
-    shift?.professional?.id ||
-    null
-  );
+  URL.revokeObjectURL(url);
 }
 
 function escapeHtml(value) {
@@ -412,6 +246,147 @@ function buildPrintTable(columns = [], rows = [], totalsRow = null) {
       ${footerHtml}
     </table>
   `;
+}
+
+function getStatusLabel(status) {
+  const map = {
+    confirmado: 'Confirmado',
+    confirmed: 'Confirmado',
+    pendente: 'Pendente',
+    pending: 'Pendente',
+    cancelado: 'Cancelado',
+    canceled: 'Cancelado',
+    aberto: 'Aberto',
+    open: 'Aberto',
+    concluido: 'Concluído',
+    completed: 'Concluído',
+  };
+
+  return map[String(status || '').toLowerCase()] || status || 'Não informado';
+}
+
+function getStatusKey(status) {
+  return String(status || '')
+    .trim()
+    .toLowerCase();
+}
+
+function getShiftHours(shift) {
+  if (
+    shift?.hours !== undefined &&
+    shift?.hours !== null &&
+    Number.isFinite(Number(shift.hours))
+  ) {
+    return Number(shift.hours);
+  }
+
+  if (
+    shift?.total_hours !== undefined &&
+    shift?.total_hours !== null &&
+    Number.isFinite(Number(shift.total_hours))
+  ) {
+    return Number(shift.total_hours);
+  }
+
+  if (shift?.start_time && shift?.end_time) {
+    const start = new Date(`1970-01-01T${shift.start_time}`);
+    const end = new Date(`1970-01-01T${shift.end_time}`);
+
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+      let diff = (end - start) / 3600000;
+
+      if (diff < 0) diff += 24;
+
+      return Math.max(0, diff);
+    }
+  }
+
+  return 0;
+}
+
+function getProfessionalId(shift) {
+  return (
+    shift?.professional_id ||
+    shift?.professionalId ||
+    shift?.professional?.id ||
+    null
+  );
+}
+
+function getProfessionalName(shift, professionalMap) {
+  if (shift?.professional_name) {
+    return shift.professional_name;
+  }
+
+  if (shift?.professional?.name) {
+    return shift.professional.name;
+  }
+
+  if (shift?.professional_id && professionalMap[shift.professional_id]) {
+    const professional = professionalMap[shift.professional_id];
+
+    return (
+      professional.name ||
+      professional.full_name ||
+      professional.nome ||
+      professional.email ||
+      'Profissional'
+    );
+  }
+
+  return 'Não identificado';
+}
+
+function getSectorName(shift, sectorMap) {
+  if (shift?.sector_name) {
+    return shift.sector_name;
+  }
+
+  if (shift?.sector?.name) {
+    return shift.sector.name;
+  }
+
+  if (shift?.sector_id && sectorMap[shift.sector_id]) {
+    const sector = sectorMap[shift.sector_id];
+
+    return (
+      sector.name ||
+      sector.nome ||
+      sector.title ||
+      'Setor não identificado'
+    );
+  }
+
+  return 'Não informado';
+}
+
+function getCategoryName(shift, professionalMap) {
+  if (shift?.category_name) return shift.category_name;
+  if (shift?.category) return shift.category;
+
+  if (shift?.professional_id && professionalMap[shift.professional_id]) {
+    const professional = professionalMap[shift.professional_id];
+
+    return (
+      professional.category ||
+      professional.profession ||
+      professional.role ||
+      professional.cargo ||
+      'Não informado'
+    );
+  }
+
+  return 'Não informado';
+}
+
+function getShiftDate(shift) {
+  return normalizeDate(
+    shift?.date ||
+      shift?.shift_date ||
+      shift?.start_date ||
+      shift?.data ||
+      shift?.created_date
+  );
 }
 
 /* ============================================================
@@ -720,7 +695,7 @@ export default function CentralInteligenciaHospitalar() {
 
       if (filters.professionalId !== 'todos') {
         if (
-          String(shift?.professional_id || '') !==
+          String(getProfessionalId(shift) || '') !==
           String(filters.professionalId)
         ) {
           return false;
@@ -817,7 +792,7 @@ export default function CentralInteligenciaHospitalar() {
 
     filteredShifts.forEach((shift) => {
       const id =
-        shift?.professional_id ||
+        getProfessionalId(shift) ||
         `name:${getProfessionalName(
           shift,
           professionalMap
@@ -1003,11 +978,12 @@ export default function CentralInteligenciaHospitalar() {
   }, [riskRows, baseMetrics]);
 
   /* ============================================================
-     FINANCEIRO (Cruzado com o faturamento real corrigido)
+     FINANCEIRO (Aperfeiçoado para separar cancelados)
      ============================================================ */
 
   const financialData = useMemo(() => {
     let estimatedCost = 0;
+    let canceledCost = 0;
     let knownRates = 0;
     let missingRates = 0;
 
@@ -1017,6 +993,7 @@ export default function CentralInteligenciaHospitalar() {
       const hours = getShiftHours(shift);
       const profId = getProfessionalId(shift);
       const prof = profId ? professionalMap[profId] : null;
+      const status = getStatusKey(shift?.status);
 
       const remType = String(
         prof?.remuneration_type ||
@@ -1070,7 +1047,12 @@ export default function CentralInteligenciaHospitalar() {
             ? numericRate * hours
             : (remType === 'diaria' ? numericRate : hours * numericRate);
 
-        estimatedCost += cost;
+        if (status === 'cancelado' || status === 'canceled') {
+          canceledCost += cost;
+        } else {
+          estimatedCost += cost;
+        }
+        
         knownRates++;
 
         rows.push({
@@ -1082,6 +1064,7 @@ export default function CentralInteligenciaHospitalar() {
           hours,
           rate: numericRate,
           cost,
+          status,
         });
       } else {
         missingRates++;
@@ -1095,12 +1078,23 @@ export default function CentralInteligenciaHospitalar() {
           hours,
           rate: null,
           cost: null,
+          status,
         });
       }
     });
 
+    // Ordenar para jogar os cancelados para o final da tabela
+    rows.sort((a, b) => {
+      const aCanc = a.status === 'cancelado' || a.status === 'canceled';
+      const bCanc = b.status === 'cancelado' || b.status === 'canceled';
+      if (aCanc && !bCanc) return 1;
+      if (!aCanc && bCanc) return -1;
+      return 0;
+    });
+
     return {
       estimatedCost,
+      canceledCost,
       knownRates,
       missingRates,
       rows,
@@ -1110,6 +1104,8 @@ export default function CentralInteligenciaHospitalar() {
     professionalMap,
     sectorMap,
   ]);
+
+  const totalFinancialEstimate = financialData.estimatedCost;
 
   /* ============================================================
      CANCELAMENTOS / ABSENTEÍSMO
@@ -1242,7 +1238,7 @@ export default function CentralInteligenciaHospitalar() {
   ]);
 
   /* ============================================================
-     PAYLOAD ESTÁVEL PARA INTEGRIDADE
+     PAYLOAD ESTÁVEL PARA INTEGRIDADE E IMPRESSÃO
      ============================================================ */
 
   const reportPayload =
@@ -1272,6 +1268,10 @@ export default function CentralInteligenciaHospitalar() {
           [
             'Cobertura operacional',
             Number(baseMetrics.coverage.toFixed(2)),
+          ],
+          [
+            'Custo financeiro estimado',
+            Number(financialData.estimatedCost.toFixed(2)),
           ],
         ];
       }
@@ -1349,20 +1349,34 @@ export default function CentralInteligenciaHospitalar() {
           'Setor',
           'Horas',
           'Valor/Hora',
-          'Custo estimado',
+          'Custo Projetado',
         ];
 
-        rows = financialData.rows.map((row) => [
-          row.professional,
-          row.sector,
-          Number(row.hours.toFixed(2)),
-          row.rate === null
-            ? 'Não informado'
-            : Number(row.rate.toFixed(2)),
-          row.cost === null
-            ? 'Não informado'
-            : Number(row.cost.toFixed(2)),
-        ]);
+        rows = financialData.rows.map((row) => {
+          const isCanceled = row.status === 'cancelado' || row.status === 'canceled';
+
+          return [
+            isCanceled ? `${row.professional} (CANCELADO)` : row.professional,
+            row.sector,
+            Number(row.hours.toFixed(2)),
+            row.rate === null
+              ? 'Não informado'
+              : Number(row.rate.toFixed(2)),
+            isCanceled
+              ? 'Cancelado'
+              : row.cost === null
+              ? 'Não informado'
+              : Number(row.cost.toFixed(2)),
+          ];
+        });
+
+        totalsRow = [
+          'TOTAL ESTIMADO (SEM CANCELAMENTOS)',
+          '',
+          '',
+          '',
+          Number(financialData.estimatedCost.toFixed(2)),
+        ];
       }
 
       if (activeTab === 'turnover') {
@@ -1499,38 +1513,8 @@ export default function CentralInteligenciaHospitalar() {
   }, [activeTab, loading, addAuditEvent]);
 
   /* ============================================================
-     MODAL E INTERFACE DE IMPRESSÃO PROFISSIONAL (A4)
+     ABRIR RELATÓRIO
      ============================================================ */
-
-  useEffect(() => {
-    if (!reportModalOpen) return;
-
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setReportModalOpen(false);
-      }
-    };
-
-    document.addEventListener(
-      'keydown',
-      handleKeyDown
-    );
-
-    const previousOverflow =
-      document.body.style.overflow;
-
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.removeEventListener(
-        'keydown',
-        handleKeyDown
-      );
-
-      document.body.style.overflow =
-        previousOverflow;
-    };
-  }, [reportModalOpen]);
 
   const openReportPreview = async () => {
     addAuditEvent(
@@ -1542,6 +1526,10 @@ export default function CentralInteligenciaHospitalar() {
 
     await calculateReportHash();
   };
+
+  /* ============================================================
+     IMPRESSÃO REESCRITA COM A4 PAISAGEM EM NOVA ABA
+     ============================================================ */
 
   const printReport = useCallback(() => {
     addAuditEvent(
@@ -1999,7 +1987,11 @@ export default function CentralInteligenciaHospitalar() {
         // Ignorar falha de foco da janela
       }
     }, 300);
-  }, [addAuditEvent, activeTab, reportPayload]);
+  }, [
+    addAuditEvent,
+    activeTab,
+    reportPayload,
+  ]);
 
   /* ============================================================
      CSV
@@ -2852,6 +2844,7 @@ export default function CentralInteligenciaHospitalar() {
                 criticalAlerts={
                   criticalAlerts
                 }
+                financialData={financialData}
               />
             )}
 
@@ -3070,6 +3063,7 @@ function ExecutiveView({
   riskRows,
   byProfessional,
   criticalAlerts,
+  financialData,
 }) {
   const topProfessionals =
     byProfessional.slice(0, 8);
@@ -3108,11 +3102,11 @@ function ExecutiveView({
                 1
               )}
             />
-
+            
             <ExecutiveMetric
-              label="Pendências"
-              value={formatNumber(
-                baseMetrics.pending
+              label="Custo Estimado"
+              value={formatCurrency(
+                financialData.estimatedCost
               )}
             />
 
@@ -3308,7 +3302,7 @@ function ExecutiveMetric({
   value,
 }) {
   return (
-    <div className="rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-4">
+    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 p-4">
       <div className="text-xs text-slate-500 dark:text-slate-400">
         {label}
       </div>
@@ -3331,11 +3325,11 @@ function StatusLine({
 }) {
   const styles = {
     success:
-      'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300',
+      'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800',
     warning:
-      'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
+      'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800',
     danger:
-      'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300',
+      'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800',
   };
 
   return (
@@ -3373,7 +3367,7 @@ function CoverageBar({
           {label}
         </span>
 
-        <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+        <span className="text-xs font-bold text-slate-600 dark:text-slate-400">
           {formatNumber(numeric, 1)}%
         </span>
       </div>
@@ -3399,7 +3393,7 @@ function ProductivityView({
   baseMetrics,
 }) {
   return (
-    <ReportCard title="Produtividade por profissional">
+    <ReportCard title="Produtividade por profissional" description="Carga horária e volume de plantões.">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -3762,14 +3756,24 @@ function FinancialView({
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <KpiCard
           icon={BarChart3}
           label="Custo estimado"
           value={formatCurrency(
             data.estimatedCost
           )}
-          description="Somente registros com valor/hora informado"
+          description="Soma dos registros válidos"
+        />
+
+        <KpiCard
+          icon={TrendingDown}
+          label="Custo evitado"
+          value={formatCurrency(
+            data.canceledCost
+          )}
+          description="Valor de plantões cancelados"
+          warning
         />
 
         <KpiCard
@@ -3807,42 +3811,53 @@ function FinancialView({
                 </th>
 
                 <th className="py-3 px-4 text-right">
-                  Horas / Qtd
+                  Horas
                 </th>
 
                 <th className="py-3 px-4 text-right">
-                  Valor Base
+                  Valor/Hora
                 </th>
 
                 <th className="py-3 pl-4 text-right">
-                  Custo Projetado
+                  Custo
                 </th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 text-slate-800 dark:text-slate-200">
-              {data.rows.map(
-                (row, index) => (
+              {data.rows.map((row, index) => {
+                const isCanceled = row.status === 'cancelado' || row.status === 'canceled';
+
+                return (
                   <tr
                     key={`${row.professional}-${index}`}
-                    className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors"
+                    className={`transition-colors ${
+                      isCanceled
+                        ? 'bg-red-50/30 hover:bg-red-50/50 dark:bg-red-900/10 dark:hover:bg-red-900/20'
+                        : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/50'
+                    }`}
                   >
-                    <td className="py-3 pr-4 font-medium text-slate-900 dark:text-slate-100">
+                    <td className={`py-3 pr-4 font-medium ${isCanceled ? 'text-red-700 dark:text-red-400 line-through opacity-70' : 'text-slate-900 dark:text-slate-100'}`}>
                       {row.professional}
+                      {isCanceled && (
+                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 uppercase">
+                          Cancelado
+                        </span>
+                      )}
                     </td>
 
-                    <td className="py-3 px-4 text-slate-500 dark:text-slate-400">
+                    <td className={`py-3 px-4 ${isCanceled ? 'text-red-400 dark:text-red-500 line-through opacity-70' : 'text-slate-500 dark:text-slate-400'}`}>
                       {row.sector}
                     </td>
 
-                    <td className="py-3 px-4 text-right">
+                    <td className={`py-3 px-4 text-right ${isCanceled ? 'text-red-400 dark:text-red-500 line-through opacity-70' : ''}`}>
                       {formatNumber(
                         row.hours,
                         1
-                      )}h
+                      )}
                     </td>
 
-                    <td className="py-3 px-4 text-right">
+                    <td className={`py-3 px-4 text-right ${isCanceled ? 'text-red-400 dark:text-red-500 line-through opacity-70' : ''}`}>
                       {row.rate === null
                         ? '—'
                         : formatCurrency(
@@ -3850,16 +3865,18 @@ function FinancialView({
                           )}
                     </td>
 
-                    <td className="py-3 pl-4 text-right font-semibold text-emerald-600 dark:text-emerald-400">
-                      {row.cost === null
+                    <td className={`py-3 pl-4 text-right font-semibold ${isCanceled ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                      {isCanceled 
+                        ? 'Cancelado'
+                        : (row.cost === null
                         ? '—'
                         : formatCurrency(
                             row.cost
-                          )}
+                          ))}
                     </td>
                   </tr>
-                )
-              )}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -4297,14 +4314,14 @@ function ReportPreviewModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-5"
+      className="report-print-overlay fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-5"
       role="dialog"
       aria-modal="true"
       aria-label="Pré-visualização do relatório"
     >
-      <div className="w-full h-full max-w-[1500px] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+      <div className="report-print-shell w-full h-full max-w-[1500px] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* TOOLBAR */}
-        <div className="h-auto min-h-[68px] bg-slate-950 text-white px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="report-no-print h-auto min-h-[68px] bg-slate-950 text-white px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center">
               <FileCheck2 className="w-5 h-5" />
@@ -4378,12 +4395,13 @@ function ReportPreviewModal({
         </div>
 
         {/* REPORT SCROLL */}
-        <div className="flex-1 overflow-auto bg-slate-100 dark:bg-slate-800 p-3 sm:p-8">
+        <div className="report-print-scroll flex-1 overflow-auto bg-slate-100 dark:bg-slate-800 p-3 sm:p-8">
           <div
+            id="report-print-area"
             className="mx-auto w-[210mm] min-h-[297mm] bg-white shadow-xl px-[14mm] py-[13mm] text-slate-900"
           >
             {/* CABEÇALHO */}
-            <div>
+            <div className="report-avoid-break">
               <div className="flex items-start justify-between gap-8 border-b-2 border-slate-950 pb-5">
                 <div>
                   <div className="flex items-center gap-3">
@@ -4479,7 +4497,7 @@ function ReportPreviewModal({
             </div>
 
             {/* KPIs */}
-            <div className="mt-7">
+            <div className="mt-7 report-avoid-break">
               <div className="text-xs uppercase tracking-[0.15em] font-bold text-slate-400 mb-3">
                 Indicadores principais
               </div>
@@ -4524,7 +4542,7 @@ function ReportPreviewModal({
               </div>
 
               {reportPayload.rows.length > 0 ? (
-                <table className="w-full text-[9px] border-collapse">
+                <table className="report-print-table w-full text-[9px] border-collapse">
                   <thead>
                     <tr className="bg-slate-950 text-white">
                       {reportPayload.columns.map(
@@ -4542,37 +4560,45 @@ function ReportPreviewModal({
 
                   <tbody>
                     {reportPayload.rows.map(
-                      (row, rowIndex) => (
-                        <tr
-                          key={rowIndex}
-                          className={
-                            rowIndex % 2 === 0
-                              ? 'bg-white'
-                              : 'bg-slate-50'
-                          }
-                        >
-                          {row.map(
-                            (value, cellIndex) => (
-                              <td
-                                key={cellIndex}
-                                className="px-2 py-2 border border-slate-200 align-top"
-                              >
-                                {typeof value ===
-                                'number'
-                                  ? formatNumber(
-                                      value,
-                                      Number.isInteger(
-                                        value
+                      (row, rowIndex) => {
+                        const isCanceled =
+                          row[row.length - 1] === 'Cancelado' ||
+                          String(row).includes('CANCELADO');
+
+                        return (
+                          <tr
+                            key={rowIndex}
+                            className={
+                              isCanceled
+                                ? 'bg-red-50'
+                                : rowIndex % 2 === 0
+                                ? 'bg-white'
+                                : 'bg-slate-50'
+                            }
+                          >
+                            {row.map(
+                              (value, cellIndex) => (
+                                <td
+                                  key={cellIndex}
+                                  className="px-2 py-2 border border-slate-200 align-top"
+                                >
+                                  {typeof value ===
+                                  'number'
+                                    ? formatNumber(
+                                        value,
+                                        Number.isInteger(
+                                          value
+                                        )
+                                          ? 0
+                                          : 2
                                       )
-                                        ? 0
-                                        : 2
-                                    )
-                                  : value}
-                              </td>
-                            )
-                          )}
-                        </tr>
-                      )
+                                    : value}
+                                </td>
+                              )
+                            )}
+                          </tr>
+                        );
+                      }
                     )}
                   </tbody>
 
@@ -4612,7 +4638,7 @@ function ReportPreviewModal({
             </div>
 
             {/* INTEGRIDADE */}
-            <div className="mt-8 border-t border-slate-200 pt-5">
+            <div className="mt-8 border-t border-slate-200 pt-5 report-avoid-break">
               <div className="grid grid-cols-2 gap-5">
                 <div>
                   <div className="text-[9px] uppercase tracking-wider font-bold text-slate-400">
@@ -4650,7 +4676,7 @@ function ReportPreviewModal({
             </div>
 
             {/* ASSINATURA */}
-            <div className="mt-10 grid grid-cols-2 gap-10">
+            <div className="mt-10 grid grid-cols-2 gap-10 report-avoid-break">
               <div className="pt-10 border-t border-slate-400 text-center">
                 <div className="text-xs font-semibold">
                   Responsável pela emissão
