@@ -141,17 +141,14 @@ function buildPrintTable(columns = [], rows = [], totalsRow = null) {
 /* ============================================================
    COMPONENTE PRINCIPAL
    ============================================================ */
-
 export default function Escalas() {
   const { user, company, loading: appLoading } = useAppData();
-  
   const [shifts, setShifts] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [professionals, setProfessionals] = useState([]);
   
   const [viewMode, setViewMode] = useState('grade'); 
   const [activeTab, setActiveTab] = useState('executiva');
-  
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ startDate: '', endDate: '', sectorId: 'todos', status: 'todos', professionalId: 'todos', category: 'todos' });
   const [selectedMonth, setSelectedMonth] = useState(() => getLocalDateString().slice(0,7));
@@ -163,25 +160,25 @@ export default function Escalas() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  // Estados da Grade Mensal
+  // Estados dos modais e grade
   const [profSearchQuery, setProfSearchQuery] = useState('');
   const [inlineEditingCell, setInlineEditingCell] = useState(null);
   const [inlineSearchText, setInlineSearchText] = useState('');
   const [selectedCells, setSelectedCells] = useState([]);
   const [isPublished, setIsPublished] = useState(false);
-  const [newShiftModal, setNewShiftModal] = useState(null); 
-  const [selectedProfIdForModal, setSelectedProfIdForModal] = useState(''); 
+  const [newShiftModal, setNewShiftModal] = useState(null);
+  const [selectedProfIdForModal, setSelectedProfIdForModal] = useState('');
+  const [createScaleState, setCreateScaleState] = useState(0); 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [tvMode, setTvMode] = useState(false);
   
-  // Estados da Escala Base (Builder)
-  const [createScaleState, setCreateScaleState] = useState(0); 
+  // Escala Base
   const [builderModal, setBuilderModal] = useState(null);
   const [builderShifts, setBuilderShifts] = useState([]);
   const [builderForm, setBuilderForm] = useState({ id: '', name: '', start: '', end: '', qty: 1, color: BUILDER_COLORS[0], days: [] });
 
-  // Estados dos Relatórios
+  // Relatórios
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportStatus, setReportStatus] = useState('Rascunho');
   const [reportVersion, setReportVersion] = useState(1);
@@ -210,35 +207,45 @@ export default function Escalas() {
 
   const toggleTheme = () => setTheme((c) => (c === 'dark' ? 'light' : 'dark'));
 
-  const fetchEntity = async (entityName, limit) => {
-    try {
-      const queryFilter = companyId ? { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) } : {};
-      if (base44?.entities?.[entityName]?.filter) return await base44.entities[entityName].filter(queryFilter, '-created_date', limit);
-      if (base44?.entities?.[entityName]?.list) return await base44.entities[entityName].list();
-      return [];
-    } catch (e) { return []; }
-  };
-
+  // Previne loop infinito removendo 'filters.sectorId' das dependências pesadas
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
     setError('');
     try {
-      const [s, sec, p] = await Promise.all([ fetchEntity('Shift', 2000), fetchEntity('Sector', 200), fetchEntity('Professional', 1000) ]);
+      const queryFilter = companyId ? { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) } : {};
+      const [s, sec, p] = await Promise.all([
+        base44.entities.Shift?.filter ? base44.entities.Shift.filter(queryFilter, '-date', 2000).catch(() => []) : base44.entities.Shift?.list?.().catch(() => []),
+        base44.entities.Sector?.filter ? base44.entities.Sector.filter(queryFilter, '-created_date', 200).catch(() => []) : base44.entities.Sector?.list?.().catch(() => []),
+        base44.entities.Professional?.filter ? base44.entities.Professional.filter(queryFilter, '-created_date', 1000).catch(() => []) : base44.entities.Professional?.list?.().catch(() => []),
+      ]);
       const safeShifts = Array.isArray(s) ? s : (s?.data || []);
       const safeSectors = Array.isArray(sec) ? sec : (sec?.data || []);
       const safeProfessionals = Array.isArray(p) ? p : (p?.data || []);
+
       setShifts(safeShifts); setSectors(safeSectors); setProfessionals(safeProfessionals);
-      if (filters.sectorId === 'todos' && safeSectors.length > 0) setFilters(c => ({...c, sectorId: String(safeSectors[0].id)}));
+      
+      // Ajuste seguro de filtros base
+      setFilters(current => {
+        if (current.sectorId === 'todos' && safeSectors.length > 0) {
+          return { ...current, sectorId: String(safeSectors[0].id) };
+        }
+        return current;
+      });
+
     } catch (err) { setError('Falha na sincronização.'); } finally { setLoading(false); setRefreshing(false); }
-  }, [companyId, unitId, filters.sectorId]);
+  }, [companyId, unitId]);
 
   useEffect(() => { if (!appLoading) loadData(); }, [appLoading, loadData]);
   useEffect(() => { const id = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(id); }, []);
 
   const professionalMap = useMemo(() => { const m = {}; (professionals || []).forEach(p => { if (p?.id) m[p.id] = p; }); return m; }, [professionals]);
   const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if (s?.id) m[s.id] = s; }); return m; }, [sectors]);
-  const categories = useMemo(() => { const v = new Set(); (shifts || []).forEach(s => { const c = getCategoryName(s, professionalMap); if (c && c !== 'Não informado') v.add(c); }); (professionals || []).forEach(p => { const c = p?.category || p?.profession || p?.role || p?.cargo; if (c) v.add(c); }); return Array.from(v).sort(); }, [shifts, professionals, professionalMap]);
-  const monthOptions = useMemo(() => [...new Set((shifts || []).map(s => typeof s?.date === 'string' ? s.date.slice(0, 7) : ''))].filter(Boolean).sort().reverse(), [shifts]);
+  
+  const monthOptions = useMemo(() => {
+    const opts = new Set((shifts || []).map(s => typeof s?.date === 'string' ? s.date.slice(0, 7) : ''));
+    if (selectedMonth) opts.add(selectedMonth);
+    return [...opts].filter(Boolean).sort().reverse();
+  }, [shifts, selectedMonth]);
 
   const filteredShifts = useMemo(() => {
     const term = normalizeStr(search);
@@ -252,7 +259,6 @@ export default function Escalas() {
       if (filters.sectorId !== 'todos' && String(s.sector_id) !== String(filters.sectorId)) return false;
       if (filters.status !== 'todos' && getStatusKey(s.status) !== filters.status) return false;
       if (filters.professionalId !== 'todos' && String(getProfessionalId(s)) !== String(filters.professionalId)) return false;
-      if (filters.category !== 'todos' && String(getCategoryName(s, professionalMap)) !== String(filters.category)) return false;
       return true;
     }).map(s => {
       let lifecycle = { state: 'upcoming', detail: '' };
@@ -264,7 +270,7 @@ export default function Escalas() {
       if (sTime >= '19:00' || sTime < '06:00') periodId = 'noite';
       return { ...s, lifecycle, periodId, isVacant: !s.professional_id || pName.includes('vaga') };
     });
-  }, [shifts, search, filters, selectedMonth, viewMode, professionalMap, currentTime]);
+  }, [shifts, search, filters, selectedMonth, viewMode, currentTime]);
 
   const baseMetrics = useMemo(() => {
     let confirmed = 0, pending = 0, canceled = 0, open = 0, confirmedHours = 0, totalHours = 0;
@@ -358,7 +364,7 @@ export default function Escalas() {
 
   const cancellationRows = useMemo(() => (filteredShifts || []).filter(s => ['cancelado', 'canceled'].includes(getStatusKey(s.status))).map(s => ({ date: getShiftDate(s), professional: getProfessionalName(s, professionalMap), sector: getSectorName(s, sectorMap), reason: s?.cancellation_reason || s?.cancel_reason || s?.reason || 'Não informado' })).sort((a, b) => String(b.date).localeCompare(String(a.date))), [filteredShifts, professionalMap, sectorMap]);
   const reportId = useMemo(() => { const d = new Date(); return `CIH-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`; }, []);
-  const filtersLabel = useMemo(() => { const v = []; if (filters.startDate) v.push(`Início: ${formatDateBR(filters.startDate)}`); if (filters.endDate) v.push(`Fim: ${formatDateBR(filters.endDate)}`); if (filters.sectorId !== 'todos') { const s = sectors.find(item => String(item?.id) === String(filters.sectorId)); v.push(`Setor: ${s?.name || s?.nome || filters.sectorId}`); } if (filters.status !== 'todos') v.push(`Status: ${getStatusLabel(filters.status)}`); if (filters.professionalId !== 'todos') { const p = professionals.find(item => String(item?.id) === String(filters.professionalId)); v.push(`Prof: ${p?.name || filters.professionalId}`); } if (filters.category !== 'todos') v.push(`Cat: ${filters.category}`); return v.length ? v.join(' • ') : 'Visão Geral'; }, [filters, sectors, professionals]);
+  const filtersLabel = useMemo(() => { const v = []; if (filters.startDate) v.push(`Início: ${formatDateBR(filters.startDate)}`); if (filters.endDate) v.push(`Fim: ${formatDateBR(filters.endDate)}`); if (filters.sectorId !== 'todos') { const s = (sectors || []).find(item => String(item?.id) === String(filters.sectorId)); v.push(`Setor: ${s?.name || s?.nome || filters.sectorId}`); } if (filters.status !== 'todos') v.push(`Status: ${getStatusLabel(filters.status)}`); return v.length ? v.join(' • ') : 'Visão Geral'; }, [filters, sectors]);
 
   const reportPayload = useMemo(() => {
     const config = REPORT_CONFIG[activeTab] || REPORT_CONFIG['executiva'];
@@ -395,7 +401,7 @@ export default function Escalas() {
      AÇÕES DA GRADE, LISTA E TV
      ============================================================ */
   const weeksDataGrid = useMemo(() => getMonthWeeks(selectedMonth), [selectedMonth]);
-  const sidebarProfessionals = useMemo(() => { const term = normalizeStr(profSearchQuery); return (professionals || []).filter(p => p?.id && (!term || normalizeStr(p.name).includes(term) || normalizeStr(p.specialty || '').includes(term))); }, [professionals, profSearchQuery]);
+  const sidebarProfessionals = useMemo(() => { const term = normalizeStr(profSearchQuery); return (professionals || []).filter(p => p?.id && (!term || normalizeStr(p.name || p.full_name).includes(term) || normalizeStr(p.specialty || '').includes(term))); }, [professionals, profSearchQuery]);
 
   const handleCellClick = (e, date, periodId) => {
     if (e.ctrlKey || e.metaKey) {
@@ -467,7 +473,7 @@ export default function Escalas() {
   const saveBuilderShift = () => {
     if (!builderForm.name || !builderForm.start || !builderForm.end) { alert('Preencha os campos obrigatórios.'); return; }
     const activeDays = {}; [1,2,3,4,5,6,0].forEach(d => { activeDays[d] = (builderForm.days || []).includes(d); });
-    const newObj = { id: builderModal.isNew ? Date.now().toString() : builderForm.id, name: builderForm.name, start: builderForm.start, end: builderForm.end, color: builderForm.color.value, qty: builderForm.qty, cellStates: builderModal.isNew ? { ...activeDays } : ((builderShifts || []).find(s => s.id === builderForm.id)?.cellStates || { ...activeDays }) };
+    const newObj = { id: builderModal.isNew ? Math.random().toString(36).substr(2) : builderForm.id, name: builderForm.name, start: builderForm.start, end: builderForm.end, color: builderForm.color.value, qty: builderForm.qty, cellStates: builderModal.isNew ? { ...activeDays } : ((builderShifts || []).find(s => s.id === builderForm.id)?.cellStates || { ...activeDays }) };
     if (builderModal.isNew) setBuilderShifts(prev => [...prev, newObj]); else setBuilderShifts(prev => prev.map(s => s.id === newObj.id ? newObj : s));
     setBuilderModal(null);
   };
@@ -608,11 +614,11 @@ export default function Escalas() {
             </div>
             <div className="flex flex-col gap-1.5 flex-1 min-w-[200px]">
               <label className="text-[10px] font-bold uppercase text-slate-400">Setor Ativo</label>
-              <Select value={filters.sectorId} onValueChange={(v) => { setFilters(c => ({...c, sectorId: v}))}}>
+              <Select value={filters.sectorId || undefined} onValueChange={(v) => { setFilters(c => ({...c, sectorId: v}))}}>
                 <SelectTrigger className="h-9 text-xs dark:bg-slate-800 dark:border-slate-700"><SelectValue placeholder="Selecione o Setor" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos os setores</SelectItem>
-                  {sectors.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                  {(sectors || []).filter(s => s && s.id).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name || 'Sem nome'}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -642,7 +648,7 @@ export default function Escalas() {
                     <div key={prof.id} draggable onDragStart={(e) => handleDragStart(e, prof)} className="p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm cursor-grab hover:border-sky-400 active:cursor-grabbing flex items-center gap-2 group transition-all">
                       <GripVertical className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-sky-500" />
                       <div className="min-w-0">
-                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">{prof.name || prof.full_name}</div>
+                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">{prof.name || prof.full_name || 'Profissional'}</div>
                         <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{prof.specialty || 'Geral'}</div>
                       </div>
                     </div>
@@ -667,25 +673,25 @@ export default function Escalas() {
                       ))}
                     </div>
 
-                    {weeksDataGrid.map((week, wIndex) => (
+                    {(weeksDataGrid || []).map((week, wIndex) => (
                       <div key={wIndex} className="border-b-[6px] border-slate-200 dark:border-slate-800/50">
                         <div className="grid grid-cols-8 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
                           <div className="p-2 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/80"></div>
-                          {week.map((date, dIndex) => (
+                          {(week || []).map((date, dIndex) => (
                             <div key={dIndex} className={`p-1 border-r border-slate-200 dark:border-slate-800 text-right pr-2 text-[10px] font-black ${date ? 'text-slate-500 dark:text-slate-400' : 'text-transparent'}`}>
                               {date ? `${date.split('-')[2]}/${date.split('-')[1]}` : '-'}
                             </div>
                           ))}
                         </div>
 
-                        {SHIFT_PERIODS.map((period) => (
+                        {(SHIFT_PERIODS || []).map((period) => (
                           <div key={period.id} className="grid grid-cols-8 border-b border-slate-100 dark:border-slate-800/50 last:border-b-0 group">
                             <div className="p-3 border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/30 flex flex-col items-center justify-center">
                               <span className="font-black text-[11px] uppercase text-slate-700 dark:text-slate-300">{period.label}</span>
                               <span className="text-[9px] font-bold text-slate-400">{period.start} - {period.end}</span>
                             </div>
 
-                            {week.map((date, dIndex) => {
+                            {(week || []).map((date, dIndex) => {
                               if (!date) return <div key={dIndex} className="bg-slate-50 dark:bg-slate-900/20 border-r border-slate-200 dark:border-slate-800 p-2"></div>;
 
                               const shiftDateStr = String(date || '');
@@ -707,7 +713,7 @@ export default function Escalas() {
                                       
                                       {/* Tag de Publicado no Hover */}
                                       {!s.isVacant && isPublished && (
-                                        <div className="absolute -top-2 left-2 opacity-0 group-hover/item:opacity-100 transition-opacity bg-emerald-500 text-white text-[8px] font-black px-1.5 rounded uppercase shadow-sm">Publicado</div>
+                                        <div className="absolute -top-2 left-2 opacity-0 group-hover/item:opacity-100 transition-opacity bg-emerald-500 text-white text-[8px] font-black px-1.5 rounded uppercase shadow-sm z-10 pointer-events-none">Publicado</div>
                                       )}
 
                                       {!s.isVacant && (
@@ -768,7 +774,7 @@ export default function Escalas() {
         {/* ===================== MODO LISTA DIÁRIA ===================== */}
         {viewMode === 'list' && (
           <div className="overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-950 flex-1">
-             {filteredShifts.length === 0 ? (
+             {(filteredShifts || []).length === 0 ? (
                 <div className="py-12 text-center text-slate-400">Nenhum plantão localizado neste filtro.</div>
               ) : (
                 filteredShifts.map(s => {
@@ -822,7 +828,7 @@ export default function Escalas() {
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Configure os padrões de horário e distribuição de vagas antes de preencher os nomes da equipe.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400">Data de Início das Alterações</label>
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400">Data de Início</label>
                   <Input type="date" className="h-10 w-40 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
                 </div>
               </div>
@@ -894,7 +900,7 @@ export default function Escalas() {
           </div>
         )}
 
-        {/* ===================== RELATÓRIOS E PAINEL EXECUTIVO ===================== */}
+        {/* ===================== RELATÓRIOS ===================== */}
         {viewMode === 'relatorios' && (
           <div className="flex-1 overflow-auto p-5 sm:p-8 space-y-6">
             <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col md:flex-row items-center gap-4">
@@ -902,9 +908,9 @@ export default function Escalas() {
               <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
                 <Input type="date" value={filters.startDate} onChange={e => setFilters(c => ({...c, startDate: e.target.value}))} className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700" title="Data Inicial" />
                 <Input type="date" value={filters.endDate} onChange={e => setFilters(c => ({...c, endDate: e.target.value}))} className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700" title="Data Final" />
-                <Select value={String(filters.sectorId)} onValueChange={v => setFilters(c => ({...c, sectorId: v}))}>
+                <Select value={filters.sectorId || undefined} onValueChange={v => setFilters(c => ({...c, sectorId: v}))}>
                   <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700 col-span-2"><SelectValue placeholder="Todos os Setores" /></SelectTrigger>
-                  <SelectContent><SelectItem value="todos">Todos os setores</SelectItem>{(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent>
+                  <SelectContent><SelectItem value="todos">Todos os setores</SelectItem>{(sectors || []).filter(s => s && s.id).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name || 'Sem nome'}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <Button variant="ghost" onClick={() => setFilters({startDate: '', endDate: '', sectorId: 'todos', status: 'todos', professionalId: 'todos', category: 'todos'})} className="text-xs text-red-500 h-9">Limpar</Button>
@@ -925,6 +931,7 @@ export default function Escalas() {
           MODAIS E DIALOGS DE SOBREPOSIÇÃO
           ======================================================== */}
 
+      {/* Modal 1: Adicionar Escala Inicial (Passo 1 do Builder) */}
       {createScaleState === 1 && (
         <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -936,7 +943,6 @@ export default function Escalas() {
               <div>
                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 block">Nome do Setor / Escala <span className="text-red-500">*</span></label>
                 <Input placeholder="Ex: UTI Adulto" className="h-11 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950" />
-                <p className="text-[10px] text-slate-400 mt-1.5">Este é o nome que será apresentado aos profissionais na grade de plantões.</p>
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 block">Endereço da Unidade (Opcional)</label>
@@ -967,6 +973,7 @@ export default function Escalas() {
         </div>
       )}
 
+      {/* Modal 2: Confirmação e Direcionamento (Passo 2 do Builder) */}
       {createScaleState === 2 && (
         <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-8 text-center">
@@ -983,6 +990,7 @@ export default function Escalas() {
         </div>
       )}
 
+      {/* Modal 3: Configurar Horário Específico no Builder (Passo 3) */}
       {builderModal && (
         <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -992,13 +1000,11 @@ export default function Escalas() {
               </h2>
               <button onClick={() => setBuilderModal(null)}><X className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
             </div>
-            
             <div className="p-6 space-y-5">
               <div>
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Nome da Equipe / Turno</label>
                 <Input value={builderForm.name} onChange={e => setBuilderForm({...builderForm, name: e.target.value})} placeholder="Ex: Plantão Diurno, UTI Noturna" className="h-11 font-medium bg-white dark:bg-slate-950" />
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Início</label>
@@ -1009,7 +1015,6 @@ export default function Escalas() {
                   <Input type="time" value={builderForm.end} onChange={e => setBuilderForm({...builderForm, end: e.target.value})} className="h-11 font-medium bg-white dark:bg-slate-950" />
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-4 items-center">
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Nº Plantonistas / Vagas</label>
@@ -1019,27 +1024,18 @@ export default function Escalas() {
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Cor do Turno</label>
                   <div className="flex gap-2 p-1.5 border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-950/50">
                     {BUILDER_COLORS.map(c => (
-                      <button 
-                        key={c.id} 
-                        onClick={() => setBuilderForm({...builderForm, color: c})}
-                        className={`w-6 h-6 rounded-md ${c.bg} shadow-sm transition-transform ${builderForm.color?.id === c.id ? 'ring-2 ring-offset-2 ring-slate-400 scale-110' : 'hover:scale-105'}`}
-                      />
+                      <button key={c.id} onClick={() => setBuilderForm({...builderForm, color: c})} className={`w-6 h-6 rounded-md ${c.bg} shadow-sm transition-transform ${builderForm.color?.id === c.id ? 'ring-2 ring-offset-2 ring-slate-400 scale-110' : 'hover:scale-105'}`} />
                     ))}
                   </div>
                 </div>
               </div>
-
               <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3 block">Repetir Horários na Semana</label>
                 <div className="flex justify-between gap-1">
                   {WEEK_DAYS_ORDER.map(day => {
                     const isSelected = (builderForm.days || []).includes(day.index);
                     return (
-                      <button 
-                        key={day.index}
-                        onClick={() => toggleBuilderDay(day.index)}
-                        className={`flex-1 flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${isSelected ? 'bg-sky-50 border-sky-300 text-sky-700 dark:bg-sky-900/40 dark:border-sky-700 dark:text-sky-300 shadow-sm' : 'bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                      >
+                      <button key={day.index} onClick={() => toggleBuilderDay(day.index)} className={`flex-1 flex flex-col items-center justify-center p-2 rounded-lg border transition-all ${isSelected ? 'bg-sky-50 border-sky-300 text-sky-700 dark:bg-sky-900/40 dark:border-sky-700 dark:text-sky-300 shadow-sm' : 'bg-white border-slate-200 text-slate-400 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                         <span className="text-[9px] font-black uppercase mb-1">{day.short}</span>
                         <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border ${isSelected ? 'bg-sky-500 border-sky-600 text-white' : 'bg-slate-100 border-slate-300 dark:bg-slate-800 dark:border-slate-700'}`}>
                           {isSelected && <CheckCircle2 className="w-2.5 h-2.5" />}
@@ -1049,24 +1045,20 @@ export default function Escalas() {
                   })}
                 </div>
               </div>
-
               <div className="flex justify-between items-center pt-5 mt-2">
                 {!builderModal.isNew ? (
                   <Button variant="ghost" className="text-red-500 hover:bg-red-50 font-bold text-xs" onClick={() => { setBuilderShifts(prev => prev.filter(s => s.id !== builderForm.id)); setBuilderModal(null); }}>
                     <Trash2 className="w-4 h-4 mr-1.5" /> Excluir Turno
                   </Button>
                 ) : <div/>}
-                
-                <Button className="bg-sky-600 hover:bg-sky-700 text-white font-bold h-11 px-8 shadow-md" onClick={saveBuilderShift}>
-                  Salvar Turno
-                </Button>
+                <Button className="bg-sky-600 hover:bg-sky-700 text-white font-bold h-11 px-8 shadow-md" onClick={saveBuilderShift}>Salvar Turno</Button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL 4: NOVO PLANTÃO INDIVIDUAL (Click na Célula) */}
+      {/* Modal 4: Novo Plantão Individual (Clique Simples na Célula) */}
       {newShiftModal && (
         <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -1074,14 +1066,13 @@ export default function Escalas() {
               <h2 className="text-lg font-black text-sky-600 dark:text-sky-400">Novo Plantão</h2>
               <button onClick={() => { setNewShiftModal(null); setSelectedProfIdForModal(''); }}><X className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
             </div>
-            
             <div className="p-6 space-y-4 text-sm font-medium text-slate-700 dark:text-slate-300">
               <div className="grid grid-cols-3 items-center gap-4">
                 <label className="text-right text-xs font-bold text-slate-500">Plantonista:</label>
-                <Select value={selectedProfIdForModal} onValueChange={setSelectedProfIdForModal}>
+                <Select value={selectedProfIdForModal || undefined} onValueChange={setSelectedProfIdForModal}>
                   <SelectTrigger className="col-span-2 h-10 text-xs bg-white dark:bg-slate-950"><SelectValue placeholder="Busque um profissional..." /></SelectTrigger>
                   <SelectContent>
-                    {(professionals || []).filter(p => p?.id).map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name || p.full_name || 'Sem nome'}</SelectItem>)}
+                    {(professionals || []).filter(p => p && p.id).map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name || p.full_name || 'Sem nome'}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -1095,9 +1086,7 @@ export default function Escalas() {
                 <label className="text-right text-xs font-bold text-slate-500">Dia / Data:</label>
                 <div className="col-span-2 font-bold text-slate-900 dark:text-white">{fmtDateLong(newShiftModal.date)} - {formatDateBR(newShiftModal.date)}</div>
               </div>
-              
               <div className="border-t border-slate-100 dark:border-slate-800 my-5" />
-              
               <div className="grid grid-cols-3 items-center gap-4">
                 <label className="text-right text-xs font-bold text-slate-500">Repetir a cada:</label>
                 <Select defaultValue="0">
@@ -1105,18 +1094,8 @@ export default function Escalas() {
                   <SelectContent><SelectItem value="0">Não Repetir</SelectItem><SelectItem value="1">1 Semana</SelectItem><SelectItem value="2">2 Semanas</SelectItem></SelectContent>
                 </Select>
               </div>
-
               <div className="flex justify-end pt-5">
-                <Button 
-                  onClick={() => { 
-                    if (!selectedProfIdForModal) { alert('Selecione um profissional da lista.'); return; }
-                    assignShift(newShiftModal.date, newShiftModal.periodId, selectedProfIdForModal);
-                    setNewShiftModal(null);
-                    setSelectedProfIdForModal('');
-                    alert('Plantão salvo com sucesso!');
-                  }} 
-                  className="bg-sky-600 hover:bg-sky-700 text-white font-bold h-11 px-8 shadow-md"
-                >
+                <Button onClick={() => { if (!selectedProfIdForModal) { alert('Selecione um profissional da lista.'); return; } assignShift(newShiftModal.date, newShiftModal.periodId, selectedProfIdForModal); setNewShiftModal(null); setSelectedProfIdForModal(''); alert('Plantão salvo com sucesso!'); }} className="bg-sky-600 hover:bg-sky-700 text-white font-bold h-11 px-8 shadow-md">
                   Alocar Profissional
                 </Button>
               </div>
@@ -1125,9 +1104,7 @@ export default function Escalas() {
         </div>
       )}
 
-      {reportModalOpen && (
-        <ReportPreviewModal reportPayload={reportPayload} reportHash={reportHash} hashLoading={hashLoading} reportStatus={reportStatus} reportVersion={reportVersion} onClose={() => setReportModalOpen(false)} onPrint={printReport} onExport={exportCSV} onStatusChange={setReportStatus} onNewVersion={() => setReportVersion(v => v + 1)} />
-      )}
+      {reportModalOpen && <ReportPreviewModal reportPayload={reportPayload} reportHash={reportHash} hashLoading={hashLoading} reportStatus={reportStatus} reportVersion={reportVersion} onClose={() => setReportModalOpen(false)} onPrint={printReport} onExport={exportCSV} onStatusChange={setReportStatus} onNewVersion={() => setReportVersion(v => v + 1)} />}
     </div>
   );
 }
@@ -1157,15 +1134,12 @@ function KpiCard({ title, value, highlight }) {
 }
 
 function ExecutiveView({ baseMetrics, riskRows, byProfessional, criticalAlerts, financialData }) {
-  const topProfessionals = byProfessional.slice(0, 8);
+  const topProfessionals = (byProfessional || []).slice(0, 8);
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         <Card className="xl:col-span-2 p-6 border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 transition-colors">
-          <div className="flex items-center justify-between mb-6">
-            <div><h2 className="text-lg font-bold text-slate-900 dark:text-white">Resumo executivo</h2><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Indicadores consolidados da operação</p></div>
-            <Activity className="w-5 h-5 text-slate-400" />
-          </div>
+          <div className="flex items-center justify-between mb-6"><div><h2 className="text-lg font-bold text-slate-900 dark:text-white">Resumo executivo</h2><p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Indicadores consolidados</p></div><Activity className="w-5 h-5 text-slate-400" /></div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <ExecutiveMetric label="Cobertura" value={`${formatNumber(baseMetrics.coverage, 1)}%`} />
             <ExecutiveMetric label="Horas" value={formatNumber(baseMetrics.confirmedHours, 1)} />
@@ -1173,37 +1147,27 @@ function ExecutiveView({ baseMetrics, riskRows, byProfessional, criticalAlerts, 
             <ExecutiveMetric label="Cancelamentos" value={formatNumber(baseMetrics.canceled)} />
           </div>
         </Card>
-
         <Card className="p-6 border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 transition-colors">
-          <div className="flex items-center gap-2 mb-5">
-            <ShieldCheck className="w-5 h-5 text-slate-700 dark:text-slate-300" />
-            <h2 className="font-bold text-slate-900 dark:text-white">Situação operacional</h2>
-          </div>
+          <div className="flex items-center gap-2 mb-5"><ShieldCheck className="w-5 h-5 text-slate-700 dark:text-slate-300" /><h2 className="font-bold text-slate-900 dark:text-white">Situação operacional</h2></div>
           <div className="space-y-4">
-            <StatusLine label="Regular" value={riskRows.filter((r) => r.level === 'regular').length} type="success" />
-            <StatusLine label="Atenção" value={riskRows.filter((r) => r.level === 'atencao').length} type="warning" />
-            <StatusLine label="Crítico" value={riskRows.filter((r) => r.level === 'critico').length} type="danger" />
+            <StatusLine label="Regular" value={(riskRows || []).filter((r) => r.level === 'regular').length} type="success" />
+            <StatusLine label="Atenção" value={(riskRows || []).filter((r) => r.level === 'atencao').length} type="warning" />
+            <StatusLine label="Crítico" value={(riskRows || []).filter((r) => r.level === 'critico').length} type="danger" />
           </div>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-5 leading-relaxed">Classificação baseada em percentual de registros confirmados.</p>
         </Card>
       </div>
-
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <Card className="p-6 border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 transition-colors">
           <div className="flex items-center justify-between mb-5"><div><h2 className="font-bold text-slate-900 dark:text-white">Cobertura por setor</h2></div></div>
-          <div className="space-y-4">
-            {riskRows.slice(0, 8).map((row) => <CoverageBar key={row.name} label={row.name} value={row.coverage} />)}
-            {riskRows.length === 0 && <EmptyState title="Sem dados de cobertura" description="Não existem registros para os filtros atuais." />}
-          </div>
+          <div className="space-y-4">{(riskRows || []).slice(0, 8).map((row) => <CoverageBar key={row.name} label={row.name} value={row.coverage} />)} {(!riskRows || riskRows.length === 0) && <EmptyState title="Sem dados" description="Não existem registros." />}</div>
         </Card>
-
         <Card className="p-6 border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 transition-colors">
           <div className="flex items-center justify-between mb-5"><div><h2 className="font-bold text-slate-900 dark:text-white">Profissionais por horas</h2></div></div>
           <div className="space-y-3">
             {topProfessionals.map((row, index) => (
               <div key={row.id} className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300">{index + 1}</div>
-                <div className="flex-1 min-w-0"><div className="font-medium text-sm text-slate-900 dark:text-white truncate">{row.name}</div><div className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{row.category}</div></div>
+                <div className="flex-1 min-w-0"><div className="font-medium text-sm text-slate-900 dark:text-white truncate">{row.name}</div></div>
                 <div className="text-sm font-bold text-slate-900 dark:text-white">{formatNumber(row.hours, 1)}h</div>
               </div>
             ))}
@@ -1225,7 +1189,7 @@ function ExecutiveMetric({ label, value }) {
 }
 
 function StatusLine({ label, value, type }) {
-  const styles = { success: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800', warning: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800', danger: 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800' };
+  const styles = { success: 'bg-emerald-50 text-emerald-700', warning: 'bg-amber-50 text-amber-700', danger: 'bg-red-50 text-red-700' };
   return (
     <div className="flex items-center justify-between">
       <span className="text-sm text-slate-600 dark:text-slate-300">{label}</span>
@@ -1255,7 +1219,7 @@ function ProductivityView({ rows, baseMetrics }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 text-slate-800 dark:text-slate-200">
-            {rows.map((row) => (
+            {(rows || []).map((row) => (
               <tr key={row.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 pr-4 font-medium text-slate-900 dark:text-slate-100">{row.name}</td>
                 <td className="py-3 px-4 text-slate-500 dark:text-slate-400">{row.category}</td>
@@ -1267,16 +1231,8 @@ function ProductivityView({ rows, baseMetrics }) {
               </tr>
             ))}
           </tbody>
-          {rows.length > 0 && (
-            <tfoot>
-              <tr className="bg-slate-50 dark:bg-slate-800/50 font-bold text-slate-900 dark:text-slate-100 border-t border-slate-200 dark:border-slate-700">
-                <td className="py-4 pr-4">TOTAL CONSOLIDADO</td><td /><td className="py-4 px-4 text-right">{formatNumber(baseMetrics.total)}</td><td className="py-4 px-4 text-right text-emerald-600">{formatNumber(baseMetrics.confirmed)}</td><td className="py-4 px-4 text-right text-amber-600">{formatNumber(baseMetrics.pending)}</td><td className="py-4 px-4 text-right text-red-600">{formatNumber(baseMetrics.canceled)}</td><td className="py-4 pl-4 text-right">{formatNumber(baseMetrics.totalHours, 1)}h</td>
-              </tr>
-            </tfoot>
-          )}
         </table>
       </div>
-      {rows.length === 0 && <EmptyState title="Nenhum registro" description="Ajuste os filtros para visualizar os dados." />}
     </ReportCard>
   );
 }
@@ -1286,9 +1242,8 @@ function CoverageView({ rows }) {
     <div className="space-y-5">
       <ReportCard title="Cobertura operacional por setor">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-5">
-          {rows.map((row) => <CoverageBar key={row.name} label={row.name} value={row.coverage} />)}
+          {(rows || []).map((row) => <CoverageBar key={row.name} label={row.name} value={row.coverage} />)}
         </div>
-        {rows.length === 0 && <EmptyState title="Sem dados" description="Nenhum setor possui registros nos filtros selecionados." />}
       </ReportCard>
       <ReportCard title="Detalhamento por setor">
         <div className="overflow-x-auto">
@@ -1299,7 +1254,7 @@ function CoverageView({ rows }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 text-slate-800 dark:text-slate-200">
-              {rows.map((row) => (
+              {(rows || []).map((row) => (
                 <tr key={row.name} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="py-3 pr-4 font-medium text-slate-900 dark:text-slate-100">{row.name}</td>
                   <td className="py-3 px-4 text-right text-slate-700 dark:text-slate-300">{formatNumber(row.total)}</td>
@@ -1322,8 +1277,8 @@ function RiskView({ rows }) {
   return (
     <ReportCard title="Painel de risco operacional">
       <div className="space-y-3 mt-4">
-        {rows.map((row) => {
-          const levelConfig = { regular: { label: 'Regular', className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' }, atencao: { label: 'Atenção', className: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border-amber-200 dark:border-amber-800' }, critico: { label: 'Crítico', className: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 border-red-200 dark:border-red-800' } }[row.level];
+        {(rows || []).map((row) => {
+          const levelConfig = { regular: { label: 'Regular', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' }, atencao: { label: 'Atenção', className: 'bg-amber-50 text-amber-700 border-amber-200' }, critico: { label: 'Crítico', className: 'bg-red-50 text-red-700 border-red-200' } }[row.level];
           return (
             <div key={row.name} className="flex flex-col md:flex-row md:items-center gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
               <div className="flex-1">
@@ -1367,7 +1322,7 @@ function FinancialView({ data }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 text-slate-800 dark:text-slate-200">
-              {data.rows.map((row, index) => {
+              {(data.rows || []).map((row, index) => {
                 const isCanceled = row.status === 'cancelado' || row.status === 'canceled';
                 return (
                   <tr key={`${row.professional}-${index}`} className={`transition-colors ${isCanceled ? 'bg-red-50/30 hover:bg-red-50/50 dark:bg-red-900/10' : 'hover:bg-slate-50/50 dark:hover:bg-slate-800/50'}`}>
@@ -1380,13 +1335,6 @@ function FinancialView({ data }) {
                 );
               })}
             </tbody>
-            {data.rows.length > 0 && (
-              <tfoot>
-                <tr className="bg-slate-50 dark:bg-slate-800/50 font-black text-slate-900 dark:text-slate-100 border-t border-slate-200 dark:border-slate-700">
-                  <td className="py-4 pr-4">TOTAL ESTIMADO (EXCLUI CANCELADOS)</td><td /><td /><td /><td className="py-4 pl-4 text-right text-emerald-600">{formatCurrency(data.estimatedCost)}</td>
-                </tr>
-              </tfoot>
-            )}
           </table>
         </div>
       </ReportCard>
@@ -1405,7 +1353,7 @@ function CancellationView({ rows }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 text-slate-800 dark:text-slate-200">
-            {rows.map((row, index) => (
+            {(rows || []).map((row, index) => (
               <tr key={`${row.date}-${index}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 pr-4">{formatDateBR(row.date)}</td><td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">{row.professional}</td><td className="py-3 px-4 text-slate-500 dark:text-slate-400">{row.sector}</td><td className="py-3 pl-4 text-red-600 dark:text-red-400 font-medium">{row.reason}</td>
               </tr>
@@ -1508,10 +1456,10 @@ function ReportPreviewModal({ reportPayload, reportHash, hashLoading, reportStat
             <hr className="my-6 border-slate-300" />
             <table className="w-full text-left border-collapse border border-slate-300">
               <thead className="bg-slate-200">
-                <tr>{reportPayload.columns.map(c => <th key={c} className="border border-slate-300 p-2">{c}</th>)}</tr>
+                <tr>{(reportPayload.columns || []).map(c => <th key={c} className="border border-slate-300 p-2">{c}</th>)}</tr>
               </thead>
               <tbody>
-                {reportPayload.rows.map((row, i) => <tr key={i}>{row.map((c, j) => <td key={j} className="border border-slate-300 p-2">{c}</td>)}</tr>)}
+                {(reportPayload.rows || []).map((row, i) => <tr key={i}>{row.map((c, j) => <td key={j} className="border border-slate-300 p-2">{c}</td>)}</tr>)}
               </tbody>
             </table>
           </div>
