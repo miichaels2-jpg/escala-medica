@@ -1,11 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useAppData } from '@/lib/useAppData';
-
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-
 import {
   Select,
   SelectContent,
@@ -15,68 +13,30 @@ import {
 } from '@/components/ui/select';
 
 import {
-  Activity,
-  AlertTriangle,
-  BarChart3,
-  Building2,
-  CalendarDays,
-  CheckCircle2,
-  ChevronRight,
-  ClipboardCheck,
-  Clock3,
-  Database,
-  Download,
-  Eye,
-  FileCheck2,
+  Clock,
+  TrendingUp,
+  FileText,
   FileSpreadsheet,
-  Filter,
-  Hash,
-  History,
-  LayoutDashboard,
-  Loader2,
-  LockKeyhole,
-  Menu,
-  Moon,
-  Printer,
-  RefreshCw,
-  Search,
   ShieldCheck,
-  Sun,
-  SlidersHorizontal,
-  TrendingDown,
-  UserCheck,
-  Users,
+  Building2,
+  Filter,
+  Loader2,
+  DollarSign,
+  BarChart3,
+  Eye,
   X,
+  Leaf,
+  Sparkles,
+  Users,
+  ClipboardList,
 } from 'lucide-react';
 
 /* ============================================================
-   UTILITÁRIOS
-   ============================================================ */
+ * FORMATADORES
+ * ============================================================ */
 
-function safeNumber(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
-}
-
-function formatNumber(value, decimals = 0) {
-  return safeNumber(value).toLocaleString('pt-BR', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  });
-}
-
-function formatCurrency(value) {
-  if (value === null || value === undefined || value === '') {
-    return 'Não informado';
-  }
-
-  const number = Number(value);
-
-  if (!Number.isFinite(number)) {
-    return 'Não informado';
-  }
-
-  return `R$ ${number.toLocaleString('pt-BR', {
+function formatCurrency(value = 0) {
+  return `R$ ${Number(value || 0).toLocaleString('pt-BR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -85,56 +45,76 @@ function formatCurrency(value) {
 function formatDateBR(dateStr) {
   if (!dateStr) return '—';
 
-  const value = String(dateStr).split('T')[0];
+  const date = String(dateStr).split('T')[0];
+  const [year, month, day] = date.split('-');
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split('-');
-    return `${day}/${month}/${year}`;
+  if (!year || !month || !day) return dateStr;
+
+  return `${day}/${month}/${year}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+/* ============================================================
+ * EXPORTAÇÃO CSV
+ * ============================================================ */
+
+function downloadCSV(payload) {
+  const rows = [];
+
+  rows.push([payload.title]);
+  rows.push([`Instituição: ${payload.companyName}`]);
+  rows.push([`Filtros: ${payload.subtitle}`]);
+  rows.push([]);
+
+  if (payload.sections?.length) {
+    payload.sections.forEach((section) => {
+      rows.push([section.title]);
+      rows.push(section.columns);
+      rows.push(...section.rows);
+
+      if (section.totalsRow) {
+        rows.push(section.totalsRow);
+      }
+
+      rows.push([]);
+    });
+  } else {
+    rows.push(payload.columns);
+    rows.push(...payload.rows);
+
+    if (payload.totalsRow) {
+      rows.push(payload.totalsRow);
+    }
   }
 
-  return value;
-}
+  const csv = rows
+    .map((row) =>
+      row
+        .map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`)
+        .join(';')
+    )
+    .join('\n');
 
-function normalizeDate(value) {
-  if (!value) return '';
+  const blob = new Blob([`\uFEFF${csv}`], {
+    type: 'text/csv;charset=utf-8;',
+  });
 
-  const text = String(value).trim();
-
-  if (/^\d{4}-\d{2}-\d{2}/.test(text)) {
-    return text.substring(0, 10);
-  }
-
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) {
-    const [day, month, year] = text.split('/');
-    return `${year}-${month}-${day}`;
-  }
-
-  return text.substring(0, 10);
-}
-
-function escapeCSV(value) {
-  return `"${String(value ?? '')
-    .replace(/"/g, '""')
-    .replace(/\r?\n/g, ' ')}"`;
-}
-
-function sanitizeFilename(value) {
-  return String(value || 'relatorio')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9-_]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .toLowerCase();
-}
-
-function downloadFile(content, filename, type = 'text/csv;charset=utf-8;') {
-  const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
-
   const link = document.createElement('a');
 
   link.href = url;
-  link.download = filename;
+  link.download = `${payload.title
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/gi, '-')
+    .replaceAll(/^-|-$/g, '')}.csv`;
 
   document.body.appendChild(link);
   link.click();
@@ -143,3647 +123,1520 @@ function downloadFile(content, filename, type = 'text/csv;charset=utf-8;') {
   URL.revokeObjectURL(url);
 }
 
-function getStatusLabel(status) {
-  const map = {
-    confirmado: 'Confirmado',
-    confirmed: 'Confirmado',
-    pendente: 'Pendente',
-    pending: 'Pendente',
-    cancelado: 'Cancelado',
-    canceled: 'Cancelado',
-    aberto: 'Aberto',
-    open: 'Aberto',
-    concluido: 'Concluído',
-    completed: 'Concluído',
+/* ============================================================
+ * EXPORTAÇÃO PARA PDF / IMPRESSÃO
+ * ============================================================ */
+
+function downloadPDF(payload) {
+  const printWindow = window.open('', '_blank', 'width=1200,height=900');
+
+  if (!printWindow) {
+    alert('Permita pop-ups no navegador para gerar o relatório.');
+    return;
+  }
+
+  const renderTable = (columns, rows, totalsRow) => {
+    return `
+      <table>
+        <thead>
+          <tr>
+            ${columns
+              .map((column) => `<th>${escapeHtml(column)}</th>`)
+              .join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${rows
+            .map(
+              (row) => `
+                <tr>
+                  ${row
+                    .map((cell) => `<td>${escapeHtml(cell)}</td>`)
+                    .join('')}
+                </tr>
+              `
+            )
+            .join('')}
+        </tbody>
+        ${
+          totalsRow
+            ? `
+              <tfoot>
+                <tr>
+                  ${totalsRow
+                    .map((cell) => `<td>${escapeHtml(cell)}</td>`)
+                    .join('')}
+                </tr>
+              </tfoot>
+            `
+            : ''
+        }
+      </table>
+    `;
   };
 
-  return map[String(status || '').toLowerCase()] || status || 'Não informado';
+  const sectionsHtml = payload.sections?.length
+    ? payload.sections
+        .map(
+          (section) => `
+            <section>
+              <h2>${escapeHtml(section.title)}</h2>
+              ${
+                section.rows.length
+                  ? renderTable(
+                      section.columns,
+                      section.rows,
+                      section.totalsRow
+                    )
+                  : '<p>Nenhum dado encontrado para esta seção.</p>'
+              }
+            </section>
+          `
+        )
+        .join('')
+    : renderTable(payload.columns, payload.rows, payload.totalsRow);
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <title>${escapeHtml(payload.title)}</title>
+
+        <style>
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            font-family: Arial, Helvetica, sans-serif;
+            color: #172033;
+            margin: 32px;
+            font-size: 11px;
+          }
+
+          header {
+            border-bottom: 3px solid #0284c7;
+            padding-bottom: 18px;
+            margin-bottom: 20px;
+          }
+
+          h1 {
+            font-size: 23px;
+            margin: 0 0 8px;
+            color: #0f172a;
+          }
+
+          h2 {
+            font-size: 15px;
+            margin: 26px 0 10px;
+            color: #075985;
+            border-bottom: 1px solid #cbd5e1;
+            padding-bottom: 6px;
+          }
+
+          p {
+            margin: 4px 0;
+            color: #475569;
+          }
+
+          .kpis {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+          }
+
+          .kpi {
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 10px;
+          }
+
+          .kpi-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            color: #64748b;
+            font-weight: bold;
+          }
+
+          .kpi-value {
+            margin-top: 5px;
+            font-size: 15px;
+            font-weight: bold;
+            color: #0369a1;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+          }
+
+          th {
+            background: #e0f2fe;
+            color: #075985;
+            font-weight: bold;
+            text-align: left;
+            padding: 8px;
+            border: 1px solid #bae6fd;
+          }
+
+          td {
+            padding: 7px;
+            border: 1px solid #e2e8f0;
+            vertical-align: top;
+          }
+
+          tbody tr:nth-child(even) {
+            background: #f8fafc;
+          }
+
+          tfoot td {
+            background: #e2e8f0;
+            font-weight: bold;
+          }
+
+          footer {
+            margin-top: 35px;
+            padding-top: 10px;
+            border-top: 1px solid #cbd5e1;
+            font-size: 9px;
+            color: #64748b;
+          }
+
+          @media print {
+            body {
+              margin: 15mm;
+            }
+
+            button {
+              display: none;
+            }
+
+            section {
+              break-inside: avoid;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        <header>
+          <h1>${escapeHtml(payload.title)}</h1>
+          <p><strong>Instituição:</strong> ${escapeHtml(
+            payload.companyName
+          )}</p>
+          <p><strong>Filtros:</strong> ${escapeHtml(payload.subtitle)}</p>
+          ${
+            payload.generatedBy
+              ? `<p><strong>Emitido por:</strong> ${escapeHtml(
+                  payload.generatedBy
+                )}</p>`
+              : ''
+          }
+          <p><strong>Gerado em:</strong> ${new Date().toLocaleString(
+            'pt-BR'
+          )}</p>
+        </header>
+
+        <div class="kpis">
+          ${payload.kpis
+            .map(
+              (kpi) => `
+                <div class="kpi">
+                  <div class="kpi-label">${escapeHtml(kpi.label)}</div>
+                  <div class="kpi-value">${escapeHtml(kpi.value)}</div>
+                </div>
+              `
+            )
+            .join('')}
+        </div>
+
+        ${
+          payload.sections?.length
+            ? sectionsHtml
+            : `<section>${sectionsHtml}</section>`
+        }
+
+        <footer>
+          Relatório gerado pelo módulo de Inteligência Executiva e Governança.
+        </footer>
+
+        <script>
+          window.onload = function () {
+            window.print();
+          };
+        </script>
+      </body>
+    </html>
+  `);
+
+  printWindow.document.close();
 }
 
-function getStatusKey(status) {
-  return String(status || '')
-    .trim()
-    .toLowerCase();
-}
+/* ============================================================
+ * PAYLOAD DOS RELATÓRIOS
+ * ============================================================ */
 
-function getShiftHours(shift) {
-  if (
-    shift?.hours !== undefined &&
-    shift?.hours !== null &&
-    Number.isFinite(Number(shift.hours))
-  ) {
-    return Number(shift.hours);
-  }
+function buildReportPayload({
+  tab,
+  company,
+  user,
+  filtersLabel,
+  overview,
+  byProfessional,
+  bySector,
+  auditLogs,
+  totalFinancialEstimate,
+}) {
+  const companyName = company?.name || 'Hospital';
+  const generatedBy =
+    user?.data?.full_name || user?.data?.name || undefined;
 
-  if (
-    shift?.total_hours !== undefined &&
-    shift?.total_hours !== null &&
-    Number.isFinite(Number(shift.total_hours))
-  ) {
-    return Number(shift.total_hours);
-  }
+  const base = {
+    companyName,
+    generatedBy,
+    subtitle: filtersLabel,
+  };
 
-  if (shift?.start_time && shift?.end_time) {
-    const start = new Date(`1970-01-01T${shift.start_time}`);
-    const end = new Date(`1970-01-01T${shift.end_time}`);
-
-    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
-      let diff = (end - start) / 3600000;
-
-      if (diff < 0) diff += 24;
-
-      return Math.max(0, diff);
-    }
-  }
-
-  return 0;
-}
-
-function getProfessionalName(shift, professionalMap) {
-  if (shift?.professional_name) {
-    return shift.professional_name;
-  }
-
-  if (shift?.professional?.name) {
-    return shift.professional.name;
-  }
-
-  if (shift?.professional_id && professionalMap[shift.professional_id]) {
-    const professional = professionalMap[shift.professional_id];
-
-    return (
-      professional.name ||
-      professional.full_name ||
-      professional.nome ||
-      professional.email ||
-      'Profissional'
+  if (tab === 'conselho') {
+    const totalHours = byProfessional.reduce(
+      (total, professional) => total + professional.hours,
+      0
     );
+
+    const averageCoverage = bySector.length
+      ? Math.round(
+          bySector.reduce((total, [, data]) => {
+            return (
+              total +
+              (data.total
+                ? (data.filled / data.total) * 100
+                : 0)
+            );
+          }, 0) / bySector.length
+        )
+      : 0;
+
+    return {
+      ...base,
+      key: tab,
+      title: 'Relatório Consolidado do Conselho',
+      kpis: [
+        {
+          label: 'Plantões totais',
+          value: overview.total,
+        },
+        {
+          label: 'Plantões confirmados',
+          value: overview.confirmed,
+        },
+        {
+          label: 'Cobertura média',
+          value: `${averageCoverage}%`,
+        },
+        {
+          label: 'Repasse estimado',
+          value: formatCurrency(totalFinancialEstimate),
+        },
+      ],
+      sections: [
+        {
+          title: 'Resumo Operacional',
+          columns: ['Indicador', 'Resultado'],
+          rows: [
+            ['Total de plantões', overview.total],
+            ['Plantões confirmados', overview.confirmed],
+            ['Plantões pendentes', overview.pending],
+            ['Vagas abertas', overview.open],
+            ['Plantões cancelados', overview.canceled],
+            ['Horas totais', `${totalHours}h`],
+            ['Profissionais envolvidos', byProfessional.length],
+            ['Setores mapeados', bySector.length],
+          ],
+        },
+        {
+          title: 'Produtividade por Profissional',
+          columns: [
+            'Profissional',
+            'Especialidade',
+            'Confirmados',
+            'Pendentes',
+            'Cancelados',
+            'Horas',
+          ],
+          rows: byProfessional.map((professional) => [
+            professional.name,
+            professional.category,
+            professional.confirmed,
+            professional.pending,
+            professional.canceled,
+            `${professional.hours}h`,
+          ]),
+          totalsRow: [
+            'TOTAL',
+            '',
+            overview.confirmed,
+            overview.pending,
+            overview.canceled,
+            `${totalHours}h`,
+          ],
+        },
+        {
+          title: 'Cobertura por Setor',
+          columns: [
+            'Setor',
+            'Total',
+            'Preenchidos',
+            'Vagas Abertas',
+            'Cancelados',
+            'Cobertura',
+          ],
+          rows: bySector.map(([name, data]) => {
+            const percentage = data.total
+              ? Math.round((data.filled / data.total) * 100)
+              : 0;
+
+            return [
+              name,
+              data.total,
+              data.filled,
+              data.open,
+              data.canceled,
+              `${percentage}%`,
+            ];
+          }),
+        },
+        {
+          title: 'Repasse Financeiro Estimado',
+          columns: [
+            'Profissional',
+            'Modelo',
+            'Quantidade / Horas',
+            'Total Estimado',
+          ],
+          rows: byProfessional.map((professional) => [
+            professional.name,
+            professional.remunerationType === 'diaria'
+              ? 'Por Plantão / Diária'
+              : professional.remunerationType === 'mensal'
+              ? 'Fixo Mensal'
+              : 'Horista',
+            professional.remunerationType === 'hora'
+              ? `${professional.hours}h`
+              : `${professional.confirmed} plantão(ões)`,
+            formatCurrency(professional.estimatedPay),
+          ]),
+          totalsRow: [
+            'TOTAL',
+            '',
+            `${totalHours}h`,
+            formatCurrency(totalFinancialEstimate),
+          ],
+        },
+        {
+          title: 'Auditoria e Ocorrências',
+          columns: [
+            'Data',
+            'Horário',
+            'Profissional',
+            'Setor',
+            'Status',
+            'Observação',
+          ],
+          rows: auditLogs.map((log) => [
+            formatDateBR(log.date),
+            `${log.start_time || '--'} - ${log.end_time || '--'}`,
+            log.professional_name || 'Vago',
+            log.sector_name || 'Geral',
+            log.status || '—',
+            log.notes || '—',
+          ]),
+        },
+      ],
+    };
   }
 
-  return 'Não identificado';
-}
-
-function getSectorName(shift, sectorMap) {
-  if (shift?.sector_name) {
-    return shift.sector_name;
-  }
-
-  if (shift?.sector?.name) {
-    return shift.sector.name;
-  }
-
-  if (shift?.sector_id && sectorMap[shift.sector_id]) {
-    const sector = sectorMap[shift.sector_id];
-
-    return (
-      sector.name ||
-      sector.nome ||
-      sector.title ||
-      'Setor não identificado'
+  if (tab === 'produtividade') {
+    const totalHours = byProfessional.reduce(
+      (total, professional) => total + professional.hours,
+      0
     );
+
+    return {
+      ...base,
+      key: tab,
+      title: 'Produtividade do Corpo Clínico',
+      kpis: [
+        {
+          label: 'Profissionais ativos',
+          value: byProfessional.length,
+        },
+        {
+          label: 'Horas totais',
+          value: `${totalHours}h`,
+        },
+        {
+          label: 'Confirmados',
+          value: overview.confirmed,
+        },
+        {
+          label: 'Pendentes',
+          value: overview.pending,
+        },
+      ],
+      columns: [
+        'Profissional',
+        'Especialidade',
+        'Confirmados',
+        'Pendentes',
+        'Cancelados',
+        'Horas Totais',
+      ],
+      rows: byProfessional.map((professional) => [
+        professional.name,
+        professional.category,
+        professional.confirmed,
+        professional.pending,
+        professional.canceled,
+        `${professional.hours}h`,
+      ]),
+      totalsRow: [
+        'TOTAL',
+        '',
+        overview.confirmed,
+        overview.pending,
+        overview.canceled,
+        `${totalHours}h`,
+      ],
+      emptyMessage:
+        'Nenhum profissional com plantões no período selecionado.',
+    };
   }
 
-  return 'Não informado';
-}
+  if (tab === 'cobertura') {
+    const rows = bySector.map(([name, data]) => {
+      const percentage = data.total
+        ? Math.round((data.filled / data.total) * 100)
+        : 0;
 
-function getCategoryName(shift, professionalMap) {
-  if (shift?.category_name) return shift.category_name;
-  if (shift?.category) return shift.category;
+      return [
+        name,
+        data.total,
+        data.filled,
+        data.open,
+        data.canceled,
+        `${percentage}%`,
+      ];
+    });
 
-  if (shift?.professional_id && professionalMap[shift.professional_id]) {
-    const professional = professionalMap[shift.professional_id];
+    const averageCoverage = bySector.length
+      ? Math.round(
+          bySector.reduce((total, [, data]) => {
+            return (
+              total +
+              (data.total
+                ? (data.filled / data.total) * 100
+                : 0)
+            );
+          }, 0) / bySector.length
+        )
+      : 0;
 
-    return (
-      professional.category ||
-      professional.profession ||
-      professional.role ||
-      professional.cargo ||
-      'Não informado'
+    const criticalSector = bySector.length
+      ? bySector.reduce((worst, [name, data]) => {
+          const percentage = data.total
+            ? (data.filled / data.total) * 100
+            : 100;
+
+          return percentage < worst.percentage
+            ? { name, percentage }
+            : worst;
+        }, { name: bySector[0][0], percentage: Infinity })
+      : null;
+
+    return {
+      ...base,
+      key: tab,
+      title: 'Cobertura Operacional por Setor',
+      kpis: [
+        {
+          label: 'Setores mapeados',
+          value: bySector.length,
+        },
+        {
+          label: 'Cobertura média',
+          value: `${averageCoverage}%`,
+        },
+        {
+          label: 'Setor mais crítico',
+          value: criticalSector?.name || '—',
+        },
+        {
+          label: 'Vagas abertas',
+          value: overview.open,
+        },
+      ],
+      columns: [
+        'Setor',
+        'Turnos Totais',
+        'Preenchidos',
+        'Vagas Abertas',
+        'Cancelados',
+        '% Cobertura',
+      ],
+      rows,
+      emptyMessage:
+        'Sem dados de setores para os filtros selecionados.',
+    };
+  }
+
+  if (tab === 'financeiro') {
+    const totalHours = byProfessional.reduce(
+      (total, professional) => total + professional.hours,
+      0
     );
+
+    const highestPayment = byProfessional.reduce(
+      (highest, professional) =>
+        professional.estimatedPay > (highest?.estimatedPay || 0)
+          ? professional
+          : highest,
+      null
+    );
+
+    return {
+      ...base,
+      key: tab,
+      title: 'Projeção de Repasse Financeiro',
+      kpis: [
+        {
+          label: 'Total estimado',
+          value: formatCurrency(totalFinancialEstimate),
+        },
+        {
+          label: 'Profissionais',
+          value: byProfessional.length,
+        },
+        {
+          label: 'Maior repasse',
+          value: highestPayment
+            ? `${highestPayment.name} - ${formatCurrency(
+                highestPayment.estimatedPay
+              )}`
+            : '—',
+        },
+        {
+          label: 'Horas faturáveis',
+          value: `${totalHours}h`,
+        },
+      ],
+      columns: [
+        'Profissional',
+        'Modelo',
+        'Quantidade / Horas',
+        'Total a Liquidar',
+      ],
+      rows: byProfessional.map((professional) => [
+        professional.name,
+        professional.remunerationType === 'diaria'
+          ? 'Por Plantão / Diária'
+          : professional.remunerationType === 'mensal'
+          ? 'Fixo Mensal'
+          : 'Horista',
+        professional.remunerationType === 'hora'
+          ? `${professional.hours}h`
+          : `${professional.confirmed} plantão(ões)`,
+        formatCurrency(professional.estimatedPay),
+      ]),
+      totalsRow: [
+        'TOTAL',
+        '',
+        `${totalHours}h`,
+        formatCurrency(totalFinancialEstimate),
+      ],
+      emptyMessage:
+        'Nenhum valor a liquidar para os filtros selecionados.',
+    };
   }
 
-  return 'Não informado';
+  const canceledCount = auditLogs.filter(
+    (log) => log.status === 'cancelado'
+  ).length;
+
+  const logsWithNotes = auditLogs.filter(
+    (log) => log.notes
+  ).length;
+
+  const sectorCounts = auditLogs.reduce((accumulator, log) => {
+    const sector = log.sector_name || 'Geral';
+
+    accumulator[sector] = (accumulator[sector] || 0) + 1;
+
+    return accumulator;
+  }, {});
+
+  const mostAffectedSector = Object.entries(sectorCounts).sort(
+    (a, b) => b[1] - a[1]
+  )[0];
+
+  return {
+    ...base,
+    key: tab,
+    title: 'Log de Auditoria e Plantões Cancelados',
+    kpis: [
+      {
+        label: 'Eventos totais',
+        value: auditLogs.length,
+      },
+      {
+        label: 'Cancelamentos',
+        value: canceledCount,
+      },
+      {
+        label: 'Com observação',
+        value: logsWithNotes,
+      },
+      {
+        label: 'Setor mais afetado',
+        value: mostAffectedSector
+          ? `${mostAffectedSector[0]} (${mostAffectedSector[1]})`
+          : '—',
+      },
+    ],
+    columns: [
+      'Data',
+      'Horário',
+      'Profissional',
+      'Setor',
+      'Status',
+      'Observação',
+      'ID',
+    ],
+    rows: auditLogs.map((log) => [
+      formatDateBR(log.date),
+      `${log.start_time || '--'} - ${log.end_time || '--'}`,
+      log.professional_name || 'Vago',
+      log.sector_name || 'Geral',
+      log.status || '—',
+      log.notes || '—',
+      log.id || '—',
+    ]),
+    emptyMessage:
+      'Nenhum evento de cancelamento ou alteração registrado no período.',
+  };
 }
 
-function getShiftDate(shift) {
-  return normalizeDate(
-    shift?.date ||
-      shift?.shift_date ||
-      shift?.start_date ||
-      shift?.data ||
-      shift?.created_date
+/* ============================================================
+ * ABAS
+ * ============================================================ */
+
+const TAB_META = {
+  conselho: {
+    label: '📊 Conselho Consolidado',
+    icon: ClipboardList,
+  },
+  produtividade: {
+    label: '⏱️ Produtividade & Horas',
+    icon: Clock,
+  },
+  cobertura: {
+    label: '🏥 Cobertura por Setor',
+    icon: TrendingUp,
+  },
+  financeiro: {
+    label: '💰 Repasse Financeiro',
+    icon: DollarSign,
+  },
+  auditoria: {
+    label: '🛡️ Log de Auditoria',
+    icon: ShieldCheck,
+  },
+};
+
+/* ============================================================
+ * TABELA REUTILIZÁVEL
+ * ============================================================ */
+
+function ReportTable({ columns, rows, totalsRow }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
+      <table className="w-full text-left text-xs">
+        <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider">
+          <tr>
+            {columns.map((column) => (
+              <th key={column} className="p-3 font-bold whitespace-nowrap">
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          {rows.map((row, rowIndex) => (
+            <tr
+              key={rowIndex}
+              className="hover:bg-slate-50 dark:hover:bg-slate-800/50"
+            >
+              {row.map((cell, cellIndex) => (
+                <td
+                  key={cellIndex}
+                  className="p-3 text-slate-700 dark:text-slate-200 whitespace-nowrap"
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+
+        {totalsRow && (
+          <tfoot className="bg-slate-100 dark:bg-slate-800 font-black">
+            <tr>
+              {totalsRow.map((cell, index) => (
+                <td
+                  key={index}
+                  className="p-3 text-slate-800 dark:text-white whitespace-nowrap"
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
   );
 }
 
 /* ============================================================
-   SHA-256 REAL
-   ============================================================ */
+ * MODAL DE PRÉ-VISUALIZAÇÃO
+ * ============================================================ */
 
-async function generateSHA256(input) {
-  try {
-    if (!window.crypto?.subtle) {
-      return 'Indisponível neste navegador';
-    }
+function ReportPreviewModal({
+  payload,
+  onClose,
+  onDownloadPDF,
+  onDownloadCSV,
+}) {
+  if (!payload) return null;
 
-    const data = new TextEncoder().encode(input);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+      <div className="w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 p-6 bg-gradient-to-r from-slate-900 via-slate-950 to-sky-950 text-white rounded-t-3xl">
+          <div>
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-sky-400">
+              <Eye className="w-3.5 h-3.5" />
+              Pré-visualização Oficial
+            </div>
 
-    const hashBuffer = await window.crypto.subtle.digest(
-      'SHA-256',
-      data
-    );
+            <h2 className="text-xl font-black tracking-tight mt-1">
+              {payload.title}
+            </h2>
 
-    return Array.from(new Uint8Array(hashBuffer))
-      .map((byte) => byte.toString(16).padStart(2, '0'))
-      .join('');
-  } catch {
-    return 'Não foi possível calcular';
-  }
+            <p className="text-xs text-slate-300 mt-1">
+              Filtros aplicados: {payload.subtitle}
+            </p>
+
+            <p className="text-[10px] text-slate-400 mt-1">
+              Instituição: {payload.companyName}
+              {payload.generatedBy
+                ? ` · Emitido por ${payload.generatedBy}`
+                : ''}
+            </p>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="rounded-full p-2 bg-white/10 hover:bg-white/20 text-white"
+            aria-label="Fechar"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-6 pb-0">
+          {payload.kpis.map((kpi, index) => (
+            <div
+              key={index}
+              className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"
+            >
+              <div className="text-[9px] uppercase font-bold text-slate-400">
+                {kpi.label}
+              </div>
+
+              <div className="text-sm font-black text-sky-700 dark:text-sky-400 mt-1 break-words">
+                {kpi.value}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="p-6 space-y-6">
+          {payload.sections?.length ? (
+            payload.sections.map((section, index) => (
+              <section key={index} className="space-y-3">
+                <h3 className="text-lg font-black text-slate-800 dark:text-white">
+                  {section.title}
+                </h3>
+
+                {section.rows.length ? (
+                  <ReportTable
+                    columns={section.columns}
+                    rows={section.rows}
+                    totalsRow={section.totalsRow}
+                  />
+                ) : (
+                  <p className="text-sm text-slate-400 py-8 text-center">
+                    Nenhum dado encontrado para esta seção.
+                  </p>
+                )}
+              </section>
+            ))
+          ) : payload.rows.length ? (
+            <ReportTable
+              columns={payload.columns}
+              rows={payload.rows}
+              totalsRow={payload.totalsRow}
+            />
+          ) : (
+            <p className="text-sm text-slate-400 text-center py-16">
+              {payload.emptyMessage}
+            </p>
+          )}
+        </div>
+
+        <div className="sticky bottom-0 flex flex-col md:flex-row items-center justify-between gap-3 p-4 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-b-3xl">
+          <div className="flex items-center gap-2 text-[11px] text-emerald-600 font-semibold">
+            <Leaf className="w-3.5 h-3.5" />
+            Relatório validado na tela.
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              className="text-xs font-bold"
+            >
+              Fechar
+            </Button>
+
+            <Button
+              onClick={onDownloadCSV}
+              variant="outline"
+              className="text-xs font-bold h-9 gap-2"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+              Exportar CSV
+            </Button>
+
+            <Button
+              onClick={onDownloadPDF}
+              className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold h-9 gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              Gerar PDF
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ============================================================
-   CONFIGURAÇÃO DOS RELATÓRIOS
-   ============================================================ */
+ * COMPONENTE PRINCIPAL
+ * ============================================================ */
 
-const REPORT_CONFIG = {
-  executiva: {
-    label: 'Visão Executiva',
-    description: 'Indicadores consolidados para gestão e conselho',
-    icon: LayoutDashboard,
-    group: 'executiva',
-  },
-
-  produtividade: {
-    label: 'Produtividade & Horas',
-    description: 'Produção, horas e distribuição por profissional',
-    icon: Clock3,
-    group: 'operacional',
-  },
-
-  cobertura: {
-    label: 'Cobertura & Mapa de Calor',
-    description: 'Cobertura operacional por setor',
-    icon: Building2,
-    group: 'operacional',
-  },
-
-  risco: {
-    label: 'Risco Assistencial',
-    description: 'Indicadores operacionais de cobertura',
-    icon: ShieldCheck,
-    group: 'operacional',
-  },
-
-  financeiro: {
-    label: 'Financeiro & Custos',
-    description: 'Custos e estimativas com base nos dados disponíveis',
-    icon: BarChart3,
-    group: 'operacional',
-  },
-
-  turnover: {
-    label: 'Cancelamentos & Absenteísmo',
-    description: 'Ocorrências operacionais e cancelamentos',
-    icon: Users,
-    group: 'operacional',
-  },
-
-  auditoria: {
-    label: 'Governança & Auditoria',
-    description: 'Integridade, rastreabilidade e controle do relatório',
-    icon: ClipboardCheck,
-    group: 'governanca',
-  },
-};
-
-const STATUS_OPTIONS = [
-  { value: 'todos', label: 'Todos os status' },
-  { value: 'confirmado', label: 'Confirmado' },
-  { value: 'pendente', label: 'Pendente' },
-  { value: 'cancelado', label: 'Cancelado' },
-  { value: 'aberto', label: 'Aberto' },
-];
-
-/* ============================================================
-   COMPONENTE PRINCIPAL
-   ============================================================ */
-
-export default function CentralInteligenciaHospitalar() {
-  const { companyId, unitId } = useAppData();
-
-  const [activeTab, setActiveTab] = useState('executiva');
+export default function Relatorios() {
+  const { user, company, loading } = useAppData();
 
   const [shifts, setShifts] = useState([]);
   const [professionals, setProfessionals] = useState([]);
   const [sectors, setSectors] = useState([]);
+  const [loadingData, setLoadingData] = useState(true);
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('conselho');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [selectedSector, setSelectedSector] = useState('all');
+  const [previewOpen, setPreviewOpen] = useState(false);
 
-  const [filters, setFilters] = useState({
-    startDate: '',
-    endDate: '',
-    sectorId: 'todos',
-    status: 'todos',
-    professionalId: 'todos',
-    category: 'todos',
-  });
+  const companyId =
+    user?.data?.company_id ||
+    company?.id ||
+    'cmp_principal';
 
-  const [reportModalOpen, setReportModalOpen] = useState(false);
-  const [reportStatus, setReportStatus] = useState('Rascunho');
-  const [reportVersion, setReportVersion] = useState(1);
-  const [reportHash, setReportHash] = useState('');
-  const [hashLoading, setHashLoading] = useState(false);
+  const unitId =
+    user?.data?.selected_unit_id ||
+    company?.selected_unit_id ||
+    company?.units?.[0]?.id;
 
-  const [auditEvents, setAuditEvents] = useState([]);
+  async function loadData() {
+    if (!companyId) return;
 
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [theme, setTheme] = useState('light');
-
-  useEffect(() => {
-    try {
-      const savedTheme = window.localStorage.getItem('hospital-intelligence-theme');
-      const preferredTheme = window.matchMedia?.('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light';
-
-      setTheme(savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : preferredTheme);
-    } catch {
-      setTheme('light');
-    }
-  }, []);
-
-  useEffect(() => {
-    const isDark = theme === 'dark';
-    document.documentElement.classList.toggle('dark', isDark);
-    document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+    setLoadingData(true);
 
     try {
-      window.localStorage.setItem('hospital-intelligence-theme', theme);
-    } catch {
-      // Ignorar erros de armazenamento local restrito
-    }
-  }, [theme]);
+      const filters = {
+        company_id: companyId,
+        ...(unitId ? { unit_id: unitId } : {}),
+      };
 
-  const toggleTheme = () => {
-    setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
-  };
+      const [shiftData, professionalData, sectorData] =
+        await Promise.all([
+          base44.entities.Shift.filter(
+            filters,
+            '-date',
+            1000
+          ).catch(() => []),
 
-  /* ============================================================
-     CARREGAMENTO BLINDADO DE DADOS
-     ============================================================ */
+          base44.entities.Professional.filter(
+            filters,
+            '-created_date',
+            500
+          ).catch(() => []),
 
-  const loadData = useCallback(
-    async (silent = false) => {
-      if (!silent) {
-        setLoading(true);
-      } else {
-        setRefreshing(true);
-      }
-
-      setError('');
-
-      try {
-        const queryFilter = companyId ? { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) } : {};
-
-        const [
-          shiftsResponse,
-          professionalsResponse,
-          sectorsResponse,
-        ] = await Promise.all([
-          base44.entities.Shift?.filter ? base44.entities.Shift.filter(queryFilter, '-date', 2000).catch(() => []) : base44.entities.Shift?.list?.().catch(() => []),
-          base44.entities.Professional?.filter ? base44.entities.Professional.filter(queryFilter, '-created_date', 1000).catch(() => []) : base44.entities.Professional?.list?.().catch(() => []),
-          base44.entities.Sector?.filter ? base44.entities.Sector.filter(queryFilter, '-created_date', 200).catch(() => []) : base44.entities.Sector?.list?.().catch(() => []),
+          base44.entities.Sector.filter(
+            filters,
+            '-created_date',
+            100
+          ).catch(() => []),
         ]);
 
-        setShifts(Array.isArray(shiftsResponse) ? shiftsResponse : []);
-        setProfessionals(
-          Array.isArray(professionalsResponse)
-            ? professionalsResponse
-            : []
-        );
-        setSectors(
-          Array.isArray(sectorsResponse) ? sectorsResponse : []
-        );
-      } catch (err) {
-        console.error(err);
+      setShifts(Array.isArray(shiftData) ? shiftData : []);
+      setProfessionals(
+        Array.isArray(professionalData) ? professionalData : []
+      );
+      setSectors(Array.isArray(sectorData) ? sectorData : []);
+    } catch (error) {
+      console.error('Erro ao carregar relatórios:', error);
 
-        setError(
-          'Não foi possível carregar os dados. Verifique a conexão com a base de dados.'
-        );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [companyId, unitId]
-  );
+      setShifts([]);
+      setProfessionals([]);
+      setSectors([]);
+    } finally {
+      setLoadingData(false);
+    }
+  }
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  /* ============================================================
-     MAPAS
-     ============================================================ */
-
-  const professionalMap = useMemo(() => {
-    const map = {};
-
-    professionals.forEach((professional) => {
-      if (professional?.id) {
-        map[professional.id] = professional;
-      }
-    });
-
-    return map;
-  }, [professionals]);
-
-  const sectorMap = useMemo(() => {
-    const map = {};
-
-    sectors.forEach((sector) => {
-      if (sector?.id) {
-        map[sector.id] = sector;
-      }
-    });
-
-    return map;
-  }, [sectors]);
-
-  /* ============================================================
-     CATEGORIAS DISPONÍVEIS
-     ============================================================ */
-
-  const categories = useMemo(() => {
-    const values = new Set();
-
-    shifts.forEach((shift) => {
-      const category = getCategoryName(shift, professionalMap);
-
-      if (category && category !== 'Não informado') {
-        values.add(category);
-      }
-    });
-
-    professionals.forEach((professional) => {
-      const category =
-        professional?.category ||
-        professional?.profession ||
-        professional?.role ||
-        professional?.cargo;
-
-      if (category) {
-        values.add(category);
-      }
-    });
-
-    return Array.from(values).sort((a, b) =>
-      String(a).localeCompare(String(b), 'pt-BR')
-    );
-  }, [shifts, professionals, professionalMap]);
-
-  /* ============================================================
-     FILTROS
-     ============================================================ */
+    if (!loading) {
+      loadData();
+    }
+  }, [loading, companyId, unitId]);
 
   const filteredShifts = useMemo(() => {
     return shifts.filter((shift) => {
-      const date = getShiftDate(shift);
+      if (!shift) return false;
 
-      if (filters.startDate && date < filters.startDate) {
-        return false;
-      }
+      const shiftDate =
+        typeof shift.date === 'string'
+          ? shift.date.split('T')[0]
+          : '';
 
-      if (filters.endDate && date > filters.endDate) {
-        return false;
-      }
+      const matchesStart =
+        !startDate || shiftDate >= startDate;
 
-      if (filters.sectorId !== 'todos') {
-        const sectorMatches =
-          String(shift?.sector_id || '') ===
-            String(filters.sectorId) ||
-          String(shift?.sector_name || '') ===
-            String(filters.sectorId);
+      const matchesEnd =
+        !endDate || shiftDate <= endDate;
 
-        if (!sectorMatches) {
-          return false;
-        }
-      }
+      const matchesSector =
+        selectedSector === 'all' ||
+        String(shift.sector_id) === String(selectedSector) ||
+        shift.sector_name === selectedSector;
 
-      if (filters.status !== 'todos') {
-        const status = getStatusKey(shift?.status);
-
-        if (status !== filters.status) {
-          return false;
-        }
-      }
-
-      if (filters.professionalId !== 'todos') {
-        if (
-          String(shift?.professional_id || '') !==
-          String(filters.professionalId)
-        ) {
-          return false;
-        }
-      }
-
-      if (filters.category !== 'todos') {
-        const category = getCategoryName(
-          shift,
-          professionalMap
-        );
-
-        if (String(category) !== String(filters.category)) {
-          return false;
-        }
-      }
-
-      return true;
+      return matchesStart && matchesEnd && matchesSector;
     });
-  }, [
-    shifts,
-    filters,
-    professionalMap,
-  ]);
-
-  /* ============================================================
-     INDICADORES BASE
-     ============================================================ */
-
-  const baseMetrics = useMemo(() => {
-    let confirmed = 0;
-    let pending = 0;
-    let canceled = 0;
-    let open = 0;
-
-    let confirmedHours = 0;
-    let totalHours = 0;
-
-    filteredShifts.forEach((shift) => {
-      const status = getStatusKey(shift?.status);
-      const hours = getShiftHours(shift);
-
-      totalHours += hours;
-
-      if (
-        status === 'confirmado' ||
-        status === 'confirmed' ||
-        status === 'concluido' ||
-        status === 'completed'
-      ) {
-        confirmed++;
-        confirmedHours += hours;
-      } else if (
-        status === 'pendente' ||
-        status === 'pending'
-      ) {
-        pending++;
-      } else if (
-        status === 'cancelado' ||
-        status === 'canceled'
-      ) {
-        canceled++;
-      } else if (
-        status === 'aberto' ||
-        status === 'open'
-      ) {
-        open++;
-      }
-    });
-
-    const total = filteredShifts.length;
-
-    const coverage =
-      total > 0 ? (confirmed / total) * 100 : 0;
-
-    return {
-      total,
-      confirmed,
-      pending,
-      canceled,
-      open,
-      totalHours,
-      confirmedHours,
-      coverage,
-    };
-  }, [filteredShifts]);
-
-  /* ============================================================
-     PRODUTIVIDADE
-     ============================================================ */
+  }, [shifts, startDate, endDate, selectedSector]);
 
   const byProfessional = useMemo(() => {
     const map = {};
 
-    filteredShifts.forEach((shift) => {
-      const id =
-        shift?.professional_id ||
-        `name:${getProfessionalName(
-          shift,
-          professionalMap
-        )}`;
+    professionals.forEach((professional) => {
+      if (!professional?.id) return;
 
-      if (!map[id]) {
-        map[id] = {
-          id,
-          name: getProfessionalName(
-            shift,
-            professionalMap
-          ),
-          category: getCategoryName(
-            shift,
-            professionalMap
-          ),
-          total: 0,
+      const remunerationType =
+        professional.remuneration_type || 'hora';
+
+      let baseRate = 120;
+
+      if (remunerationType === 'hora') {
+        baseRate =
+          Number(professional.hourly_rate) || 120;
+      }
+
+      if (remunerationType === 'diaria') {
+        baseRate =
+          Number(professional.daily_rate) || 1500;
+      }
+
+      if (remunerationType === 'mensal') {
+        baseRate =
+          Number(professional.monthly_salary) || 18000;
+      }
+
+      map[professional.id] = {
+        name: professional.name || 'Sem Nome',
+        category:
+          professional.specialty ||
+          professional.category ||
+          'Geral',
+        confirmed: 0,
+        pending: 0,
+        canceled: 0,
+        hours: 0,
+        estimatedPay: 0,
+        remunerationType,
+        hourlyRate: baseRate,
+      };
+    });
+
+    filteredShifts.forEach((shift) => {
+      if (!shift?.professional_id) return;
+
+      if (!map[shift.professional_id]) {
+        map[shift.professional_id] = {
+          name: shift.professional_name || '—',
+          category: 'Profissional',
           confirmed: 0,
           pending: 0,
           canceled: 0,
-          open: 0,
           hours: 0,
+          estimatedPay: 0,
+          remunerationType: 'hora',
+          hourlyRate: 120,
         };
       }
 
-      const row = map[id];
-      const status = getStatusKey(shift?.status);
+      const professional =
+        map[shift.professional_id];
 
-      row.total++;
-      row.hours += getShiftHours(shift);
+      if (shift.status === 'confirmado') {
+        professional.confirmed += 1;
 
-      if (
-        status === 'confirmado' ||
-        status === 'confirmed' ||
-        status === 'concluido' ||
-        status === 'completed'
-      ) {
-        row.confirmed++;
-      } else if (
-        status === 'pendente' ||
-        status === 'pending'
-      ) {
-        row.pending++;
-      } else if (
-        status === 'cancelado' ||
-        status === 'canceled'
-      ) {
-        row.canceled++;
-      } else if (
-        status === 'aberto' ||
-        status === 'open'
-      ) {
-        row.open++;
+        const duration =
+          Number(shift.duration_hours) || 12;
+
+        professional.hours += duration;
+
+        if (
+          professional.remunerationType === 'diaria'
+        ) {
+          professional.estimatedPay +=
+            professional.hourlyRate;
+        } else if (
+          professional.remunerationType === 'mensal'
+        ) {
+          professional.estimatedPay =
+            professional.hourlyRate;
+        } else {
+          professional.estimatedPay +=
+            duration * professional.hourlyRate;
+        }
+      }
+
+      if (shift.status === 'pendente') {
+        professional.pending += 1;
+      }
+
+      if (shift.status === 'cancelado') {
+        professional.canceled += 1;
       }
     });
 
-    return Object.values(map).sort((a, b) => {
-      return b.hours - a.hours;
-    });
-  }, [filteredShifts, professionalMap]);
-
-  /* ============================================================
-     COBERTURA POR SETOR
-     ============================================================ */
+    return Object.values(map)
+      .filter(
+        (professional) =>
+          professional.confirmed > 0 ||
+          professional.pending > 0 ||
+          professional.canceled > 0
+      )
+      .sort((a, b) => b.hours - a.hours);
+  }, [filteredShifts, professionals]);
 
   const bySector = useMemo(() => {
     const map = {};
 
     filteredShifts.forEach((shift) => {
-      const name = getSectorName(shift, sectorMap);
+      if (!shift) return;
 
-      if (!map[name]) {
-        map[name] = {
-          name,
+      const sectorName =
+        shift.sector_name || 'Geral';
+
+      if (!map[sectorName]) {
+        map[sectorName] = {
           total: 0,
-          confirmed: 0,
-          pending: 0,
-          canceled: 0,
+          filled: 0,
           open: 0,
-          coverage: 0,
+          canceled: 0,
         };
       }
 
-      const row = map[name];
-      const status = getStatusKey(shift?.status);
-
-      row.total++;
+      map[sectorName].total += 1;
 
       if (
-        status === 'confirmado' ||
-        status === 'confirmed' ||
-        status === 'concluido' ||
-        status === 'completed'
+        shift.status === 'confirmado' ||
+        shift.status === 'pendente'
       ) {
-        row.confirmed++;
-      } else if (
-        status === 'pendente' ||
-        status === 'pending'
-      ) {
-        row.pending++;
-      } else if (
-        status === 'cancelado' ||
-        status === 'canceled'
-      ) {
-        row.canceled++;
-      } else if (
-        status === 'aberto' ||
-        status === 'open'
-      ) {
-        row.open++;
+        map[sectorName].filled += 1;
+      }
+
+      if (shift.status === 'vago') {
+        map[sectorName].open += 1;
+      }
+
+      if (shift.status === 'cancelado') {
+        map[sectorName].canceled += 1;
       }
     });
 
-    return Object.values(map)
-      .map((row) => ({
-        ...row,
-        coverage:
-          row.total > 0
-            ? (row.confirmed / row.total) * 100
-            : 0,
-      }))
-      .sort((a, b) => a.coverage - b.coverage);
-  }, [filteredShifts, sectorMap]);
+    return Object.entries(map).sort(
+      (a, b) => b[1].total - a[1].total
+    );
+  }, [filteredShifts]);
 
-  /* ============================================================
-     RISCO OPERACIONAL
-     ============================================================ */
+  const auditLogs = useMemo(() => {
+    return filteredShifts.filter(
+      (shift) =>
+        shift &&
+        (shift.status === 'cancelado' || shift.notes)
+    );
+  }, [filteredShifts]);
 
-  const riskRows = useMemo(() => {
-    return bySector.map((sector) => {
-      let level = 'regular';
+  const overview = useMemo(
+    () => ({
+      total: filteredShifts.length,
 
-      if (sector.coverage < 70) {
-        level = 'critico';
-      } else if (sector.coverage < 90) {
-        level = 'atencao';
-      }
+      confirmed: filteredShifts.filter(
+        (shift) => shift?.status === 'confirmado'
+      ).length,
 
-      return {
-        ...sector,
-        level,
-      };
-    });
-  }, [bySector]);
+      pending: filteredShifts.filter(
+        (shift) => shift?.status === 'pendente'
+      ).length,
 
-  const criticalAlerts = useMemo(() => {
-    const alerts = [];
+      open: filteredShifts.filter(
+        (shift) => shift?.status === 'vago'
+      ).length,
 
-    riskRows.forEach((row) => {
-      if (row.level === 'critico') {
-        alerts.push({
-          type: 'critical',
-          title: `Cobertura operacional baixa`,
-          description: `${row.name}: ${formatNumber(
-            row.coverage,
-            1
-          )}% dos registros estão confirmados.`,
-        });
-      }
-    });
+      canceled: filteredShifts.filter(
+        (shift) => shift?.status === 'cancelado'
+      ).length,
+    }),
+    [filteredShifts]
+  );
 
-    if (baseMetrics.canceled > 0) {
-      alerts.push({
-        type: 'warning',
-        title: 'Cancelamentos registrados',
-        description: `${formatNumber(
-          baseMetrics.canceled
-        )} registro(s) de cancelamento no período.`,
-      });
-    }
-
-    if (baseMetrics.pending > 0) {
-      alerts.push({
-        type: 'warning',
-        title: 'Registros pendentes',
-        description: `${formatNumber(
-          baseMetrics.pending
-        )} registro(s) aguardando confirmação.`,
-      });
-    }
-
-    return alerts;
-  }, [riskRows, baseMetrics]);
-
-  /* ============================================================
-     FINANCEIRO (Cruzado com o faturamento real)
-     ============================================================ */
-
-  const financialData = useMemo(() => {
-    let estimatedCost = 0;
-    let knownRates = 0;
-    let missingRates = 0;
-
-    const rows = [];
-
-    filteredShifts.forEach((shift) => {
-      const hours = getShiftHours(shift);
-      const profId = getProfessionalId(shift);
-      const prof = profId ? professionalMap[profId] : null;
-
-      const remType = String(
-        prof?.remuneration_type ||
-          prof?.remunerationType ||
-          'hora'
-      ).toLowerCase();
-
-      let rate = null;
-
-      if (remType === 'hora') {
-        rate =
-          prof?.hourly_rate ??
-          prof?.hourlyRate ??
-          shift?.hourly_rate ??
-          120;
-      } else if (remType === 'diaria') {
-        rate =
-          prof?.daily_rate ??
-          prof?.dailyRate ??
-          1500;
-      } else if (remType === 'mensal') {
-        const monthly = Number(
-          prof?.monthly_salary ??
-            prof?.monthlySalary ??
-            18000
-        );
-        rate = monthly / 30 / 12;
-      }
-
-      const numericRate = Number(rate);
-
-      if (
-        Number.isFinite(numericRate) &&
-        numericRate >= 0
-      ) {
-        const cost =
-          remType === 'mensal'
-            ? numericRate * hours
-            : hours * numericRate;
-
-        estimatedCost += cost;
-        knownRates++;
-
-        rows.push({
-          professional: getProfessionalName(
-            shift,
-            professionalMap
-          ),
-          sector: getSectorName(shift, sectorMap),
-          hours,
-          rate: numericRate,
-          cost,
-        });
-      } else {
-        missingRates++;
-
-        rows.push({
-          professional: getProfessionalName(
-            shift,
-            professionalMap
-          ),
-          sector: getSectorName(shift, sectorMap),
-          hours,
-          rate: null,
-          cost: null,
-        });
-      }
-    });
-
-    return {
-      estimatedCost,
-      knownRates,
-      missingRates,
-      rows,
-    };
-  }, [
-    filteredShifts,
-    professionalMap,
-    sectorMap,
-  ]);
-
-  /* ============================================================
-     CANCELAMENTOS / ABSENTEÍSMO
-     ============================================================ */
-
-  const cancellationRows = useMemo(() => {
-    return filteredShifts
-      .filter((shift) => {
-        const status = getStatusKey(shift?.status);
-
-        return (
-          status === 'cancelado' ||
-          status === 'canceled'
-        );
-      })
-      .map((shift) => ({
-        date: getShiftDate(shift),
-        professional: getProfessionalName(
-          shift,
-          professionalMap
-        ),
-        sector: getSectorName(shift, sectorMap),
-        reason:
-          shift?.cancellation_reason ||
-          shift?.cancel_reason ||
-          shift?.reason ||
-          'Não informado',
-      }))
-      .sort((a, b) =>
-        String(b.date).localeCompare(String(a.date))
-      );
-  }, [
-    filteredShifts,
-    professionalMap,
-    sectorMap,
-  ]);
-
-  /* ============================================================
-     ID DO RELATÓRIO
-     ============================================================ */
-
-  const reportId = useMemo(() => {
-    const date = new Date();
-
-    const datePart = [
-      date.getFullYear(),
-      String(date.getMonth() + 1).padStart(2, '0'),
-      String(date.getDate()).padStart(2, '0'),
-    ].join('');
-
-    const timePart = [
-      String(date.getHours()).padStart(2, '0'),
-      String(date.getMinutes()).padStart(2, '0'),
-      String(date.getSeconds()).padStart(2, '0'),
-    ].join('');
-
-    return `CIH-${datePart}-${timePart}`;
-  }, []);
-
-  /* ============================================================
-     LABEL DOS FILTROS
-     ============================================================ */
+  const totalFinancialEstimate = useMemo(() => {
+    return byProfessional.reduce(
+      (total, professional) =>
+        total + (professional.estimatedPay || 0),
+      0
+    );
+  }, [byProfessional]);
 
   const filtersLabel = useMemo(() => {
-    const values = [];
+    const parts = [];
 
-    if (filters.startDate) {
-      values.push(
-        `Início: ${formatDateBR(filters.startDate)}`
-      );
-    }
+    parts.push(
+      startDate
+        ? `de ${formatDateBR(startDate)}`
+        : 'sem data inicial'
+    );
 
-    if (filters.endDate) {
-      values.push(
-        `Fim: ${formatDateBR(filters.endDate)}`
-      );
-    }
+    parts.push(
+      endDate
+        ? `até ${formatDateBR(endDate)}`
+        : 'até data final em aberto'
+    );
 
-    if (filters.sectorId !== 'todos') {
-      const sector = sectors.find(
-        (item) =>
-          String(item?.id) === String(filters.sectorId)
-      );
+    parts.push(
+      selectedSector === 'all'
+        ? 'todos os setores'
+        : `setor "${selectedSector}"`
+    );
 
-      values.push(
-        `Setor: ${
-          sector?.name ||
-          sector?.nome ||
-          filters.sectorId
-        }`
-      );
-    }
+    return parts.join(' · ');
+  }, [startDate, endDate, selectedSector]);
 
-    if (filters.status !== 'todos') {
-      values.push(
-        `Status: ${getStatusLabel(filters.status)}`
-      );
-    }
-
-    if (filters.professionalId !== 'todos') {
-      const professional =
-        professionals.find(
-          (item) =>
-            String(item?.id) ===
-            String(filters.professionalId)
-        );
-
-      values.push(
-        `Profissional: ${
-          professional?.name ||
-          professional?.full_name ||
-          professional?.nome ||
-          professional?.email ||
-          filters.professionalId
-        }`
-      );
-    }
-
-    if (filters.category !== 'todos') {
-      values.push(`Categoria: ${filters.category}`);
-    }
-
-    return values.length
-      ? values.join(' • ')
-      : 'Todos os registros disponíveis';
-  }, [
-    filters,
-    sectors,
-    professionals,
-  ]);
-
-  /* ============================================================
-     PAYLOAD ESTÁVEL PARA INTEGRIDADE
-     ============================================================ */
-
-  const reportPayload =
-    useMemo(() => {
-      const config = REPORT_CONFIG[activeTab];
-
-      let columns = [];
-      let rows = [];
-      let totalsRow = null;
-
-      if (activeTab === 'executiva') {
-        columns = [
-          'Indicador',
-          'Valor',
-        ];
-
-        rows = [
-          ['Registros', baseMetrics.total],
-          ['Confirmados', baseMetrics.confirmed],
-          ['Pendentes', baseMetrics.pending],
-          ['Cancelados', baseMetrics.canceled],
-          ['Abertos', baseMetrics.open],
-          [
-            'Horas confirmadas',
-            Number(baseMetrics.confirmedHours.toFixed(2)),
-          ],
-          [
-            'Cobertura operacional',
-            Number(baseMetrics.coverage.toFixed(2)),
-          ],
-        ];
-      }
-
-      if (activeTab === 'produtividade') {
-        columns = [
-          'Profissional',
-          'Categoria',
-          'Total',
-          'Confirmados',
-          'Pendentes',
-          'Cancelados',
-          'Horas',
-        ];
-
-        rows = byProfessional.map((row) => [
-          row.name,
-          row.category,
-          row.total,
-          row.confirmed,
-          row.pending,
-          row.canceled,
-          Number(row.hours.toFixed(2)),
-        ]);
-
-        totalsRow = [
-          'TOTAL',
-          '',
-          baseMetrics.total,
-          baseMetrics.confirmed,
-          baseMetrics.pending,
-          baseMetrics.canceled,
-          Number(baseMetrics.totalHours.toFixed(2)),
-        ];
-      }
-
-      if (
-        activeTab === 'cobertura' ||
-        activeTab === 'risco'
-      ) {
-        columns = [
-          'Setor',
-          'Total',
-          'Confirmados',
-          'Pendentes',
-          'Cancelados',
-          'Abertos',
-          'Cobertura %',
-        ];
-
-        rows = bySector.map((row) => [
-          row.name,
-          row.total,
-          row.confirmed,
-          row.pending,
-          row.canceled,
-          row.open,
-          Number(row.coverage.toFixed(2)),
-        ]);
-
-        totalsRow = [
-          'TOTAL',
-          baseMetrics.total,
-          baseMetrics.confirmed,
-          baseMetrics.pending,
-          baseMetrics.canceled,
-          baseMetrics.open,
-          Number(baseMetrics.coverage.toFixed(2)),
-        ];
-      }
-
-      if (activeTab === 'financeiro') {
-        columns = [
-          'Profissional',
-          'Setor',
-          'Horas',
-          'Valor/Hora',
-          'Custo estimado',
-        ];
-
-        rows = financialData.rows.map((row) => [
-          row.professional,
-          row.sector,
-          Number(row.hours.toFixed(2)),
-          row.rate === null
-            ? 'Não informado'
-            : Number(row.rate.toFixed(2)),
-          row.cost === null
-            ? 'Não informado'
-            : Number(row.cost.toFixed(2)),
-        ]);
-      }
-
-      if (activeTab === 'turnover') {
-        columns = [
-          'Data',
-          'Profissional',
-          'Setor',
-          'Motivo',
-        ];
-
-        rows = cancellationRows.map((row) => [
-          formatDateBR(row.date),
-          row.professional,
-          row.sector,
-          row.reason,
-        ]);
-      }
-
-      if (activeTab === 'auditoria') {
-        columns = [
-          'Evento',
-          'Descrição',
-          'Data/Hora',
-        ];
-
-        rows = auditEvents.map((event) => [
-          event.type,
-          event.description,
-          event.timestamp,
-        ]);
-      }
-
-      return {
-        reportId,
-        title: config?.label || 'Relatório',
-        companyId: companyId || null,
-        unitId: unitId || null,
-        filters,
-        filtersLabel,
-        status: reportStatus,
-        version: reportVersion,
-        kpis: baseMetrics,
-        columns,
-        rows,
-        totalsRow,
-      };
-    }, [
-      activeTab,
-      reportId,
-      companyId,
-      unitId,
-      filters,
+  const reportPayload = useMemo(() => {
+    return buildReportPayload({
+      tab: activeTab,
+      company,
+      user,
       filtersLabel,
-      reportStatus,
-      reportVersion,
-      baseMetrics,
+      overview,
       byProfessional,
       bySector,
-      financialData,
-      cancellationRows,
-      auditEvents,
-    ]);
-
-  /* ============================================================
-     HASH
-     ============================================================ */
-
-  const calculateReportHash = useCallback(async () => {
-    setHashLoading(true);
-
-    try {
-      const stablePayload = {
-        reportId: reportPayload.reportId,
-        title: reportPayload.title,
-        companyId: reportPayload.companyId,
-        unitId: reportPayload.unitId,
-        filters: reportPayload.filters,
-        status: reportPayload.status,
-        version: reportPayload.version,
-        kpis: reportPayload.kpis,
-        columns: reportPayload.columns,
-        rows: reportPayload.rows,
-        totalsRow: reportPayload.totalsRow,
-      };
-
-      const serialized = JSON.stringify(
-        stablePayload
-      );
-
-      const hash = await generateSHA256(serialized);
-
-      setReportHash(hash);
-
-      return hash;
-    } finally {
-      setHashLoading(false);
-    }
-  }, [reportPayload]);
-
-  /* ============================================================
-     AUDITORIA LOCAL DA SESSÃO
-     ============================================================ */
-
-  const addAuditEvent = useCallback(
-    (type, description) => {
-      const event = {
-        id:
-          typeof crypto !== 'undefined' &&
-          crypto.randomUUID
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random()}`,
-        type,
-        description,
-        timestamp: new Date().toLocaleString(
-          'pt-BR'
-        ),
-      };
-
-      setAuditEvents((current) => [
-        event,
-        ...current,
-      ]);
-    },
-    []
-  );
-
-  useEffect(() => {
-    if (!loading) {
-      addAuditEvent(
-        'VISUALIZAÇÃO',
-        `Relatório "${REPORT_CONFIG[activeTab]?.label}" selecionado.`
-      );
-    }
-  }, [activeTab, loading, addAuditEvent]);
-
-  /* ============================================================
-     MODAL
-     ============================================================ */
-
-  useEffect(() => {
-    if (!reportModalOpen) return;
-
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setReportModalOpen(false);
-      }
-    };
-
-    document.addEventListener(
-      'keydown',
-      handleKeyDown
-    );
-
-    const previousOverflow =
-      document.body.style.overflow;
-
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.removeEventListener(
-        'keydown',
-        handleKeyDown
-      );
-
-      document.body.style.overflow =
-        previousOverflow;
-    };
-  }, [reportModalOpen]);
-
-  /* ============================================================
-     ABRIR RELATÓRIO
-     ============================================================ */
-
-  const openReportPreview = async () => {
-    addAuditEvent(
-      'RELATÓRIO',
-      `Visualização do relatório "${REPORT_CONFIG[activeTab]?.label}" iniciada.`
-    );
-
-    setReportModalOpen(true);
-
-    await calculateReportHash();
-  };
-
-  /* ============================================================
-     IMPRESSÃO
-     ============================================================ */
-
-  const printReport = () => {
-    addAuditEvent(
-      'IMPRESSÃO',
-      `Solicitação de impressão do relatório "${REPORT_CONFIG[activeTab]?.label}".`
-    );
-
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        window.print();
-      }, 150);
+      auditLogs,
+      totalFinancialEstimate,
     });
-  };
-
-  /* ============================================================
-     CSV
-     ============================================================ */
-
-  const exportCSV = () => {
-    const payload = reportPayload;
-
-    const lines = [];
-
-    lines.push(
-      `${escapeCSV('CENTRAL DE INTELIGÊNCIA HOSPITALAR')}`
-    );
-
-    lines.push(
-      `${escapeCSV('Relatório')};${escapeCSV(
-        payload.title
-      )}`
-    );
-
-    lines.push(
-      `${escapeCSV('ID do relatório')};${escapeCSV(
-        payload.reportId
-      )}`
-    );
-
-    lines.push(
-      `${escapeCSV('Versão')};${escapeCSV(
-        payload.version
-      )}`
-    );
-
-    lines.push(
-      `${escapeCSV('Status')};${escapeCSV(
-        payload.status
-      )}`
-    );
-
-    lines.push(
-      `${escapeCSV('Filtros')};${escapeCSV(
-        payload.filtersLabel
-      )}`
-    );
-
-    lines.push(
-      `${escapeCSV('Gerado em')};${escapeCSV(
-        new Date().toLocaleString('pt-BR')
-      )}`
-    );
-
-    lines.push('');
-
-    lines.push(
-      payload.columns
-        .map(escapeCSV)
-        .join(';')
-    );
-
-    payload.rows.forEach((row) => {
-      lines.push(
-        row.map(escapeCSV).join(';')
-      );
-    });
-
-    if (payload.totalsRow) {
-      lines.push(
-        payload.totalsRow
-          .map(escapeCSV)
-          .join(';')
-      );
-    }
-
-    const content =
-      '\uFEFF' + lines.join('\r\n');
-
-    const filename = `${sanitizeFilename(
-      payload.title
-    )}-${payload.reportId}.csv`;
-
-    downloadFile(
-      content,
-      filename,
-      'text/csv;charset=utf-8;'
-    );
-
-    addAuditEvent(
-      'EXPORTAÇÃO',
-      `CSV exportado: ${filename}.`
-    );
-  };
-
-  /* ============================================================
-     STATUS DE GOVERNANÇA
-     ============================================================ */
-
-  const changeReportStatus = (status) => {
-    setReportStatus(status);
-
-    addAuditEvent(
-      'GOVERNANÇA',
-      `Status do relatório alterado para "${status}".`
-    );
-  };
-
-  const createNewVersion = () => {
-    setReportVersion((current) => current + 1);
-    setReportStatus('Rascunho');
-    setReportHash('');
-
-    addAuditEvent(
-      'VERSÃO',
-      `Nova versão do relatório criada: v${
-        reportVersion + 1
-      }.`
-    );
-  };
-
-  /* ============================================================
-     RESET
-     ============================================================ */
-
-  const resetFilters = () => {
-    setFilters({
-      startDate: '',
-      endDate: '',
-      sectorId: 'todos',
-      status: 'todos',
-      professionalId: 'todos',
-      category: 'todos',
-    });
-
-    addAuditEvent(
-      'FILTROS',
-      'Filtros restaurados para a configuração padrão.'
-    );
-  };
-
-  /* ============================================================
-     COMPONENTES VISUAIS
-     ============================================================ */
-
-  const activeConfig =
-    REPORT_CONFIG[activeTab];
-
-  const ActiveIcon = activeConfig?.icon || Activity;
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-slate-900 dark:bg-slate-800 flex items-center justify-center shadow-xl">
-            <Loader2 className="w-7 h-7 text-white animate-spin" />
-          </div>
-
-          <div className="text-center">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-              Carregando Central de Inteligência
-            </h2>
-
-            <p className="text-sm text-slate-500 mt-1">
-              Sincronizando dados hospitalares...
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  }, [
+    activeTab,
+    company,
+    user,
+    filtersLabel,
+    overview,
+    byProfessional,
+    bySector,
+    auditLogs,
+    totalFinancialEstimate,
+  ]);
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
-      {/* ========================================================
-          PRINT CSS (Permite múltiplas folhas limpas)
-          ======================================================== */}
-
-      <style>{`
-        @page {
-          size: A4 portrait;
-          margin: 12mm;
-        }
-
-        @media print {
-          html,
-          body {
-            width: auto !important;
-            height: auto !important;
-            min-height: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: visible !important;
-            background: #ffffff !important;
-          }
-
-          body {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-
-          body * {
-            visibility: hidden !important;
-          }
-
-          .report-print-overlay,
-          .report-print-shell,
-          .report-print-scroll {
-            position: static !important;
-            inset: auto !important;
-            display: block !important;
-            width: auto !important;
-            max-width: none !important;
-            height: auto !important;
-            min-height: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: visible !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            border: 0 !important;
-            border-radius: 0 !important;
-            backdrop-filter: none !important;
-          }
-
-          #report-print-area,
-          #report-print-area * {
-            visibility: visible !important;
-          }
-
-          #report-print-area {
-            position: static !important;
-            display: block !important;
-            width: 100% !important;
-            max-width: none !important;
-            height: auto !important;
-            min-height: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: visible !important;
-            background: #ffffff !important;
-            color: #0f172a !important;
-            box-shadow: none !important;
-            border: 0 !important;
-            border-radius: 0 !important;
-          }
-
-          .report-no-print {
-            display: none !important;
-          }
-
-          .report-print-table {
-            width: 100% !important;
-            table-layout: auto !important;
-            border-collapse: collapse !important;
-          }
-
-          .report-print-table thead {
-            display: table-header-group !important;
-          }
-
-          .report-print-table tfoot {
-            display: table-footer-group !important;
-          }
-
-          .report-print-table tr,
-          .report-print-table th,
-          .report-print-table td {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
-
-          .report-print-table th,
-          .report-print-table td {
-            overflow-wrap: anywhere !important;
-          }
-
-          .report-page-break {
-            break-before: page !important;
-            page-break-before: always !important;
-          }
-
-          .report-avoid-break {
-            break-inside: avoid-page !important;
-            page-break-inside: avoid !important;
-          }
-
-          #report-print-area > *:first-child {
-            margin-top: 0 !important;
-          }
-        }
-      `}</style>
-
-      {/* ========================================================
-          MOBILE HEADER
-          ======================================================== */}
-
-      <div className="lg:hidden sticky top-0 z-40 bg-slate-950 text-white px-4 py-3 flex items-center justify-between shadow-lg">
-        <button
-          type="button"
-          onClick={() =>
-            setMobileMenuOpen(
-              (current) => !current
-            )
-          }
-          className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center"
-          aria-label="Abrir menu"
-        >
-          {mobileMenuOpen ? (
-            <X className="w-5 h-5" />
-          ) : (
-            <Menu className="w-5 h-5" />
-          )}
-        </button>
-
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 flex items-center justify-center">
-            <Activity className="w-4 h-4 text-slate-950 dark:text-slate-50" />
+    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-950 to-sky-950 p-6 rounded-3xl text-white shadow-xl">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-sky-400">
+            <BarChart3 className="w-4 h-4" />
+            Inteligência Executiva & Governança
           </div>
 
-          <span className="font-semibold text-sm">
-            Inteligência Hospitalar
+          <h1 className="text-3xl font-black tracking-tight mt-1">
+            Relatórios
+          </h1>
+
+          <p className="text-xs text-slate-300 max-w-xl mt-1">
+            Painel unificado de auditoria, dimensionamento de
+            equipes, cobertura operacional e controle financeiro.
+          </p>
+        </div>
+
+        <div className="flex flex-col items-end gap-2">
+          <Button
+            onClick={() => setPreviewOpen(true)}
+            className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-10 px-5 gap-2"
+          >
+            <Eye className="w-4 h-4" />
+            Visualizar Relatório Oficial
+          </Button>
+
+          <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
+            <Leaf className="w-3 h-3" />
+            Valide antes de imprimir
           </span>
         </div>
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={toggleTheme}
-          className="text-white hover:bg-white/10 hover:text-white"
-          aria-label={theme === 'dark' ? 'Ativar modo diurno' : 'Ativar modo escuro'}
-          title={theme === 'dark' ? 'Modo diurno' : 'Modo escuro'}
-        >
-          {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-        </Button>
       </div>
 
-      {/* ========================================================
-          LAYOUT
-          ======================================================== */}
-
-      <div className="flex min-h-screen">
-        {/* ======================================================
-            SIDEBAR CORPORATIVA (Otimizada Diurno e Noturno)
-            ====================================================== */}
-
-        <aside
-          className={`
-            fixed lg:sticky
-            top-0
-            left-0
-            z-50
-            h-screen
-            w-[280px]
-            bg-slate-950
-            dark:bg-slate-900
-            border-r
-            border-slate-800
-            text-white
-            flex flex-col
-            shadow-2xl
-            transition-transform
-            duration-300
-            ${
-              mobileMenuOpen
-                ? 'translate-x-0'
-                : '-translate-x-full lg:translate-x-0'
-            }
-          `}
-        >
-          <div className="px-6 py-6 border-b border-white/10">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-sky-600 flex items-center justify-center shadow-lg shadow-sky-900/40">
-                <Activity className="w-6 h-6 text-white" />
-              </div>
-
-              <div>
-                <div className="font-black text-sm tracking-wider text-white">
-                  CENTRAL DE
-                </div>
-
-                <div className="text-xs font-semibold text-sky-400">
-                  INTELIGÊNCIA HOSPITALAR
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-3 py-5">
-            <div className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
-              Visão executiva
-            </div>
-
-            <SidebarItem
-              active={activeTab === 'executiva'}
-              icon={LayoutDashboard}
-              label="Visão Executiva"
-              onClick={() => {
-                setActiveTab('executiva');
-                setMobileMenuOpen(false);
-              }}
-            />
-
-            <div className="mt-7 mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
-              Operacional
-            </div>
-
-            {[
-              ['produtividade', Clock3],
-              ['cobertura', Building2],
-              ['risco', ShieldCheck],
-              ['financeiro', BarChart3],
-              ['turnover', Users],
-            ].map(([key, Icon]) => (
-              <SidebarItem
-                key={key}
-                active={activeTab === key}
-                icon={Icon}
-                label={REPORT_CONFIG[key].label}
-                onClick={() => {
-                  setActiveTab(key);
-                  setMobileMenuOpen(false);
-                }}
-              />
-            ))}
-
-            <div className="mt-7 mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
-              Governança
-            </div>
-
-            <SidebarItem
-              active={activeTab === 'auditoria'}
-              icon={ClipboardCheck}
-              label="Governança & Auditoria"
-              onClick={() => {
-                setActiveTab('auditoria');
-                setMobileMenuOpen(false);
-              }}
-            />
-          </div>
-
-          <div className="border-t border-slate-800 p-4 bg-slate-900/50">
-            <div className="rounded-xl bg-slate-900 border border-slate-800 p-3">
-              <div className="flex items-center gap-2 text-xs text-sky-400 font-semibold">
-                <ShieldCheck className="w-4 h-4" />
-                Ambiente Corporativo
-              </div>
-
-              <div className="mt-1 text-[10px] text-slate-400 leading-relaxed">
-                Cruzamento financeiro ativo com faturamento real e relatórios paginados.
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        {/* Overlay mobile */}
-        {mobileMenuOpen && (
+      <div className="flex items-center bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto gap-1">
+        {Object.entries(TAB_META).map(([key, meta]) => (
           <button
-            type="button"
-            aria-label="Fechar menu"
-            onClick={() =>
-              setMobileMenuOpen(false)
-            }
-            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-          />
-        )}
-
-        {/* ======================================================
-            CONTEÚDO
-            ================================================      */}
-
-        <main className="flex-1 min-w-0">
-          {/* HEADER */}
-          <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 transition-colors">
-            <div className="px-5 sm:px-8 py-5">
-              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
-                <div className="flex items-start gap-4">
-                  <div className="hidden sm:flex w-12 h-12 rounded-2xl bg-sky-600 dark:bg-sky-500 items-center justify-center shrink-0 shadow-md shadow-sky-500/20">
-                    <ActiveIcon className="w-6 h-6 text-white" />
-                  </div>
-
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Central de Inteligência
-                      </span>
-
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                        ONLINE
-                      </span>
-                    </div>
-
-                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50 mt-1">
-                      {activeConfig.label}
-                    </h1>
-
-                    <p className="text-sm text-slate-500 mt-1">
-                      {activeConfig.description}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={toggleTheme}
-                    className="dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
-                    aria-label={theme === 'dark' ? 'Ativar modo diurno' : 'Ativar modo escuro'}
-                    title={theme === 'dark' ? 'Modo diurno' : 'Modo escuro'}
-                  >
-                    {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() =>
-                      loadData(true)
-                    }
-                    disabled={refreshing}
-                    className="gap-2 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
-                  >
-                    <RefreshCw
-                      className={`w-4 h-4 ${
-                        refreshing
-                          ? 'animate-spin'
-                          : ''
-                      }`}
-                    />
-                    Atualizar
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={exportCSV}
-                    className="gap-2 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
-                  >
-                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                    CSV
-                  </Button>
-
-                  <Button
-                    type="button"
-                    onClick={openReportPreview}
-                    className="gap-2 bg-sky-600 hover:bg-sky-500 text-white font-bold shadow-md shadow-sky-600/20"
-                  >
-                    <Eye className="w-4 h-4" />
-                    Visualizar relatório oficial
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </header>
-
-          {/* ====================================================
-              FILTROS
-              ================================================    */}
-
-          <section className="px-5 sm:px-8 pt-6">
-            <Card className="p-5 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-5">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-sky-50 dark:bg-slate-800 flex items-center justify-center">
-                    <SlidersHorizontal className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-                  </div>
-
-                  <div>
-                    <h2 className="font-semibold text-slate-900 dark:text-white text-sm">
-                      Filtros do relatório
-                    </h2>
-
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Os indicadores abaixo refletem somente os
-                      registros selecionados.
-                    </p>
-                  </div>
-                </div>
-
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={resetFilters}
-                  className="gap-2 text-slate-500 hover:text-slate-900 dark:hover:text-white text-xs"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Limpar filtros
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3">
-                <FilterField
-                  label="Data inicial"
-                  icon={CalendarDays}
-                >
-                  <Input
-                    type="date"
-                    value={filters.startDate}
-                    onChange={(event) =>
-                      setFilters((current) => ({
-                        ...current,
-                        startDate:
-                          event.target.value,
-                      }))
-                    }
-                    className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700"
-                  />
-                </FilterField>
-
-                <FilterField
-                  label="Data final"
-                  icon={CalendarDays}
-                >
-                  <Input
-                    type="date"
-                    value={filters.endDate}
-                    onChange={(event) =>
-                      setFilters((current) => ({
-                        ...current,
-                        endDate:
-                          event.target.value,
-                      }))
-                    }
-                    className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700"
-                  />
-                </FilterField>
-
-                <FilterField
-                  label="Setor"
-                  icon={Building2}
-                >
-                  <Select
-                    value={filters.sectorId}
-                    onValueChange={(value) =>
-                      setFilters((current) => ({
-                        ...current,
-                        sectorId: value,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700">
-                      <SelectValue placeholder="Todos" />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      <SelectItem value="todos">
-                        Todos os setores
-                      </SelectItem>
-
-                      {sectors.map((sector) => (
-                        <SelectItem
-                          key={sector.id}
-                          value={String(sector.id)}
-                        >
-                          {sector.name ||
-                            sector.nome ||
-                            sector.title ||
-                            sector.id}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FilterField>
-
-                <FilterField
-                  label="Status"
-                  icon={CheckCircle2}
-                >
-                  <Select
-                    value={filters.status}
-                    onValueChange={(value) =>
-                      setFilters((current) => ({
-                        ...current,
-                        status: value,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700">
-                      <SelectValue />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      {STATUS_OPTIONS.map(
-                        (option) => (
-                          <SelectItem
-                            key={option.value}
-                            value={option.value}
-                          >
-                            {option.label}
-                          </SelectItem>
-                        )
-                      )}
-                    </SelectContent>
-                  </Select>
-                </FilterField>
-
-                <FilterField
-                  label="Profissional"
-                  icon={UserCheck}
-                >
-                  <Select
-                    value={filters.professionalId}
-                    onValueChange={(value) =>
-                      setFilters((current) => ({
-                        ...current,
-                        professionalId:
-                          value,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700">
-                      <SelectValue placeholder="Todos" />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      <SelectItem value="todos">
-                        Todos
-                      </SelectItem>
-
-                      {professionals.map(
-                        (professional) => (
-                          <SelectItem
-                            key={professional.id}
-                            value={String(
-                              professional.id
-                            )}
-                          >
-                            {professional.name ||
-                              professional.full_name ||
-                              professional.nome ||
-                              professional.email ||
-                              professional.id}
-                          </SelectItem>
-                        )
-                      )}
-                    </SelectContent>
-                  </Select>
-                </FilterField>
-
-                <FilterField
-                  label="Categoria"
-                  icon={Users}
-                >
-                  <Select
-                    value={filters.category}
-                    onValueChange={(value) =>
-                      setFilters((current) => ({
-                        ...current,
-                        category: value,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700">
-                      <SelectValue placeholder="Todas" />
-                    </SelectTrigger>
-
-                    <SelectContent>
-                      <SelectItem value="todos">
-                        Todas
-                      </SelectItem>
-
-                      {categories.map(
-                        (category) => (
-                          <SelectItem
-                            key={category}
-                            value={category}
-                          >
-                            {category}
-                          </SelectItem>
-                        )
-                      )}
-                    </SelectContent>
-                  </Select>
-                </FilterField>
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center gap-2 text-xs">
-                <div className="flex items-center gap-2 text-slate-500">
-                  <Filter className="w-3.5 h-3.5 text-sky-600" />
-                  <span className="font-medium">
-                    Filtro aplicado:
-                  </span>
-                </div>
-
-                <span className="text-slate-700 dark:text-slate-300">
-                  {filtersLabel}
-                </span>
-              </div>
-            </Card>
-          </section>
-
-          {/* ====================================================
-              ERRO
-              ==================================================== */}
-
-          {error && (
-            <section className="px-5 sm:px-8 pt-5">
-              <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/40 p-4 flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
-
-                <div>
-                  <div className="font-semibold text-red-900 dark:text-red-200">
-                    Falha no carregamento
-                  </div>
-
-                  <div className="text-sm text-red-700 dark:text-red-300 mt-1">
-                    {error}
-                  </div>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* ====================================================
-              ALERTAS
-              ==================================================== */}
-
-          {criticalAlerts.length > 0 &&
-            activeTab !== 'auditoria' && (
-              <section className="px-5 sm:px-8 pt-5">
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                  {criticalAlerts
-                    .slice(0, 4)
-                    .map((alert, index) => (
-                      <div
-                        key={`${alert.title}-${index}`}
-                        className={`
-                          rounded-xl border p-4 flex gap-3
-                          ${
-                            alert.type ===
-                            'critical'
-                              ? 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-900'
-                              : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900'
-                          }
-                        `}
-                      >
-                        <div
-                          className={`
-                            w-9 h-9 rounded-lg flex items-center justify-center shrink-0
-                            ${
-                              alert.type ===
-                              'critical'
-                                ? 'bg-red-100 dark:bg-red-900/60'
-                                : 'bg-amber-100 dark:bg-amber-900/60'
-                            }
-                          `}
-                        >
-                          <AlertTriangle
-                            className={`
-                              w-4 h-4
-                              ${
-                                alert.type ===
-                                'critical'
-                                  ? 'text-red-600 dark:text-red-400'
-                                  : 'text-amber-600 dark:text-amber-400'
-                              }
-                            `}
-                          />
-                        </div>
-
-                        <div>
-                          <div className="font-semibold text-sm text-slate-900 dark:text-slate-100">
-                            {alert.title}
-                          </div>
-
-                          <div className="text-xs text-slate-600 dark:text-slate-300 mt-1">
-                            {alert.description}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </section>
-            )}
-
-          {/* ====================================================
-              KPI
-              ==================================================== */}
-
-          {activeTab !== 'auditoria' && (
-            <section className="px-5 sm:px-8 pt-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-                <KpiCard
-                  icon={Database}
-                  label="Registros"
-                  value={formatNumber(
-                    baseMetrics.total
-                  )}
-                  description="No período filtrado"
-                />
-
-                <KpiCard
-                  icon={CheckCircle2}
-                  label="Confirmados"
-                  value={formatNumber(
-                    baseMetrics.confirmed
-                  )}
-                  description={`${formatNumber(
-                    baseMetrics.coverage,
-                    1
-                  )}% do total`}
-                  positive
-                />
-
-                <KpiCard
-                  icon={Clock3}
-                  label="Horas confirmadas"
-                  value={formatNumber(
-                    baseMetrics.confirmedHours,
-                    1
-                  )}
-                  description="Horas contabilizadas"
-                />
-
-                <KpiCard
-                  icon={AlertTriangle}
-                  label="Pendentes"
-                  value={formatNumber(
-                    baseMetrics.pending
-                  )}
-                  description="Aguardando confirmação"
-                  warning={
-                    baseMetrics.pending > 0
-                  }
-                />
-
-                <KpiCard
-                  icon={TrendingDown}
-                  label="Cancelamentos"
-                  value={formatNumber(
-                    baseMetrics.canceled
-                  )}
-                  description="Registros cancelados"
-                  warning={
-                    baseMetrics.canceled > 0
-                  }
-                />
-              </div>
-            </section>
-          )}
-
-          {/* ====================================================
-              CONTEÚDO DOS RELATÓRIOS
-              ==================================================== */}
-
-          <section className="px-5 sm:px-8 py-6">
-            {activeTab === 'executiva' && (
-              <ExecutiveView
-                baseMetrics={baseMetrics}
-                riskRows={riskRows}
-                byProfessional={byProfessional}
-                criticalAlerts={
-                  criticalAlerts
-                }
-              />
-            )}
-
-            {activeTab === 'produtividade' && (
-              <ProductivityView
-                rows={byProfessional}
-                baseMetrics={baseMetrics}
-              />
-            )}
-
-            {activeTab === 'cobertura' && (
-              <CoverageView
-                rows={bySector}
-              />
-            )}
-
-            {activeTab === 'risco' && (
-              <RiskView
-                rows={riskRows}
-              />
-            )}
-
-            {activeTab === 'financeiro' && (
-              <FinancialView
-                data={financialData}
-              />
-            )}
-
-            {activeTab === 'turnover' && (
-              <CancellationView
-                rows={cancellationRows}
-              />
-            )}
-
-            {activeTab === 'auditoria' && (
-              <GovernanceView
-                reportId={reportId}
-                version={reportVersion}
-                status={reportStatus}
-                hash={reportHash}
-                hashLoading={hashLoading}
-                auditEvents={auditEvents}
-                onGenerateHash={
-                  calculateReportHash
-                }
-                onStatusChange={
-                  changeReportStatus
-                }
-                onNewVersion={
-                  createNewVersion
-                }
-              />
-            )}
-          </section>
-        </main>
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`flex-1 min-w-[180px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all text-center whitespace-nowrap ${
+              activeTab === key
+                ? 'bg-sky-600 text-white shadow-md'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            {meta.label}
+          </button>
+        ))}
       </div>
 
-      {/* ========================================================
-          MODAL DO RELATÓRIO
-          ================================================        */}
-
-      {reportModalOpen && (
-        <ReportPreviewModal
-          reportPayload={reportPayload}
-          reportHash={reportHash}
-          hashLoading={hashLoading}
-          reportStatus={reportStatus}
-          reportVersion={reportVersion}
-          onClose={() =>
-            setReportModalOpen(false)
-          }
-          onPrint={printReport}
-          onExport={exportCSV}
-          onStatusChange={
-            changeReportStatus
-          }
-          onNewVersion={createNewVersion}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ============================================================
-   SIDEBAR ITEM
-   ============================================================ */
-
-function SidebarItem({
-  active,
-  icon: Icon,
-  label,
-  onClick,
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`
-        w-full
-        flex
-        items-center
-        gap-3
-        px-3
-        py-3
-        rounded-xl
-        mb-1
-        text-left
-        transition-all
-        group
-        ${
-          active
-            ? 'bg-sky-600 text-white font-bold shadow-lg shadow-sky-950/20'
-            : 'text-slate-400 hover:text-white hover:bg-white/5'
-        }
-      `}
-    >
-      <Icon
-        className={`
-          w-[18px] h-[18px] shrink-0
-          ${
-            active
-              ? 'text-white'
-              : 'text-slate-500 group-hover:text-slate-300'
-          }
-        `}
-      />
-
-      <span className="text-sm font-medium flex-1">
-        {label}
-      </span>
-
-      {active && (
-        <ChevronRight className="w-4 h-4" />
-      )}
-    </button>
-  );
-}
-
-/* ============================================================
-   FILTER FIELD
-   ============================================================ */
-
-function FilterField({
-  label,
-  icon: Icon,
-  children,
-}) {
-  return (
-    <div>
-      <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 mb-1.5">
-        {Icon && (
-          <Icon className="w-3.5 h-3.5" />
-        )}
-        {label}
-      </label>
-
-      {children}
-    </div>
-  );
-}
-
-/* ============================================================
-   KPI CARD
-   ============================================================ */
-
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  description,
-  positive,
-  warning,
-}) {
-  return (
-    <Card className="p-5 border-slate-200 dark:border-slate-700 shadow-sm bg-white dark:bg-slate-900 transition-colors">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            {label}
-          </div>
-
-          <div className="text-2xl font-bold text-slate-950 dark:text-slate-50 mt-2">
-            {value}
-          </div>
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center gap-4">
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
+          <Filter className="w-4 h-4 text-sky-600" />
+          Filtros:
         </div>
 
-        <div
-          className={`
-            w-10 h-10 rounded-xl flex items-center justify-center
-            ${
-              warning
-                ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600'
-                : positive
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'
-            }
-          `}
-        >
-          <Icon className="w-5 h-5" />
-        </div>
-      </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+          <div>
+            <label className="text-[10px] font-semibold text-slate-400 block mb-1">
+              De
+            </label>
 
-      <div className="mt-3 text-xs text-slate-500">
-        {description}
-      </div>
-    </Card>
-  );
-}
-
-/* ============================================================
-   EXECUTIVA
-   ============================================================ */
-
-function ExecutiveView({
-  baseMetrics,
-  riskRows,
-  byProfessional,
-  criticalAlerts,
-}) {
-  const topProfessionals =
-    byProfessional.slice(0, 8);
-
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <Card className="xl:col-span-2 p-6 border-slate-200 dark:border-slate-700 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-lg font-bold">
-                Resumo executivo
-              </h2>
-
-              <p className="text-sm text-slate-500 mt-1">
-                Indicadores consolidados da operação
-              </p>
-            </div>
-
-            <Activity className="w-5 h-5 text-slate-400" />
-          </div>
-
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <ExecutiveMetric
-              label="Cobertura"
-              value={`${formatNumber(
-                baseMetrics.coverage,
-                1
-              )}%`}
-            />
-
-            <ExecutiveMetric
-              label="Horas"
-              value={formatNumber(
-                baseMetrics.confirmedHours,
-                1
-              )}
-            />
-
-            <ExecutiveMetric
-              label="Pendências"
-              value={formatNumber(
-                baseMetrics.pending
-              )}
-            />
-
-            <ExecutiveMetric
-              label="Cancelamentos"
-              value={formatNumber(
-                baseMetrics.canceled
-              )}
-            />
-          </div>
-        </Card>
-
-        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
-          <div className="flex items-center gap-2 mb-5">
-            <ShieldCheck className="w-5 h-5 text-slate-700 dark:text-slate-200" />
-
-            <h2 className="font-bold">
-              Situação operacional
-            </h2>
-          </div>
-
-          <div className="space-y-4">
-            <StatusLine
-              label="Regular"
-              value={
-                riskRows.filter(
-                  (row) =>
-                    row.level === 'regular'
-                ).length
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(event) =>
+                setStartDate(event.target.value)
               }
-              type="success"
-            />
-
-            <StatusLine
-              label="Atenção"
-              value={
-                riskRows.filter(
-                  (row) =>
-                    row.level === 'atencao'
-                ).length
-              }
-              type="warning"
-            />
-
-            <StatusLine
-              label="Crítico"
-              value={
-                riskRows.filter(
-                  (row) =>
-                    row.level === 'critico'
-                ).length
-              }
-              type="danger"
+              className="h-9 text-xs bg-slate-50 dark:bg-slate-800"
             />
           </div>
-
-          <p className="text-[11px] text-slate-400 mt-5 leading-relaxed">
-            Classificação operacional baseada no percentual
-            de registros confirmados. Não representa, por si só,
-            uma conclusão de conformidade regulatória.
-          </p>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h2 className="font-bold">
-                Cobertura por setor
-              </h2>
-
-              <p className="text-xs text-slate-500 mt-1">
-                Menores percentuais aparecem primeiro
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {riskRows
-              .slice(0, 8)
-              .map((row) => (
-                <CoverageBar
-                  key={row.name}
-                  label={row.name}
-                  value={row.coverage}
-                />
-              ))}
-
-            {riskRows.length === 0 && (
-              <EmptyState
-                title="Sem dados de cobertura"
-                description="Não existem registros para os filtros atuais."
-              />
-            )}
-          </div>
-        </Card>
-
-        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h2 className="font-bold">
-                Profissionais por horas
-              </h2>
-
-              <p className="text-xs text-slate-500 mt-1">
-                Maior volume de horas no período
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {topProfessionals.map(
-              (row, index) => (
-                <div
-                  key={row.id}
-                  className="flex items-center gap-3"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300">
-                    {index + 1}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">
-                      {row.name}
-                    </div>
-
-                    <div className="text-[11px] text-slate-400 truncate">
-                      {row.category}
-                    </div>
-                  </div>
-
-                  <div className="text-sm font-bold">
-                    {formatNumber(
-                      row.hours,
-                      1
-                    )}h
-                  </div>
-                </div>
-              )
-            )}
-
-            {topProfessionals.length === 0 && (
-              <EmptyState
-                title="Sem profissionais"
-                description="Não existem registros para os filtros atuais."
-              />
-            )}
-          </div>
-        </Card>
-      </div>
-
-      {criticalAlerts.length > 0 && (
-        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
-          <div className="flex items-center gap-2 mb-5">
-            <AlertTriangle className="w-5 h-5 text-amber-600" />
-
-            <h2 className="font-bold">
-              Alertas de gestão
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {criticalAlerts.map(
-              (alert, index) => (
-                <div
-                  key={index}
-                  className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
-                >
-                  <div className="font-semibold text-sm">
-                    {alert.title}
-                  </div>
-
-                  <div className="text-xs text-slate-500 mt-1">
-                    {alert.description}
-                  </div>
-                </div>
-              )
-            )}
-          </div>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-/* ============================================================
-   EXECUTIVE METRIC
-   ============================================================ */
-
-function ExecutiveMetric({
-  label,
-  value,
-}) {
-  return (
-    <div className="rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-800 p-4">
-      <div className="text-xs text-slate-500">
-        {label}
-      </div>
-
-      <div className="text-xl font-bold mt-1">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   STATUS LINE
-   ============================================================ */
-
-function StatusLine({
-  label,
-  value,
-  type,
-}) {
-  const styles = {
-    success:
-      'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300',
-    warning:
-      'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
-    danger:
-      'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300',
-  };
-
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm text-slate-600 dark:text-slate-300">
-        {label}
-      </span>
-
-      <span
-        className={`px-2.5 py-1 rounded-lg text-xs font-bold ${styles[type]}`}
-      >
-        {formatNumber(value)}
-      </span>
-    </div>
-  );
-}
-
-/* ============================================================
-   COVERAGE BAR
-   ============================================================ */
-
-function CoverageBar({
-  label,
-  value,
-}) {
-  const numeric = Math.max(
-    0,
-    Math.min(100, Number(value) || 0)
-  );
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1.5 text-xs">
-        <span className="font-medium text-slate-700 dark:text-slate-300 truncate pr-3">
-          {label}
-        </span>
-
-        <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
-          {formatNumber(numeric, 1)}%
-        </span>
-      </div>
-
-      <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-        <div
-          className="h-full rounded-full bg-slate-800 dark:bg-slate-200 transition-all"
-          style={{
-            width: `${numeric}%`,
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   PRODUTIVIDADE
-   ============================================================ */
-
-function ProductivityView({
-  rows,
-  baseMetrics,
-}) {
-  return (
-    <ReportCard title="Produtividade por profissional">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-500">
-              <th className="py-3 pr-4">
-                Profissional
-              </th>
-
-              <th className="py-3 px-4">
-                Categoria
-              </th>
-
-              <th className="py-3 px-4 text-right">
-                Total
-              </th>
-
-              <th className="py-3 px-4 text-right">
-                Confirmados
-              </th>
-
-              <th className="py-3 px-4 text-right">
-                Pendentes
-              </th>
-
-              <th className="py-3 px-4 text-right">
-                Cancelados
-              </th>
-
-              <th className="py-3 pl-4 text-right">
-                Horas
-              </th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
-            {rows.map((row) => (
-              <tr
-                key={row.id}
-                className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50"
-              >
-                <td className="py-3 pr-4 font-medium text-slate-900 dark:text-white">
-                  {row.name}
-                </td>
-
-                <td className="py-3 px-4 text-slate-500">
-                  {row.category}
-                </td>
-
-                <td className="py-3 px-4 text-right">
-                  {formatNumber(row.total)}
-                </td>
-
-                <td className="py-3 px-4 text-right text-emerald-700 dark:text-emerald-300 font-semibold">
-                  {formatNumber(
-                    row.confirmed
-                  )}
-                </td>
-
-                <td className="py-3 px-4 text-right text-amber-700 dark:text-amber-300">
-                  {formatNumber(row.pending)}
-                </td>
-
-                <td className="py-3 px-4 text-right text-red-700 dark:text-red-300">
-                  {formatNumber(
-                    row.canceled
-                  )}
-                </td>
-
-                <td className="py-3 pl-4 text-right font-bold text-slate-900 dark:text-white">
-                  {formatNumber(
-                    row.hours,
-                    1
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-
-          {rows.length > 0 && (
-            <tfoot>
-              <tr className="bg-slate-50 dark:bg-slate-800 font-bold text-slate-900 dark:text-white">
-                <td className="py-3">
-                  TOTAL
-                </td>
-
-                <td />
-
-                <td className="py-3 px-4 text-right">
-                  {formatNumber(
-                    baseMetrics.total
-                  )}
-                </td>
-
-                <td className="py-3 px-4 text-right">
-                  {formatNumber(
-                    baseMetrics.confirmed
-                  )}
-                </td>
-
-                <td className="py-3 px-4 text-right">
-                  {formatNumber(
-                    baseMetrics.pending
-                  )}
-                </td>
-
-                <td className="py-3 px-4 text-right">
-                  {formatNumber(
-                    baseMetrics.canceled
-                  )}
-                </td>
-
-                <td className="py-3 text-right">
-                  {formatNumber(
-                    baseMetrics.totalHours,
-                    1
-                  )}
-                </td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </div>
-
-      {rows.length === 0 && (
-        <EmptyState
-          title="Nenhum registro encontrado"
-          description="Ajuste os filtros para visualizar os dados."
-        />
-      )}
-    </ReportCard>
-  );
-}
-
-/* ============================================================
-   COBERTURA
-   ============================================================ */
-
-function CoverageView({
-  rows,
-}) {
-  return (
-    <div className="space-y-5">
-      <ReportCard title="Cobertura operacional por setor">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-5">
-          {rows.map((row) => (
-            <CoverageBar
-              key={row.name}
-              label={row.name}
-              value={row.coverage}
-            />
-          ))}
-        </div>
-
-        {rows.length === 0 && (
-          <EmptyState
-            title="Sem dados"
-            description="Nenhum setor possui registros nos filtros selecionados."
-          />
-        )}
-      </ReportCard>
-
-      <ReportCard title="Detalhamento por setor">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-500">
-                <th className="py-3">
-                  Setor
-                </th>
-                <th className="py-3 text-right">
-                  Total
-                </th>
-                <th className="py-3 text-right">
-                  Confirmados
-                </th>
-                <th className="py-3 text-right">
-                  Pendentes
-                </th>
-                <th className="py-3 text-right">
-                  Cancelados
-                </th>
-                <th className="py-3 text-right">
-                  Abertos
-                </th>
-                <th className="py-3 text-right">
-                  Cobertura
-                </th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
-              {rows.map((row) => (
-                <tr
-                  key={row.name}
-                  className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50"
-                >
-                  <td className="py-3 font-medium text-slate-900 dark:text-white">
-                    {row.name}
-                  </td>
-
-                  <td className="py-3 text-right">
-                    {formatNumber(row.total)}
-                  </td>
-
-                  <td className="py-3 text-right text-emerald-700 dark:text-emerald-300">
-                    {formatNumber(
-                      row.confirmed
-                    )}
-                  </td>
-
-                  <td className="py-3 text-right text-amber-700 dark:text-amber-300">
-                    {formatNumber(
-                      row.pending
-                    )}
-                  </td>
-
-                  <td className="py-3 text-right text-red-700 dark:text-red-300">
-                    {formatNumber(
-                      row.canceled
-                    )}
-                  </td>
-
-                  <td className="py-3 text-right">
-                    {formatNumber(row.open)}
-                  </td>
-
-                  <td className="py-3 text-right font-bold text-slate-900 dark:text-white">
-                    {formatNumber(
-                      row.coverage,
-                      1
-                    )}%
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </ReportCard>
-    </div>
-  );
-}
-
-/* ============================================================
-   RISCO
-   ============================================================ */
-
-function RiskView({
-  rows,
-}) {
-  return (
-    <ReportCard
-      title="Painel de risco operacional"
-      description="Indicadores internos de cobertura e pendência."
-    >
-      <div className="mb-5 rounded-xl border border-sky-100 bg-sky-50 p-4 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
-        <div className="flex gap-3">
-          <ShieldCheck className="w-5 h-5 shrink-0 mt-0.5" />
 
           <div>
-            <strong>
-              Critério operacional:
-            </strong>{' '}
-            os níveis abaixo são indicadores gerenciais
-            calculados a partir dos registros confirmados.
-            Eles não constituem, isoladamente, parecer jurídico,
-            regulatório ou clínico.
+            <label className="text-[10px] font-semibold text-slate-400 block mb-1">
+              Até
+            </label>
+
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(event) =>
+                setEndDate(event.target.value)
+              }
+              className="h-9 text-xs bg-slate-50 dark:bg-slate-800"
+            />
           </div>
-        </div>
-      </div>
 
-      <div className="space-y-3">
-        {rows.map((row) => {
-          const levelConfig = {
-            regular: {
-              label: 'Regular',
-              className:
-                'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-100 dark:border-emerald-800',
-            },
+          <div>
+            <label className="text-[10px] font-semibold text-slate-400 block mb-1">
+              Setor
+            </label>
 
-            atencao: {
-              label: 'Atenção',
-              className:
-                'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-100',
-            },
-
-            critico: {
-              label: 'Crítico',
-              className:
-                'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-100',
-            },
-          }[row.level];
-
-          return (
-            <div
-              key={row.name}
-              className="flex flex-col md:flex-row md:items-center gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+            <Select
+              value={String(selectedSector)}
+              onValueChange={setSelectedSector}
             >
-              <div className="flex-1">
-                <div className="font-semibold text-slate-900 dark:text-white">
-                  {row.name}
-                </div>
+              <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800">
+                <SelectValue placeholder="Todos os setores" />
+              </SelectTrigger>
 
-                <div className="text-xs text-slate-500 mt-1">
-                  {row.confirmed} confirmados de{' '}
-                  {row.total} registros
-                </div>
-              </div>
+              <SelectContent>
+                <SelectItem value="all">
+                  Todos os setores
+                </SelectItem>
 
-              <div className="w-full md:w-64">
-                <CoverageBar
-                  label=""
-                  value={row.coverage}
-                />
-              </div>
-
-              <div
-                className={`px-3 py-2 rounded-lg border text-xs font-bold text-center ${levelConfig.className}`}
-              >
-                {levelConfig.label}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {rows.length === 0 && (
-        <EmptyState
-          title="Sem dados de risco"
-          description="Não há registros suficientes para calcular os indicadores."
-        />
-      )}
-    </ReportCard>
-  );
-}
-
-/* ============================================================
-   FINANCEIRO
-   ============================================================ */
-
-function FinancialView({
-  data,
-}) {
-  return (
-    <div className="space-y-5">
-      {data.missingRates > 0 && (
-        <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 p-4 flex gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-
-          <div className="text-sm text-amber-900 dark:text-amber-100">
-            <strong>
-              Dados financeiros incompletos.
-            </strong>{' '}
-            {formatNumber(
-              data.missingRates
-            )}{' '}
-            registro(s) não possuem valor/hora válido.
-            Esses registros não foram incluídos no custo
-            estimado.
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <KpiCard
-          icon={BarChart3}
-          label="Custo estimado"
-          value={formatCurrency(
-            data.estimatedCost
-          )}
-          description="Somente registros com valor/hora informado"
-        />
-
-        <KpiCard
-          icon={CheckCircle2}
-          label="Com valor"
-          value={formatNumber(
-            data.knownRates
-          )}
-          description="Registros utilizados no cálculo"
-          positive
-        />
-
-        <KpiCard
-          icon={AlertTriangle}
-          label="Sem valor"
-          value={formatNumber(
-            data.missingRates
-          )}
-          description="Não incluídos no cálculo"
-          warning={data.missingRates > 0}
-        />
-      </div>
-
-      <ReportCard title="Detalhamento financeiro">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-500">
-                <th className="py-3">
-                  Profissional
-                </th>
-
-                <th className="py-3">
-                  Setor
-                </th>
-
-                <th className="py-3 text-right">
-                  Horas
-                </th>
-
-                <th className="py-3 text-right">
-                  Valor/Hora
-                </th>
-
-                <th className="py-3 text-right">
-                  Custo
-                </th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
-              {data.rows.map(
-                (row, index) => (
-                  <tr
-                    key={`${row.professional}-${index}`}
-                    className="border-b border-slate-100 dark:border-slate-800"
+                {sectors.map((sector) => (
+                  <SelectItem
+                    key={sector.id}
+                    value={String(sector.name)}
                   >
-                    <td className="py-3 font-medium text-slate-900 dark:text-white">
-                      {row.professional}
-                    </td>
-
-                    <td className="py-3 text-slate-500">
-                      {row.sector}
-                    </td>
-
-                    <td className="py-3 text-right">
-                      {formatNumber(
-                        row.hours,
-                        1
-                      )}
-                    </td>
-
-                    <td className="py-3 text-right">
-                      {row.rate === null
-                        ? '—'
-                        : formatCurrency(
-                            row.rate
-                          )}
-                    </td>
-
-                    <td className="py-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">
-                      {row.cost === null
-                        ? '—'
-                        : formatCurrency(
-                            row.cost
-                          )}
-                    </td>
-                  </tr>
-                )
-              )}
-            </tbody>
-          </table>
+                    {sector.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
-        {data.rows.length === 0 && (
-          <EmptyState
-            title="Sem dados financeiros"
-            description="Não existem registros financeiros disponíveis nos filtros atuais."
-          />
+        {(startDate ||
+          endDate ||
+          selectedSector !== 'all') && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setStartDate('');
+              setEndDate('');
+              setSelectedSector('all');
+            }}
+            className="text-xs text-red-500 shrink-0 h-9"
+          >
+            Limpar filtros
+          </Button>
         )}
-      </ReportCard>
-    </div>
-  );
-}
-
-/* ============================================================
-   CANCELAMENTOS
-   ============================================================ */
-
-function CancellationView({
-  rows,
-}) {
-  return (
-    <ReportCard
-      title="Cancelamentos registrados"
-      description="Visão operacional dos registros classificados como cancelados."
-    >
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-slate-500">
-              <th className="py-3">
-                Data
-              </th>
-
-              <th className="py-3">
-                Profissional
-              </th>
-
-              <th className="py-3">
-                Setor
-              </th>
-
-              <th className="py-3">
-                Motivo
-              </th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
-            {rows.map((row, index) => (
-              <tr
-                key={`${row.date}-${index}`}
-                className="border-b border-slate-100 dark:border-slate-800"
-              >
-                <td className="py-3">
-                  {formatDateBR(row.date)}
-                </td>
-
-                <td className="py-3 font-medium text-slate-900 dark:text-white">
-                  {row.professional}
-                </td>
-
-                <td className="py-3 text-slate-500">
-                  {row.sector}
-                </td>
-
-                <td className="py-3 text-red-600 dark:text-red-400 font-medium">
-                  {row.reason}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
 
-      {rows.length === 0 && (
-        <EmptyState
-          title="Nenhum cancelamento"
-          description="Não foram encontrados registros cancelados nos filtros atuais."
-        />
-      )}
-    </ReportCard>
-  );
-}
-
-/* ============================================================
-   GOVERNANÇA
-   ============================================================ */
-
-function GovernanceView({
-  reportId,
-  version,
-  status,
-  hash,
-  hashLoading,
-  auditEvents,
-  onGenerateHash,
-  onStatusChange,
-  onNewVersion,
-}) {
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-        <GovernanceCard
-          icon={FileCheck2}
-          title="Status"
-          value={status}
-          description="Estado atual do documento"
-        />
-
-        <GovernanceCard
-          icon={History}
-          title="Versão"
-          value={`v${version}`}
-          description="Controle de versão"
-        />
-
-        <GovernanceCard
-          icon={Hash}
-          title="Integridade"
-          value={
-            hash
-              ? 'Verificado'
-              : 'Não calculado'
-          }
-          description="SHA-256 do conteúdo"
-        />
-
-        <GovernanceCard
-          icon={ShieldCheck}
-          title="Auditoria"
-          value={formatNumber(
-            auditEvents.length
-          )}
-          description="Eventos registrados nesta sessão"
-        />
+      <div className="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+        <Sparkles className="w-3.5 h-3.5 text-sky-500" />
+        Resumo executivo ·{' '}
+        {TAB_META[activeTab].label.replace(/^\S+\s/, '')}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-              <FileCheck2 className="w-5 h-5 text-slate-700 dark:text-slate-200" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 -mt-3">
+        {reportPayload.kpis.map((kpi, index) => (
+          <Card
+            key={index}
+            className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
+          >
+            <div className="text-[10px] uppercase font-bold text-slate-400">
+              {kpi.label}
             </div>
 
-            <div>
-              <h2 className="font-bold">
-                Governança do documento
+            <div className="text-xl font-black text-sky-700 dark:text-sky-400 mt-1 break-words">
+              {kpi.value}
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {loadingData ? (
+        <div className="flex justify-center p-20">
+          <Loader2 className="w-8 h-8 animate-spin text-sky-600" />
+        </div>
+      ) : (
+        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm rounded-2xl space-y-5">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div className="flex items-center gap-2">
+              {activeTab === 'conselho' && (
+                <ClipboardList className="w-5 h-5 text-sky-600" />
+              )}
+
+              {activeTab === 'produtividade' && (
+                <Clock className="w-5 h-5 text-sky-600" />
+              )}
+
+              {activeTab === 'cobertura' && (
+                <TrendingUp className="w-5 h-5 text-sky-600" />
+              )}
+
+              {activeTab === 'financeiro' && (
+                <DollarSign className="w-5 h-5 text-emerald-600" />
+              )}
+
+              {activeTab === 'auditoria' && (
+                <ShieldCheck className="w-5 h-5 text-sky-600" />
+              )}
+
+              <h2 className="text-lg font-black text-slate-800 dark:text-white">
+                {reportPayload.title}
               </h2>
-
-              <p className="text-xs text-slate-500 mt-1">
-                Controle do ciclo de vida do relatório.
-              </p>
             </div>
+
+            <Button
+              onClick={() => setPreviewOpen(true)}
+              variant="outline"
+              size="sm"
+              className="text-xs gap-2"
+            >
+              <Eye className="w-4 h-4" />
+              Visualizar
+            </Button>
           </div>
 
-          <div className="space-y-3">
-            {[
-              'Rascunho',
-              'Em revisão',
-              'Aprovado',
-            ].map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() =>
-                  onStatusChange(option)
-                }
-                className={`
-                  w-full
-                  flex
-                  items-center
-                  justify-between
-                  p-4
-                  rounded-xl
-                  border
-                  text-left
-                  transition-all
-                  ${
-                    status === option
-                      ? 'border-slate-900 bg-slate-900 text-white'
-                      : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50'
-                  }
-                `}
-              >
-                <span className="font-medium text-sm">
-                  {option}
-                </span>
+          {activeTab === 'conselho' &&
+            reportPayload.sections?.map((section, index) => (
+              <section key={index} className="space-y-3">
+                <h3 className="font-black text-base text-slate-800 dark:text-white">
+                  {section.title}
+                </h3>
 
-                {status === option && (
-                  <CheckCircle2 className="w-5 h-5" />
+                {section.rows.length ? (
+                  <ReportTable
+                    columns={section.columns}
+                    rows={section.rows}
+                    totalsRow={section.totalsRow}
+                  />
+                ) : (
+                  <p className="text-sm text-slate-400 text-center py-8">
+                    Nenhum dado encontrado.
+                  </p>
                 )}
-              </button>
+              </section>
             ))}
-          </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full mt-4 gap-2 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
-            onClick={onNewVersion}
-          >
-            <History className="w-4 h-4" />
-            Criar nova versão
-          </Button>
-        </Card>
-
-        <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-              <Hash className="w-5 h-5 text-slate-700 dark:text-slate-200" />
-            </div>
-
-            <div>
-              <h2 className="font-bold">
-                Integridade do relatório
-              </h2>
-
-              <p className="text-xs text-slate-500 mt-1">
-                Identificador criptográfico do conteúdo.
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-xl bg-slate-950 p-4">
-            <div className="text-[10px] uppercase tracking-wider text-slate-500">
-              ID
-            </div>
-
-            <div className="text-sm font-mono text-white mt-1 break-all">
-              {reportId}
-            </div>
-
-            <div className="text-[10px] uppercase tracking-wider text-slate-500 mt-4">
-              SHA-256
-            </div>
-
-            <div className="text-xs font-mono text-slate-300 mt-1 break-all leading-relaxed">
-              {hash ||
-                'Hash ainda não calculado'}
-            </div>
-          </div>
-
-          <Button
-            type="button"
-            className="w-full mt-4 gap-2"
-            onClick={onGenerateHash}
-            disabled={hashLoading}
-          >
-            {hashLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Calculando...
-              </>
-            ) : (
-              <>
-                <Hash className="w-4 h-4" />
-                Calcular SHA-256
-              </>
-            )}
-          </Button>
-
-          <p className="text-[11px] text-slate-400 mt-4 leading-relaxed">
-            O SHA-256 identifica o conteúdo utilizado na geração
-            do relatório. Ele não representa assinatura digital,
-            certificação ou aprovação jurídica.
-          </p>
-        </Card>
-      </div>
-
-      <Card className="p-6 border-slate-200 dark:border-slate-700 shadow-sm">
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h2 className="font-bold">
-              Trilha de auditoria
-            </h2>
-
-            <p className="text-xs text-slate-500 mt-1">
-              Eventos registrados durante esta sessão.
-            </p>
-          </div>
-
-          <History className="w-5 h-5 text-slate-400" />
-        </div>
-
-        <div className="space-y-2 max-h-[420px] overflow-y-auto">
-          {auditEvents.map((event) => (
-            <div
-              key={event.id}
-              className="flex gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100"
-            >
-              <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0">
-                <Activity className="w-4 h-4 text-slate-500" />
-              </div>
-
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-bold">
-                    {event.type}
-                  </span>
-
-                  <span className="text-[10px] text-slate-400">
-                    {event.timestamp}
-                  </span>
-                </div>
-
-                <div className="text-xs text-slate-600 mt-1">
-                  {event.description}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {auditEvents.length === 0 && (
-            <EmptyState
-              title="Nenhum evento registrado"
-              description="As interações com o relatório aparecerão nesta área."
-            />
+          {activeTab !== 'conselho' && (
+            <>
+              {reportPayload.rows.length ? (
+                <ReportTable
+                  columns={reportPayload.columns}
+                  rows={reportPayload.rows}
+                  totalsRow={reportPayload.totalsRow}
+                />
+              ) : (
+                <p className="text-sm text-slate-400 text-center py-12">
+                  {reportPayload.emptyMessage}
+                </p>
+              )}
+            </>
           )}
-        </div>
-      </Card>
-    </div>
-  );
-}
+        </Card>
+      )}
 
-/* ============================================================
-   GOVERNANCE CARD
-   ============================================================ */
-
-function GovernanceCard({
-  icon: Icon,
-  title,
-  value,
-  description,
-}) {
-  return (
-    <Card className="p-5 border-slate-200 dark:border-slate-700 shadow-sm">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-xs uppercase tracking-wide text-slate-400 font-semibold">
-            {title}
-          </div>
-
-          <div className="text-xl font-bold mt-2">
-            {value}
-          </div>
-        </div>
-
-        <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-          <Icon className="w-5 h-5 text-slate-700 dark:text-slate-200" />
-        </div>
-      </div>
-
-      <div className="text-xs text-slate-500 mt-3">
-        {description}
-      </div>
-    </Card>
-  );
-}
-
-/* ============================================================
-   REPORT CARD
-   ============================================================ */
-
-function ReportCard({
-  title,
-  description,
-  children,
-}) {
-  return (
-    <Card className="border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-      <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800">
-        <h2 className="font-bold text-lg">
-          {title}
-        </h2>
-
-        {description && (
-          <p className="text-xs text-slate-500 mt-1">
-            {description}
-          </p>
-        )}
-      </div>
-
-      <div className="p-6">
-        {children}
-      </div>
-    </Card>
-  );
-}
-
-/* ============================================================
-   EMPTY
-   ============================================================ */
-
-function EmptyState({
-  title,
-  description,
-}) {
-  return (
-    <div className="py-12 flex flex-col items-center justify-center text-center">
-      <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-        <Search className="w-5 h-5 text-slate-400" />
-      </div>
-
-      <h3 className="font-semibold text-slate-800 dark:text-slate-100 mt-4">
-        {title}
-      </h3>
-
-      <p className="text-xs text-slate-500 mt-1 max-w-sm">
-        {description}
-      </p>
+      {previewOpen && (
+        <ReportPreviewModal
+          payload={reportPayload}
+          onClose={() => setPreviewOpen(false)}
+          onDownloadPDF={() => downloadPDF(reportPayload)}
+          onDownloadCSV={() => downloadCSV(reportPayload)}
+        />
+      )}
     </div>
   );
 }
