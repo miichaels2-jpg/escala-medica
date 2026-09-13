@@ -7,12 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Activity, AlertTriangle, BarChart3, Building2, CalendarDays, CheckCircle2,
-  ChevronDown, ChevronRight, ClipboardCheck, Clock3, Database, Download, Eye,
-  FileCheck2, FileSpreadsheet, Filter, GripVertical, Hash, History, LayoutDashboard,
+  ChevronRight, ClipboardCheck, Clock3, Database, Download, Eye, FileCheck2,
+  FileSpreadsheet, Filter, GripVertical, Hash, History, LayoutDashboard,
   LayoutGrid, List, Loader2, Lock, MapPin, Maximize2, Menu, MessageCircle,
   Minimize2, Moon, Pencil, Plus, Printer, RefreshCw, Search, Send, ShieldCheck,
-  SlidersHorizontal, Sun, Trash2, TrendingDown, UserCheck, UserPlus, Users,
-  UsersRound, X
+  SlidersHorizontal, Sun, Trash2, TrendingDown, UserPlus, Users, X
 } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
 import { exportSchedulePDF } from '@/lib/exportReport';
@@ -65,7 +64,7 @@ const STATUS_OPTIONS = [
 ];
 
 /* ============================================================
-   FUNÇÕES UTILITÁRIAS BLINDADAS (Previnem WSoD)
+   FUNÇÕES UTILITÁRIAS BLINDADAS (Previnem Tela Branca)
    ============================================================ */
 
 function safeNumber(value) { const n = Number(value); return Number.isFinite(n) ? n : 0; }
@@ -92,7 +91,7 @@ function getShiftHours(s) {
       return Math.max(0, diff);
     }
   }
-  return 12; // fallback
+  return 12;
 }
 
 function getProfessionalId(s) { return s?.professional_id || s?.professionalId || s?.professional?.id || null; }
@@ -140,7 +139,7 @@ function buildPrintTable(columns = [], rows = [], totalsRow = null) {
 }
 
 /* ============================================================
-   COMPONENTE PRINCIPAL (MÓDULO DE ESCALAS E RELATÓRIOS)
+   COMPONENTE PRINCIPAL
    ============================================================ */
 
 export default function Escalas() {
@@ -150,7 +149,7 @@ export default function Escalas() {
   const [sectors, setSectors] = useState([]);
   const [professionals, setProfessionals] = useState([]);
   
-  const [viewMode, setViewMode] = useState('grade'); // 'grade', 'list', 'base_builder', 'relatorios'
+  const [viewMode, setViewMode] = useState('grade'); 
   const [activeTab, setActiveTab] = useState('executiva');
   
   const [search, setSearch] = useState('');
@@ -170,9 +169,9 @@ export default function Escalas() {
   const [inlineSearchText, setInlineSearchText] = useState('');
   const [selectedCells, setSelectedCells] = useState([]);
   const [isPublished, setIsPublished] = useState(false);
-  const [newShiftModal, setNewShiftModal] = useState(null); // Modal para Novo Plantão Real
-  const [selectedProfIdForModal, setSelectedProfIdForModal] = useState(''); // Estado para o modal de novo plantão
-  const [dialogOpen, setDialogOpen] = useState(false); // Modal Plantão Avulso Padrão
+  const [newShiftModal, setNewShiftModal] = useState(null); 
+  const [selectedProfIdForModal, setSelectedProfIdForModal] = useState(''); 
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [tvMode, setTvMode] = useState(false);
   
@@ -333,6 +332,7 @@ export default function Escalas() {
       const status = getStatusKey(s.status);
       const remType = String(prof?.remuneration_type || prof?.remunerationType || 'hora').toLowerCase();
       let rate = null;
+      
       if (remType === 'hora') rate = prof?.hourly_rate ?? prof?.hourlyRate ?? s?.hourly_rate ?? s?.hour_rate ?? s?.valor_hora ?? s?.rate ?? 120;
       else if (remType === 'diaria') rate = prof?.daily_rate ?? prof?.dailyRate ?? 1500;
       else if (remType === 'mensal') {
@@ -340,6 +340,7 @@ export default function Escalas() {
         const monthlyWorkHours = Number(prof?.monthly_work_hours ?? prof?.monthlyWorkHours ?? 220);
         rate = monthlyWorkHours > 0 ? monthly / monthlyWorkHours : null;
       }
+
       const numericRate = Number(rate);
       if (Number.isFinite(numericRate) && numericRate >= 0 && rate !== null) {
         const cost = remType === 'mensal' ? numericRate * hours : (remType === 'diaria' ? numericRate : hours * numericRate);
@@ -356,8 +357,8 @@ export default function Escalas() {
   }, [filteredShifts, professionalMap, sectorMap]);
 
   const cancellationRows = useMemo(() => (filteredShifts || []).filter(s => ['cancelado', 'canceled'].includes(getStatusKey(s.status))).map(s => ({ date: getShiftDate(s), professional: getProfessionalName(s, professionalMap), sector: getSectorName(s, sectorMap), reason: s?.cancellation_reason || s?.cancel_reason || s?.reason || 'Não informado' })).sort((a, b) => String(b.date).localeCompare(String(a.date))), [filteredShifts, professionalMap, sectorMap]);
-  const reportId = useMemo(() => { const d = new Date(); return `CIH-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`; }, []);
-  const filtersLabel = useMemo(() => { const v = []; if (filters.startDate) v.push(`Início: ${formatDateBR(filters.startDate)}`); if (filters.endDate) v.push(`Fim: ${formatDateBR(filters.endDate)}`); if (filters.sectorId !== 'todos') v.push(`Setor: ${filters.sectorId}`); return v.length ? v.join(' • ') : 'Visão Geral'; }, [filters]);
+  const reportId = useMemo(() => { const d = new Date(); return `CIH-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`; }, []);
+  const filtersLabel = useMemo(() => { const v = []; if (filters.startDate) v.push(`Início: ${formatDateBR(filters.startDate)}`); if (filters.endDate) v.push(`Fim: ${formatDateBR(filters.endDate)}`); if (filters.sectorId !== 'todos') { const s = sectors.find(item => String(item?.id) === String(filters.sectorId)); v.push(`Setor: ${s?.name || s?.nome || filters.sectorId}`); } if (filters.status !== 'todos') v.push(`Status: ${getStatusLabel(filters.status)}`); if (filters.professionalId !== 'todos') { const p = professionals.find(item => String(item?.id) === String(filters.professionalId)); v.push(`Prof: ${p?.name || filters.professionalId}`); } if (filters.category !== 'todos') v.push(`Cat: ${filters.category}`); return v.length ? v.join(' • ') : 'Visão Geral'; }, [filters, sectors, professionals]);
 
   const reportPayload = useMemo(() => {
     const config = REPORT_CONFIG[activeTab] || REPORT_CONFIG['executiva'];
@@ -419,7 +420,7 @@ export default function Escalas() {
     try {
       const shiftDateStr = String(date || '');
       const existingShift = (filteredShifts || []).find(s => String(s.date || '').startsWith(shiftDateStr) && s.periodId === periodId && s.isVacant);
-      const payload = { company_id: companyId, unit_id: unitId, professional_id: prof.id, professional_name: prof.name, sector_id: sectorObj.id, sector_name: sectorObj.name, date: date, start_time: periodDef.start, end_time: periodDef.end, duration_hours: periodId === 'noite' ? 12 : 6, status: 'confirmado' };
+      const payload = { company_id: companyId, unit_id: unitId, professional_id: prof.id, professional_name: prof.name || prof.full_name || 'Profissional', sector_id: sectorObj.id, sector_name: sectorObj.name, date: date, start_time: periodDef.start, end_time: periodDef.end, duration_hours: periodId === 'noite' ? 12 : 6, status: 'confirmado' };
       if (existingShift) await base44.entities.Shift.update(existingShift.id, payload); else await base44.entities.Shift.create(payload);
       loadData(true);
     } catch (error) { alert("Erro ao salvar plantão: " + error.message); }
@@ -442,7 +443,7 @@ export default function Escalas() {
   };
 
   const handlePublish = () => {
-    if (confirm('Publicar escala? Isso emitirá alertas e destacará na grade.')) {
+    if (confirm('Publicar escala? Isso fixará a visualização para os profissionais e emitirá os alertas.')) {
       setIsPublished(true);
       setTimeout(() => alert('Escala publicada com sucesso! Notificações enviadas aos profissionais.'), 500);
     }
@@ -525,10 +526,8 @@ export default function Escalas() {
     lines.push(payload.columns.map(escapeCSV).join(';'));
     payload.rows.forEach(row => lines.push(row.map(escapeCSV).join(';')));
     if (payload.totalsRow) lines.push(payload.totalsRow.map(escapeCSV).join(';'));
-    downloadFile('\uFEFF' + lines.join('\r\n'), `${sanitizeFilename(payload.title)}-${payload.reportId}.csv`, 'text/csv;charset=utf-8;');
+    downloadFile('\uFEFF' + lines.join('\r\n'), `${sanitizeFilename(payload.title)}-${payload.reportId}.csv`);
   };
-
-  const resetFilters = () => setFilters({ startDate: '', endDate: '', sectorId: 'todos', status: 'todos', professionalId: 'todos', category: 'todos' });
 
   if (loading) {
     return (
@@ -560,7 +559,7 @@ export default function Escalas() {
             <SidebarItem active={viewMode === 'base_builder'} icon={Plus} label="Nova Escala Base" onClick={() => { setCreateScaleState(1); setMobileMenuOpen(false); }} />
           </div>
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest px-3 mb-2 opacity-50">Painel Executivo (Relatórios)</div>
+            <div className="text-[10px] font-bold uppercase tracking-widest px-3 mb-2 opacity-50">Painel Executivo</div>
             <SidebarItem active={activeTab === 'executiva' && viewMode === 'relatorios'} icon={LayoutDashboard} label="Visão Executiva" onClick={() => { setViewMode('relatorios'); setActiveTab('executiva'); setMobileMenuOpen(false); }} />
             {[['produtividade', Clock3], ['cobertura', Building2], ['risco', ShieldCheck], ['financeiro', BarChart3], ['turnover', Users]].map(([key, IconComponent]) => (
               <SidebarItem key={key} active={activeTab === key && viewMode === 'relatorios'} icon={IconComponent} label={REPORT_CONFIG[key]?.label || ''} onClick={() => { setViewMode('relatorios'); setActiveTab(key); setMobileMenuOpen(false); }} />
@@ -590,7 +589,6 @@ export default function Escalas() {
                 <Send className="w-4 h-4" /> Publicar Escala
               </Button>
             )}
-            <Button onClick={openReportPreview} className="bg-slate-900 dark:bg-sky-600 text-white font-bold gap-2"><Eye className="w-4 h-4" /> Relatório Oficial</Button>
           </div>
         </header>
 
@@ -644,7 +642,7 @@ export default function Escalas() {
                     <div key={prof.id} draggable onDragStart={(e) => handleDragStart(e, prof)} className="p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm cursor-grab hover:border-sky-400 active:cursor-grabbing flex items-center gap-2 group transition-all">
                       <GripVertical className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-sky-500" />
                       <div className="min-w-0">
-                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">{prof.name}</div>
+                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">{prof.name || prof.full_name}</div>
                         <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{prof.specialty || 'Geral'}</div>
                       </div>
                     </div>
@@ -737,7 +735,7 @@ export default function Escalas() {
                                         <button onClick={() => setInlineEditingCell(null)}><X className="w-3 h-3 text-slate-400 hover:text-red-500"/></button>
                                       </div>
                                       <div className="flex-1 overflow-y-auto space-y-0.5 custom-scrollbar">
-                                        {(professionals || []).filter(p => !inlineSearchText || normalizeStr(p.name).includes(normalizeStr(inlineSearchText))).slice(0, 5).map(p => (
+                                        {(professionals || []).filter(p => !inlineSearchText || normalizeStr(p.name || p.full_name).includes(normalizeStr(inlineSearchText))).slice(0, 5).map(p => (
                                           <button 
                                             key={p.id} 
                                             className="w-full text-left px-2 py-1 text-[10px] hover:bg-sky-50 dark:hover:bg-slate-800 rounded truncate text-slate-700 dark:text-slate-300 font-medium"
@@ -747,7 +745,7 @@ export default function Escalas() {
                                               setInlineSearchText('');
                                             }}
                                           >
-                                            {p.name}
+                                            {p.name || p.full_name || 'Sem nome'}
                                           </button>
                                         ))}
                                       </div>
@@ -816,7 +814,7 @@ export default function Escalas() {
 
         {/* ===================== MODO BASE BUILDER (CRIAÇÃO DE ESCALA BASE) ===================== */}
         {viewMode === 'base_builder' && (
-          <div className="flex-1 overflow-auto p-5 sm:p-8 bg-slate-50 dark:bg-slate-950 flex flex-col items-center">
+          <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
             <div className="w-full max-w-5xl space-y-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
@@ -927,7 +925,6 @@ export default function Escalas() {
           MODAIS E DIALOGS DE SOBREPOSIÇÃO
           ======================================================== */}
 
-      {/* Modal 1: Adicionar Escala Inicial (Passo 1 do Builder) */}
       {createScaleState === 1 && (
         <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -970,7 +967,6 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* Modal 2: Confirmação e Direcionamento (Passo 2 do Builder) */}
       {createScaleState === 2 && (
         <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-8 text-center">
@@ -987,7 +983,6 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* Modal 3: Configurar Horário Específico no Builder (Passo 3) */}
       {builderModal && (
         <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -1071,7 +1066,7 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* MODAL 4: NOVO PLANTÃO INDIVIDUAL COM DROPDOWN DE PROFISSIONAL */}
+      {/* MODAL 4: NOVO PLANTÃO INDIVIDUAL (Click na Célula) */}
       {newShiftModal && (
         <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
@@ -1086,7 +1081,7 @@ export default function Escalas() {
                 <Select value={selectedProfIdForModal} onValueChange={setSelectedProfIdForModal}>
                   <SelectTrigger className="col-span-2 h-10 text-xs bg-white dark:bg-slate-950"><SelectValue placeholder="Busque um profissional..." /></SelectTrigger>
                   <SelectContent>
-                    {(professionals || []).filter(p => p?.id).map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
+                    {(professionals || []).filter(p => p?.id).map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name || p.full_name || 'Sem nome'}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -1097,19 +1092,15 @@ export default function Escalas() {
                 </div>
               </div>
               <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-right text-xs font-bold text-slate-500">Dia da Semana:</label>
-                <div className="col-span-2 font-semibold text-slate-600 dark:text-slate-400">{fmtDateLong(newShiftModal.date)}</div>
-              </div>
-              <div className="grid grid-cols-3 items-center gap-4">
-                <label className="text-right text-xs font-bold text-slate-500">Data Selecionada:</label>
-                <div className="col-span-2 font-bold text-slate-900 dark:text-white">{formatDateBR(newShiftModal.date)}</div>
+                <label className="text-right text-xs font-bold text-slate-500">Dia / Data:</label>
+                <div className="col-span-2 font-bold text-slate-900 dark:text-white">{fmtDateLong(newShiftModal.date)} - {formatDateBR(newShiftModal.date)}</div>
               </div>
               
               <div className="border-t border-slate-100 dark:border-slate-800 my-5" />
               
               <div className="grid grid-cols-3 items-center gap-4">
                 <label className="text-right text-xs font-bold text-slate-500">Repetir a cada:</label>
-                <Select defaultValue="1">
+                <Select defaultValue="0">
                   <SelectTrigger className="col-span-2 h-10 text-xs bg-white dark:bg-slate-950"><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="0">Não Repetir</SelectItem><SelectItem value="1">1 Semana</SelectItem><SelectItem value="2">2 Semanas</SelectItem></SelectContent>
                 </Select>
@@ -1118,7 +1109,7 @@ export default function Escalas() {
               <div className="flex justify-end pt-5">
                 <Button 
                   onClick={() => { 
-                    if(!selectedProfIdForModal) { alert('Selecione um profissional.'); return; }
+                    if (!selectedProfIdForModal) { alert('Selecione um profissional da lista.'); return; }
                     assignShift(newShiftModal.date, newShiftModal.periodId, selectedProfIdForModal);
                     setNewShiftModal(null);
                     setSelectedProfIdForModal('');
@@ -1133,8 +1124,6 @@ export default function Escalas() {
           </div>
         </div>
       )}
-
-      <ShiftFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} onSaved={loadData} shift={editing} sectors={sectors} professionals={professionals} companyId={companyId} unitId={unitId} />
 
       {reportModalOpen && (
         <ReportPreviewModal reportPayload={reportPayload} reportHash={reportHash} hashLoading={hashLoading} reportStatus={reportStatus} reportVersion={reportVersion} onClose={() => setReportModalOpen(false)} onPrint={printReport} onExport={exportCSV} onStatusChange={setReportStatus} onNewVersion={() => setReportVersion(v => v + 1)} />
@@ -1230,13 +1219,13 @@ function ExecutiveMetric({ label, value }) {
   return (
     <div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 p-4">
       <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
-      <div className="text-xl font-bold mt-1 dark:text-white">{value}</div>
+      <div className="text-xl font-bold mt-1 text-slate-900 dark:text-white">{value}</div>
     </div>
   );
 }
 
 function StatusLine({ label, value, type }) {
-  const styles = { success: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300', warning: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300', danger: 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300' };
+  const styles = { success: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800', warning: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800', danger: 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800' };
   return (
     <div className="flex items-center justify-between">
       <span className="text-sm text-slate-600 dark:text-slate-300">{label}</span>
@@ -1391,6 +1380,13 @@ function FinancialView({ data }) {
                 );
               })}
             </tbody>
+            {data.rows.length > 0 && (
+              <tfoot>
+                <tr className="bg-slate-50 dark:bg-slate-800/50 font-black text-slate-900 dark:text-slate-100 border-t border-slate-200 dark:border-slate-700">
+                  <td className="py-4 pr-4">TOTAL ESTIMADO (EXCLUI CANCELADOS)</td><td /><td /><td /><td className="py-4 pl-4 text-right text-emerald-600">{formatCurrency(data.estimatedCost)}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </ReportCard>
