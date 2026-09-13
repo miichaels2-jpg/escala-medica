@@ -4,12 +4,6 @@ import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  Plus, Pencil, Trash2, Search, Download, CalendarDays, UsersRound, 
-  Maximize2, Minimize2, MessageCircle, Filter, UserPlus, X, Sun, Moon, 
-  Building2, Activity, LayoutGrid, List, ChevronDown, ChevronRight, Lock,
-  GripVertical, Send, CheckCircle2
-} from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -17,19 +11,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-
+import { 
+  Plus, Pencil, Trash2, Search, Download, CalendarDays, UsersRound, 
+  Maximize2, Minimize2, MessageCircle, Filter, UserPlus, X, Sun, Moon, 
+  Building2, Activity, LayoutGrid, List, ChevronDown, ChevronRight, Lock,
+  GripVertical, Send, CheckCircle2
+} from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
 import { exportSchedulePDF } from '@/lib/exportReport';
 import { getShiftTvLifecycle } from '@/lib/shiftUtils';
 
+/* ============================================================
+   CONSTANTES E UTILITÁRIOS
+   ============================================================ */
+
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
-// Padrões de turnos
 const SHIFT_PERIODS = [
-  { id: 'manha', label: 'Manhã', start: '07:00', end: '13:00', color: 'bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300' },
-  { id: 'tarde', label: 'Tarde', start: '13:00', end: '19:00', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' },
-  { id: 'noite', label: 'Noite', start: '19:00', end: '07:00', color: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300' }
+  { id: 'manha', label: 'Manhã', start: '07:00', end: '13:00' },
+  { id: 'tarde', label: 'Tarde', start: '13:00', end: '19:00' },
+  { id: 'noite', label: 'Noite', start: '19:00', end: '07:00' }
 ];
 
 function getLocalDateString(d = new Date()) {
@@ -66,12 +68,10 @@ function toTitleCase(str) {
   return str.toLowerCase().split(' ').map(w => acr.includes(w.toUpperCase()) ? w.toUpperCase() : (['de', 'da', 'do', 'e'].includes(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(' ');
 }
 
-// Gera o calendário em semanas para a Grade
 function getMonthWeeks(monthStr) {
   if (!monthStr || typeof monthStr !== 'string') return [];
   const parts = monthStr.split('-');
   if (parts.length < 2) return [];
-  
   const year = Number(parts[0]);
   const month = Number(parts[1]);
   const firstDay = new Date(year, month - 1, 1);
@@ -79,8 +79,9 @@ function getMonthWeeks(monthStr) {
   
   const weeks = [];
   let currentWeek = [];
+  
   let startDay = firstDay.getDay(); 
-  let emptyDays = startDay === 0 ? 6 : startDay - 1; // Segunda = 0 na grade
+  let emptyDays = startDay === 0 ? 6 : startDay - 1; // Ajusta para segunda-feira na grade
   
   for (let i = 0; i < emptyDays; i++) currentWeek.push(null);
 
@@ -97,8 +98,13 @@ function getMonthWeeks(monthStr) {
     while (currentWeek.length < 7) currentWeek.push(null);
     weeks.push(currentWeek);
   }
+  
   return weeks;
 }
+
+/* ============================================================
+   COMPONENTE PRINCIPAL
+   ============================================================ */
 
 export default function Escalas() {
   const { user, company, loading: appLoading } = useAppData();
@@ -106,6 +112,8 @@ export default function Escalas() {
   const [shifts, setShifts] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [professionals, setProfessionals] = useState([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
   
   const [viewMode, setViewMode] = useState('grade'); 
   const [search, setSearch] = useState('');
@@ -115,18 +123,15 @@ export default function Escalas() {
   const [selectedDate, setSelectedDate] = useState('');
   const [tvMode, setTvMode] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
-  // Drag & Drop e Modais 
+  // Estados para as Novas Funcionalidades
   const [profSearchQuery, setProfSearchQuery] = useState('');
-  const [inlineEditingCell, setInlineEditingCell] = useState(null); 
+  const [inlineEditingCell, setInlineEditingCell] = useState(null);
   const [inlineSearchText, setInlineSearchText] = useState('');
   const [selectedCells, setSelectedCells] = useState([]);
   const [isPublished, setIsPublished] = useState(false);
   const [newShiftModal, setNewShiftModal] = useState(null);
   const [createScaleState, setCreateScaleState] = useState(0); 
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
 
   const userId = user?.id;
   const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
@@ -142,6 +147,7 @@ export default function Escalas() {
         base44.entities.Sector.filter(f, '-created_date', 100).catch(() => []),
         base44.entities.Professional.filter(f, '-created_date', 400).catch(() => []),
       ]);
+      
       const safeShifts = Array.isArray(s) ? s : (s?.data || []);
       const safeSectors = Array.isArray(sec) ? sec : (sec?.data || []);
       const safeProfessionals = Array.isArray(p) ? p : (p?.data || []);
@@ -172,7 +178,7 @@ export default function Escalas() {
     return [...new Set((shifts || []).map((s) => (typeof s?.date === 'string' ? s.date.slice(0, 7) : '')))].filter(Boolean).sort().reverse();
   }, [shifts]);
 
-  const filteredShifts = useMemo(() => {
+  const filtered = useMemo(() => {
     const term = normalizeStr(search);
     return (shifts || [])
       .filter((s) => {
@@ -224,12 +230,12 @@ export default function Escalas() {
   }, [shifts, search, sectorFilter, quickFilter, selectedMonth, selectedDate, isManager, myProfessional, currentTime]);
 
   const auditStats = useMemo(() => {
-    const total = filteredShifts.length;
-    const vacant = filteredShifts.filter((s) => s.isVacant).length;
+    const total = filtered.length;
+    const vacant = filtered.filter((s) => s.isVacant).length;
     const filled = total - vacant;
     const fillRate = total > 0 ? Math.round((filled / total) * 100) : 100;
     return { total, filled, vacant, fillRate };
-  }, [filteredShifts]);
+  }, [filtered]);
 
   const weeksData = useMemo(() => getMonthWeeks(selectedMonth), [selectedMonth]);
 
@@ -238,7 +244,10 @@ export default function Escalas() {
     return (professionals || []).filter(p => p?.id && (!term || normalizeStr(p.name).includes(term) || normalizeStr(p.specialty || '').includes(term)));
   }, [professionals, profSearchQuery]);
 
-  // EVENTOS DA GRADE (DRAG, DROP E CLIQUE)
+  /* ============================================================
+     AÇÕES DO CALENDÁRIO (DRAG, DROP E CLIQUE)
+     ============================================================ */
+
   const handleCellClick = (e, date, periodId) => {
     if (e.ctrlKey || e.metaKey) {
       const exists = selectedCells.find(c => c.date === date && c.periodId === periodId);
@@ -268,7 +277,7 @@ export default function Escalas() {
     if (!prof || !sectorObj) return;
 
     try {
-      const existingShift = (filteredShifts || []).find(s => s.date && s.date.startsWith(date) && s.periodId === periodId && s.isVacant);
+      const existingShift = (filtered || []).find(s => s.date && s.date.startsWith(date) && s.periodId === periodId && s.isVacant);
       const payload = {
         company_id: companyId, unit_id: unitId, professional_id: prof.id, professional_name: prof.name,
         sector_id: sectorObj.id, sector_name: sectorObj.name, date: date, start_time: periodDef.start, end_time: periodDef.end,
@@ -298,7 +307,7 @@ export default function Escalas() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Deseja realmente cancelar este plantão?')) return;
+    if (!confirm('Deseja cancelar este plantão?')) return;
     try {
         await base44.entities.Shift.update(id, { status: 'cancelado', notes: 'Cancelado pela gestão.' });
         load();
@@ -306,15 +315,15 @@ export default function Escalas() {
   };
 
   const handlePublish = () => {
-    if (confirm('Publicar escala? Isso fixará a visualização para os profissionais.')) {
+    if (confirm('Publicar escala? Isso fixará a visualização para os profissionais e emitirá os alertas de publicação.')) {
       setIsPublished(true);
-      setTimeout(() => alert('Escala publicada com sucesso! Notificações enviadas.'), 500);
+      setTimeout(() => alert('Escala publicada com sucesso! Notificações enviadas aos profissionais.'), 500);
     }
   };
 
   const handleExportSchedule = () => {
     const targetDate = selectedDate || getLocalDateString(currentTime);
-    const dayShifts = filteredShifts.filter(s => {
+    const dayShifts = filtered.filter(s => {
       const sDate = typeof s.date === 'string' ? s.date.split('T')[0] : '';
       return sDate === targetDate;
     });
@@ -337,9 +346,8 @@ export default function Escalas() {
     if (document.fullscreenElement) await document.exitFullscreen?.();
   };
 
-  // Visão TV
   if (tvMode && isManager) {
-    const activeTvShifts = filteredShifts.filter(s => s.lifecycle?.state !== 'concluded');
+    const activeTvShifts = filtered.filter(s => s.lifecycle?.state !== 'concluded');
     const groups = {};
     activeTvShifts.forEach(shift => {
       const secKey = shift.sector_id || 'geral';
@@ -389,176 +397,264 @@ export default function Escalas() {
   }
 
   if (!isManager) {
-    return <div className="p-8 flex items-center justify-center h-full text-slate-500">Acesse "Minha Escala" no menu lateral para visualizar.</div>;
+    return <div className="p-8 flex items-center justify-center h-full text-slate-500">Acesse "Minha Escala" no menu lateral para visualizar seus plantões.</div>;
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors">
+    <div className="p-4 md:p-8 space-y-5 h-[calc(100vh-4rem)] flex flex-col overflow-hidden">
       
-      {/* SIDEBAR */}
-      <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-950 text-slate-300 flex flex-col transition-transform duration-300 shadow-2xl ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-        <div className="p-6 border-b border-slate-800 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center shadow-lg"><Activity className="w-5 h-5 text-white" /></div>
-          <div><div className="font-black text-sm text-white tracking-widest">CENTRAL DE</div><div className="text-[10px] font-bold text-sky-400">ESCALAS</div></div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      {/* HEADER ORIGINAL PRESERVADO */}
+      <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-xl shrink-0">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest px-3 mb-2 opacity-50">Gestão Visual</div>
-            <button onClick={() => setViewMode('grade')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all mb-1 ${viewMode === 'grade' ? 'bg-sky-600 text-white font-bold' : 'hover:bg-slate-900 hover:text-white'}`}>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-sky-400">
+              <Activity className="h-4 w-4" /> Gestão Integrada de Plantões
+            </div>
+            <h2 className="mt-2 text-3xl font-black tracking-tight">Painel de Escala Hospitalar</h2>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="text-right">
+              <div className="text-3xl font-black text-white">{auditStats.total}</div>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">Plantões</div>
+            </div>
+            <div className="h-10 w-px bg-white/15" />
+            <div className="text-right">
+              <div className={`text-3xl font-black ${auditStats.fillRate < 100 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                {auditStats.fillRate}%
+              </div>
+              <div className="text-[10px] uppercase tracking-[0.16em] text-slate-400">Cobertura</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* BARRA DE FILTROS E AÇÕES */}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-3 shrink-0 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl shrink-0">
+            <button onClick={() => setViewMode('grade')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'grade' ? 'bg-white shadow-sm text-sky-700' : 'text-slate-500 hover:text-slate-700'}`}>
               <LayoutGrid className="w-4 h-4" /> Builder Visual
             </button>
-            <button onClick={() => setViewMode('list')} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${viewMode === 'list' ? 'bg-sky-600 text-white font-bold' : 'hover:bg-slate-900 hover:text-white'}`}>
+            <button onClick={() => setViewMode('list')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-sky-700' : 'text-slate-500 hover:text-slate-700'}`}>
               <List className="w-4 h-4" /> Lista Diária
             </button>
           </div>
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-widest px-3 mb-2 opacity-50">Planejamento</div>
-            <button onClick={() => setCreateScaleState(1)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${viewMode === 'base_builder' ? 'bg-emerald-600 text-white font-bold' : 'hover:bg-slate-900 hover:text-white'}`}>
-              <Plus className="w-4 h-4" /> Nova Escala Base
-            </button>
-          </div>
+
+          <div className="h-6 w-px bg-slate-200 mx-1 shrink-0" />
+
+          <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="h-9 rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 font-semibold focus:ring-2 focus:ring-sky-500 shrink-0 cursor-pointer outline-none">
+            <option value="">Mês Corrente</option>
+            {monthOptions.map((m) => {
+              const d = new Date(Number(m.split('-')[0]), Number(m.split('-')[1]) - 1, 1);
+              return <option key={m} value={m}>{d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}</option>;
+            })}
+          </select>
+          
+          <Select value={sectorFilter} onValueChange={setSectorFilter}>
+            <SelectTrigger className="h-9 text-xs w-[180px] bg-slate-50 rounded-xl"><SelectValue placeholder="Selecione o Setor" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os setores</SelectItem>
+              {sectors.map((s) => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+
+          {viewMode === 'list' && (
+            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9 w-auto text-xs shrink-0 bg-slate-50" title="Dia Específico" />
+          )}
+          
+          {selectedCells.length > 0 && (
+            <div className="bg-sky-50 text-sky-700 px-3 py-1 rounded-lg text-xs font-bold border border-sky-200 animate-pulse ml-2">
+              {selectedCells.length} dias selecionados
+            </div>
+          )}
         </div>
-      </aside>
 
-      {mobileMenuOpen && <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setMobileMenuOpen(false)} />}
+        <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+          <Button onClick={() => setCreateScaleState(1)} className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs h-9 px-4 shadow-sm border hidden lg:flex">
+            <Plus className="w-3.5 h-3.5 mr-1.5" /> Nova Escala
+          </Button>
 
-      {/* CONTEÚDO PRINCIPAL */}
-      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
-        <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-5 lg:px-8 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-4">
-            <button className="lg:hidden p-2 bg-slate-100 dark:bg-slate-800 rounded-lg" onClick={() => setMobileMenuOpen(true)}><Menu className="w-5 h-5" /></button>
-            <div>
-              <h1 className="text-2xl font-black text-slate-900 dark:text-white">Gerenciador de Escalas</h1>
-              <p className="text-xs text-slate-500">Alocação e publicação de plantões médicos.</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {viewMode === 'grade' && (
-              <Button onClick={handlePublish} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md gap-2 hidden md:flex">
-                <Send className="w-4 h-4" /> Publicar Escala
-              </Button>
-            )}
-            <Button variant="outline" onClick={openTvMode} className="hidden lg:flex"><Maximize2 className="w-4 h-4" /></Button>
-          </div>
-        </header>
+          {viewMode === 'grade' && (
+            <Button onClick={handlePublish} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 px-4 shadow-sm shadow-emerald-600/20">
+              <Send className="w-3.5 h-3.5 mr-1.5" /> Publicar Escala
+            </Button>
+          )}
 
-        {viewMode !== 'base_builder' && (
-          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 px-8 flex flex-wrap lg:flex-nowrap items-end gap-4 shrink-0">
-            <div className="flex flex-col gap-1.5 w-full sm:w-auto">
-              <label className="text-[10px] font-bold uppercase text-slate-400">Mês da Escala</label>
-              <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="h-9 rounded-xl border border-slate-200 dark:border-slate-700 px-3 text-xs bg-slate-50 dark:bg-slate-800 outline-none cursor-pointer">
-                {monthOptions.map((m) => {
-                  const d = new Date(Number(m.split('-')[0]), Number(m.split('-')[1]) - 1, 1);
-                  return <option key={m} value={m}>{d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}</option>;
-                })}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1.5 w-full sm:w-auto flex-1 min-w-[200px]">
-              <label className="text-[10px] font-bold uppercase text-slate-400">Setor Ativo</label>
-              <Select value={filters.sectorId} onValueChange={(v) => { setSectorFilter(v); setFilters(c => ({...c, sectorId: v}))}}>
-                <SelectTrigger className="h-9 text-xs dark:bg-slate-800 dark:border-slate-700"><SelectValue placeholder="Selecione o Setor" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os setores</SelectItem>
-                  {sectors.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {selectedCells.length > 0 && (
-              <div className="bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 px-4 py-2 rounded-xl text-xs font-bold border border-sky-200 dark:border-sky-800 animate-pulse">
-                {selectedCells.length} dias selecionados (Arraste o profissional)
-              </div>
-            )}
-          </div>
-        )}
+          <Button onClick={openTvMode} className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs h-9 px-4 shadow-sm hidden md:flex">
+            <Maximize2 className="w-3.5 h-3.5 mr-1.5" /> TV
+          </Button>
 
-        {/* MODO GRADE VISUAL (BUILDER) */}
+          <Button variant="outline" onClick={handleExportSchedule} className="text-xs h-9 font-semibold border-slate-200" title="Imprimir em PDF">
+            <Download className="w-3.5 h-3.5 mr-1.5 text-sky-600" /> Relatório
+          </Button>
+
+          <Button onClick={() => { setEditing(null); setDialogOpen(true); }} className="bg-sky-600 hover:bg-sky-700 text-white text-xs h-9 font-bold px-4 shadow-md shadow-sky-600/20">
+            <Plus className="w-4 h-4 mr-1.5" /> Plantão Avulso
+          </Button>
+        </div>
+      </div>
+
+      <Card className="flex-1 border-slate-200 shadow-sm overflow-hidden flex flex-col bg-white">
+        
+        {/* ===================== MODO GRADE VISUAL (BUILDER) ===================== */}
         {viewMode === 'grade' && (
-          <div className="flex-1 flex overflow-hidden">
-            <div className="w-64 bg-slate-50 dark:bg-slate-900/50 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0">
-              <div className="p-4 border-b border-slate-200 dark:border-slate-800">
-                <h3 className="font-black text-sm text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2"><UsersRound className="w-4 h-4 text-sky-600" /> Corpo Clínico</h3>
+          <div className="flex h-full w-full">
+            
+            {/* BARRA LATERAL DOS PROFISSIONAIS PARA DRAG AND DROP */}
+            <div className="w-64 bg-slate-50/50 border-r border-slate-200 flex flex-col shrink-0">
+              <div className="p-4 border-b border-slate-200">
+                <h3 className="font-black text-sm text-slate-800 mb-3 flex items-center gap-2">
+                  <UsersRound className="w-4 h-4 text-sky-600" /> Corpo Clínico
+                </h3>
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                  <Input placeholder="Buscar..." value={profSearchQuery} onChange={e => setProfSearchQuery(e.target.value)} className="pl-9 h-9 text-xs bg-white dark:bg-slate-800" />
+                  <Input 
+                    placeholder="Buscar profissional..." 
+                    value={profSearchQuery} 
+                    onChange={e => setProfSearchQuery(e.target.value)}
+                    className="pl-9 h-9 text-xs bg-white"
+                  />
                 </div>
                 <p className="text-[10px] text-slate-500 mt-2 text-center font-medium">Arraste o nome para a escala ➔</p>
               </div>
+
               <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
                 {sidebarProfessionals.map(prof => (
-                  <div key={prof.id} draggable onDragStart={(e) => handleDragStart(e, prof)} className="p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm cursor-grab hover:border-sky-400 flex items-center gap-2 group transition-all">
-                    <GripVertical className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-sky-500" />
+                  <div 
+                    key={prof.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, prof)}
+                    className="p-2.5 bg-white border border-slate-200 rounded-lg shadow-sm cursor-grab hover:border-sky-300 hover:shadow-md active:cursor-grabbing flex items-center gap-2 group transition-all"
+                  >
+                    <GripVertical className="w-4 h-4 text-slate-300 group-hover:text-sky-500" />
                     <div className="min-w-0">
-                      <div className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">{prof.name}</div>
-                      <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">{prof.specialty || 'Geral'}</div>
+                      <div className="font-bold text-xs text-slate-800 truncate">{prof.name}</div>
+                      <div className="text-[10px] text-slate-500 truncate">{prof.specialty || 'Geral'}</div>
                     </div>
                   </div>
                 ))}
-                {sidebarProfessionals.length === 0 && <div className="p-4 text-center text-xs text-slate-400">Nenhum profissional.</div>}
+                {sidebarProfessionals.length === 0 && (
+                  <div className="p-4 text-center text-xs text-slate-400">Nenhum profissional encontrado.</div>
+                )}
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto bg-white dark:bg-slate-950 relative custom-scrollbar">
+            {/* ÁREA DA GRADE CALENDÁRIO */}
+            <div className="flex-1 overflow-y-auto bg-white relative custom-scrollbar">
               {sectorFilter === 'all' ? (
                 <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">
-                  <Building2 className="w-12 h-12 mb-4 opacity-50" />
-                  <p className="font-bold">Selecione um Setor</p>
-                  <p className="text-sm mt-1">Para montar a escala em grade, escolha um setor no topo.</p>
+                  <Building2 className="w-12 h-12 mb-4 text-slate-300" />
+                  <p className="font-bold text-slate-600">Selecione um Setor</p>
+                  <p className="text-sm mt-1">Para montar a escala em grade, escolha um setor no filtro superior.</p>
                 </div>
               ) : (
-                <div className="min-w-[900px] pb-10">
-                  <div className="grid grid-cols-8 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 sticky top-0 z-20">
-                    <div className="p-3 border-r border-slate-200 dark:border-slate-800 flex items-center justify-center font-black text-xs text-slate-500 uppercase bg-slate-100 dark:bg-slate-800/80">Turno</div>
-                    {['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'].map(day => (
-                      <div key={day} className="p-3 border-r border-slate-200 dark:border-slate-800 text-center font-bold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider">{day}</div>
+                <div className="min-w-[800px] pb-10">
+                  {/* Cabeçalho de Dias da Semana */}
+                  <div className="grid grid-cols-8 border-b border-slate-200 bg-slate-50 sticky top-0 z-20">
+                    <div className="p-3 border-r border-slate-200 flex items-center justify-center font-black text-xs text-slate-500 uppercase tracking-wider bg-slate-100">
+                      Turno
+                    </div>
+                    {['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'].map((day) => (
+                      <div key={day} className="p-3 border-r border-slate-200 text-center font-bold text-xs text-slate-700 uppercase tracking-wider">
+                        {day}
+                      </div>
                     ))}
                   </div>
 
+                  {/* Semanas do Mês */}
                   {weeksData.map((week, wIndex) => (
-                    <div key={wIndex} className="border-b-[6px] border-slate-200 dark:border-slate-800/50">
-                      <div className="grid grid-cols-8 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
-                        <div className="p-2 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/80"></div>
+                    <div key={wIndex} className="border-b-4 border-slate-200">
+                      
+                      {/* Cabeçalho da Semana (Datas) */}
+                      <div className="grid grid-cols-8 bg-slate-50 border-b border-slate-200">
+                        <div className="p-2 border-r border-slate-200 bg-slate-100"></div>
                         {week.map((date, dIndex) => (
-                          <div key={dIndex} className={`p-1 border-r border-slate-200 dark:border-slate-800 text-right pr-2 text-[10px] font-black ${date ? 'text-slate-500 dark:text-slate-400' : 'text-transparent'}`}>
-                            {date ? `${date.split('-')[2]}/${date.split('-')[1]}` : '-'}
+                          <div key={dIndex} className={`p-1 border-r border-slate-200 text-right pr-2 text-[10px] font-black ${date ? 'text-slate-500' : 'text-transparent bg-slate-100'}`}>
+                            {date ? date.split('-')[2] + '/' + date.split('-')[1] : '-'}
                           </div>
                         ))}
                       </div>
 
+                      {/* Turnos (Linhas) */}
                       {SHIFT_PERIODS.map((period) => (
-                        <div key={period.id} className="grid grid-cols-8 border-b border-slate-100 dark:border-slate-800/50 last:border-b-0 group">
-                          <div className="p-3 border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/30 flex flex-col items-center justify-center">
-                            <span className="font-black text-[11px] uppercase text-slate-700 dark:text-slate-300">{period.label}</span>
+                        <div key={period.id} className="grid grid-cols-8 border-b border-slate-100 last:border-b-0 group">
+                          
+                          {/* Coluna Fixa do Turno */}
+                          <div className="p-3 border-r border-slate-200 bg-slate-50 flex flex-col items-center justify-center">
+                            <span className="font-bold text-[11px] uppercase text-slate-700">{period.label}</span>
                             <span className="text-[9px] font-bold text-slate-400">{period.start} - {period.end}</span>
                           </div>
 
+                          {/* Slots dos Dias */}
                           {week.map((date, dIndex) => {
-                            if (!date) return <div key={dIndex} className="bg-slate-50 dark:bg-slate-900/20 border-r border-slate-200 dark:border-slate-800 p-2"></div>;
+                            if (!date) return <div key={dIndex} className="bg-slate-50 border-r border-slate-200 p-2"></div>;
 
-                            const slotShifts = (filteredShifts || []).filter(s => s.date && s.date.startsWith(date) && s.periodId === period.id);
+                            const slotShifts = (filtered || []).filter(s => s.date && s.date.startsWith(date) && s.periodId === period.id);
                             const isSelected = selectedCells.some(c => c.date === date && c.periodId === period.id);
 
                             return (
                               <div 
                                 key={dIndex} 
-                                className={`border-r border-slate-200 dark:border-slate-800/50 p-1.5 min-h-[70px] relative transition-colors cursor-pointer flex flex-col gap-1 ${isSelected ? 'bg-sky-50 dark:bg-sky-900/20 ring-inset ring-2 ring-sky-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'}`}
+                                className={`border-r border-slate-200 p-1.5 min-h-[60px] relative transition-colors cursor-pointer flex flex-col gap-1
+                                  ${isSelected ? 'bg-sky-50 ring-inset ring-2 ring-sky-400' : 'hover:bg-slate-50'}
+                                `}
                                 onDragOver={handleDragOver}
                                 onDrop={(e) => handleDrop(e, date, period.id)}
                                 onClick={(e) => handleCellClick(e, date, period.id)}
                                 title="Ctrl+Click para selecionar múltiplos. Clique simples para Novo Plantão."
                               >
                                 {slotShifts.map(s => (
-                                  <div key={s.id} className={`relative p-2 rounded-lg text-[10px] border flex items-center justify-between group/item transition-all hover:scale-[1.02] shadow-sm ${s.isVacant ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 text-amber-800 dark:text-amber-200 border-dashed' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-100'}`}>
+                                  <div key={s.id} className={`relative p-1.5 rounded-md text-[10px] border flex items-center justify-between group/item transition-all hover:scale-[1.02] shadow-sm
+                                    ${s.isVacant ? 'bg-amber-50 border-amber-300 text-amber-800 border-dashed' : 'bg-white border-slate-200 text-slate-800'}
+                                  `}>
                                     <span className="font-bold truncate pr-4">{s.isVacant ? 'Vaga Aberta' : toTitleCase(s.professional_name)}</span>
                                     
+                                    {/* Tag de Publicado no Hover */}
                                     {!s.isVacant && isPublished && (
                                       <div className="absolute -top-2 left-2 opacity-0 group-hover/item:opacity-100 transition-opacity bg-emerald-500 text-white text-[8px] font-black px-1.5 rounded uppercase shadow-sm">Publicado</div>
                                     )}
 
                                     {!s.isVacant && (
-                                      <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} className="opacity-0 group-hover/item:opacity-100 p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 rounded transition-opacity absolute right-1"><X className="w-3 h-3" /></button>
+                                      <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} className="opacity-0 group-hover/item:opacity-100 p-1 text-red-500 hover:bg-red-100 rounded transition-opacity absolute right-1">
+                                        <X className="w-3 h-3" />
+                                      </button>
                                     )}
                                   </div>
                                 ))}
+
+                                {/* Modo de Edição Inline (Duplo Clique) */}
+                                {inlineEditingCell?.date === date && inlineEditingCell?.periodId === period.id && (
+                                  <div className="absolute inset-0 z-30 bg-white border-2 border-sky-500 rounded-lg p-1 shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
+                                    <div className="flex items-center gap-1 border-b pb-1 mb-1">
+                                      <Search className="w-3 h-3 text-slate-400" />
+                                      <input 
+                                        autoFocus
+                                        type="text" 
+                                        placeholder="Buscar..." 
+                                        className="w-full text-[10px] outline-none bg-transparent font-medium"
+                                        value={inlineSearchText}
+                                        onChange={e => setInlineSearchText(e.target.value)}
+                                        onKeyDown={(e) => { if(e.key === 'Escape') setInlineEditingCell(null); }}
+                                      />
+                                      <button onClick={() => setInlineEditingCell(null)}><X className="w-3 h-3 text-slate-400 hover:text-red-500"/></button>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto space-y-0.5 custom-scrollbar">
+                                      {professionals.filter(p => !inlineSearchText || normalizeStr(p.name).includes(normalizeStr(inlineSearchText))).slice(0, 5).map(p => (
+                                        <button 
+                                          key={p.id} 
+                                          className="w-full text-left px-2 py-1 text-[10px] hover:bg-sky-50 rounded truncate text-slate-700 font-medium"
+                                          onClick={() => {
+                                            assignShift(date, period.id, p.id);
+                                            setInlineEditingCell(null);
+                                            setInlineSearchText('');
+                                          }}
+                                        >
+                                          {p.name}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
@@ -572,28 +668,30 @@ export default function Escalas() {
           </div>
         )}
 
-        {/* MODO LISTA DIÁRIA */}
+        {/* ===================== MODO LISTA DIÁRIA ===================== */}
         {viewMode === 'list' && (
-          <div className="overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-950 flex-1">
-             {filteredShifts.length === 0 ? (
+          <div className="overflow-y-auto p-4 space-y-4 bg-slate-50 flex-1">
+             {filtered.length === 0 ? (
                 <div className="py-12 text-center text-slate-400">Nenhum plantão localizado neste filtro.</div>
               ) : (
-                filteredShifts.map(s => {
+                filtered.map(s => {
                   const sTime = typeof s.start_time === 'string' ? s.start_time : '00:00';
                   const isDone = ['concluded', 'recently_finished'].includes(s.lifecycle?.state);
 
                   return (
-                    <div key={s.id} className={`flex items-center gap-3 rounded-2xl border p-3 bg-white dark:bg-slate-900 transition-colors shadow-sm ${s.isVacant ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/20' : 'border-slate-200 dark:border-slate-800'}`}>
-                      <div className={`min-w-[85px] rounded-xl py-2 text-center text-xs font-black border shrink-0 ${isDone ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-700 dark:text-slate-200'}`}>
+                    <div key={s.id} className={`flex items-center gap-3 rounded-2xl border p-3 bg-white transition-colors shadow-sm ${s.isVacant ? 'border-amber-400 bg-amber-50' : 'border-slate-200 hover:border-sky-300'}`}>
+                      <div className={`min-w-[85px] rounded-xl py-2 text-center text-xs font-black border shrink-0 ${isDone ? 'bg-slate-100 border-slate-200 text-slate-500' : 'bg-slate-50 border-slate-100 text-slate-700'}`}>
                         {fmtDate(s.date)} <br/>
-                        <span className={isDone ? "text-slate-400" : "text-sky-600 dark:text-sky-400"}>{s.start_time || '--'} - {s.end_time || '--'}</span>
+                        <span className={isDone ? "text-slate-400" : "text-sky-600"}>{s.start_time || '--'} - {s.end_time || '--'}</span>
                       </div>
+                      
                       <div className="flex-1 min-w-0">
-                        <strong className={`block text-sm truncate ${s.isVacant ? 'text-amber-800 dark:text-amber-400' : (isDone ? 'text-slate-500' : 'text-slate-800 dark:text-white')}`}>
+                        <strong className={`block text-sm truncate ${s.isVacant ? 'text-amber-800' : (isDone ? 'text-slate-500' : 'text-slate-800')}`}>
                           {toTitleCase(s.professional_name) || 'Vaga Aberta'}
                         </strong>
                         <span className="text-xs text-slate-400">{toTitleCase(s.sector_name)}</span>
                       </div>
+                      
                       <div className="flex items-center gap-2">
                         {isDone ? (
                           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-100 text-slate-400">
@@ -619,45 +717,45 @@ export default function Escalas() {
           </div>
         )}
 
-        {/* MODO BASE BUILDER (CRIAÇÃO DE ESCALA BASE) */}
+        {/* ===================== MODO BASE BUILDER (CRIAÇÃO DE ESCALA BASE) ===================== */}
         {viewMode === 'base_builder' && (
-          <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
+          <div className="flex-1 overflow-auto bg-slate-50 p-6 flex justify-center">
             <div className="w-full max-w-5xl space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-black text-sky-700 dark:text-sky-400">Escala Base (Modo Edição)</h2>
+                  <h2 className="text-2xl font-black text-sky-700">Escala Base (Modo Edição)</h2>
                   <p className="text-xs text-slate-500 mt-1">Configure os padrões de horário antes de preencher os nomes.</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <label className="text-xs font-bold text-slate-500">Data de Início</label>
-                  <Input type="date" className="h-9 w-40 text-xs bg-white dark:bg-slate-800" />
+                  <Input type="date" className="h-9 w-40 text-xs bg-white" />
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100 dark:bg-slate-800 text-slate-500 border-b border-slate-200 dark:border-slate-700">
+                  <thead className="bg-slate-100 text-slate-500 border-b border-slate-200">
                     <tr>
                       <th className="p-4 w-48">Padrão Operacional</th>
-                      <th className="p-4 text-center border-l border-slate-200 dark:border-slate-700">Segunda</th>
-                      <th className="p-4 text-center border-l border-slate-200 dark:border-slate-700">Terça</th>
-                      <th className="p-4 text-center border-l border-slate-200 dark:border-slate-700">Quarta</th>
-                      <th className="p-4 text-center border-l border-slate-200 dark:border-slate-700">Quinta</th>
-                      <th className="p-4 text-center border-l border-slate-200 dark:border-slate-700">Sexta</th>
-                      <th className="p-4 text-center border-l border-slate-200 dark:border-slate-700 bg-slate-200/50 dark:bg-slate-700/50">Sábado</th>
-                      <th className="p-4 text-center border-l border-slate-200 dark:border-slate-700 bg-slate-200/50 dark:bg-slate-700/50">Domingo</th>
+                      <th className="p-4 text-center border-l border-slate-200">Segunda</th>
+                      <th className="p-4 text-center border-l border-slate-200">Terça</th>
+                      <th className="p-4 text-center border-l border-slate-200">Quarta</th>
+                      <th className="p-4 text-center border-l border-slate-200">Quinta</th>
+                      <th className="p-4 text-center border-l border-slate-200">Sexta</th>
+                      <th className="p-4 text-center border-l border-slate-200 bg-slate-200/50">Sábado</th>
+                      <th className="p-4 text-center border-l border-slate-200 bg-slate-200/50">Domingo</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  <tbody className="divide-y divide-slate-100">
                     {SHIFT_PERIODS.map(p => (
                       <tr key={p.id}>
-                        <td className={`p-4 font-bold border-r border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center ${p.color}`}>
+                        <td className={`p-4 font-bold border-r border-slate-200 flex flex-col items-center justify-center text-center ${p.color}`}>
                           <span className="text-sm">{p.label}</span>
                           <span className="text-[10px] opacity-70">{p.start} às {p.end}</span>
                         </td>
                         {[1,2,3,4,5,6,0].map(day => (
-                          <td key={day} className={`p-4 border-r border-slate-100 dark:border-slate-800 text-center ${[0,6].includes(day) ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''}`}>
-                            <div className="w-6 h-6 mx-auto rounded bg-slate-200 dark:bg-slate-700 text-slate-500 font-bold flex items-center justify-center">1</div>
+                          <td key={day} className={`p-4 border-r border-slate-100 text-center ${[0,6].includes(day) ? 'bg-slate-50/50' : ''}`}>
+                            <div className="w-6 h-6 mx-auto rounded bg-slate-200 text-slate-500 font-bold flex items-center justify-center">1</div>
                           </td>
                         ))}
                       </tr>
@@ -673,17 +771,17 @@ export default function Escalas() {
             </div>
           </div>
         )}
-      </main>
+      </Card>
 
       {/* MODAL 1: NOVO PLANTÃO INDIVIDUAL (Click na Célula) */}
       {newShiftModal && (
         <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
               <h2 className="text-lg font-black text-sky-600">Novo Plantão</h2>
               <button onClick={() => setNewShiftModal(null)}><X className="w-5 h-5 text-slate-400" /></button>
             </div>
-            <div className="p-6 space-y-4 text-sm font-medium text-slate-700 dark:text-slate-300">
+            <div className="p-6 space-y-4 text-sm font-medium text-slate-700">
               <div className="grid grid-cols-3 items-center gap-4">
                 <label>Plantonista:</label>
                 <Select>
@@ -693,7 +791,7 @@ export default function Escalas() {
               </div>
               <div className="grid grid-cols-3 items-center gap-4">
                 <label>Equipe (Turno):</label>
-                <div className="col-span-2 font-bold text-slate-900 dark:text-white capitalize">{newShiftModal.periodId}</div>
+                <div className="col-span-2 font-bold text-slate-900 capitalize">{newShiftModal.periodId}</div>
               </div>
               <div className="grid grid-cols-3 items-center gap-4">
                 <label>Dia da Semana:</label>
@@ -704,7 +802,7 @@ export default function Escalas() {
                 <div className="col-span-2 font-bold">{formatDateBR(newShiftModal.date)}</div>
               </div>
               
-              <div className="border-t border-slate-100 dark:border-slate-800 my-4" />
+              <div className="border-t border-slate-100 my-4" />
               
               <div className="grid grid-cols-3 items-center gap-4">
                 <label>Repetir a cada:</label>
@@ -725,8 +823,8 @@ export default function Escalas() {
       {/* MODAIS FLUXO CRIAÇÃO DE ESCALA BASE */}
       {createScaleState === 1 && (
         <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
               <h2 className="text-lg font-black text-sky-600">Adicionar Escala</h2>
               <button onClick={() => setCreateScaleState(0)}><X className="w-5 h-5 text-slate-400" /></button>
             </div>
@@ -750,9 +848,9 @@ export default function Escalas() {
 
       {createScaleState === 2 && (
         <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-8 text-center">
+          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl border border-slate-200 p-8 text-center">
             <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4"><CheckCircle2 className="w-8 h-8" /></div>
-            <h2 className="text-xl font-black text-slate-900 dark:text-white mb-2">Escala adicionada com sucesso!</h2>
+            <h2 className="text-xl font-black text-slate-900 mb-2">Escala adicionada com sucesso!</h2>
             <p className="text-sm text-slate-500 mb-6">Gostaria de configurar os horários e adicionar profissionais agora?</p>
             <div className="flex justify-center gap-4">
               <Button variant="outline" className="w-24 font-bold" onClick={() => setCreateScaleState(0)}>Não</Button>
