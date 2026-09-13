@@ -19,39 +19,44 @@ import { exportSchedulePDF } from '@/lib/exportReport';
 import { getShiftTvLifecycle } from '@/lib/shiftUtils';
 
 /* ============================================================
-   UTILITÁRIOS E CONSTANTES
+   CONSTANTES E CONFIGURAÇÕES
    ============================================================ */
 
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
-const WEEK_DAYS_ORDER = [
-  { label: 'Segunda', index: 1, short: 'SEG' }, { label: 'Terça', index: 2, short: 'TER' },
-  { label: 'Quarta', index: 3, short: 'QUA' }, { label: 'Quinta', index: 4, short: 'QUI' },
-  { label: 'Sexta', index: 5, short: 'SEX' }, { label: 'Sábado', index: 6, short: 'SAB', weekend: true },
-  { label: 'Domingo', index: 0, short: 'DOM', weekend: true }
-];
 
-const SHIFT_PERIODS = [
-  { id: 'manha', label: 'Manhã', start: '07:00', end: '13:00', color: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' },
-  { id: 'tarde', label: 'Tarde', start: '13:00', end: '19:00', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
-  { id: 'noite', label: 'Noite', start: '19:00', end: '07:00', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' }
+const WEEK_DAYS_ORDER = [
+  { label: 'Segunda', index: 1, short: 'SEG' },
+  { label: 'Terça', index: 2, short: 'TER' },
+  { label: 'Quarta', index: 3, short: 'QUA' },
+  { label: 'Quinta', index: 4, short: 'QUI' },
+  { label: 'Sexta', index: 5, short: 'SEX' },
+  { label: 'Sábado', index: 6, short: 'SAB', weekend: true },
+  { label: 'Domingo', index: 0, short: 'DOM', weekend: true },
 ];
 
 const BUILDER_COLORS = [
   { id: 'sky', value: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 border-sky-200', bg: 'bg-sky-400' },
   { id: 'amber', value: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200', bg: 'bg-amber-400' },
+  { id: 'indigo', value: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border-indigo-200', bg: 'bg-indigo-400' },
   { id: 'emerald', value: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200', bg: 'bg-emerald-400' },
-  { id: 'rose', value: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 border-rose-200', bg: 'bg-rose-400' }
+  { id: 'rose', value: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 border-rose-200', bg: 'bg-rose-400' },
+];
+
+const SHIFT_PERIODS = [
+  { id: 'manha', label: 'Manhã', start: '07:00', end: '13:00' },
+  { id: 'tarde', label: 'Tarde', start: '13:00', end: '19:00' },
+  { id: 'noite', label: 'Noite', start: '19:00', end: '07:00' }
 ];
 
 const REPORT_CONFIG = {
   executiva: { label: 'Visão Executiva', icon: LayoutDashboard },
   produtividade: { label: 'Produtividade & Horas', icon: Clock3 },
-  cobertura: { label: 'Cobertura & Mapa de Calor', icon: Building2 },
+  cobertura: { label: 'Cobertura Operacional', icon: Building2 },
   risco: { label: 'Risco Assistencial', icon: ShieldCheck },
   financeiro: { label: 'Financeiro & Custos', icon: BarChart3 },
   turnover: { label: 'Cancelamentos', icon: Users },
-  auditoria: { label: 'Governança & Auditoria', icon: ClipboardCheck },
+  auditoria: { label: 'Log de Auditoria', icon: ClipboardCheck },
 };
 
 const STATUS_OPTIONS = [
@@ -59,41 +64,95 @@ const STATUS_OPTIONS = [
   { value: 'pendente', label: 'Pendente' }, { value: 'cancelado', label: 'Cancelado' }, { value: 'aberto', label: 'Aberto' }
 ];
 
+/* ============================================================
+   FUNÇÕES UTILITÁRIAS BLINDADAS (Previnem WSoD)
+   ============================================================ */
+
 function safeNumber(value) { const n = Number(value); return Number.isFinite(n) ? n : 0; }
 function formatNumber(value, decimals = 0) { return safeNumber(value).toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }); }
 function formatCurrency(value) { if (value == null || value === '') return 'Não informado'; const n = Number(value); return Number.isFinite(n) ? `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Não informado'; }
-function formatDateBR(dateStr) { if (!dateStr) return '—'; const parts = dateStr.split('T')[0].split('-'); return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr; }
+function formatDateBR(dateStr) { if (!dateStr) return '—'; const parts = String(dateStr).split('T')[0].split('-'); return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(dateStr); }
 function normalizeDate(value) { if (!value) return ''; const t = String(value).trim(); return /^\d{4}-\d{2}-\d{2}/.test(t) ? t.substring(0, 10) : t; }
 function getLocalDateString(d = new Date()) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 function normalizeStr(str) { return typeof str === 'string' ? str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : ''; }
 function toTitleCase(str) { return typeof str === 'string' ? str.toLowerCase().split(' ').map(w => ['de','da','do','e'].includes(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : ''; }
 function getStatusKey(status) { return String(status || '').trim().toLowerCase(); }
 function getStatusLabel(status) { const map = { confirmado: 'Confirmado', confirmed: 'Confirmado', pendente: 'Pendente', pending: 'Pendente', cancelado: 'Cancelado', canceled: 'Cancelado', aberto: 'Aberto', open: 'Aberto', concluido: 'Concluído', completed: 'Concluído' }; return map[getStatusKey(status)] || status || 'Não informado'; }
-function getShiftHours(s) { if (s?.hours != null && Number.isFinite(Number(s.hours))) return Number(s.hours); if (s?.total_hours != null && Number.isFinite(Number(s.total_hours))) return Number(s.total_hours); if (s?.duration_hours != null) return Number(s.duration_hours); if (s?.start_time && s?.end_time) { const start = new Date(`1970-01-01T${s.start_time}`); const end = new Date(`1970-01-01T${s.end_time}`); if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) { let diff = (end - start) / 3600000; if (diff < 0) diff += 24; return Math.max(0, diff); } } return 0; }
+
+function getShiftHours(s) {
+  if (s?.hours != null && Number.isFinite(Number(s.hours))) return Number(s.hours);
+  if (s?.total_hours != null && Number.isFinite(Number(s.total_hours))) return Number(s.total_hours);
+  if (s?.duration_hours != null) return Number(s.duration_hours);
+  if (s?.start_time && s?.end_time) {
+    const start = new Date(`1970-01-01T${s.start_time}`);
+    const end = new Date(`1970-01-01T${s.end_time}`);
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+      let diff = (end - start) / 3600000;
+      if (diff < 0) diff += 24;
+      return Math.max(0, diff);
+    }
+  }
+  return 12; // fallback
+}
+
 function getProfessionalId(s) { return s?.professional_id || s?.professionalId || s?.professional?.id || null; }
-function getProfessionalName(s, m) { if (s?.professional_name) return s.professional_name; if (s?.professional?.name) return s.professional.name; if (s?.professional_id && m[s.professional_id]) return m[s.professional_id].name || m[s.professional_id].full_name || 'Profissional'; return 'Não identificado'; }
-function getSectorName(s, m) { if (s?.sector_name) return s.sector_name; if (s?.sector?.name) return s.sector.name; if (s?.sector_id && m[s.sector_id]) return m[s.sector_id].name || 'Setor não identificado'; return 'Não informado'; }
-function getCategoryName(s, m) { if (s?.category_name) return s.category_name; if (s?.professional_id && m[s.professional_id]) return m[s.professional_id].category || m[s.professional_id].profession || 'Não informado'; return 'Não informado'; }
+function getProfessionalName(s, m) { if (s?.professional_name) return s.professional_name; if (s?.professional?.name) return s.professional.name; if (s?.professional_id && m && m[s.professional_id]) return m[s.professional_id].name || m[s.professional_id].full_name || 'Profissional'; return 'Não identificado'; }
+function getSectorName(s, m) { if (s?.sector_name) return s.sector_name; if (s?.sector?.name) return s.sector.name; if (s?.sector_id && m && m[s.sector_id]) return m[s.sector_id].name || 'Setor não identificado'; return 'Não informado'; }
+function getCategoryName(s, m) { if (s?.category_name) return s.category_name; if (s?.professional_id && m && m[s.professional_id]) return m[s.professional_id].category || m[s.professional_id].profession || 'Não informado'; return 'Não informado'; }
 function getShiftDate(s) { return normalizeDate(s?.date || s?.shift_date || s?.start_date || s?.created_date); }
+
+function getMonthWeeks(monthStr) {
+  if (!monthStr || typeof monthStr !== 'string') return [];
+  const parts = monthStr.split('-');
+  if (parts.length < 2) return [];
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const firstDay = new Date(year, month - 1, 1);
+  const lastDay = new Date(year, month, 0);
+  const weeks = [];
+  let currentWeek = [];
+  let startDay = firstDay.getDay(); 
+  let emptyDays = startDay === 0 ? 6 : startDay - 1; 
+  for (let i = 0; i < emptyDays; i++) currentWeek.push(null);
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    currentWeek.push(getLocalDateString(new Date(year, month - 1, d)));
+    if (currentWeek.length === 7) { weeks.push(currentWeek); currentWeek = []; }
+  }
+  if (currentWeek.length > 0) {
+    while (currentWeek.length < 7) currentWeek.push(null);
+    weeks.push(currentWeek);
+  }
+  return weeks;
+}
+
 function escapeHtml(val) { return String(val ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
 function formatPrintValue(val) { return val == null || val === '' ? '—' : typeof val === 'number' ? formatNumber(val, Number.isInteger(val) ? 0 : 2) : String(val); }
 function escapeCSV(val) { return `"${String(val ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`; }
-function downloadFile(content, filename, type = 'text/csv;charset=utf-8;') { const blob = new Blob([content], { type }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+function downloadFile(content, filename) { const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+function sanitizeFilename(val) { return String(val || 'relatorio').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase(); }
 async function generateSHA256(input) { try { if (!window.crypto?.subtle) return 'Indisponível'; const data = new TextEncoder().encode(input); const hashBuffer = await window.crypto.subtle.digest('SHA-256', data); return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join(''); } catch { return 'Erro'; } }
-function getMonthWeeks(monthStr) { if (!monthStr) return []; const parts = monthStr.split('-'); if (parts.length < 2) return []; const year = Number(parts[0]); const month = Number(parts[1]); const firstDay = new Date(year, month - 1, 1); const lastDay = new Date(year, month, 0); const weeks = []; let currentWeek = []; let startDay = firstDay.getDay(); let emptyDays = startDay === 0 ? 6 : startDay - 1; for (let i = 0; i < emptyDays; i++) currentWeek.push(null); for (let d = 1; d <= lastDay.getDate(); d++) { currentWeek.push(getLocalDateString(new Date(year, month - 1, d))); if (currentWeek.length === 7) { weeks.push(currentWeek); currentWeek = []; } } if (currentWeek.length > 0) { while (currentWeek.length < 7) currentWeek.push(null); weeks.push(currentWeek); } return weeks; }
-function buildPrintTable(columns = [], rows = [], totalsRow = null) { const headerHtml = columns.map((c) => `<th>${escapeHtml(c)}</th>`).join(''); const bodyHtml = rows.length > 0 ? rows.map((r) => `<tr>${columns.map((_, i) => `<td>${escapeHtml(formatPrintValue(r[i]))}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${Math.max(columns.length, 1)}" class="empty-cell">Nenhum registro encontrado.</td></tr>`; const footerHtml = totalsRow ? `<tfoot><tr>${columns.map((_, i) => `<th>${escapeHtml(formatPrintValue(totalsRow[i]))}</th>`).join('')}</tr></tfoot>` : ''; return `<table class="print-table"><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody>${footerHtml}</table>`; }
+
+function buildPrintTable(columns = [], rows = [], totalsRow = null) {
+  const headerHtml = columns.map((c) => `<th>${escapeHtml(c)}</th>`).join('');
+  const bodyHtml = rows.length > 0 ? rows.map((r) => `<tr>${columns.map((_, i) => `<td>${escapeHtml(formatPrintValue(r[i]))}</td>`).join('')}</tr>`).join('') : `<tr><td colspan="${Math.max(columns.length, 1)}" class="empty-cell">Nenhum registro encontrado.</td></tr>`;
+  const footerHtml = totalsRow ? `<tfoot><tr>${columns.map((_, i) => `<th>${escapeHtml(formatPrintValue(totalsRow[i]))}</th>`).join('')}</tr></tfoot>` : '';
+  return `<table class="print-table"><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody>${footerHtml}</table>`;
+}
 
 /* ============================================================
-   COMPONENTE PRINCIPAL
+   COMPONENTE PRINCIPAL (MÓDULO DE ESCALAS E RELATÓRIOS)
    ============================================================ */
+
 export default function Escalas() {
   const { user, company, loading: appLoading } = useAppData();
+  
   const [shifts, setShifts] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [professionals, setProfessionals] = useState([]);
   
-  const [viewMode, setViewMode] = useState('grade'); 
+  const [viewMode, setViewMode] = useState('grade'); // 'grade', 'list', 'base_builder', 'relatorios'
   const [activeTab, setActiveTab] = useState('executiva');
+  
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ startDate: '', endDate: '', sectorId: 'todos', status: 'todos', professionalId: 'todos', category: 'todos' });
   const [selectedMonth, setSelectedMonth] = useState(() => getLocalDateString().slice(0,7));
@@ -105,24 +164,25 @@ export default function Escalas() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  // Estados dos modais e grade
+  // Estados da Grade Mensal
   const [profSearchQuery, setProfSearchQuery] = useState('');
   const [inlineEditingCell, setInlineEditingCell] = useState(null);
   const [inlineSearchText, setInlineSearchText] = useState('');
   const [selectedCells, setSelectedCells] = useState([]);
   const [isPublished, setIsPublished] = useState(false);
-  const [newShiftModal, setNewShiftModal] = useState(null);
-  const [createScaleState, setCreateScaleState] = useState(0); 
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [newShiftModal, setNewShiftModal] = useState(null); // Modal para Novo Plantão Real
+  const [selectedProfIdForModal, setSelectedProfIdForModal] = useState(''); // Estado para o modal de novo plantão
+  const [dialogOpen, setDialogOpen] = useState(false); // Modal Plantão Avulso Padrão
   const [editing, setEditing] = useState(null);
   const [tvMode, setTvMode] = useState(false);
   
-  // Escala Base
+  // Estados da Escala Base (Builder)
+  const [createScaleState, setCreateScaleState] = useState(0); 
   const [builderModal, setBuilderModal] = useState(null);
   const [builderShifts, setBuilderShifts] = useState([]);
   const [builderForm, setBuilderForm] = useState({ id: '', name: '', start: '', end: '', qty: 1, color: BUILDER_COLORS[0], days: [] });
 
-  // Relatórios
+  // Estados dos Relatórios
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportStatus, setReportStatus] = useState('Rascunho');
   const [reportVersion, setReportVersion] = useState(1);
@@ -151,20 +211,23 @@ export default function Escalas() {
 
   const toggleTheme = () => setTheme((c) => (c === 'dark' ? 'light' : 'dark'));
 
+  const fetchEntity = async (entityName, limit) => {
+    try {
+      const queryFilter = companyId ? { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) } : {};
+      if (base44?.entities?.[entityName]?.filter) return await base44.entities[entityName].filter(queryFilter, '-created_date', limit);
+      if (base44?.entities?.[entityName]?.list) return await base44.entities[entityName].list();
+      return [];
+    } catch (e) { return []; }
+  };
+
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
     setError('');
     try {
-      const queryFilter = companyId ? { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) } : {};
-      const [s, sec, p] = await Promise.all([
-        base44.entities.Shift?.filter ? base44.entities.Shift.filter(queryFilter, '-date', 2000).catch(() => []) : base44.entities.Shift?.list?.().catch(() => []),
-        base44.entities.Sector?.filter ? base44.entities.Sector.filter(queryFilter, '-created_date', 200).catch(() => []) : base44.entities.Sector?.list?.().catch(() => []),
-        base44.entities.Professional?.filter ? base44.entities.Professional.filter(queryFilter, '-created_date', 1000).catch(() => []) : base44.entities.Professional?.list?.().catch(() => []),
-      ]);
+      const [s, sec, p] = await Promise.all([ fetchEntity('Shift', 2000), fetchEntity('Sector', 200), fetchEntity('Professional', 1000) ]);
       const safeShifts = Array.isArray(s) ? s : (s?.data || []);
       const safeSectors = Array.isArray(sec) ? sec : (sec?.data || []);
       const safeProfessionals = Array.isArray(p) ? p : (p?.data || []);
-
       setShifts(safeShifts); setSectors(safeSectors); setProfessionals(safeProfessionals);
       if (filters.sectorId === 'todos' && safeSectors.length > 0) setFilters(c => ({...c, sectorId: String(safeSectors[0].id)}));
     } catch (err) { setError('Falha na sincronização.'); } finally { setLoading(false); setRefreshing(false); }
@@ -270,7 +333,6 @@ export default function Escalas() {
       const status = getStatusKey(s.status);
       const remType = String(prof?.remuneration_type || prof?.remunerationType || 'hora').toLowerCase();
       let rate = null;
-      
       if (remType === 'hora') rate = prof?.hourly_rate ?? prof?.hourlyRate ?? s?.hourly_rate ?? s?.hour_rate ?? s?.valor_hora ?? s?.rate ?? 120;
       else if (remType === 'diaria') rate = prof?.daily_rate ?? prof?.dailyRate ?? 1500;
       else if (remType === 'mensal') {
@@ -278,7 +340,6 @@ export default function Escalas() {
         const monthlyWorkHours = Number(prof?.monthly_work_hours ?? prof?.monthlyWorkHours ?? 220);
         rate = monthlyWorkHours > 0 ? monthly / monthlyWorkHours : null;
       }
-
       const numericRate = Number(rate);
       if (Number.isFinite(numericRate) && numericRate >= 0 && rate !== null) {
         const cost = remType === 'mensal' ? numericRate * hours : (remType === 'diaria' ? numericRate : hours * numericRate);
@@ -299,7 +360,7 @@ export default function Escalas() {
   const filtersLabel = useMemo(() => { const v = []; if (filters.startDate) v.push(`Início: ${formatDateBR(filters.startDate)}`); if (filters.endDate) v.push(`Fim: ${formatDateBR(filters.endDate)}`); if (filters.sectorId !== 'todos') v.push(`Setor: ${filters.sectorId}`); return v.length ? v.join(' • ') : 'Visão Geral'; }, [filters]);
 
   const reportPayload = useMemo(() => {
-    const config = REPORT_CONFIG[activeTab];
+    const config = REPORT_CONFIG[activeTab] || REPORT_CONFIG['executiva'];
     let columns = [], rows = [], totalsRow = null;
     if (activeTab === 'executiva') {
       columns = ['Indicador', 'Valor'];
@@ -341,7 +402,7 @@ export default function Escalas() {
       if (exists) setSelectedCells(selectedCells.filter(c => !(c.date === date && c.periodId === periodId)));
       else setSelectedCells([...selectedCells, { date, periodId }]);
     } else {
-      setSelectedCells([]); setNewShiftModal({ date, periodId });
+      setSelectedCells([]); setSelectedProfIdForModal(''); setNewShiftModal({ date, periodId });
     }
   };
 
@@ -356,7 +417,8 @@ export default function Escalas() {
     if (!prof || !sectorObj) return;
 
     try {
-      const existingShift = (filteredShifts || []).find(s => s.date && s.date.startsWith(date) && s.periodId === periodId && s.isVacant);
+      const shiftDateStr = String(date || '');
+      const existingShift = (filteredShifts || []).find(s => String(s.date || '').startsWith(shiftDateStr) && s.periodId === periodId && s.isVacant);
       const payload = { company_id: companyId, unit_id: unitId, professional_id: prof.id, professional_name: prof.name, sector_id: sectorObj.id, sector_name: sectorObj.name, date: date, start_time: periodDef.start, end_time: periodDef.end, duration_hours: periodId === 'noite' ? 12 : 6, status: 'confirmado' };
       if (existingShift) await base44.entities.Shift.update(existingShift.id, payload); else await base44.entities.Shift.create(payload);
       loadData(true);
@@ -380,7 +442,7 @@ export default function Escalas() {
   };
 
   const handlePublish = () => {
-    if (confirm('Publicar escala? Isso fixará a visualização para os profissionais e emitirá os alertas.')) {
+    if (confirm('Publicar escala? Isso emitirá alertas e destacará na grade.')) {
       setIsPublished(true);
       setTimeout(() => alert('Escala publicada com sucesso! Notificações enviadas aos profissionais.'), 500);
     }
@@ -396,15 +458,15 @@ export default function Escalas() {
   const openEditBuilderModal = (shiftObj) => {
     const selectedColor = BUILDER_COLORS.find(c => c.value === shiftObj.color) || BUILDER_COLORS[0];
     const activeDays = [];
-    [1,2,3,4,5,6,0].forEach(d => { if(shiftObj.cellStates[d]) activeDays.push(d); });
+    [1,2,3,4,5,6,0].forEach(d => { if((shiftObj.cellStates || {})[d]) activeDays.push(d); });
     setBuilderForm({ id: shiftObj.id, name: shiftObj.name, start: shiftObj.start, end: shiftObj.end, qty: shiftObj.qty, color: selectedColor, days: activeDays });
     setBuilderModal({ isNew: false });
   };
-  const toggleBuilderDay = (dayIndex) => setBuilderForm(prev => ({ ...prev, days: prev.days.includes(dayIndex) ? prev.days.filter(d => d !== dayIndex) : [...prev.days, dayIndex] }));
+  const toggleBuilderDay = (dayIndex) => setBuilderForm(prev => ({ ...prev, days: (prev.days || []).includes(dayIndex) ? (prev.days || []).filter(d => d !== dayIndex) : [...(prev.days || []), dayIndex] }));
   const saveBuilderShift = () => {
     if (!builderForm.name || !builderForm.start || !builderForm.end) { alert('Preencha os campos obrigatórios.'); return; }
-    const activeDays = {}; [1,2,3,4,5,6,0].forEach(d => { activeDays[d] = builderForm.days.includes(d); });
-    const newObj = { id: builderModal.isNew ? Date.now().toString() : builderForm.id, name: builderForm.name, start: builderForm.start, end: builderForm.end, color: builderForm.color.value, qty: builderForm.qty, cellStates: builderModal.isNew ? { ...activeDays } : (builderShifts.find(s => s.id === builderForm.id)?.cellStates || { ...activeDays }) };
+    const activeDays = {}; [1,2,3,4,5,6,0].forEach(d => { activeDays[d] = (builderForm.days || []).includes(d); });
+    const newObj = { id: builderModal.isNew ? Date.now().toString() : builderForm.id, name: builderForm.name, start: builderForm.start, end: builderForm.end, color: builderForm.color.value, qty: builderForm.qty, cellStates: builderModal.isNew ? { ...activeDays } : ((builderShifts || []).find(s => s.id === builderForm.id)?.cellStates || { ...activeDays }) };
     if (builderModal.isNew) setBuilderShifts(prev => [...prev, newObj]); else setBuilderShifts(prev => prev.map(s => s.id === newObj.id ? newObj : s));
     setBuilderModal(null);
   };
@@ -480,7 +542,7 @@ export default function Escalas() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
+    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       {/* SIDEBAR */}
       <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-[260px] bg-slate-950 text-slate-400 flex flex-col transition-transform duration-300 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="p-6 border-b border-slate-800 flex items-center gap-3">
@@ -500,10 +562,8 @@ export default function Escalas() {
           <div>
             <div className="text-[10px] font-bold uppercase tracking-widest px-3 mb-2 opacity-50">Painel Executivo (Relatórios)</div>
             <SidebarItem active={activeTab === 'executiva' && viewMode === 'relatorios'} icon={LayoutDashboard} label="Visão Executiva" onClick={() => { setViewMode('relatorios'); setActiveTab('executiva'); setMobileMenuOpen(false); }} />
-            {[
-              ['produtividade', Clock3], ['cobertura', Building2], ['risco', ShieldCheck], ['financeiro', BarChart3], ['turnover', Users],
-            ].map(([key, Icon]) => (
-              <SidebarItem key={key} active={activeTab === key && viewMode === 'relatorios'} icon={Icon} label={REPORT_CONFIG[key].label} onClick={() => { setViewMode('relatorios'); setActiveTab(key); setMobileMenuOpen(false); }} />
+            {[['produtividade', Clock3], ['cobertura', Building2], ['risco', ShieldCheck], ['financeiro', BarChart3], ['turnover', Users]].map(([key, IconComponent]) => (
+              <SidebarItem key={key} active={activeTab === key && viewMode === 'relatorios'} icon={IconComponent} label={REPORT_CONFIG[key]?.label || ''} onClick={() => { setViewMode('relatorios'); setActiveTab(key); setMobileMenuOpen(false); }} />
             ))}
             <div className="mt-4 mb-2 px-3 text-[10px] font-bold uppercase tracking-widest opacity-50">Governança</div>
             <SidebarItem active={activeTab === 'auditoria' && viewMode === 'relatorios'} icon={ClipboardCheck} label="Log de Auditoria" onClick={() => { setViewMode('relatorios'); setActiveTab('auditoria'); setMobileMenuOpen(false); }} />
@@ -579,7 +639,7 @@ export default function Escalas() {
                   </div>
                   <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 text-center font-medium">Arraste o nome para a escala ➔</p>
                 </div>
-                <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
                   {sidebarProfessionals.map(prof => (
                     <div key={prof.id} draggable onDragStart={(e) => handleDragStart(e, prof)} className="p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm cursor-grab hover:border-sky-400 active:cursor-grabbing flex items-center gap-2 group transition-all">
                       <GripVertical className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-sky-500" />
@@ -589,10 +649,11 @@ export default function Escalas() {
                       </div>
                     </div>
                   ))}
+                  {sidebarProfessionals.length === 0 && <div className="p-4 text-center text-xs text-slate-400">Nenhum profissional.</div>}
                 </div>
               </div>
 
-              <div className="flex-1 overflow-auto bg-slate-100/30 dark:bg-slate-950 relative">
+              <div className="flex-1 overflow-auto bg-slate-100/30 dark:bg-slate-950 relative custom-scrollbar">
                 {filters.sectorId === 'todos' ? (
                   <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">
                     <Building2 className="w-12 h-12 mb-4 opacity-50 text-slate-300" />
@@ -607,6 +668,7 @@ export default function Escalas() {
                         <div key={day} className="p-3 border-r border-slate-200 dark:border-slate-800 text-center font-bold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider">{day}</div>
                       ))}
                     </div>
+
                     {weeksDataGrid.map((week, wIndex) => (
                       <div key={wIndex} className="border-b-[6px] border-slate-200 dark:border-slate-800/50">
                         <div className="grid grid-cols-8 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
@@ -617,40 +679,76 @@ export default function Escalas() {
                             </div>
                           ))}
                         </div>
+
                         {SHIFT_PERIODS.map((period) => (
                           <div key={period.id} className="grid grid-cols-8 border-b border-slate-100 dark:border-slate-800/50 last:border-b-0 group">
                             <div className="p-3 border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/30 flex flex-col items-center justify-center">
                               <span className="font-black text-[11px] uppercase text-slate-700 dark:text-slate-300">{period.label}</span>
                               <span className="text-[9px] font-bold text-slate-400">{period.start} - {period.end}</span>
                             </div>
+
                             {week.map((date, dIndex) => {
                               if (!date) return <div key={dIndex} className="bg-slate-50 dark:bg-slate-900/20 border-r border-slate-200 dark:border-slate-800 p-2"></div>;
-                              const slotShifts = (filteredShifts || []).filter(s => s.date && s.date.startsWith(date) && s.periodId === period.id);
+
+                              const shiftDateStr = String(date || '');
+                              const slotShifts = (filteredShifts || []).filter(s => String(s.date || '').startsWith(shiftDateStr) && s.periodId === period.id);
                               const isSelected = selectedCells.some(c => c.date === date && c.periodId === period.id);
 
                               return (
-                                <div key={dIndex} className={`border-r border-slate-200 dark:border-slate-800/50 p-1.5 min-h-[70px] relative transition-colors cursor-pointer flex flex-col gap-1 ${isSelected ? 'bg-sky-50 dark:bg-sky-900/20 ring-inset ring-2 ring-sky-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'}`}
-                                  onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, date, period.id)} onClick={(e) => handleCellClick(e, date, period.id)}
+                                <div 
+                                  key={dIndex} 
+                                  className={`border-r border-slate-200 dark:border-slate-800/50 p-1.5 min-h-[70px] relative transition-colors cursor-pointer flex flex-col gap-1 ${isSelected ? 'bg-sky-50 dark:bg-sky-900/20 ring-inset ring-2 ring-sky-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'}`}
+                                  onDragOver={handleDragOver}
+                                  onDrop={(e) => handleDrop(e, date, period.id)}
+                                  onClick={(e) => handleCellClick(e, date, period.id)}
+                                  title="Ctrl+Click para selecionar múltiplos. Clique simples para Novo Plantão."
                                 >
                                   {slotShifts.map(s => (
                                     <div key={s.id} className={`relative p-2 rounded-lg text-[10px] border flex items-center justify-between group/item transition-all hover:scale-[1.02] shadow-sm ${s.isVacant ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 text-amber-800 dark:text-amber-200 border-dashed' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-100'}`}>
                                       <span className="font-bold truncate pr-4">{s.isVacant ? 'Vaga Aberta' : toTitleCase(s.professional_name)}</span>
-                                      {!s.isVacant && isPublished && <div className="absolute -top-2 left-2 opacity-0 group-hover/item:opacity-100 transition-opacity bg-emerald-500 text-white text-[8px] font-black px-1.5 rounded uppercase shadow-sm">Publicado</div>}
+                                      
+                                      {/* Tag de Publicado no Hover */}
+                                      {!s.isVacant && isPublished && (
+                                        <div className="absolute -top-2 left-2 opacity-0 group-hover/item:opacity-100 transition-opacity bg-emerald-500 text-white text-[8px] font-black px-1.5 rounded uppercase shadow-sm">Publicado</div>
+                                      )}
+
                                       {!s.isVacant && (
-                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} className="opacity-0 group-hover/item:opacity-100 p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 rounded transition-opacity absolute right-1"><X className="w-3 h-3" /></button>
+                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} className="opacity-0 group-hover/item:opacity-100 p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 rounded transition-opacity absolute right-1">
+                                          <X className="w-3 h-3" />
+                                        </button>
                                       )}
                                     </div>
                                   ))}
+
+                                  {/* Modo de Edição Inline (Duplo Clique) */}
                                   {inlineEditingCell?.date === date && inlineEditingCell?.periodId === period.id && (
                                     <div className="absolute inset-0 z-30 bg-white dark:bg-slate-900 border-2 border-sky-500 rounded-lg p-1 shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
                                       <div className="flex items-center gap-1 border-b dark:border-slate-700 pb-1 mb-1">
                                         <Search className="w-3 h-3 text-slate-400" />
-                                        <input autoFocus type="text" placeholder="Buscar..." className="w-full text-[10px] outline-none bg-transparent font-medium dark:text-white" value={inlineSearchText} onChange={e => setInlineSearchText(e.target.value)} onKeyDown={(e) => { if(e.key === 'Escape') setInlineEditingCell(null); }} />
+                                        <input 
+                                          autoFocus
+                                          type="text" 
+                                          placeholder="Buscar..." 
+                                          className="w-full text-[10px] outline-none bg-transparent font-medium dark:text-white"
+                                          value={inlineSearchText}
+                                          onChange={e => setInlineSearchText(e.target.value)}
+                                          onKeyDown={(e) => { if(e.key === 'Escape') setInlineEditingCell(null); }}
+                                        />
                                         <button onClick={() => setInlineEditingCell(null)}><X className="w-3 h-3 text-slate-400 hover:text-red-500"/></button>
                                       </div>
                                       <div className="flex-1 overflow-y-auto space-y-0.5 custom-scrollbar">
                                         {(professionals || []).filter(p => !inlineSearchText || normalizeStr(p.name).includes(normalizeStr(inlineSearchText))).slice(0, 5).map(p => (
-                                          <button key={p.id} className="w-full text-left px-2 py-1 text-[10px] hover:bg-sky-50 dark:hover:bg-slate-800 rounded truncate text-slate-700 dark:text-slate-300 font-medium" onClick={() => { assignShift(date, period.id, p.id); setInlineEditingCell(null); setInlineSearchText(''); }}>{p.name}</button>
+                                          <button 
+                                            key={p.id} 
+                                            className="w-full text-left px-2 py-1 text-[10px] hover:bg-sky-50 dark:hover:bg-slate-800 rounded truncate text-slate-700 dark:text-slate-300 font-medium"
+                                            onClick={() => {
+                                              assignShift(date, period.id, p.id);
+                                              setInlineEditingCell(null);
+                                              setInlineSearchText('');
+                                            }}
+                                          >
+                                            {p.name}
+                                          </button>
                                         ))}
                                       </div>
                                     </div>
@@ -718,7 +816,7 @@ export default function Escalas() {
 
         {/* ===================== MODO BASE BUILDER (CRIAÇÃO DE ESCALA BASE) ===================== */}
         {viewMode === 'base_builder' && (
-          <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
+          <div className="flex-1 overflow-auto p-5 sm:p-8 bg-slate-50 dark:bg-slate-950 flex flex-col items-center">
             <div className="w-full max-w-5xl space-y-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
@@ -745,7 +843,7 @@ export default function Escalas() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                      {builderShifts.length === 0 ? (
+                      {(builderShifts || []).length === 0 ? (
                         <tr><td colSpan="8" className="p-12 text-center text-slate-400 text-sm">Nenhum horário configurado. Adicione um novo abaixo.</td></tr>
                       ) : (
                         builderShifts.map(shift => {
@@ -762,7 +860,7 @@ export default function Escalas() {
                                 </button>
                               </td>
                               {WEEK_DAYS_ORDER.map(day => {
-                                const isActive = shift.cellStates[day.index];
+                                const isActive = (shift.cellStates || {})[day.index];
                                 return (
                                   <td key={day.index} className={`p-0 border-r border-slate-100 dark:border-slate-800 text-center relative ${day.weekend ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''}`}>
                                     <div className="relative w-full h-full min-h-[60px] flex items-center justify-center group/cell cursor-pointer" onClick={() => toggleBuilderCell(shift.id, day.index)}>
@@ -801,7 +899,6 @@ export default function Escalas() {
         {/* ===================== RELATÓRIOS E PAINEL EXECUTIVO ===================== */}
         {viewMode === 'relatorios' && (
           <div className="flex-1 overflow-auto p-5 sm:p-8 space-y-6">
-            {/* Filtros para o Painel de Relatórios */}
             <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col md:flex-row items-center gap-4">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider min-w-fit"><Filter className="w-4 h-4 text-sky-600" /> Filtros:</div>
               <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
@@ -941,7 +1038,7 @@ export default function Escalas() {
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3 block">Repetir Horários na Semana</label>
                 <div className="flex justify-between gap-1">
                   {WEEK_DAYS_ORDER.map(day => {
-                    const isSelected = builderForm.days.includes(day.index);
+                    const isSelected = (builderForm.days || []).includes(day.index);
                     return (
                       <button 
                         key={day.index}
@@ -974,19 +1071,19 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* MODAL 4: NOVO PLANTÃO INDIVIDUAL (Click na Célula - Referência 1) */}
+      {/* MODAL 4: NOVO PLANTÃO INDIVIDUAL COM DROPDOWN DE PROFISSIONAL */}
       {newShiftModal && (
         <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
               <h2 className="text-lg font-black text-sky-600 dark:text-sky-400">Novo Plantão</h2>
-              <button onClick={() => setNewShiftModal(null)}><X className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
+              <button onClick={() => { setNewShiftModal(null); setSelectedProfIdForModal(''); }}><X className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
             </div>
             
             <div className="p-6 space-y-4 text-sm font-medium text-slate-700 dark:text-slate-300">
               <div className="grid grid-cols-3 items-center gap-4">
                 <label className="text-right text-xs font-bold text-slate-500">Plantonista:</label>
-                <Select>
+                <Select value={selectedProfIdForModal} onValueChange={setSelectedProfIdForModal}>
                   <SelectTrigger className="col-span-2 h-10 text-xs bg-white dark:bg-slate-950"><SelectValue placeholder="Busque um profissional..." /></SelectTrigger>
                   <SelectContent>
                     {(professionals || []).filter(p => p?.id).map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}
@@ -1019,7 +1116,16 @@ export default function Escalas() {
               </div>
 
               <div className="flex justify-end pt-5">
-                <Button onClick={() => { alert('Plantão salvo com sucesso!'); setNewShiftModal(null); }} className="bg-sky-600 hover:bg-sky-700 text-white font-bold h-11 px-8 shadow-md">
+                <Button 
+                  onClick={() => { 
+                    if(!selectedProfIdForModal) { alert('Selecione um profissional.'); return; }
+                    assignShift(newShiftModal.date, newShiftModal.periodId, selectedProfIdForModal);
+                    setNewShiftModal(null);
+                    setSelectedProfIdForModal('');
+                    alert('Plantão salvo com sucesso!');
+                  }} 
+                  className="bg-sky-600 hover:bg-sky-700 text-white font-bold h-11 px-8 shadow-md"
+                >
                   Alocar Profissional
                 </Button>
               </div>
@@ -1028,23 +1134,24 @@ export default function Escalas() {
         </div>
       )}
 
+      <ShiftFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} onSaved={loadData} shift={editing} sectors={sectors} professionals={professionals} companyId={companyId} unitId={unitId} />
+
       {reportModalOpen && (
         <ReportPreviewModal reportPayload={reportPayload} reportHash={reportHash} hashLoading={hashLoading} reportStatus={reportStatus} reportVersion={reportVersion} onClose={() => setReportModalOpen(false)} onPrint={printReport} onExport={exportCSV} onStatusChange={setReportStatus} onNewVersion={() => setReportVersion(v => v + 1)} />
       )}
-
-      <ShiftFormDialog open={dialogOpen} onClose={() => setDialogOpen(false)} onSaved={loadData} shift={editing} sectors={sectors} professionals={professionals} companyId={companyId} unitId={unitId} />
     </div>
   );
 }
 
 /* ============================================================
-   SUB-COMPONENTES REUTILIZÁVEIS DA TELA E RELATÓRIOS
+   SUB-COMPONENTES DA TELA E RELATÓRIOS
    ============================================================ */
 
 function SidebarItem({ active, icon: Icon, label, onClick }) {
+  const IconComp = Icon || Activity;
   return (
     <button onClick={onClick} className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl mb-1 transition-all ${active ? 'bg-white/10 text-white font-bold' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-      <Icon className={`w-[18px] h-[18px] shrink-0 ${active ? 'text-sky-400' : ''}`} />
+      <IconComp className={`w-[18px] h-[18px] shrink-0 ${active ? 'text-sky-400' : ''}`} />
       <span className="text-sm flex-1 text-left">{label}</span>
       {active && <ChevronRight className="w-4 h-4 opacity-50" />}
     </button>
@@ -1097,7 +1204,7 @@ function ExecutiveView({ baseMetrics, riskRows, byProfessional, criticalAlerts, 
           <div className="flex items-center justify-between mb-5"><div><h2 className="font-bold text-slate-900 dark:text-white">Cobertura por setor</h2></div></div>
           <div className="space-y-4">
             {riskRows.slice(0, 8).map((row) => <CoverageBar key={row.name} label={row.name} value={row.coverage} />)}
-            {riskRows.length === 0 && <EmptyState title="Sem dados de cobertura" description="Não existem registros." />}
+            {riskRows.length === 0 && <EmptyState title="Sem dados de cobertura" description="Não existem registros para os filtros atuais." />}
           </div>
         </Card>
 
@@ -1123,7 +1230,7 @@ function ExecutiveMetric({ label, value }) {
   return (
     <div className="rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 p-4">
       <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
-      <div className="text-xl font-bold mt-1 text-slate-900 dark:text-white">{value}</div>
+      <div className="text-xl font-bold mt-1 dark:text-white">{value}</div>
     </div>
   );
 }
@@ -1284,13 +1391,6 @@ function FinancialView({ data }) {
                 );
               })}
             </tbody>
-            {data.rows.length > 0 && (
-              <tfoot>
-                <tr className="bg-slate-50 dark:bg-slate-800/50 font-black text-slate-900 dark:text-slate-100 border-t border-slate-200 dark:border-slate-700">
-                  <td className="py-4 pr-4">TOTAL ESTIMADO (EXCLUI CANCELADOS)</td><td /><td /><td /><td className="py-4 pl-4 text-right text-emerald-600">{formatCurrency(data.estimatedCost)}</td>
-                </tr>
-              </tfoot>
-            )}
           </table>
         </div>
       </ReportCard>
@@ -1350,22 +1450,6 @@ function GovernanceView({ reportId, version, status, hash, hashLoading, auditEve
           </Button>
         </Card>
       </div>
-      <Card className="p-6 border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900">
-        <h2 className="font-bold dark:text-white mb-5">Trilha de auditoria</h2>
-        <div className="space-y-2 max-h-[420px] overflow-y-auto">
-          {auditEvents.map((event) => (
-            <div key={event.id} className="flex gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-              <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 flex items-center justify-center shrink-0">
-                <Activity className="w-4 h-4 text-slate-500" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2"><span className="text-xs font-bold dark:text-white">{event.type}</span><span className="text-[10px] text-slate-400">{event.timestamp}</span></div>
-                <div className="text-xs text-slate-600 dark:text-slate-300 mt-1">{event.description}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
     </div>
   );
 }
@@ -1416,8 +1500,24 @@ function ReportPreviewModal({ reportPayload, reportHash, hashLoading, reportStat
               </SelectContent>
             </Select>
             <Button type="button" variant="outline" onClick={onExport} className="gap-2 bg-transparent text-white border-white/20 hover:bg-white/10"><Download className="w-4 h-4" /> CSV</Button>
-            <Button type="button" onClick={onPrint} className="gap-2 bg-sky-600 hover:bg-sky-500 border-0"><Printer className="w-4 h-4" /> Imprimir A4 / PDF</Button>
+            <Button type="button" onClick={onPrint} className="gap-2 bg-sky-600 hover:bg-sky-500 border-0"><Printer className="w-4 h-4" /> Imprimir / PDF</Button>
             <Button type="button" variant="ghost" onClick={onClose} className="text-white hover:bg-white/10"><X className="w-5 h-5" /></Button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto bg-slate-100 p-8 flex justify-center">
+          <div className="w-[210mm] bg-white p-12 shadow-lg text-slate-900 text-xs">
+            <h1 className="text-2xl font-black mb-2">{reportPayload.title}</h1>
+            <p><strong>Filtros:</strong> {reportPayload.filtersLabel}</p>
+            <p><strong>Emissão:</strong> {new Date().toLocaleString('pt-BR')}</p>
+            <hr className="my-6 border-slate-300" />
+            <table className="w-full text-left border-collapse border border-slate-300">
+              <thead className="bg-slate-200">
+                <tr>{reportPayload.columns.map(c => <th key={c} className="border border-slate-300 p-2">{c}</th>)}</tr>
+              </thead>
+              <tbody>
+                {reportPayload.rows.map((row, i) => <tr key={i}>{row.map((c, j) => <td key={j} className="border border-slate-300 p-2">{c}</td>)}</tr>)}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
