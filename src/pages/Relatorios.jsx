@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
@@ -11,45 +11,99 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-
 import {
-  Clock,
-  TrendingUp,
-  FileText,
-  FileSpreadsheet,
-  ShieldCheck,
-  Building2,
-  Filter,
-  Loader2,
-  DollarSign,
+  Activity,
+  AlertTriangle,
   BarChart3,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardCheck,
+  Clock3,
+  Database,
+  Download,
   Eye,
-  X,
-  Leaf,
-  Sparkles,
+  FileText,
+  Filter,
+  History,
+  LayoutDashboard,
+  Loader2,
+  LockKeyhole,
+  Menu,
+  Printer,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  TrendingDown,
+  UserCheck,
   Users,
-  ClipboardList,
+  X,
+  FileCheck2,
 } from 'lucide-react';
 
 /* ============================================================
- * FORMATADORES
- * ============================================================ */
+   CONFIGURAÇÕES
+============================================================ */
+
+const SHIFT_STATUS = {
+  CONFIRMED: 'confirmado',
+  PENDING: 'pendente',
+  CANCELLED: 'cancelado',
+  OPEN: 'vago',
+};
+
+const REMUNERATION_TYPE = {
+  HOUR: 'hora',
+  DAILY: 'diaria',
+  MONTHLY: 'mensal',
+};
+
+const REPORT_CONFIG = {
+  executiva: { label: 'Visão Executiva', icon: LayoutDashboard },
+  produtividade: { label: 'Produtividade & Horas', icon: Clock3 },
+  cobertura: { label: 'Cobertura por Setor', icon: Building2 },
+  financeiro: { label: 'Repasse Financeiro', icon: DollarSign },
+  auditoria: { label: 'Log de Auditoria', icon: ShieldCheck },
+};
+
+/* ============================================================
+   FUNÇÕES UTILITÁRIAS
+============================================================ */
+
+function safeNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function formatNumber(value, decimals = 0) {
+  return safeNumber(value).toLocaleString('pt-BR', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
 
 function formatCurrency(value = 0) {
-  return `R$ ${Number(value || 0).toLocaleString('pt-BR', {
+  return `R$ ${safeNumber(value).toLocaleString('pt-BR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 }
 
-function formatDateBR(dateStr) {
-  if (!dateStr) return '—';
+function normalizeDate(dateValue) {
+  if (!dateValue) return '';
+  const value = String(dateValue).trim();
+  if (!value) return '';
+  const datePart = value.split('T')[0];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return datePart;
+  return '';
+}
 
-  const date = String(dateStr).split('T')[0];
-  const [year, month, day] = date.split('-');
-
-  if (!year || !month || !day) return dateStr;
-
+function formatDateBR(dateValue) {
+  const value = normalizeDate(dateValue);
+  if (!value) return '—';
+  const [year, month, day] = value.split('-');
   return `${day}/${month}/${year}`;
 }
 
@@ -63,12 +117,11 @@ function escapeHtml(value) {
 }
 
 /* ============================================================
- * EXPORTAÇÃO CSV
- * ============================================================ */
+   EXPORTAÇÃO CSV E PDF (A4 CORPORATIVO)
+============================================================ */
 
 function downloadCSV(payload) {
   const rows = [];
-
   rows.push([payload.title]);
   rows.push([`Instituição: ${payload.companyName}`]);
   rows.push([`Filtros: ${payload.subtitle}`]);
@@ -79,344 +132,177 @@ function downloadCSV(payload) {
       rows.push([section.title]);
       rows.push(section.columns);
       rows.push(...section.rows);
-
-      if (section.totalsRow) {
-        rows.push(section.totalsRow);
-      }
-
+      if (section.totalsRow) rows.push(section.totalsRow);
       rows.push([]);
     });
   } else {
     rows.push(payload.columns);
     rows.push(...payload.rows);
-
-    if (payload.totalsRow) {
-      rows.push(payload.totalsRow);
-    }
+    if (payload.totalsRow) rows.push(payload.totalsRow);
   }
 
   const csv = rows
-    .map((row) =>
-      row
-        .map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`)
-        .join(';')
-    )
+    .map((row) => row.map((cell) => `"${String(cell ?? '').replaceAll('"', '""')}"`).join(';'))
     .join('\n');
 
-  const blob = new Blob([`\uFEFF${csv}`], {
-    type: 'text/csv;charset=utf-8;',
-  });
-
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-
   link.href = url;
-  link.download = `${payload.title
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/gi, '-')
-    .replaceAll(/^-|-$/g, '')}.csv`;
-
+  link.download = `${payload.title.toLowerCase().replaceAll(/[^a-z0-9]+/gi, '-')}.csv`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-
   URL.revokeObjectURL(url);
 }
 
-/* ============================================================
- * EXPORTAÇÃO PARA PDF / IMPRESSÃO
- * ============================================================ */
-
 function downloadPDF(payload) {
-  const printWindow = window.open('', '_blank', 'width=1200,height=900');
-
+  const printWindow = window.open('', '_blank');
   if (!printWindow) {
-    alert('Permita pop-ups no navegador para gerar o relatório.');
+    alert('Permita pop-ups no navegador para gerar o relatório em PDF.');
     return;
   }
 
-  const renderTable = (columns, rows, totalsRow) => {
-    return `
-      <table>
-        <thead>
-          <tr>
-            ${columns
-              .map((column) => `<th>${escapeHtml(column)}</th>`)
-              .join('')}
-          </tr>
-        </thead>
-        <tbody>
-          ${rows
-            .map(
-              (row) => `
-                <tr>
-                  ${row
-                    .map((cell) => `<td>${escapeHtml(cell)}</td>`)
-                    .join('')}
-                </tr>
-              `
-            )
-            .join('')}
-        </tbody>
-        ${
-          totalsRow
-            ? `
-              <tfoot>
-                <tr>
-                  ${totalsRow
-                    .map((cell) => `<td>${escapeHtml(cell)}</td>`)
-                    .join('')}
-                </tr>
-              </tfoot>
-            `
-            : ''
-        }
-      </table>
-    `;
-  };
+  const renderTable = (columns, rows, totalsRow) => `
+    <table>
+      <thead>
+        <tr>${columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr>
+      </thead>
+      <tbody>
+        ${rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}
+      </tbody>
+      ${totalsRow ? `<tfoot><tr>${totalsRow.map(cell => `<th>${escapeHtml(cell)}</th>`).join('')}</tr></tfoot>` : ''}
+    </table>
+  `;
 
   const sectionsHtml = payload.sections?.length
-    ? payload.sections
-        .map(
-          (section) => `
-            <section>
-              <h2>${escapeHtml(section.title)}</h2>
-              ${
-                section.rows.length
-                  ? renderTable(
-                      section.columns,
-                      section.rows,
-                      section.totalsRow
-                    )
-                  : '<p>Nenhum dado encontrado para esta seção.</p>'
-              }
-            </section>
-          `
-        )
-        .join('')
+    ? payload.sections.map((section) => `
+        <div class="section-title">${escapeHtml(section.title)}</div>
+        ${section.rows.length ? renderTable(section.columns, section.rows, section.totalsRow) : '<p>Nenhum dado encontrado.</p>'}
+      `).join('')
     : renderTable(payload.columns, payload.rows, payload.totalsRow);
+
+  const kpisHtml = payload.kpis?.length
+    ? `<div class="kpis">
+        ${payload.kpis.map((kpi) => `
+          <div class="kpi-box">
+            <div class="kpi-label">${escapeHtml(kpi.label)}</div>
+            <div class="kpi-value">${escapeHtml(kpi.value)}</div>
+          </div>
+        `).join('')}
+       </div>`
+    : '';
 
   printWindow.document.write(`
     <!DOCTYPE html>
     <html lang="pt-BR">
-      <head>
-        <meta charset="UTF-8" />
-        <title>${escapeHtml(payload.title)}</title>
-
-        <style>
-          * {
-            box-sizing: border-box;
-          }
-
-          body {
-            font-family: Arial, Helvetica, sans-serif;
-            color: #172033;
-            margin: 32px;
-            font-size: 11px;
-          }
-
-          header {
-            border-bottom: 3px solid #0284c7;
-            padding-bottom: 18px;
-            margin-bottom: 20px;
-          }
-
-          h1 {
-            font-size: 23px;
-            margin: 0 0 8px;
-            color: #0f172a;
-          }
-
-          h2 {
-            font-size: 15px;
-            margin: 26px 0 10px;
-            color: #075985;
-            border-bottom: 1px solid #cbd5e1;
-            padding-bottom: 6px;
-          }
-
-          p {
-            margin: 4px 0;
-            color: #475569;
-          }
-
-          .kpis {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin: 20px 0;
-          }
-
-          .kpi {
-            border: 1px solid #cbd5e1;
-            border-radius: 8px;
-            padding: 10px;
-          }
-
-          .kpi-label {
-            font-size: 9px;
-            text-transform: uppercase;
-            color: #64748b;
-            font-weight: bold;
-          }
-
-          .kpi-value {
-            margin-top: 5px;
-            font-size: 15px;
-            font-weight: bold;
-            color: #0369a1;
-          }
-
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
-          }
-
-          th {
-            background: #e0f2fe;
-            color: #075985;
-            font-weight: bold;
-            text-align: left;
-            padding: 8px;
-            border: 1px solid #bae6fd;
-          }
-
-          td {
-            padding: 7px;
-            border: 1px solid #e2e8f0;
-            vertical-align: top;
-          }
-
-          tbody tr:nth-child(even) {
-            background: #f8fafc;
-          }
-
-          tfoot td {
-            background: #e2e8f0;
-            font-weight: bold;
-          }
-
-          footer {
-            margin-top: 35px;
-            padding-top: 10px;
-            border-top: 1px solid #cbd5e1;
-            font-size: 9px;
-            color: #64748b;
-          }
-
-          @media print {
-            body {
-              margin: 15mm;
-            }
-
-            button {
-              display: none;
-            }
-
-            section {
-              break-inside: avoid;
-            }
-          }
-        </style>
-      </head>
-
-      <body>
-        <header>
-          <h1>${escapeHtml(payload.title)}</h1>
-          <p><strong>Instituição:</strong> ${escapeHtml(
-            payload.companyName
-          )}</p>
-          <p><strong>Filtros:</strong> ${escapeHtml(payload.subtitle)}</p>
-          ${
-            payload.generatedBy
-              ? `<p><strong>Emitido por:</strong> ${escapeHtml(
-                  payload.generatedBy
-                )}</p>`
-              : ''
-          }
-          <p><strong>Gerado em:</strong> ${new Date().toLocaleString(
-            'pt-BR'
-          )}</p>
-        </header>
-
-        <div class="kpis">
-          ${payload.kpis
-            .map(
-              (kpi) => `
-                <div class="kpi">
-                  <div class="kpi-label">${escapeHtml(kpi.label)}</div>
-                  <div class="kpi-value">${escapeHtml(kpi.value)}</div>
-                </div>
-              `
-            )
-            .join('')}
+    <head>
+      <meta charset="UTF-8" />
+      <title>${escapeHtml(payload.title)}</title>
+      <style>
+        @page { size: A4 landscape; margin: 12mm; }
+        * { box-sizing: border-box; font-family: 'Arial', sans-serif; }
+        body { margin: 0; padding: 0; color: #0f172a; font-size: 10px; background: #ffffff; }
+        
+        .header { border-bottom: 2px solid #0ea5e9; padding-bottom: 15px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+        .header-title { font-size: 20px; font-weight: 900; text-transform: uppercase; margin: 0 0 4px; color: #0f172a; }
+        .header-sub { font-size: 11px; color: #64748b; margin: 0; }
+        .header-meta { text-align: right; font-size: 9px; color: #475569; line-height: 1.5; }
+        .header-meta strong { color: #0f172a; }
+        
+        .kpis { display: flex; gap: 10px; margin-bottom: 20px; }
+        .kpi-box { flex: 1; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; background: #f8fafc; }
+        .kpi-label { font-size: 8px; text-transform: uppercase; font-weight: bold; color: #64748b; margin-bottom: 4px; }
+        .kpi-value { font-size: 16px; font-weight: 900; color: #0284c7; }
+        
+        .section-title { font-size: 12px; font-weight: bold; color: #0f172a; margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #e2e8f0; text-transform: uppercase; }
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 25px; page-break-inside: auto; }
+        thead { display: table-header-group; }
+        tfoot { display: table-footer-group; }
+        tr { page-break-inside: avoid; break-inside: avoid; }
+        th, td { padding: 6px 8px; border: 1px solid #cbd5e1; text-align: left; vertical-align: middle; }
+        th { background: #f1f5f9; font-size: 9px; color: #334155; text-transform: uppercase; }
+        td { font-size: 10px; color: #1e293b; }
+        tbody tr:nth-child(even) { background: #f8fafc; }
+        tfoot th { background: #e2e8f0; color: #0f172a; font-size: 10px; }
+        
+        .signatures { margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px; text-align: center; page-break-inside: avoid; }
+        .sig-line { border-top: 1px solid #94a3b8; padding-top: 6px; font-size: 10px; font-weight: bold; color: #334155; }
+        
+        .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #cbd5e1; font-size: 8px; color: #94a3b8; display: flex; justify-content: space-between; }
+        
+        @media screen {
+          body { padding: 30px; background: #f1f5f9; }
+          .document-container { max-width: 1100px; margin: 0 auto; background: white; padding: 40px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border-radius: 8px; }
+          .no-print { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 20px; }
+          .no-print button { padding: 8px 16px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 12px; }
+          .btn-print { background: #0284c7; color: white; }
+          .btn-close { background: #e2e8f0; color: #0f172a; }
+        }
+        @media print {
+          .no-print { display: none !important; }
+          .document-container { box-shadow: none; padding: 0; max-width: 100%; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="document-container">
+        <div class="no-print">
+          <button class="btn-print" onclick="window.print()">Imprimir / Salvar PDF</button>
+          <button class="btn-close" onclick="window.close()">Fechar</button>
+        </div>
+        
+        <div class="header">
+          <div>
+            <h1 class="header-title">${escapeHtml(payload.title)}</h1>
+            <p class="header-sub"><strong>Instituição:</strong> ${escapeHtml(payload.companyName)}</p>
+            <p class="header-sub"><strong>Filtros aplicados:</strong> ${escapeHtml(payload.subtitle)}</p>
+          </div>
+          <div class="header-meta">
+            <div><strong>Emissão:</strong> ${new Date().toLocaleString('pt-BR')}</div>
+            <div><strong>Emitido por:</strong> ${escapeHtml(payload.generatedBy)}</div>
+            <div><strong>Página oficial gerada via sistema</strong></div>
+          </div>
         </div>
 
-        ${
-          payload.sections?.length
-            ? sectionsHtml
-            : `<section>${sectionsHtml}</section>`
-        }
+        ${kpisHtml}
+        ${sectionsHtml}
 
-        <footer>
-          Relatório gerado pelo módulo de Inteligência Executiva e Governança.
-        </footer>
+        <div class="signatures">
+          <div class="sig-line">Responsável pela Emissão</div>
+          <div class="sig-line">Diretoria / Aprovação</div>
+        </div>
 
-        <script>
-          window.onload = function () {
-            window.print();
-          };
-        </script>
-      </body>
+        <div class="footer">
+          <span>Documento gerado pela Central de Inteligência Hospitalar.</span>
+          <span>Impresso em A4 Paisagem (Landscape)</span>
+        </div>
+      </div>
+      <script>
+        window.onload = function() { setTimeout(function() { window.print(); }, 500); };
+      </script>
+    </body>
     </html>
   `);
-
   printWindow.document.close();
 }
 
 /* ============================================================
- * PAYLOAD DOS RELATÓRIOS
- * ============================================================ */
+   GERADOR DE PAYLOAD UNIFICADO
+============================================================ */
 
 function buildReportPayload({
-  tab,
-  company,
-  user,
-  filtersLabel,
-  overview,
-  byProfessional,
-  bySector,
-  auditLogs,
-  totalFinancialEstimate,
+  tab, company, user, filtersLabel, overview, byProfessional, bySector, auditLogs, totalFinancialEstimate
 }) {
   const companyName = company?.name || 'Hospital';
-  const generatedBy =
-    user?.data?.full_name || user?.data?.name || undefined;
-
-  const base = {
-    companyName,
-    generatedBy,
-    subtitle: filtersLabel,
-  };
+  const generatedBy = user?.data?.full_name || user?.data?.name || undefined;
+  const base = { companyName, generatedBy, subtitle: filtersLabel };
 
   if (tab === 'conselho') {
-    const totalHours = byProfessional.reduce(
-      (total, professional) => total + professional.hours,
-      0
-    );
-
+    const totalHours = byProfessional.reduce((total, p) => total + p.hours, 0);
     const averageCoverage = bySector.length
-      ? Math.round(
-          bySector.reduce((total, [, data]) => {
-            return (
-              total +
-              (data.total
-                ? (data.filled / data.total) * 100
-                : 0)
-            );
-          }, 0) / bySector.length
-        )
+      ? Math.round(bySector.reduce((t, [, data]) => t + (data.total ? (data.filled / data.total) * 100 : 0), 0) / bySector.length)
       : 0;
 
     return {
@@ -424,22 +310,10 @@ function buildReportPayload({
       key: tab,
       title: 'Relatório Consolidado do Conselho',
       kpis: [
-        {
-          label: 'Plantões totais',
-          value: overview.total,
-        },
-        {
-          label: 'Plantões confirmados',
-          value: overview.confirmed,
-        },
-        {
-          label: 'Cobertura média',
-          value: `${averageCoverage}%`,
-        },
-        {
-          label: 'Repasse estimado',
-          value: formatCurrency(totalFinancialEstimate),
-        },
+        { label: 'Plantões totais', value: overview.total },
+        { label: 'Plantões confirmados', value: overview.confirmed },
+        { label: 'Cobertura média', value: `${averageCoverage}%` },
+        { label: 'Repasse estimado', value: formatCurrency(totalFinancialEstimate) },
       ],
       sections: [
         {
@@ -458,93 +332,32 @@ function buildReportPayload({
         },
         {
           title: 'Produtividade por Profissional',
-          columns: [
-            'Profissional',
-            'Especialidade',
-            'Confirmados',
-            'Pendentes',
-            'Cancelados',
-            'Horas',
-          ],
-          rows: byProfessional.map((professional) => [
-            professional.name,
-            professional.category,
-            professional.confirmed,
-            professional.pending,
-            professional.canceled,
-            `${professional.hours}h`,
-          ]),
-          totalsRow: [
-            'TOTAL',
-            '',
-            overview.confirmed,
-            overview.pending,
-            overview.canceled,
-            `${totalHours}h`,
-          ],
+          columns: ['Profissional', 'Especialidade', 'Confirmados', 'Pendentes', 'Cancelados', 'Horas'],
+          rows: byProfessional.map((p) => [p.name, p.category, p.confirmed, p.pending, p.canceled, `${p.hours}h`]),
+          totalsRow: ['TOTAL', '', overview.confirmed, overview.pending, overview.canceled, `${totalHours}h`],
         },
         {
           title: 'Cobertura por Setor',
-          columns: [
-            'Setor',
-            'Total',
-            'Preenchidos',
-            'Vagas Abertas',
-            'Cancelados',
-            'Cobertura',
-          ],
+          columns: ['Setor', 'Total', 'Preenchidos', 'Vagas Abertas', 'Cancelados', 'Cobertura %'],
           rows: bySector.map(([name, data]) => {
-            const percentage = data.total
-              ? Math.round((data.filled / data.total) * 100)
-              : 0;
-
-            return [
-              name,
-              data.total,
-              data.filled,
-              data.open,
-              data.canceled,
-              `${percentage}%`,
-            ];
+            const percentage = data.total ? Math.round((data.filled / data.total) * 100) : 0;
+            return [name, data.total, data.filled, data.open, data.canceled, `${percentage}%`];
           }),
         },
         {
           title: 'Repasse Financeiro Estimado',
-          columns: [
-            'Profissional',
-            'Modelo',
-            'Quantidade / Horas',
-            'Total Estimado',
-          ],
-          rows: byProfessional.map((professional) => [
-            professional.name,
-            professional.remunerationType === 'diaria'
-              ? 'Por Plantão / Diária'
-              : professional.remunerationType === 'mensal'
-              ? 'Fixo Mensal'
-              : 'Horista',
-            professional.remunerationType === 'hora'
-              ? `${professional.hours}h`
-              : `${professional.confirmed} plantão(ões)`,
-            formatCurrency(professional.estimatedPay),
+          columns: ['Profissional', 'Modelo', 'Quantidade / Horas', 'Total Estimado'],
+          rows: byProfessional.map((p) => [
+            p.name,
+            p.remunerationType === 'diaria' ? 'Por Plantão / Diária' : p.remunerationType === 'mensal' ? 'Fixo Mensal' : 'Horista',
+            p.remunerationType === 'hora' ? `${p.hours}h` : `${p.confirmed} plantão(ões)`,
+            formatCurrency(p.estimatedPay),
           ]),
-          totalsRow: [
-            'TOTAL',
-            '',
-            `${totalHours}h`,
-            formatCurrency(totalFinancialEstimate),
-          ],
+          totalsRow: ['TOTAL', '', `${totalHours}h`, formatCurrency(totalFinancialEstimate)],
         },
         {
           title: 'Auditoria e Ocorrências',
-          columns: [
-            'Data',
-            'Horário',
-            'Profissional',
-            'Setor',
-            'Status',
-            'Observação',
-          ],
+          columns: ['Data', 'Horário', 'Profissional', 'Setor', 'Status', 'Observação'],
           rows: auditLogs.map((log) => [
             formatDateBR(log.date),
             `${log.start_time || '--'} - ${log.end_time || '--'}`,
@@ -559,261 +372,77 @@ function buildReportPayload({
   }
 
   if (tab === 'produtividade') {
-    const totalHours = byProfessional.reduce(
-      (total, professional) => total + professional.hours,
-      0
-    );
-
+    const totalHours = byProfessional.reduce((total, p) => total + p.hours, 0);
     return {
       ...base,
       key: tab,
       title: 'Produtividade do Corpo Clínico',
       kpis: [
-        {
-          label: 'Profissionais ativos',
-          value: byProfessional.length,
-        },
-        {
-          label: 'Horas totais',
-          value: `${totalHours}h`,
-        },
-        {
-          label: 'Confirmados',
-          value: overview.confirmed,
-        },
-        {
-          label: 'Pendentes',
-          value: overview.pending,
-        },
+        { label: 'Profissionais ativos', value: byProfessional.length },
+        { label: 'Horas totais', value: `${totalHours}h` },
+        { label: 'Confirmados', value: overview.confirmed },
+        { label: 'Pendentes', value: overview.pending },
       ],
-      columns: [
-        'Profissional',
-        'Especialidade',
-        'Confirmados',
-        'Pendentes',
-        'Cancelados',
-        'Horas Totais',
-      ],
-      rows: byProfessional.map((professional) => [
-        professional.name,
-        professional.category,
-        professional.confirmed,
-        professional.pending,
-        professional.canceled,
-        `${professional.hours}h`,
-      ]),
-      totalsRow: [
-        'TOTAL',
-        '',
-        overview.confirmed,
-        overview.pending,
-        overview.canceled,
-        `${totalHours}h`,
-      ],
-      emptyMessage:
-        'Nenhum profissional com plantões no período selecionado.',
+      columns: ['Profissional', 'Especialidade', 'Confirmados', 'Pendentes', 'Cancelados', 'Horas Totais'],
+      rows: byProfessional.map((p) => [p.name, p.category, p.confirmed, p.pending, p.canceled, `${p.hours}h`]),
+      totalsRow: ['TOTAL', '', overview.confirmed, overview.pending, overview.canceled, `${totalHours}h`],
+      emptyMessage: 'Nenhum profissional com plantões no período selecionado.',
     };
   }
 
   if (tab === 'cobertura') {
     const rows = bySector.map(([name, data]) => {
-      const percentage = data.total
-        ? Math.round((data.filled / data.total) * 100)
-        : 0;
-
-      return [
-        name,
-        data.total,
-        data.filled,
-        data.open,
-        data.canceled,
-        `${percentage}%`,
-      ];
+      const pct = data.total ? Math.round((data.filled / data.total) * 100) : 0;
+      return [name, data.total, data.filled, data.open, data.canceled, `${pct}%`];
     });
-
-    const averageCoverage = bySector.length
-      ? Math.round(
-          bySector.reduce((total, [, data]) => {
-            return (
-              total +
-              (data.total
-                ? (data.filled / data.total) * 100
-                : 0)
-            );
-          }, 0) / bySector.length
-        )
-      : 0;
-
-    const criticalSector = bySector.length
-      ? bySector.reduce((worst, [name, data]) => {
-          const percentage = data.total
-            ? (data.filled / data.total) * 100
-            : 100;
-
-          return percentage < worst.percentage
-            ? { name, percentage }
-            : worst;
-        }, { name: bySector[0][0], percentage: Infinity })
-      : null;
-
+    const avgCov = bySector.length ? Math.round(bySector.reduce((t, [, data]) => t + (data.total ? (data.filled / data.total) * 100 : 0), 0) / bySector.length) : 0;
     return {
       ...base,
       key: tab,
       title: 'Cobertura Operacional por Setor',
       kpis: [
-        {
-          label: 'Setores mapeados',
-          value: bySector.length,
-        },
-        {
-          label: 'Cobertura média',
-          value: `${averageCoverage}%`,
-        },
-        {
-          label: 'Setor mais crítico',
-          value: criticalSector?.name || '—',
-        },
-        {
-          label: 'Vagas abertas',
-          value: overview.open,
-        },
+        { label: 'Setores mapeados', value: bySector.length },
+        { label: 'Cobertura média', value: `${avgCov}%` },
+        { label: 'Vagas abertas', value: overview.open },
       ],
-      columns: [
-        'Setor',
-        'Turnos Totais',
-        'Preenchidos',
-        'Vagas Abertas',
-        'Cancelados',
-        '% Cobertura',
-      ],
+      columns: ['Setor', 'Turnos Totais', 'Preenchidos', 'Vagas Abertas', 'Cancelados', '% Cobertura'],
       rows,
-      emptyMessage:
-        'Sem dados de setores para os filtros selecionados.',
+      emptyMessage: 'Sem dados de setores para os filtros selecionados.',
     };
   }
 
   if (tab === 'financeiro') {
-    const totalHours = byProfessional.reduce(
-      (total, professional) => total + professional.hours,
-      0
-    );
-
-    const highestPayment = byProfessional.reduce(
-      (highest, professional) =>
-        professional.estimatedPay > (highest?.estimatedPay || 0)
-          ? professional
-          : highest,
-      null
-    );
-
+    const totalHours = byProfessional.reduce((t, p) => t + p.hours, 0);
     return {
       ...base,
       key: tab,
       title: 'Projeção de Repasse Financeiro',
       kpis: [
-        {
-          label: 'Total estimado',
-          value: formatCurrency(totalFinancialEstimate),
-        },
-        {
-          label: 'Profissionais',
-          value: byProfessional.length,
-        },
-        {
-          label: 'Maior repasse',
-          value: highestPayment
-            ? `${highestPayment.name} - ${formatCurrency(
-                highestPayment.estimatedPay
-              )}`
-            : '—',
-        },
-        {
-          label: 'Horas faturáveis',
-          value: `${totalHours}h`,
-        },
+        { label: 'Total estimado', value: formatCurrency(totalFinancialEstimate) },
+        { label: 'Profissionais', value: byProfessional.length },
+        { label: 'Horas faturáveis', value: `${totalHours}h` },
       ],
-      columns: [
-        'Profissional',
-        'Modelo',
-        'Quantidade / Horas',
-        'Total a Liquidar',
-      ],
-      rows: byProfessional.map((professional) => [
-        professional.name,
-        professional.remunerationType === 'diaria'
-          ? 'Por Plantão / Diária'
-          : professional.remunerationType === 'mensal'
-          ? 'Fixo Mensal'
-          : 'Horista',
-        professional.remunerationType === 'hora'
-          ? `${professional.hours}h`
-          : `${professional.confirmed} plantão(ões)`,
-        formatCurrency(professional.estimatedPay),
+      columns: ['Profissional', 'Modelo', 'Quantidade / Horas', 'Total a Liquidar'],
+      rows: byProfessional.map((p) => [
+        p.name,
+        p.remunerationType === 'diaria' ? 'Por Plantão / Diária' : p.remunerationType === 'mensal' ? 'Fixo Mensal' : 'Horista',
+        p.remunerationType === 'hora' ? `${p.hours}h` : `${p.confirmed} plantão(ões)`,
+        formatCurrency(p.estimatedPay),
       ]),
-      totalsRow: [
-        'TOTAL',
-        '',
-        `${totalHours}h`,
-        formatCurrency(totalFinancialEstimate),
-      ],
-      emptyMessage:
-        'Nenhum valor a liquidar para os filtros selecionados.',
+      totalsRow: ['TOTAL', '', `${totalHours}h`, formatCurrency(totalFinancialEstimate)],
+      emptyMessage: 'Nenhum valor a liquidar para os filtros selecionados.',
     };
   }
-
-  const canceledCount = auditLogs.filter(
-    (log) => log.status === 'cancelado'
-  ).length;
-
-  const logsWithNotes = auditLogs.filter(
-    (log) => log.notes
-  ).length;
-
-  const sectorCounts = auditLogs.reduce((accumulator, log) => {
-    const sector = log.sector_name || 'Geral';
-
-    accumulator[sector] = (accumulator[sector] || 0) + 1;
-
-    return accumulator;
-  }, {});
-
-  const mostAffectedSector = Object.entries(sectorCounts).sort(
-    (a, b) => b[1] - a[1]
-  )[0];
 
   return {
     ...base,
     key: tab,
     title: 'Log de Auditoria e Plantões Cancelados',
     kpis: [
-      {
-        label: 'Eventos totais',
-        value: auditLogs.length,
-      },
-      {
-        label: 'Cancelamentos',
-        value: canceledCount,
-      },
-      {
-        label: 'Com observação',
-        value: logsWithNotes,
-      },
-      {
-        label: 'Setor mais afetado',
-        value: mostAffectedSector
-          ? `${mostAffectedSector[0]} (${mostAffectedSector[1]})`
-          : '—',
-      },
+      { label: 'Eventos totais', value: auditLogs.length },
+      { label: 'Cancelamentos', value: overview.canceled },
     ],
-    columns: [
-      'Data',
-      'Horário',
-      'Profissional',
-      'Setor',
-      'Status',
-      'Observação',
-      'ID',
-    ],
+    columns: ['Data', 'Horário', 'Profissional', 'Setor', 'Status', 'Observação'],
     rows: auditLogs.map((log) => [
       formatDateBR(log.date),
       `${log.start_time || '--'} - ${log.end_time || '--'}`,
@@ -821,237 +450,16 @@ function buildReportPayload({
       log.sector_name || 'Geral',
       log.status || '—',
       log.notes || '—',
-      log.id || '—',
     ]),
-    emptyMessage:
-      'Nenhum evento de cancelamento ou alteração registrado no período.',
+    emptyMessage: 'Nenhum evento registrado no período.',
   };
 }
 
 /* ============================================================
- * ABAS
- * ============================================================ */
+   COMPONENTE PRINCIPAL
+============================================================ */
 
-const TAB_META = {
-  conselho: {
-    label: '📊 Conselho Consolidado',
-    icon: ClipboardList,
-  },
-  produtividade: {
-    label: '⏱️ Produtividade & Horas',
-    icon: Clock,
-  },
-  cobertura: {
-    label: '🏥 Cobertura por Setor',
-    icon: TrendingUp,
-  },
-  financeiro: {
-    label: '💰 Repasse Financeiro',
-    icon: DollarSign,
-  },
-  auditoria: {
-    label: '🛡️ Log de Auditoria',
-    icon: ShieldCheck,
-  },
-};
-
-/* ============================================================
- * TABELA REUTILIZÁVEL
- * ============================================================ */
-
-function ReportTable({ columns, rows, totalsRow }) {
-  return (
-    <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
-      <table className="w-full text-left text-xs">
-        <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider">
-          <tr>
-            {columns.map((column) => (
-              <th key={column} className="p-3 font-bold whitespace-nowrap">
-                {column}
-              </th>
-            ))}
-          </tr>
-        </thead>
-
-        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-          {rows.map((row, rowIndex) => (
-            <tr
-              key={rowIndex}
-              className="hover:bg-slate-50 dark:hover:bg-slate-800/50"
-            >
-              {row.map((cell, cellIndex) => (
-                <td
-                  key={cellIndex}
-                  className="p-3 text-slate-700 dark:text-slate-200 whitespace-nowrap"
-                >
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-
-        {totalsRow && (
-          <tfoot className="bg-slate-100 dark:bg-slate-800 font-black">
-            <tr>
-              {totalsRow.map((cell, index) => (
-                <td
-                  key={index}
-                  className="p-3 text-slate-800 dark:text-white whitespace-nowrap"
-                >
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          </tfoot>
-        )}
-      </table>
-    </div>
-  );
-}
-
-/* ============================================================
- * MODAL DE PRÉ-VISUALIZAÇÃO
- * ============================================================ */
-
-function ReportPreviewModal({
-  payload,
-  onClose,
-  onDownloadPDF,
-  onDownloadCSV,
-}) {
-  if (!payload) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
-      <div className="w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 p-6 bg-gradient-to-r from-slate-900 via-slate-950 to-sky-950 text-white rounded-t-3xl">
-          <div>
-            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-sky-400">
-              <Eye className="w-3.5 h-3.5" />
-              Pré-visualização Oficial
-            </div>
-
-            <h2 className="text-xl font-black tracking-tight mt-1">
-              {payload.title}
-            </h2>
-
-            <p className="text-xs text-slate-300 mt-1">
-              Filtros aplicados: {payload.subtitle}
-            </p>
-
-            <p className="text-[10px] text-slate-400 mt-1">
-              Instituição: {payload.companyName}
-              {payload.generatedBy
-                ? ` · Emitido por ${payload.generatedBy}`
-                : ''}
-            </p>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="rounded-full p-2 bg-white/10 hover:bg-white/20 text-white"
-            aria-label="Fechar"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-6 pb-0">
-          {payload.kpis.map((kpi, index) => (
-            <div
-              key={index}
-              className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"
-            >
-              <div className="text-[9px] uppercase font-bold text-slate-400">
-                {kpi.label}
-              </div>
-
-              <div className="text-sm font-black text-sky-700 dark:text-sky-400 mt-1 break-words">
-                {kpi.value}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="p-6 space-y-6">
-          {payload.sections?.length ? (
-            payload.sections.map((section, index) => (
-              <section key={index} className="space-y-3">
-                <h3 className="text-lg font-black text-slate-800 dark:text-white">
-                  {section.title}
-                </h3>
-
-                {section.rows.length ? (
-                  <ReportTable
-                    columns={section.columns}
-                    rows={section.rows}
-                    totalsRow={section.totalsRow}
-                  />
-                ) : (
-                  <p className="text-sm text-slate-400 py-8 text-center">
-                    Nenhum dado encontrado para esta seção.
-                  </p>
-                )}
-              </section>
-            ))
-          ) : payload.rows.length ? (
-            <ReportTable
-              columns={payload.columns}
-              rows={payload.rows}
-              totalsRow={payload.totalsRow}
-            />
-          ) : (
-            <p className="text-sm text-slate-400 text-center py-16">
-              {payload.emptyMessage}
-            </p>
-          )}
-        </div>
-
-        <div className="sticky bottom-0 flex flex-col md:flex-row items-center justify-between gap-3 p-4 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-b-3xl">
-          <div className="flex items-center gap-2 text-[11px] text-emerald-600 font-semibold">
-            <Leaf className="w-3.5 h-3.5" />
-            Relatório validado na tela.
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              className="text-xs font-bold"
-            >
-              Fechar
-            </Button>
-
-            <Button
-              onClick={onDownloadCSV}
-              variant="outline"
-              className="text-xs font-bold h-9 gap-2"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
-              Exportar CSV
-            </Button>
-
-            <Button
-              onClick={onDownloadPDF}
-              className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold h-9 gap-2"
-            >
-              <FileText className="w-4 h-4" />
-              Gerar PDF
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
- * COMPONENTE PRINCIPAL
- * ============================================================ */
-
-export default function Relatorios() {
+export default function CentralInteligenciaHospitalar() {
   const { user, company, loading } = useAppData();
 
   const [shifts, setShifts] = useState([]);
@@ -1063,580 +471,342 @@ export default function Relatorios() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedSector, setSelectedSector] = useState('all');
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const companyId =
-    user?.data?.company_id ||
-    company?.id ||
-    'cmp_principal';
+  const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
+  const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id;
 
-  const unitId =
-    user?.data?.selected_unit_id ||
-    company?.selected_unit_id ||
-    company?.units?.[0]?.id;
-
-  async function loadData() {
+  const loadData = async () => {
     if (!companyId) return;
-
     setLoadingData(true);
-
     try {
-      const filters = {
-        company_id: companyId,
-        ...(unitId ? { unit_id: unitId } : {}),
-      };
-
-      const [shiftData, professionalData, sectorData] =
-        await Promise.all([
-          base44.entities.Shift.filter(
-            filters,
-            '-date',
-            1000
-          ).catch(() => []),
-
-          base44.entities.Professional.filter(
-            filters,
-            '-created_date',
-            500
-          ).catch(() => []),
-
-          base44.entities.Sector.filter(
-            filters,
-            '-created_date',
-            100
-          ).catch(() => []),
-        ]);
-
-      setShifts(Array.isArray(shiftData) ? shiftData : []);
-      setProfessionals(
-        Array.isArray(professionalData) ? professionalData : []
-      );
-      setSectors(Array.isArray(sectorData) ? sectorData : []);
-    } catch (error) {
-      console.error('Erro ao carregar relatórios:', error);
-
-      setShifts([]);
-      setProfessionals([]);
-      setSectors([]);
+      const f = { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) };
+      const [s, p, sec] = await Promise.all([
+        base44.entities.Shift.filter(f, '-date', 1500).catch(() => []),
+        base44.entities.Professional.filter(f, '-created_date', 800).catch(() => []),
+        base44.entities.Sector.filter(f, '-created_date', 200).catch(() => [])
+      ]);
+      setShifts(Array.isArray(s) ? s : []);
+      setProfessionals(Array.isArray(p) ? p : []);
+      setSectors(Array.isArray(sec) ? sec : []);
+    } catch (e) {
+      console.error('Erro ao carregar dados:', e);
+      setShifts([]); setProfessionals([]); setSectors([]);
     } finally {
       setLoadingData(false);
     }
-  }
+  };
 
   useEffect(() => {
-    if (!loading) {
-      loadData();
-    }
+    if (!loading) loadData();
   }, [loading, companyId, unitId]);
 
   const filteredShifts = useMemo(() => {
-    return shifts.filter((shift) => {
-      if (!shift) return false;
-
-      const shiftDate =
-        typeof shift.date === 'string'
-          ? shift.date.split('T')[0]
-          : '';
-
-      const matchesStart =
-        !startDate || shiftDate >= startDate;
-
-      const matchesEnd =
-        !endDate || shiftDate <= endDate;
-
-      const matchesSector =
-        selectedSector === 'all' ||
-        String(shift.sector_id) === String(selectedSector) ||
-        shift.sector_name === selectedSector;
-
-      return matchesStart && matchesEnd && matchesSector;
+    if (!Array.isArray(shifts)) return [];
+    return shifts.filter((s) => {
+      if (!s) return false;
+      const sDate = typeof s.date === 'string' ? s.date.split('T')[0] : '';
+      const matchStart = !startDate || sDate >= startDate;
+      const matchEnd = !endDate || sDate <= endDate;
+      const matchSector = selectedSector === 'all' || String(s.sector_id) === String(selectedSector) || s.sector_name === selectedSector;
+      return matchStart && matchEnd && matchSector;
     });
   }, [shifts, startDate, endDate, selectedSector]);
 
   const byProfessional = useMemo(() => {
     const map = {};
+    if (Array.isArray(professionals)) {
+      professionals.forEach((p) => {
+        if (!p || !p.id) return;
+        const remType = p.remuneration_type || 'hora';
+        let baseRate = 120;
+        if (remType === 'hora') baseRate = Number(p.hourly_rate) || 120;
+        else if (remType === 'diaria') baseRate = Number(p.daily_rate) || 1500;
+        else if (remType === 'mensal') {
+          const monthly = Number(p.monthly_salary) || 18000;
+          const monthlyHours = Number(p.monthly_work_hours) || 220; // Ajustado para rate correto
+          baseRate = monthlyHours > 0 ? monthly / monthlyHours : 0;
+        }
 
-    professionals.forEach((professional) => {
-      if (!professional?.id) return;
+        map[p.id] = {
+          name: p.name || 'Sem Nome',
+          category: p.specialty || p.category || 'Geral',
+          confirmed: 0, pending: 0, canceled: 0, hours: 0, estimatedPay: 0,
+          remunerationType: remType, hourlyRate: baseRate,
+        };
+      });
+    }
 
-      const remunerationType =
-        professional.remuneration_type || 'hora';
-
-      let baseRate = 120;
-
-      if (remunerationType === 'hora') {
-        baseRate =
-          Number(professional.hourly_rate) || 120;
-      }
-
-      if (remunerationType === 'diaria') {
-        baseRate =
-          Number(professional.daily_rate) || 1500;
-      }
-
-      if (remunerationType === 'mensal') {
-        baseRate =
-          Number(professional.monthly_salary) || 18000;
-      }
-
-      map[professional.id] = {
-        name: professional.name || 'Sem Nome',
-        category:
-          professional.specialty ||
-          professional.category ||
-          'Geral',
-        confirmed: 0,
-        pending: 0,
-        canceled: 0,
-        hours: 0,
-        estimatedPay: 0,
-        remunerationType,
-        hourlyRate: baseRate,
-      };
-    });
-
-    filteredShifts.forEach((shift) => {
-      if (!shift?.professional_id) return;
-
-      if (!map[shift.professional_id]) {
-        map[shift.professional_id] = {
-          name: shift.professional_name || '—',
-          category: 'Profissional',
-          confirmed: 0,
-          pending: 0,
-          canceled: 0,
-          hours: 0,
-          estimatedPay: 0,
-          remunerationType: 'hora',
-          hourlyRate: 120,
+    filteredShifts.forEach((s) => {
+      if (!s || !s.professional_id) return;
+      if (!map[s.professional_id]) {
+        map[s.professional_id] = {
+          name: s.professional_name || '—', category: 'Profissional',
+          confirmed: 0, pending: 0, canceled: 0, hours: 0, estimatedPay: 0,
+          remunerationType: 'hora', hourlyRate: 120,
         };
       }
+      const pEntry = map[s.professional_id];
 
-      const professional =
-        map[shift.professional_id];
+      if (s.status === 'confirmado') {
+        pEntry.confirmed += 1;
+        const dur = Number(s.duration_hours) || 12;
+        pEntry.hours += dur;
 
-      if (shift.status === 'confirmado') {
-        professional.confirmed += 1;
-
-        const duration =
-          Number(shift.duration_hours) || 12;
-
-        professional.hours += duration;
-
-        if (
-          professional.remunerationType === 'diaria'
-        ) {
-          professional.estimatedPay +=
-            professional.hourlyRate;
-        } else if (
-          professional.remunerationType === 'mensal'
-        ) {
-          professional.estimatedPay =
-            professional.hourlyRate;
+        if (pEntry.remunerationType === 'diaria') {
+          pEntry.estimatedPay += pEntry.hourlyRate; // paga fixo por plantão
+        } else if (pEntry.remunerationType === 'mensal') {
+          pEntry.estimatedPay += dur * pEntry.hourlyRate; // rate é salário/horas_mes
         } else {
-          professional.estimatedPay +=
-            duration * professional.hourlyRate;
+          pEntry.estimatedPay += dur * pEntry.hourlyRate; // horista
         }
       }
-
-      if (shift.status === 'pendente') {
-        professional.pending += 1;
-      }
-
-      if (shift.status === 'cancelado') {
-        professional.canceled += 1;
-      }
+      if (s.status === 'pendente') pEntry.pending += 1;
+      if (s.status === 'cancelado') pEntry.canceled += 1;
     });
 
-    return Object.values(map)
-      .filter(
-        (professional) =>
-          professional.confirmed > 0 ||
-          professional.pending > 0 ||
-          professional.canceled > 0
-      )
-      .sort((a, b) => b.hours - a.hours);
+    return Object.values(map).filter((m) => m.confirmed > 0 || m.pending > 0 || m.canceled > 0).sort((a, b) => b.hours - a.hours);
   }, [filteredShifts, professionals]);
 
   const bySector = useMemo(() => {
     const map = {};
-
-    filteredShifts.forEach((shift) => {
-      if (!shift) return;
-
-      const sectorName =
-        shift.sector_name || 'Geral';
-
-      if (!map[sectorName]) {
-        map[sectorName] = {
-          total: 0,
-          filled: 0,
-          open: 0,
-          canceled: 0,
-        };
-      }
-
-      map[sectorName].total += 1;
-
-      if (
-        shift.status === 'confirmado' ||
-        shift.status === 'pendente'
-      ) {
-        map[sectorName].filled += 1;
-      }
-
-      if (shift.status === 'vago') {
-        map[sectorName].open += 1;
-      }
-
-      if (shift.status === 'cancelado') {
-        map[sectorName].canceled += 1;
-      }
+    filteredShifts.forEach((s) => {
+      if (!s) return;
+      const key = s.sector_name || 'Geral';
+      if (!map[key]) map[key] = { total: 0, filled: 0, open: 0, canceled: 0 };
+      map[key].total += 1;
+      if (s.status === 'confirmado' || s.status === 'pendente') map[key].filled += 1;
+      if (s.status === 'vago') map[key].open += 1;
+      if (s.status === 'cancelado') map[key].canceled += 1;
     });
-
-    return Object.entries(map).sort(
-      (a, b) => b[1].total - a[1].total
-    );
+    return Object.entries(map).sort((a, b) => b[1].total - a[1].total);
   }, [filteredShifts]);
 
   const auditLogs = useMemo(() => {
-    return filteredShifts.filter(
-      (shift) =>
-        shift &&
-        (shift.status === 'cancelado' || shift.notes)
-    );
+    return filteredShifts.filter((s) => s && (s.status === 'cancelado' || s.notes));
   }, [filteredShifts]);
 
-  const overview = useMemo(
-    () => ({
-      total: filteredShifts.length,
-
-      confirmed: filteredShifts.filter(
-        (shift) => shift?.status === 'confirmado'
-      ).length,
-
-      pending: filteredShifts.filter(
-        (shift) => shift?.status === 'pendente'
-      ).length,
-
-      open: filteredShifts.filter(
-        (shift) => shift?.status === 'vago'
-      ).length,
-
-      canceled: filteredShifts.filter(
-        (shift) => shift?.status === 'cancelado'
-      ).length,
-    }),
-    [filteredShifts]
-  );
+  const overview = useMemo(() => ({
+    total: filteredShifts.length,
+    confirmed: filteredShifts.filter((s) => s?.status === 'confirmado').length,
+    pending: filteredShifts.filter((s) => s?.status === 'pendente').length,
+    open: filteredShifts.filter((s) => s?.status === 'vago').length,
+    canceled: filteredShifts.filter((s) => s?.status === 'cancelado').length,
+  }), [filteredShifts]);
 
   const totalFinancialEstimate = useMemo(() => {
-    return byProfessional.reduce(
-      (total, professional) =>
-        total + (professional.estimatedPay || 0),
-      0
-    );
+    return byProfessional.reduce((acc, p) => acc + (p?.estimatedPay || 0), 0);
   }, [byProfessional]);
 
   const filtersLabel = useMemo(() => {
     const parts = [];
-
-    parts.push(
-      startDate
-        ? `de ${formatDateBR(startDate)}`
-        : 'sem data inicial'
-    );
-
-    parts.push(
-      endDate
-        ? `até ${formatDateBR(endDate)}`
-        : 'até data final em aberto'
-    );
-
-    parts.push(
-      selectedSector === 'all'
-        ? 'todos os setores'
-        : `setor "${selectedSector}"`
-    );
-
+    parts.push(startDate ? `de ${formatDateBR(startDate)}` : 'sem data inicial');
+    parts.push(endDate ? `até ${formatDateBR(endDate)}` : 'até data final em aberto');
+    parts.push(selectedSector === 'all' ? 'todos os setores' : `setor "${selectedSector}"`);
     return parts.join(' · ');
   }, [startDate, endDate, selectedSector]);
 
   const reportPayload = useMemo(() => {
-    return buildReportPayload({
-      tab: activeTab,
-      company,
-      user,
-      filtersLabel,
-      overview,
-      byProfessional,
-      bySector,
-      auditLogs,
-      totalFinancialEstimate,
-    });
-  }, [
-    activeTab,
-    company,
-    user,
-    filtersLabel,
-    overview,
-    byProfessional,
-    bySector,
-    auditLogs,
-    totalFinancialEstimate,
-  ]);
+    return buildReportPayload({ tab: activeTab, company, user, filtersLabel, overview, byProfessional, bySector, auditLogs, totalFinancialEstimate });
+  }, [activeTab, company, user, filtersLabel, overview, byProfessional, bySector, auditLogs, totalFinancialEstimate]);
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto font-sans">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-950 to-sky-950 p-6 rounded-3xl text-white shadow-xl">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-sky-400">
-            <BarChart3 className="w-4 h-4" />
-            Inteligência Executiva & Governança
+    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900">
+      
+      {/* SIDEBAR CORPORATIVA (Visível no Desktop) */}
+      <aside className={`
+        fixed lg:static inset-y-0 left-0 z-50 w-72 bg-slate-950 text-slate-300 flex flex-col transition-transform duration-300 shadow-2xl
+        ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
+        <div className="p-6 border-b border-slate-800 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center shadow-lg shadow-sky-900/50">
+            <BarChart3 className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <div className="font-black text-sm text-white tracking-wider">CENTRAL DE</div>
+            <div className="text-[10px] font-bold text-sky-400">INTELIGÊNCIA HOSPITALAR</div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 px-3 mb-2">Painel Diretor</div>
+            <button onClick={() => { setActiveTab('conselho'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${activeTab === 'conselho' ? 'bg-sky-600 text-white font-bold shadow-md' : 'hover:bg-slate-900 hover:text-white'}`}>
+              <ClipboardList className="w-4 h-4" /> Resumo Consolidado
+            </button>
           </div>
 
-          <h1 className="text-3xl font-black tracking-tight mt-1">
-            Relatórios
-          </h1>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 px-3 mb-2">Operacional</div>
+            <button onClick={() => { setActiveTab('produtividade'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all mb-1 ${activeTab === 'produtividade' ? 'bg-sky-600 text-white font-bold shadow-md' : 'hover:bg-slate-900 hover:text-white'}`}>
+              <Clock className="w-4 h-4" /> Produtividade & Horas
+            </button>
+            <button onClick={() => { setActiveTab('cobertura'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all mb-1 ${activeTab === 'cobertura' ? 'bg-sky-600 text-white font-bold shadow-md' : 'hover:bg-slate-900 hover:text-white'}`}>
+              <TrendingUp className="w-4 h-4" /> Cobertura por Setor
+            </button>
+            <button onClick={() => { setActiveTab('financeiro'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${activeTab === 'financeiro' ? 'bg-sky-600 text-white font-bold shadow-md' : 'hover:bg-slate-900 hover:text-white'}`}>
+              <DollarSign className="w-4 h-4" /> Repasse Financeiro
+            </button>
+          </div>
 
-          <p className="text-xs text-slate-300 max-w-xl mt-1">
-            Painel unificado de auditoria, dimensionamento de
-            equipes, cobertura operacional e controle financeiro.
-          </p>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 px-3 mb-2">Governança</div>
+            <button onClick={() => { setActiveTab('auditoria'); setMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${activeTab === 'auditoria' ? 'bg-sky-600 text-white font-bold shadow-md' : 'hover:bg-slate-900 hover:text-white'}`}>
+              <ShieldCheck className="w-4 h-4" /> Log de Auditoria
+            </button>
+          </div>
         </div>
+      </aside>
 
-        <div className="flex flex-col items-end gap-2">
-          <Button
-            onClick={() => setPreviewOpen(true)}
-            className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-10 px-5 gap-2"
-          >
-            <Eye className="w-4 h-4" />
-            Visualizar Relatório Oficial
-          </Button>
+      {mobileMenuOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileMenuOpen(false)} />}
 
-          <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
-            <Leaf className="w-3 h-3" />
-            Valide antes de imprimir
-          </span>
-        </div>
-      </div>
-
-      <div className="flex items-center bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto gap-1">
-        {Object.entries(TAB_META).map(([key, meta]) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`flex-1 min-w-[180px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all text-center whitespace-nowrap ${
-              activeTab === key
-                ? 'bg-sky-600 text-white shadow-md'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            {meta.label}
+      {/* CONTEÚDO PRINCIPAL */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        
+        {/* Header Mobile */}
+        <div className="lg:hidden bg-slate-950 text-white p-4 flex items-center justify-between sticky top-0 z-30">
+          <button onClick={() => setMobileMenuOpen(true)} className="p-2 bg-white/10 rounded-lg">
+            <Menu className="w-5 h-5" />
           </button>
-        ))}
-      </div>
-
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center gap-4">
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
-          <Filter className="w-4 h-4 text-sky-600" />
-          Filtros:
+          <div className="font-bold text-sm tracking-wide">Inteligência Hospitalar</div>
+          <div className="w-9" />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
-          <div>
-            <label className="text-[10px] font-semibold text-slate-400 block mb-1">
-              De
-            </label>
-
-            <Input
-              type="date"
-              value={startDate}
-              onChange={(event) =>
-                setStartDate(event.target.value)
-              }
-              className="h-9 text-xs bg-slate-50 dark:bg-slate-800"
-            />
-          </div>
-
-          <div>
-            <label className="text-[10px] font-semibold text-slate-400 block mb-1">
-              Até
-            </label>
-
-            <Input
-              type="date"
-              value={endDate}
-              onChange={(event) =>
-                setEndDate(event.target.value)
-              }
-              className="h-9 text-xs bg-slate-50 dark:bg-slate-800"
-            />
-          </div>
-
-          <div>
-            <label className="text-[10px] font-semibold text-slate-400 block mb-1">
-              Setor
-            </label>
-
-            <Select
-              value={String(selectedSector)}
-              onValueChange={setSelectedSector}
-            >
-              <SelectTrigger className="h-9 text-xs bg-slate-50 dark:bg-slate-800">
-                <SelectValue placeholder="Todos os setores" />
-              </SelectTrigger>
-
-              <SelectContent>
-                <SelectItem value="all">
-                  Todos os setores
-                </SelectItem>
-
-                {sectors.map((sector) => (
-                  <SelectItem
-                    key={sector.id}
-                    value={String(sector.name)}
-                  >
-                    {sector.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {(startDate ||
-          endDate ||
-          selectedSector !== 'all') && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setStartDate('');
-              setEndDate('');
-              setSelectedSector('all');
-            }}
-            className="text-xs text-red-500 shrink-0 h-9"
-          >
-            Limpar filtros
-          </Button>
-        )}
-      </div>
-
-      <div className="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-        <Sparkles className="w-3.5 h-3.5 text-sky-500" />
-        Resumo executivo ·{' '}
-        {TAB_META[activeTab].label.replace(/^\S+\s/, '')}
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 -mt-3">
-        {reportPayload.kpis.map((kpi, index) => (
-          <Card
-            key={index}
-            className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"
-          >
-            <div className="text-[10px] uppercase font-bold text-slate-400">
-              {kpi.label}
+        <div className="p-5 lg:p-8 space-y-6 max-w-7xl mx-auto w-full">
+          
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-black text-slate-900">{REPORT_CONFIG[activeTab]?.label || 'Relatórios'}</h1>
+              <p className="text-sm text-slate-500 mt-1">Os indicadores abaixo refletem somente os dados aplicados no filtro.</p>
             </div>
+            
+            <div className="flex items-center gap-2">
+              <Button onClick={() => downloadCSV(reportPayload)} variant="outline" className="border-slate-300 text-slate-700 bg-white hover:bg-slate-50 font-bold text-xs h-10 px-4 gap-2 shadow-sm">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Exportar CSV
+              </Button>
+              <Button onClick={() => downloadPDF(reportPayload)} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-10 px-5 gap-2 shadow-md">
+                <Printer className="w-4 h-4" /> Imprimir / Salvar PDF
+              </Button>
+            </div>
+          </div>
 
-            <div className="text-xl font-black text-sky-700 dark:text-sky-400 mt-1 break-words">
-              {kpi.value}
+          <Card className="p-5 border-slate-200 shadow-sm bg-white rounded-2xl">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
+              <Filter className="w-4 h-4 text-sky-600" /> Refinar Busca
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+              <div>
+                <label className="text-[10px] font-semibold text-slate-400 block mb-1">Data Inicial</label>
+                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-10 text-xs bg-slate-50" />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-slate-400 block mb-1">Data Final</label>
+                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-10 text-xs bg-slate-50" />
+              </div>
+              <div>
+                <label className="text-[10px] font-semibold text-slate-400 block mb-1">Setor Assistencial</label>
+                <Select value={String(selectedSector)} onValueChange={setSelectedSector}>
+                  <SelectTrigger className="h-10 text-xs bg-slate-50"><SelectValue placeholder="Todos os setores" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os setores</SelectItem>
+                    {sectors.map((s) => (
+                      <SelectItem key={s.id} value={String(s.name)}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </Card>
-        ))}
-      </div>
 
-      {loadingData ? (
-        <div className="flex justify-center p-20">
-          <Loader2 className="w-8 h-8 animate-spin text-sky-600" />
-        </div>
-      ) : (
-        <Card className="p-6 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm rounded-2xl space-y-5">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-            <div className="flex items-center gap-2">
-              {activeTab === 'conselho' && (
-                <ClipboardList className="w-5 h-5 text-sky-600" />
-              )}
-
-              {activeTab === 'produtividade' && (
-                <Clock className="w-5 h-5 text-sky-600" />
-              )}
-
-              {activeTab === 'cobertura' && (
-                <TrendingUp className="w-5 h-5 text-sky-600" />
-              )}
-
-              {activeTab === 'financeiro' && (
-                <DollarSign className="w-5 h-5 text-emerald-600" />
-              )}
-
-              {activeTab === 'auditoria' && (
-                <ShieldCheck className="w-5 h-5 text-sky-600" />
-              )}
-
-              <h2 className="text-lg font-black text-slate-800 dark:text-white">
-                {reportPayload.title}
-              </h2>
-            </div>
-
-            <Button
-              onClick={() => setPreviewOpen(true)}
-              variant="outline"
-              size="sm"
-              className="text-xs gap-2"
-            >
-              <Eye className="w-4 h-4" />
-              Visualizar
-            </Button>
-          </div>
-
-          {activeTab === 'conselho' &&
-            reportPayload.sections?.map((section, index) => (
-              <section key={index} className="space-y-3">
-                <h3 className="font-black text-base text-slate-800 dark:text-white">
-                  {section.title}
-                </h3>
-
-                {section.rows.length ? (
-                  <ReportTable
-                    columns={section.columns}
-                    rows={section.rows}
-                    totalsRow={section.totalsRow}
-                  />
-                ) : (
-                  <p className="text-sm text-slate-400 text-center py-8">
-                    Nenhum dado encontrado.
-                  </p>
-                )}
-              </section>
-            ))}
-
-          {activeTab !== 'conselho' && (
+          {loadingData ? (
+            <div className="flex justify-center p-16"><Loader2 className="w-8 h-8 animate-spin text-sky-600" /></div>
+          ) : (
             <>
-              {reportPayload.rows.length ? (
-                <ReportTable
-                  columns={reportPayload.columns}
-                  rows={reportPayload.rows}
-                  totalsRow={reportPayload.totalsRow}
-                />
-              ) : (
-                <p className="text-sm text-slate-400 text-center py-12">
-                  {reportPayload.emptyMessage}
-                </p>
+              {activeTab === 'conselho' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    {reportPayload.kpis.map((kpi, idx) => (
+                      <Card key={idx} className="p-5 border-slate-200 shadow-sm bg-white rounded-2xl">
+                        <div className="text-[10px] uppercase font-bold text-slate-400">{kpi.label}</div>
+                        <div className="text-2xl font-black text-slate-900 mt-1">{kpi.value}</div>
+                      </Card>
+                    ))}
+                  </div>
+
+                  {reportPayload.sections.map((section, idx) => (
+                    <Card key={idx} className="p-0 border-slate-200 shadow-sm bg-white rounded-2xl overflow-hidden">
+                      <div className="px-6 py-4 bg-slate-50 border-b border-slate-100">
+                        <h3 className="font-bold text-sm text-slate-900">{section.title}</h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs whitespace-nowrap">
+                          <thead className="bg-slate-50 text-slate-500 uppercase">
+                            <tr>
+                              {section.columns.map(col => <th key={col} className="px-6 py-3 font-bold">{col}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {section.rows.map((row, rIdx) => (
+                              <tr key={rIdx} className="hover:bg-slate-50/50">
+                                {row.map((cell, cIdx) => <td key={cIdx} className="px-6 py-3">{cell}</td>)}
+                              </tr>
+                            ))}
+                          </tbody>
+                          {section.totalsRow && (
+                            <tfoot className="bg-slate-50 font-black text-slate-900">
+                              <tr>
+                                {section.totalsRow.map((cell, idx) => <td key={idx} className="px-6 py-3">{cell}</td>)}
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+
+              {activeTab !== 'conselho' && (
+                <Card className="p-0 border-slate-200 shadow-sm bg-white rounded-2xl overflow-hidden">
+                  <div className="px-6 py-5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                    <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
+                      <ClipboardList className="w-5 h-5 text-sky-600" /> {reportPayload.title}
+                    </h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    {reportPayload.rows.length === 0 ? (
+                      <div className="py-16 text-center text-sm text-slate-400">{reportPayload.emptyMessage}</div>
+                    ) : (
+                      <table className="w-full text-left text-xs whitespace-nowrap">
+                        <thead className="bg-slate-50 text-slate-500 uppercase">
+                          <tr>
+                            {reportPayload.columns.map(col => <th key={col} className="px-6 py-3 font-bold">{col}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {reportPayload.rows.map((row, rIdx) => (
+                            <tr key={rIdx} className="hover:bg-slate-50/50">
+                              {row.map((cell, cIdx) => <td key={cIdx} className="px-6 py-3 text-slate-700">{cell}</td>)}
+                            </tr>
+                          ))}
+                        </tbody>
+                        {reportPayload.totalsRow && (
+                          <tfoot className="bg-slate-50 font-black text-slate-900 border-t border-slate-200">
+                            <tr>
+                              {reportPayload.totalsRow.map((cell, idx) => <td key={idx} className="px-6 py-3">{cell}</td>)}
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    )}
+                  </div>
+                </Card>
               )}
             </>
           )}
-        </Card>
-      )}
 
-      {previewOpen && (
-        <ReportPreviewModal
-          payload={reportPayload}
-          onClose={() => setPreviewOpen(false)}
-          onDownloadPDF={() => downloadPDF(reportPayload)}
-          onDownloadCSV={() => downloadCSV(reportPayload)}
-        />
-      )}
+        </div>
+      </main>
     </div>
   );
 }
