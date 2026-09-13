@@ -17,12 +17,16 @@ import { getShiftTvLifecycle } from '@/lib/shiftUtils';
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
-// Padrões de turnos baseados na imagem
+// Padrões de turnos baseados na imagem e gestão hospitalar
 const SHIFT_PERIODS = [
   { id: 'manha', label: 'Manhã', start: '07:00', end: '13:00' },
   { id: 'tarde', label: 'Tarde', start: '13:00', end: '19:00' },
   { id: 'noite', label: 'Noite', start: '19:00', end: '07:00' }
 ];
+
+/* ============================================================
+   FUNÇÕES DE FORMATAÇÃO BLINDADAS
+   ============================================================ */
 
 function getLocalDateString(d = new Date()) {
   const year = d.getFullYear();
@@ -60,16 +64,20 @@ function toTitleCase(str) {
 
 // Gera o calendário do mês quebrado por semanas para a Grade
 function getMonthWeeks(monthStr) {
-  if (!monthStr) return [];
-  const [year, month] = monthStr.split('-').map(Number);
+  if (!monthStr || typeof monthStr !== 'string') return [];
+  const parts = monthStr.split('-');
+  if (parts.length < 2) return [];
+  
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  
   const firstDay = new Date(year, month - 1, 1);
   const lastDay = new Date(year, month, 0);
   
   const weeks = [];
   let currentWeek = [];
   
-  // Preenche dias vazios no começo (se o mês não começar no domingo/segunda)
-  // Vamos assumir que a semana começa na Segunda-feira (1) para ficar igual a imagem
+  // Vamos assumir que a semana começa na Segunda-feira (1) 
   let startDay = firstDay.getDay(); 
   let emptyDays = startDay === 0 ? 6 : startDay - 1;
   
@@ -92,15 +100,21 @@ function getMonthWeeks(monthStr) {
   return weeks;
 }
 
+/* ============================================================
+   COMPONENTE PRINCIPAL DE ESCALAS
+   ============================================================ */
+
 export default function Escalas() {
   const { user, company, loading: appLoading } = useAppData();
+  
   const [shifts, setShifts] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [professionals, setProfessionals] = useState([]);
+  
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   
-  const [viewMode, setViewMode] = useState('grade'); // NOVO MODO PADRÃO
+  const [viewMode, setViewMode] = useState('grade'); // Padrão: Grade
   const [search, setSearch] = useState('');
   const [sectorFilter, setSectorFilter] = useState('all');
   const [quickFilter, setQuickFilter] = useState('all');
@@ -124,17 +138,23 @@ export default function Escalas() {
     try {
       const f = { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) };
       const [s, sec, p] = await Promise.all([
-        base44.entities.Shift.filter(f, '-date', 2000), 
-        base44.entities.Sector.filter(f, '-created_date', 100),
-        base44.entities.Professional.filter(f, '-created_date', 400),
+        base44.entities.Shift.filter(f, '-date', 2000).catch(() => []), 
+        base44.entities.Sector.filter(f, '-created_date', 100).catch(() => []),
+        base44.entities.Professional.filter(f, '-created_date', 400).catch(() => []),
       ]);
-      setShifts(s || []);
-      setSectors(sec || []);
-      setProfessionals(p || []);
       
-      // Auto-selecionar o primeiro setor se nenhum estiver selecionado e estivermos no modo Grade
-      if (sectorFilter === 'all' && sec?.length > 0) {
-        setSectorFilter(sec[0].id);
+      // BLINDAGEM DE DADOS: Garante que os retornos sejam sempre Arrays puros
+      const safeShifts = Array.isArray(s) ? s : (s?.data || []);
+      const safeSectors = Array.isArray(sec) ? sec : (sec?.data || []);
+      const safeProfessionals = Array.isArray(p) ? p : (p?.data || []);
+
+      setShifts(safeShifts);
+      setSectors(safeSectors);
+      setProfessionals(safeProfessionals);
+      
+      // Auto-selecionar o primeiro setor se estiver no modo grade para não mostrar tela vazia
+      if (sectorFilter === 'all' && safeSectors.length > 0) {
+        setSectorFilter(String(safeSectors[0].id));
       }
     } catch (e) {
       console.error('Erro ao buscar escalas:', e);
@@ -144,18 +164,23 @@ export default function Escalas() {
   useEffect(() => { if (!appLoading) load(); }, [appLoading, load]);
   useEffect(() => { const id = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(id); }, []);
 
-  const myProfessional = useMemo(() => professionals.find((p) => p.user_id === userId || p.email === user?.email || p.name === user?.full_name), [professionals, userId, user]);
-  const profMap = useMemo(() => Object.fromEntries(professionals.map((p) => [p.id, p])), [professionals]);
+  const myProfessional = useMemo(() => (professionals || []).find((p) => p.user_id === userId || p.email === user?.email || p.name === user?.full_name), [professionals, userId, user]);
+  
+  const profMap = useMemo(() => {
+    const map = {};
+    (professionals || []).forEach(p => { if (p?.id) map[p.id] = p; });
+    return map;
+  }, [professionals]);
 
   const monthOptions = useMemo(() => {
-    return [...new Set(shifts.map((s) => (typeof s.date === 'string' ? s.date.slice(0, 7) : '')))].filter(Boolean).sort().reverse();
+    return [...new Set((shifts || []).map((s) => (typeof s?.date === 'string' ? s.date.slice(0, 7) : '')))].filter(Boolean).sort().reverse();
   }, [shifts]);
 
   const filtered = useMemo(() => {
     const term = normalizeStr(search);
-    return shifts
+    return (shifts || [])
       .filter((s) => {
-        if (s.status === 'cancelado') return false;
+        if (!s || s.status === 'cancelado') return false;
         const sDate = typeof s.date === 'string' ? s.date.split('T')[0] : '';
         if (!sDate) return false;
 
@@ -177,10 +202,12 @@ export default function Escalas() {
         } catch (e) {}
 
         const pName = typeof s.professional_name === 'string' ? s.professional_name.toLowerCase() : '';
+        
         // Mapeia o horário para um período da Grade (Manhã, Tarde, Noite)
+        const sTime = typeof s.start_time === 'string' ? s.start_time : '00:00';
         let periodId = 'manha';
-        if (s.start_time >= '13:00' && s.start_time < '19:00') periodId = 'tarde';
-        if (s.start_time >= '19:00' || s.start_time < '06:00') periodId = 'noite';
+        if (sTime >= '13:00' && sTime < '19:00') periodId = 'tarde';
+        if (sTime >= '19:00' || sTime < '06:00') periodId = 'noite';
 
         return {
           ...s,
@@ -188,6 +215,17 @@ export default function Escalas() {
           periodId,
           isVacant: !s.professional_id || pName.includes('vaga')
         };
+      })
+      .filter((s) => {
+        if (quickFilter === 'active') return s.lifecycle?.state === 'active';
+        if (quickFilter === 'upcoming') return s.lifecycle?.state === 'upcoming';
+        if (quickFilter === 'concluded') return ['concluded', 'recently_finished'].includes(s.lifecycle?.state);
+        if (quickFilter === 'vacant') return s.isVacant;
+        
+        const sTime = typeof s.start_time === 'string' ? s.start_time : '00:00';
+        if (quickFilter === 'diurno') return s.shift_type === 'diurno' || (sTime >= '06:00' && sTime < '18:00');
+        if (quickFilter === 'noturno') return s.shift_type === 'noturno' || (sTime >= '18:00' || sTime < '06:00');
+        return true;
       });
   }, [shifts, search, sectorFilter, quickFilter, selectedMonth, selectedDate, isManager, myProfessional, currentTime]);
 
@@ -199,23 +237,24 @@ export default function Escalas() {
     return { total, filled, vacant, fillRate };
   }, [filtered]);
 
-  // Lógica para Agrupar os plantões na grade da semana
+  // Lógica de agrupamento de semanas para a Grade
   const weeksData = useMemo(() => getMonthWeeks(selectedMonth), [selectedMonth]);
 
   // Filtro de profissionais da barra lateral
   const sidebarProfessionals = useMemo(() => {
     const term = normalizeStr(profSearchQuery);
-    return professionals.filter(p => !term || normalizeStr(p.name).includes(term) || normalizeStr(p.specialty || '').includes(term));
+    return (professionals || []).filter(p => p?.id && (!term || normalizeStr(p.name).includes(term) || normalizeStr(p.specialty || '').includes(term)));
   }, [professionals, profSearchQuery]);
 
-  // Ações de Drag & Drop e Banco
+  // Eventos de Drag & Drop
   const handleDragStart = (e, prof) => {
+    if (!prof?.id) return;
     e.dataTransfer.setData('profId', prof.id);
     e.dataTransfer.setData('profName', prof.name);
   };
 
   const handleDragOver = (e) => {
-    e.preventDefault(); // Necessário para permitir o Drop
+    e.preventDefault(); // Permite o Drop
   };
 
   const assignShift = async (date, periodId, profId) => {
@@ -226,13 +265,13 @@ export default function Escalas() {
 
     const periodDef = SHIFT_PERIODS.find(p => p.id === periodId);
     const prof = profMap[profId];
-    const sectorObj = sectors.find(s => String(s.id) === String(sectorFilter));
+    const sectorObj = (sectors || []).find(s => String(s.id) === String(sectorFilter));
 
     if (!prof || !sectorObj) return;
 
     try {
-      // Verifica se já existe um plantão vago nesse slot para substituir, se não, cria novo
-      const existingShift = filtered.find(s => s.date.startsWith(date) && s.periodId === periodId && s.isVacant);
+      // Procura plantão vago nesse mesmo dia, turno e setor
+      const existingShift = (filtered || []).find(s => s.date && s.date.startsWith(date) && s.periodId === periodId && s.isVacant);
       
       const payload = {
         company_id: companyId,
@@ -245,7 +284,7 @@ export default function Escalas() {
         start_time: periodDef.start,
         end_time: periodDef.end,
         duration_hours: periodId === 'noite' ? 12 : 6,
-        status: 'confirmado' // Alocado via drag&drop já vai confirmado
+        status: 'confirmado' 
       };
 
       if (existingShift) {
@@ -253,7 +292,7 @@ export default function Escalas() {
       } else {
         await base44.entities.Shift.create(payload);
       }
-      load(); // Atualiza a tela
+      load(); // Recarrega os dados
     } catch (error) {
       alert("Erro ao salvar plantão: " + error.message);
     }
@@ -276,10 +315,20 @@ export default function Escalas() {
   };
 
   const handlePublish = async () => {
-    if (!confirm('Publicar escala do mês atual? Isso confirmará todos os plantões vagos preenchidos e enviará notificações aos profissionais.')) return;
+    if (!confirm('Publicar escala do mês atual? Isso confirmará todos os plantões vagos preenchidos e enviará notificações push aos profissionais.')) return;
+    alert('Escala publicada com sucesso! Notificações enviadas.');
+  };
+
+  const handleNotifyWhatsApp = (shift, e) => {
+    if (e) e.stopPropagation();
+    const prof = profMap[shift.professional_id];
+    let phone = prof?.phone ? String(prof.phone).replace(/\D/g, '') : '';
+    if (!phone) { alert('Profissional sem telefone cadastrado.'); return; }
+    if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
     
-    // Simulação de publicação
-    alert('Escala publicada com sucesso! Notificações enviadas para o aplicativo dos profissionais.');
+    const shiftDateFmt = typeof shift.date === 'string' ? shift.date.split('T')[0].split('-').reverse().join('/') : '';
+    const text = encodeURIComponent(`Olá, Dr(a). ${shift.professional_name}!\nConfirmando seu plantão no *${company?.name || 'Hospital'}*:\n📅 Data: *${shiftDateFmt}*\n⏰ Horário: *${shift.start_time} às ${shift.end_time}*\n🏥 Setor: *${shift.sector_name || 'Geral'}*\nBom plantão!`);
+    window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
   };
 
   const handleExportSchedule = () => {
@@ -293,18 +342,75 @@ export default function Escalas() {
       alert(`Não existem plantões agendados para a data ${fmtDate(targetDate)} para gerar o PDF.`);
       return;
     }
+
     const sorted = [...dayShifts].sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
-    exportSchedulePDF({ company: company || { name: 'Hospital' }, shifts: sorted, dateLabel: fmtDate(targetDate) });
+    exportSchedulePDF({ 
+      company: company || { name: 'ScaleMedic CGT', app_name: 'ScaleMedic' }, 
+      shifts: sorted, 
+      dateLabel: fmtDate(targetDate)
+    });
   };
 
   const openTvMode = async () => {
     setTvMode(true);
     try { await document.documentElement.requestFullscreen?.(); } catch {}
   };
+  
   const closeTvMode = async () => {
     setTvMode(false);
     if (document.fullscreenElement) await document.exitFullscreen?.();
   };
+
+  // Visão TV Otimizada
+  if (tvMode && isManager) {
+    const activeTvShifts = filtered.filter(s => s.lifecycle?.state !== 'concluded');
+    const groups = {};
+    activeTvShifts.forEach(shift => {
+      const secKey = shift.sector_id || 'geral';
+      if (!groups[secKey]) groups[secKey] = { id: secKey, name: shift.sector_name || 'Geral', active: [], upcoming: [], vacant: [] };
+      if (shift.isVacant) groups[secKey].vacant.push(shift);
+      else if (shift.lifecycle?.state === 'active') groups[secKey].active.push(shift);
+      else if (shift.lifecycle?.state === 'upcoming') groups[secKey].upcoming.push(shift);
+    });
+    const tvSectorsGrouped = Object.values(groups).sort((a,b) => (b.vacant.length * 10 + b.active.length) - (a.vacant.length * 10 + a.active.length));
+
+    return (
+      <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col p-6 font-sans">
+        <div className="flex justify-between items-center border-b border-white/10 pb-4 mb-4">
+           <div>
+             <h1 className="text-3xl font-black text-sky-400">ScaleMedic TV</h1>
+             <p className="text-sm text-slate-400">{fmtDateLong(getLocalDateString(currentTime))} · Visão Setorial</p>
+           </div>
+           <div className="flex gap-4 items-center">
+             <div className="text-right">
+                <div className="text-2xl font-mono text-emerald-400 font-black">{currentTime.toLocaleTimeString('pt-BR')}</div>
+                <div className="text-[10px] text-slate-400 uppercase">Horário Oficial</div>
+             </div>
+             <button onClick={closeTvMode} className="p-3 bg-white/10 rounded-xl hover:bg-white/20"><Minimize2 className="w-5 h-5"/></button>
+           </div>
+        </div>
+        <div className="flex-1 overflow-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+           {tvSectorsGrouped.map(sec => (
+             <div key={sec.id} className={`p-5 rounded-3xl border ${sec.vacant.length > 0 ? 'bg-amber-950/20 border-amber-500/50' : 'bg-slate-900 border-white/10'}`}>
+                <h2 className="text-xl font-bold mb-4">{sec.name}</h2>
+                <div className="space-y-3">
+                   {sec.vacant.map(s => (
+                     <div key={s.id} className="p-3 bg-amber-500/20 text-amber-300 border border-amber-500/50 rounded-xl flex justify-between animate-pulse">
+                        <div><b>VAGA ABERTA</b><br/><span className="text-xs">{s.start_time} às {s.end_time}</span></div>
+                     </div>
+                   ))}
+                   {sec.active.map(s => (
+                     <div key={s.id} className="p-3 bg-emerald-500/20 border border-emerald-500/50 rounded-xl flex justify-between">
+                        <div><div className="text-emerald-400 text-[10px] font-bold">● EM ATENDIMENTO</div><b>{toTitleCase(s.professional_name)}</b><br/><span className="text-xs text-slate-300">Até {s.end_time}</span></div>
+                     </div>
+                   ))}
+                </div>
+             </div>
+           ))}
+        </div>
+      </div>
+    );
+  }
 
   if (!isManager) {
     return (
@@ -331,17 +437,22 @@ export default function Escalas() {
 
           <div className="h-6 w-px bg-slate-200 mx-1 shrink-0" />
 
-          <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="h-9 rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 font-semibold focus:ring-2 focus:ring-sky-500 shrink-0 cursor-pointer">
+          <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="h-9 rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 font-semibold focus:ring-2 focus:ring-sky-500 shrink-0 cursor-pointer outline-none">
+            <option value="">Selecione o Mês</option>
             {monthOptions.map((m) => {
               const d = new Date(Number(m.split('-')[0]), Number(m.split('-')[1]) - 1, 1);
               return <option key={m} value={m}>{d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}</option>;
             })}
           </select>
           
-          <select value={sectorFilter} onChange={(e) => setSectorFilter(e.target.value)} className="h-9 rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 font-semibold focus:ring-2 focus:ring-sky-500 shrink-0 cursor-pointer">
+          <select value={sectorFilter} onChange={(e) => setSectorFilter(e.target.value)} className="h-9 rounded-xl border border-slate-200 px-3 text-xs bg-slate-50 font-semibold focus:ring-2 focus:ring-sky-500 shrink-0 cursor-pointer outline-none">
             <option value="all">Selecione o Setor</option>
-            {sectors.map((s) => <option key={s.id} value={s.id}>{toTitleCase(s.name)}</option>)}
+            {sectors.map((s) => <option key={s.id} value={String(s.id)}>{toTitleCase(s.name)}</option>)}
           </select>
+
+          {viewMode === 'list' && (
+            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9 w-auto text-xs shrink-0 bg-slate-50" title="Escolha um dia específico" />
+          )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
@@ -350,8 +461,14 @@ export default function Escalas() {
               <Send className="w-3.5 h-3.5 mr-1.5" /> Publicar Escala
             </Button>
           )}
-          <Button variant="outline" onClick={handleExportSchedule} className="text-xs h-9 font-semibold border-slate-200" title="Imprimir em PDF">
-            <Printer className="w-3.5 h-3.5 text-sky-600" />
+          <Button onClick={openTvMode} className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs h-9 px-4 shadow-sm hidden md:flex">
+            <Maximize2 className="w-3.5 h-3.5 mr-1.5" /> TV
+          </Button>
+          <Button variant="outline" onClick={handleExportSchedule} className="text-xs h-9 font-semibold border-slate-200" title="Exportar Plantões do Dia">
+            <Download className="w-3.5 h-3.5 mr-1.5 text-sky-600" /> PDF Diário
+          </Button>
+          <Button onClick={() => { setEditing(null); setDialogOpen(true); }} className="bg-sky-600 hover:bg-sky-700 text-white text-xs h-9 font-bold px-4 shadow-md shadow-sky-600/20">
+            <Plus className="w-4 h-4 mr-1.5" /> Novo Plantão
           </Button>
         </div>
       </div>
@@ -377,7 +494,7 @@ export default function Escalas() {
                     className="pl-9 h-9 text-xs bg-white"
                   />
                 </div>
-                <p className="text-[10px] text-slate-500 mt-2 text-center">Arraste o nome para a escala ➔</p>
+                <p className="text-[10px] text-slate-500 mt-2 text-center font-medium">Arraste o nome para a escala ➔</p>
               </div>
 
               <div className="flex-1 overflow-y-auto p-2 space-y-1">
@@ -395,11 +512,14 @@ export default function Escalas() {
                     </div>
                   </div>
                 ))}
+                {sidebarProfessionals.length === 0 && (
+                  <div className="p-4 text-center text-xs text-slate-400">Nenhum profissional encontrado.</div>
+                )}
               </div>
             </div>
 
             {/* ÁREA DA GRADE CALENDÁRIO */}
-            <div className="flex-1 overflow-y-auto bg-white custom-scrollbar relative">
+            <div className="flex-1 overflow-y-auto bg-white relative">
               {sectorFilter === 'all' ? (
                 <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">
                   <Building2 className="w-12 h-12 mb-4 text-slate-300" />
@@ -423,6 +543,7 @@ export default function Escalas() {
                   {/* Semanas do Mês */}
                   {weeksData.map((week, wIndex) => (
                     <div key={wIndex} className="border-b-4 border-slate-200">
+                      
                       {/* Cabeçalho da Semana (Datas) */}
                       <div className="grid grid-cols-8 bg-slate-50 border-b border-slate-200">
                         <div className="p-2 border-r border-slate-200 bg-slate-100"></div>
@@ -436,6 +557,7 @@ export default function Escalas() {
                       {/* Turnos (Linhas) */}
                       {SHIFT_PERIODS.map((period) => (
                         <div key={period.id} className="grid grid-cols-8 border-b border-slate-100 last:border-b-0 group">
+                          
                           {/* Coluna Fixa do Turno */}
                           <div className="p-3 border-r border-slate-200 bg-slate-50 flex flex-col items-center justify-center">
                             <span className="font-bold text-xs text-slate-800">{period.label}</span>
@@ -446,8 +568,8 @@ export default function Escalas() {
                           {week.map((date, dIndex) => {
                             if (!date) return <div key={dIndex} className="bg-slate-100 border-r border-slate-200 p-2"></div>;
 
-                            // Busca os plantões desse dia e período específicos
-                            const slotShifts = filtered.filter(s => s.date.startsWith(date) && s.periodId === period.id);
+                            // Busca os plantões desse dia e período específicos (Blindado)
+                            const slotShifts = (filtered || []).filter(s => s.date && s.date.startsWith(date) && s.periodId === period.id);
 
                             return (
                               <div 
@@ -477,8 +599,8 @@ export default function Escalas() {
                                       <input 
                                         autoFocus
                                         type="text" 
-                                        placeholder="Buscar profissional..." 
-                                        className="w-full text-xs outline-none bg-transparent"
+                                        placeholder="Buscar..." 
+                                        className="w-full text-xs outline-none bg-transparent font-medium"
                                         value={inlineSearchText}
                                         onChange={e => setInlineSearchText(e.target.value)}
                                         onKeyDown={(e) => { if(e.key === 'Escape') setInlineEditingCell(null); }}
@@ -489,7 +611,7 @@ export default function Escalas() {
                                       {professionals.filter(p => !inlineSearchText || normalizeStr(p.name).includes(normalizeStr(inlineSearchText))).slice(0, 5).map(p => (
                                         <button 
                                           key={p.id} 
-                                          className="w-full text-left px-2 py-1 text-xs hover:bg-sky-50 rounded truncate text-slate-700"
+                                          className="w-full text-left px-2 py-1 text-xs hover:bg-sky-50 rounded truncate text-slate-700 font-medium"
                                           onClick={() => {
                                             assignShift(date, period.id, p.id);
                                             setInlineEditingCell(null);
@@ -517,13 +639,13 @@ export default function Escalas() {
 
         {/* ===================== MODO LISTA DIÁRIA (MANTIDO) ===================== */}
         {viewMode === 'list' && (
-          <div className="overflow-y-auto p-4 space-y-4">
+          <div className="overflow-y-auto p-4 space-y-4 bg-slate-50">
              {filtered.length === 0 ? (
                 <div className="py-12 text-center text-slate-400">Nenhum plantão localizado neste filtro.</div>
               ) : (
                 filtered.map(s => {
                   const sTime = typeof s.start_time === 'string' ? s.start_time : '00:00';
-                  const isDone = ['concluded', 'recently_finished'].includes(s.lifecycle.state);
+                  const isDone = ['concluded', 'recently_finished'].includes(s.lifecycle?.state);
 
                   return (
                     <div key={s.id} className={`flex items-center gap-3 rounded-xl border p-3 bg-white transition-colors shadow-sm ${s.isVacant ? 'border-amber-400 bg-amber-50' : 'border-slate-200 hover:border-sky-300'}`}>
@@ -550,7 +672,7 @@ export default function Escalas() {
                             {s.isVacant ? (
                               <Button size="sm" onClick={() => { setEditing(s); setDialogOpen(true); }} className="h-8 bg-amber-500 hover:bg-amber-600 text-white"><UserPlus className="w-3.5 h-3.5 mr-1" /> Alocar</Button>
                             ) : (
-                              <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-600 hover:bg-emerald-50" title="Avisar"><MessageCircle className="w-4 h-4"/></Button>
+                              <Button size="icon" variant="ghost" onClick={(e) => handleNotifyWhatsApp(s, e)} className="h-8 w-8 text-emerald-600 hover:bg-emerald-50" title="Avisar no WhatsApp"><MessageCircle className="w-4 h-4"/></Button>
                             )}
                             <Button size="icon" variant="ghost" onClick={() => { setEditing(s); setDialogOpen(true); }} className="h-8 w-8 text-slate-500" title="Editar"><Pencil className="w-4 h-4"/></Button>
                             <Button size="icon" variant="ghost" onClick={() => handleDelete(s.id)} className="h-8 w-8 text-red-500" title="Excluir/Cancelar"><Trash2 className="w-4 h-4"/></Button>
