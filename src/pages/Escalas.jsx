@@ -57,7 +57,6 @@ const STORAGE_BASE_PREFIX = 'hospital_escala_base_v13';
 const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v13';
 const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v13';
 const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v13';
-const STORAGE_CUSTOM_SLOTS_PREFIX = 'hospital_custom_slots_v13';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -257,45 +256,24 @@ function EscalasContent() {
     } catch { return {}; }
   });
 
-  // Modal Alocação e Retroativo
+  // Modais de Ação e Alocação
   const [newShiftModal, setNewShiftModal] = useState(null); 
   const [selectedProfIdForModal, setSelectedProfIdForModal] = useState(''); 
   const [retroactiveReason, setRetroactiveReason] = useState('');
   const [retroactivePerformed, setRetroactivePerformed] = useState('concluido');
-
-  // Modal Conflito de Horário
   const [conflictModal, setConflictModal] = useState(null);
-
-  // Modal Menu de Vaga
   const [vacancyMenuModal, setVacancyMenuModal] = useState(null);
-
-  // Modal Escala do Dia
   const [dayScheduleModal, setDayScheduleModal] = useState(false);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [tvMode, setTvMode] = useState(false);
   
-  // Builder Escala Base & Turnos Customizados do Gestor
+  // Builder Escala Base
   const [builderModal, setBuilderModal] = useState(null);
   const [builderShifts, setBuilderShifts] = useState([]);
   const [builderForm, setBuilderForm] = useState({ id: '', name: '', start: '', end: '', qty: 1, color: BUILDER_COLORS[0], days: [1,2,3,4,5] });
   const [confirmGoToAllocation, setConfirmGoToAllocation] = useState(false);
-
-  // Turnos Adicionais criados manualmente na Grade
-  const [customSlots, setCustomSlots] = useState(() => {
-    try {
-      const raw = window.localStorage.getItem(`${STORAGE_CUSTOM_SLOTS_PREFIX}:${companyId}`);
-      return raw ? JSON.parse(raw) : {};
-    } catch { return {}; }
-  });
-
-  const persistCustomSlots = (newMap) => {
-    setCustomSlots(newMap);
-    try {
-      window.localStorage.setItem(`${STORAGE_CUSTOM_SLOTS_PREFIX}:${companyId}`, JSON.stringify(newMap));
-    } catch (e) {}
-  };
 
   // Sincronização de Tema
   useEffect(() => {
@@ -440,21 +418,42 @@ function EscalasContent() {
 
   const weeksDataGrid = useMemo(() => getMonthWeeks(selectedMonth), [selectedMonth]);
 
-  // Linhas da Grade para o Setor (Une Escala Base + Turnos Customizados pelo Gestor)
+  // Montagem Dinâmica de Linhas (Garante que setores com plantões salvos apareçam perfeitamente)
   const displayShiftsForSector = useMemo(() => {
     if (sectorFilter === 'todos') return [];
-    const base = safeArray(builderShifts);
-    const custom = safeArray(customSlots[sectorFilter]);
     
-    // Combina ambos removendo duplicatas por horário
-    const map = new Map();
-    [...base, ...custom].forEach(item => {
-      const key = `${item.start}-${item.end}`;
-      map.set(key, item);
+    // 1. Se houver turnos na Escala Base do localStorage, usa eles
+    const base = safeArray(builderShifts);
+    if (base.length > 0) return base;
+
+    // 2. Caso contrário, extrai automaticamente dos plantões já existentes no banco para este setor
+    const sectorShiftsInMonth = filteredShifts.filter(s => String(s.sector_id) === String(sectorFilter));
+    const timeSlots = new Map();
+
+    sectorShiftsInMonth.forEach(s => {
+      if (s.start_time && s.end_time) {
+        const key = `${s.start_time}-${s.end_time}`;
+        if (!timeSlots.has(key)) {
+          let name = 'Turno';
+          if (s.start_time >= '06:00' && s.start_time < '13:00') name = 'Manhã';
+          else if (s.start_time >= '13:00' && s.start_time < '19:00') name = 'Tarde';
+          else name = 'Noite';
+
+          timeSlots.set(key, {
+            id: `auto_${key}`,
+            name,
+            start: s.start_time,
+            end: s.end_time,
+            qty: 1,
+            cellStates: { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true }
+          });
+        }
+      }
     });
 
-    return Array.from(map.values()).sort((a,b) => String(a.start).localeCompare(String(b.start)));
-  }, [sectorFilter, builderShifts, customSlots]);
+    if (timeSlots.size > 0) return Array.from(timeSlots.values());
+    return [];
+  }, [sectorFilter, builderShifts, filteredShifts]);
 
   const sidebarProfessionals = useMemo(() => {
     const term = normalizeStr(profSearchQuery);
@@ -593,7 +592,7 @@ function EscalasContent() {
     }
   };
 
-  // Enviar para Mural de Oportunidades
+  // Enviar para o Mural de Oportunidades
   const handleSendToOpportunitiesMural = async (date, shiftDef, secId) => {
     const sectorObj = safeArray(sectors).find(s => String(s.id) === String(secId));
     if (!sectorObj) return;
@@ -612,7 +611,6 @@ function EscalasContent() {
         end_time: shiftDef.end,
         duration_hours: hours,
         status: 'aberto',
-        is_opportunity: true,
         notes: `Disponível no Mural de Oportunidades • Turno: ${shiftDef.name}`
       };
 
@@ -657,7 +655,7 @@ function EscalasContent() {
     }
   };
 
-  // Limpeza de Vagas Abertas CORRIGIDA (Cancela plantões reais na base)
+  // Limpeza Corrigida de Vagas Abertas na Base
   const handleClearSectorVacancies = async () => {
     if (sectorFilter === 'todos') {
       alert('Selecione uma seção específica para limpar as vagas abertas.');
@@ -677,9 +675,9 @@ function EscalasContent() {
     if (!confirm(`Deseja cancelar definitivamente ${vacantShifts.length} vaga(s) aberta(s) de ${activeSectorName}?`)) return;
 
     try {
-      await Promise.all(vacantShifts.map(s => base44.entities.Shift.update(s.id, { status: 'cancelado', notes: 'Vaga aberta limpa pelo gestor' })));
+      await Promise.all(vacantShifts.map(s => base44.entities.Shift.update(s.id, { status: 'cancelado', notes: 'Vaga limpa pelo gestor' })));
       loadData(true);
-      alert('Vagas abertas canceladas e removidas com sucesso!');
+      alert('Vagas abertas removidas com sucesso!');
     } catch (e) {
       alert('Erro ao limpar vagas: ' + e.message);
     }
@@ -710,7 +708,7 @@ function EscalasContent() {
     alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
   };
 
-  // Funções Escala Base / Gestão de Turnos
+  // Funções Escala Base / Turnos
   const openNewBuilderModal = () => {
     setBuilderForm({ id: '', name: '', start: '', end: '', qty: 1, color: BUILDER_COLORS[0], days: [1,2,3,4,5] });
     setBuilderModal({ isNew: true });
@@ -749,25 +747,14 @@ function EscalasContent() {
       cellStates: activeDays
     };
 
-    if (builderModal?.isNew) {
-      persistBuilder([...builderShifts, newObj]);
-      // Também adiciona nos custom slots do setor atual
-      const currentCustom = safeArray(customSlots[sectorFilter]);
-      persistCustomSlots({ ...customSlots, [sectorFilter]: [...currentCustom, newObj] });
-    } else {
-      persistBuilder(builderShifts.map(s => s.id === newObj.id ? newObj : s));
-      const currentCustom = safeArray(customSlots[sectorFilter]);
-      persistCustomSlots({ ...customSlots, [sectorFilter]: currentCustom.map(s => s.id === newObj.id ? newObj : s) });
-    }
+    if (builderModal?.isNew) persistBuilder([...builderShifts, newObj]);
+    else persistBuilder(builderShifts.map(s => s.id === newObj.id ? newObj : s));
     setBuilderModal(null);
   };
 
   const deleteBuilderShift = (shiftId) => {
     if (!confirm('Deseja excluir este turno da grade?')) return;
-    const nextShifts = builderShifts.filter(s => s.id !== shiftId);
-    persistBuilder(nextShifts);
-    const currentCustom = safeArray(customSlots[sectorFilter]).filter(s => s.id !== shiftId);
-    persistCustomSlots({ ...customSlots, [sectorFilter]: currentCustom });
+    persistBuilder(builderShifts.filter(s => s.id !== shiftId));
     setBuilderModal(null);
   };
 
@@ -936,7 +923,7 @@ function EscalasContent() {
   }, [shiftsTodayModal]);
 
   /* ============================================================
-     RENDER MODO TV
+     RENDER DO MODO TV
      ============================================================ */
   if (tvMode) {
     const todayStr = getLocalDateString(currentTime);
@@ -1168,7 +1155,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MÓDULO DE GRADE VISUAL
+          MODO GRADE VISUAL (BUILDER)
           ======================================================== */}
       {viewMode === 'grade' && (
         <div className="flex-1 flex overflow-hidden p-4 sm:px-6 pb-4">
@@ -1205,9 +1192,10 @@ function EscalasContent() {
               </div>
             </div>
 
-            {/* Grade de Calendário */}
+            {/* Calendário da Grade com Suporte a Todos os Setores e Setor Específico */}
             <div className="flex-1 overflow-auto bg-slate-50/30 dark:bg-slate-950 relative">
               {sectorFilter === 'todos' ? (
+                /* VISÃO CONSOLIDADA DE TODOS OS SETORES */
                 <div className="p-4 space-y-6">
                   {safeArray(sectors).map(sec => {
                     const secShifts = filteredShifts.filter(s => String(s.sector_id) === String(sec.id));
@@ -1255,6 +1243,7 @@ function EscalasContent() {
                   })}
                 </div>
               ) : displayShiftsForSector.length === 0 ? (
+                /* SETOR SEM NENHUMA VAGA OU ESCALA BASE: MOSTRA TELA PARA CONFIGURAR */
                 <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">
                   <div className="w-16 h-16 rounded-3xl bg-slate-100 dark:bg-slate-800/60 flex items-center justify-center mx-auto mb-4 border border-slate-200 dark:border-slate-700">
                     <SlidersHorizontal className="w-8 h-8 text-sky-600 dark:text-sky-400" />
@@ -1270,6 +1259,7 @@ function EscalasContent() {
                   </Button>
                 </div>
               ) : (
+                /* SETOR COM VAGAS / ESCALA CADASTRADA: MOSTRA A GRADE COMPLETA */
                 <div className="min-w-[900px] pb-8">
                   <div className="grid grid-cols-8 border-b border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 sticky top-0 z-20 shadow-sm">
                     <div className="p-3 border-r border-slate-200 dark:border-slate-800 flex items-center justify-center font-black text-xs text-slate-500 uppercase tracking-wider bg-slate-200/60 dark:bg-slate-950">Turno</div>
@@ -1342,6 +1332,8 @@ function EscalasContent() {
                                         ? 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-slate-400 opacity-75'
                                         : rStatus === 'andamento'
                                         ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-500'
+                                        : rStatus === 'publicado'
+                                        ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-400 dark:border-emerald-700 text-slate-900 dark:text-slate-100'
                                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100'
                                     }`}>
                                       <div className="min-w-0 flex-1 pr-2">
@@ -1446,7 +1438,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO ESCALA BASE (COM EDITAR E EXCLUIR LINHA)
+          MODO ESCALA BASE
           ======================================================== */}
       {viewMode === 'base_builder' && (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
@@ -1457,7 +1449,7 @@ function EscalasContent() {
                   <h2 className="text-xl font-black text-slate-900 dark:text-white">Escala Base: {activeSectorName}</h2>
                   <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold">Modo Edição</span>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Crie as linhas de turnos que sua escala precisa. Clique nos dias para ativar ou desativar vagas.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Defina os turnos e a quantidade de vagas da semana. Clique nos dias para ativar ou desativar vagas.</p>
               </div>
               
               <div className="flex items-center gap-3">
