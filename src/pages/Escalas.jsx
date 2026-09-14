@@ -10,12 +10,12 @@ import {
   Clock3, GripVertical, LayoutGrid, List, Loader2, Lock,
   Maximize2, Minimize2, Moon, Pencil, Plus, Printer,
   RefreshCw, Search, Send, SlidersHorizontal, Sun, Trash2, UserPlus,
-  UsersRound, X, FileText, ShieldAlert
+  UsersRound, X, FileText, ShieldAlert, ArrowRightLeft
 } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
 
 /* ============================================================
-   ERROR BOUNDARY NATIVO
+   ERROR BOUNDARY
    ============================================================ */
 class SafeErrorBoundary extends Component {
   constructor(props) {
@@ -26,7 +26,7 @@ class SafeErrorBoundary extends Component {
     return { hasError: true, errorMsg: error?.message || 'Instabilidade no layout.' };
   }
   componentDidCatch(err, info) {
-    console.error('Crash isolado no módulo de Escalas:', err, info);
+    console.error('Crash em Escalas:', err, info);
   }
   render() {
     if (this.state.hasError) {
@@ -35,21 +35,12 @@ class SafeErrorBoundary extends Component {
           <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl text-center">
             <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
             <h2 className="text-xl font-black">Recuperação de Interface</h2>
-            <p className="text-xs text-slate-400 mt-2 mb-6">
-              Ocorreu um erro no carregamento da tela: <br />
-              <span className="text-amber-400 font-mono mt-1 inline-block">{this.state.errorMsg}</span>
-            </p>
+            <p className="text-xs text-slate-400 mt-2 mb-6">{this.state.errorMsg}</p>
             <Button
-              onClick={() => {
-                try {
-                  window.localStorage.removeItem('escala_setor_fixado_v8');
-                  window.localStorage.removeItem('hospital-escala-base-v8');
-                } catch (e) {}
-                window.location.reload();
-              }}
+              onClick={() => window.location.reload()}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11"
             >
-              Restaurar Padrões e Recarregar
+              Recarregar Escalas
             </Button>
           </div>
         </div>
@@ -60,11 +51,11 @@ class SafeErrorBoundary extends Component {
 }
 
 /* ============================================================
-   CONSTANTES E HELPERS
+   CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v9';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v9';
-const STORAGE_PUBLISHED_KEY = 'hospital_escala_publicada_v9';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v10';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v10';
+const STORAGE_PUBLISHED_KEY = 'hospital_escala_publicada_v10';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -121,9 +112,10 @@ function fmtDateLong(dateStr) {
   const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
   return WEEKDAYS_LONG[d.getDay()] || '';
 }
+
 function getShiftHours(s) {
-  if (s?.duration_hours != null) return safeNumber(s.duration_hours);
-  if (s?.hours != null) return safeNumber(s.hours);
+  if (s?.duration_hours != null && Number.isFinite(Number(s.duration_hours))) return Number(s.duration_hours);
+  if (s?.hours != null && Number.isFinite(Number(s.hours))) return Number(s.hours);
   if (s?.start_time && s?.end_time) {
     const st = new Date(`1970-01-01T${s.start_time}`);
     const et = new Date(`1970-01-01T${s.end_time}`);
@@ -134,6 +126,21 @@ function getShiftHours(s) {
     }
   }
   return 12;
+}
+
+// Verifica sobreposição de horário no mesmo dia
+function checkTimeOverlap(startA, endA, startB, endB) {
+  if (!startA || !endA || !startB || !endB) return false;
+  const toMin = (t) => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  let sA = toMin(startA), eA = toMin(endA);
+  let sB = toMin(startB), eB = toMin(endB);
+  if (eA <= sA) eA += 24 * 60; // cruza meia-noite
+  if (eB <= sB) eB += 24 * 60; // cruza meia-noite
+
+  return Math.max(sA, sB) < Math.min(eA, eB);
 }
 
 function getProfessionalId(s) { return s?.professional_id || s?.professionalId || s?.professional?.id || null; }
@@ -217,7 +224,6 @@ function EscalasContent() {
 
   const [theme, setTheme] = useState('dark');
 
-  // Setor fixado de forma segura
   const [sectorFilter, setSectorFilter] = useState(() => {
     try {
       const saved = window.localStorage.getItem(STORAGE_SECTOR_KEY);
@@ -254,6 +260,9 @@ function EscalasContent() {
   const [retroactiveReason, setRetroactiveReason] = useState('');
   const [retroactivePerformed, setRetroactivePerformed] = useState('concluido');
 
+  // Modal Conflito de Horário / Duplicidade
+  const [conflictModal, setConflictModal] = useState(null);
+
   // Modal de Pré-visualização da Escala do Dia
   const [dayScheduleModal, setDayScheduleModal] = useState(false);
 
@@ -267,7 +276,7 @@ function EscalasContent() {
   const [builderForm, setBuilderForm] = useState({ id: '', name: '', start: '', end: '', qty: 1, color: BUILDER_COLORS[0], days: [1,2,3,4,5] });
   const [confirmGoToAllocation, setConfirmGoToAllocation] = useState(false);
 
-  // Inicializa tema no HTML global
+  // Sincronização do Tema
   useEffect(() => {
     try {
       const savedTheme = window.localStorage.getItem('hospital-intelligence-theme') || 'dark';
@@ -297,7 +306,7 @@ function EscalasContent() {
     try {
       const query = companyId ? { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) } : {};
       const [sRaw, secRaw, pRaw] = await Promise.all([
-        base44?.entities?.Shift?.filter ? base44.entities.Shift.filter(query, '-date', 3000).catch(() => []) : [],
+        base44?.entities?.Shift?.filter ? base44.entities.Shift.filter(query, '-date', 4000).catch(() => []) : [],
         base44?.entities?.Sector?.filter ? base44.entities.Sector.filter(query, '-created_date', 300).catch(() => []) : [],
         base44?.entities?.Professional?.filter ? base44.entities.Professional.filter(query, '-created_date', 1500).catch(() => []) : [],
       ]);
@@ -355,6 +364,12 @@ function EscalasContent() {
     return m;
   }, [professionals]);
 
+  const sectorMap = useMemo(() => {
+    const m = {};
+    safeArray(sectors).forEach(s => { if (s?.id) m[s.id] = s; });
+    return m;
+  }, [sectors]);
+
   const activeSectorName = useMemo(() => {
     if (sectorFilter === 'todos') return 'Todos os Setores';
     const s = safeArray(sectors).find(sec => String(sec.id) === String(sectorFilter));
@@ -367,14 +382,20 @@ function EscalasContent() {
     return [...opts].filter(Boolean).sort().reverse();
   }, [shifts, selectedMonth]);
 
-  // Lista dos Plantões Filtrados e Ordenados Crescente
+  // Lista dos Plantões Filtrados - Corrigido para buscar qualquer data na lista diária
   const filteredShifts = useMemo(() => {
     const result = safeArray(shifts).filter(s => {
       if (!s || getStatusKey(s.status) === 'cancelado') return false;
       const sDate = normalizeDate(s.date);
       if (!sDate) return false;
-      if (selectedMonth && viewMode === 'grade' && !sDate.startsWith(selectedMonth)) return false;
-      if (selectedDate && viewMode === 'list' && sDate !== selectedDate) return false;
+
+      // Se estiver na Lista Diária e tiver data específica selecionada, ignora o filtro de mês para não sumir
+      if (viewMode === 'list' && selectedDate) {
+        if (sDate !== selectedDate) return false;
+      } else {
+        if (selectedMonth && !sDate.startsWith(selectedMonth)) return false;
+      }
+
       if (sectorFilter !== 'todos' && String(s.sector_id) !== String(sectorFilter)) return false;
       return true;
     }).map(s => {
@@ -400,7 +421,6 @@ function EscalasContent() {
     if (sectorFilter === 'todos') return [];
     if (safeArray(builderShifts).length > 0) return builderShifts;
 
-    // Se a Escala Base ainda não foi configurada, extrai horários já cadastrados nos plantões
     const sectorShiftsInMonth = filteredShifts.filter(s => String(s.sector_id) === String(sectorFilter));
     const timeSlots = new Map();
 
@@ -429,7 +449,6 @@ function EscalasContent() {
     return DEFAULT_GENERIC_SHIFTS;
   }, [sectorFilter, builderShifts, filteredShifts]);
 
-  // Profissionais da Barra Lateral Cruzados com o Setor
   const sidebarProfessionals = useMemo(() => {
     const term = normalizeStr(profSearchQuery);
     return safeArray(professionals).filter(p => {
@@ -453,13 +472,53 @@ function EscalasContent() {
   const handleDragStart = (e, prof) => { if (prof?.id) e.dataTransfer.setData('profId', prof.id); };
   const handleDragOver = (e) => { e.preventDefault(); };
 
-  const assignShift = async (date, shiftDef, profId, reasonText = '', explicitStatus = 'confirmado', sectorTarget = null) => {
+  // Validação de Duplicidade / Choque de Horários
+  const validateProfessionalShiftConflict = (profId, targetDate, targetStart, targetEnd, currentShiftId = null) => {
+    const existingShifts = safeArray(shifts).filter(s => {
+      if (currentShiftId && s.id === currentShiftId) return false;
+      if (getStatusKey(s.status) === 'cancelado') return false;
+      return String(getProfessionalId(s)) === String(profId) && normalizeDate(s.date) === normalizeDate(targetDate);
+    });
+
+    for (const shift of existingShifts) {
+      if (checkTimeOverlap(targetStart, targetEnd, shift.start_time, shift.end_time)) {
+        const secName = getSectorName(shift, sectorMap);
+        return {
+          conflict: true,
+          conflictingShift: shift,
+          message: `O profissional já está escalado no setor "${secName}" das ${shift.start_time} às ${shift.end_time} nesta mesma data (${formatDateBR(targetDate)}).`
+        };
+      }
+    }
+    return { conflict: false };
+  };
+
+  // Gravação do Plantão com Cálculo Direto de Faturamento
+  const assignShift = async (date, shiftDef, profId, reasonText = '', explicitStatus = 'confirmado', sectorTarget = null, forceRemapShiftId = null) => {
     const secId = sectorTarget && sectorTarget !== 'todos' ? sectorTarget : sectorFilter;
     if (secId === 'todos') { alert("Selecione uma seção específica no topo para alocar o profissional."); return; }
     
     const prof = professionalMap[profId];
     const sectorObj = safeArray(sectors).find(s => String(s.id) === String(secId));
     if (!prof || !sectorObj) return;
+
+    // Checagem de choque de horários caso não seja substituição forçada
+    if (!forceRemapShiftId) {
+      const conflictCheck = validateProfessionalShiftConflict(profId, date, shiftDef.start, shiftDef.end);
+      if (conflictCheck.conflict) {
+        setConflictModal({
+          prof,
+          date,
+          shiftDef,
+          sectorTarget: secId,
+          reasonText,
+          explicitStatus,
+          message: conflictCheck.message,
+          oldShift: conflictCheck.conflictingShift
+        });
+        return;
+      }
+    }
 
     try {
       const existingShift = safeArray(filteredShifts).find(s => 
@@ -470,11 +529,31 @@ function EscalasContent() {
         s.isVacant
       );
 
+      // Sincronização e Cálculo Financeiro com o Profissional
+      const hours = getShiftHours({ start_time: shiftDef.start, end_time: shiftDef.end });
+      const remType = String(prof?.remuneration_type || prof?.remunerationType || 'hora').toLowerCase();
+      
+      let rate = safeNumber(prof?.hourly_rate ?? prof?.hourlyRate, 120);
+      let calculatedTotal = 0;
+
+      if (remType === 'diaria') {
+        rate = safeNumber(prof?.daily_rate ?? prof?.dailyRate, 1500);
+        calculatedTotal = rate;
+      } else if (remType === 'mensal') {
+        const monthly = safeNumber(prof?.monthly_salary ?? prof?.monthlySalary, 18000);
+        const workHours = safeNumber(prof?.monthly_work_hours ?? prof?.monthlyWorkHours, 220);
+        rate = workHours > 0 ? monthly / workHours : 80;
+        calculatedTotal = rate * hours;
+      } else {
+        calculatedTotal = rate * hours;
+      }
+
       const notes = [
         `Turno: ${shiftDef.name}`,
         reasonText ? `Justificativa Retroativo: ${reasonText}` : null
       ].filter(Boolean).join(' | ');
 
+      // Gravação compatível com todos os campos de faturamento nativos
       const payload = { 
         company_id: companyId, 
         unit_id: unitId, 
@@ -485,13 +564,29 @@ function EscalasContent() {
         date: date, 
         start_time: shiftDef.start, 
         end_time: shiftDef.end, 
-        duration_hours: getShiftHours({ start_time: shiftDef.start, end_time: shiftDef.end }), 
+        duration_hours: hours,
+        hours: hours,
+        hourly_rate: rate,
+        rate: rate,
+        valor_hora: rate,
+        total_amount: calculatedTotal,
+        valor_total: calculatedTotal,
+        cost: calculatedTotal,
         status: explicitStatus,
         notes
       };
+
+      // Se for remanejamento de conflito, cancela o anterior
+      if (forceRemapShiftId) {
+        await base44.entities.Shift.update(forceRemapShiftId, {
+          status: 'cancelado',
+          notes: `Plantão remanejado para o setor ${sectorObj.name}`
+        });
+      }
       
       if (existingShift?.id) await base44.entities.Shift.update(existingShift.id, payload);
       else await base44.entities.Shift.create(payload);
+      
       loadData(true);
     } catch (error) {
       alert("Erro ao salvar plantão: " + (error?.message || 'Tente novamente.'));
@@ -512,7 +607,7 @@ function EscalasContent() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Deseja cancelar este plantão? Ele não entrará no pagamento.')) return;
+    if (!confirm('Deseja cancelar este plantão? Os valores serão removidos do faturamento.')) return;
     try {
       await base44.entities.Shift.update(id, { status: 'cancelado' });
       loadData(true);
@@ -555,7 +650,7 @@ function EscalasContent() {
     } catch (e) {}
     setPublishedInfo(payload);
     setPublishModalOpen(false);
-    alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
+    alert(`Escala de ${activeSectorName} publicada com sucesso de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
   };
 
   // Funções Escala Base
@@ -752,7 +847,7 @@ function EscalasContent() {
   };
 
   /* ============================================================
-     PRÉVIA DA ESCALA DO DIA
+     PRÉVIA DA ESCALA DO DIA (MODAL HORIZONTAL)
      ============================================================ */
   const todayTarget = selectedDate || getLocalDateString(currentTime);
   const shiftsTodayModal = safeArray(shifts).filter(s => normalizeDate(s.date) === todayTarget && getStatusKey(s.status) !== 'cancelado');
@@ -768,7 +863,7 @@ function EscalasContent() {
   }, [shiftsTodayModal]);
 
   /* ============================================================
-     RENDER DO MODO TV
+     RENDER DO MODO TV (TODOS OS SETORES ATIVOS DO DIA)
      ============================================================ */
   if (tvMode) {
     const todayStr = getLocalDateString(currentTime);
@@ -789,7 +884,7 @@ function EscalasContent() {
            <div className="flex gap-6 items-center">
              <div className="text-right">
                 <div className="text-3xl font-mono text-emerald-400 font-black">{currentTime.toLocaleTimeString('pt-BR')}</div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-widest">Horário Oficial</div>
+                <div className="text-[10px] text-slate-400 uppercase tracking-widest">Horário Operacional</div>
              </div>
              <Button onClick={() => setTvMode(false)} className="bg-slate-800 hover:bg-slate-700 p-3 rounded-2xl border border-slate-700"><Minimize2 className="w-5 h-5"/></Button>
            </div>
@@ -959,7 +1054,7 @@ function EscalasContent() {
             
             {viewMode === 'list' && (
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Dia:</span>
+                <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Dia Específico:</span>
                 <Input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="h-8 w-36 text-xs bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800" />
                 {selectedDate && <button onClick={() => setSelectedDate('')} className="text-xs text-sky-600 dark:text-sky-400 hover:underline">Ver mês inteiro</button>}
               </div>
@@ -1034,7 +1129,7 @@ function EscalasContent() {
               </div>
             </div>
 
-            {/* Calendário da Grade com Suporte a Todos os Setores e Setor Específico */}
+            {/* Calendário da Grade */}
             <div className="flex-1 overflow-auto bg-slate-50/30 dark:bg-slate-950 relative">
               {sectorFilter === 'todos' ? (
                 /* VISÃO CONSOLIDADA DE TODOS OS SETORES */
@@ -1084,7 +1179,7 @@ function EscalasContent() {
                   })}
                 </div>
               ) : (
-                /* VISÃO DA GRADE DO SETOR ESPECÍFICO (Com Fallback Dinâmico) */
+                /* VISÃO DA GRADE DO SETOR ESPECÍFICO */
                 <div className="min-w-[900px] pb-8">
                   <div className="grid grid-cols-8 border-b border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 sticky top-0 z-20 shadow-sm">
                     <div className="p-3 border-r border-slate-200 dark:border-slate-800 flex items-center justify-center font-black text-xs text-slate-500 uppercase tracking-wider bg-slate-200/60 dark:bg-slate-950">Turno</div>
@@ -1188,9 +1283,165 @@ function EscalasContent() {
         </div>
       )}
 
+      {/* ===================== MODO LISTA DIÁRIA ===================== */}
+      {viewMode === 'list' && (
+        <div className="overflow-y-auto p-4 sm:px-8 space-y-3 flex-1">
+           {filteredShifts.length === 0 ? (
+              <div className="py-16 text-center text-slate-400">Nenhum plantão localizado para o período filtrado.</div>
+            ) : (
+              filteredShifts.map(s => {
+                const statusConfig = {
+                  concluido: { bg: 'bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-400', icon: Lock, label: 'Concluído' },
+                  andamento: { bg: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-500/50 text-emerald-700 dark:text-emerald-400', icon: Activity, label: 'Em Andamento' },
+                  programado: { bg: 'bg-sky-50 dark:bg-sky-950/30 border-sky-300 dark:border-sky-500/50 text-sky-700 dark:text-sky-400', icon: CalendarDays, label: 'Programado' }
+                }[s.rTimeStatus] || { bg: 'bg-slate-100 border-slate-200', icon: CalendarDays, label: 'Programado' };
+
+                return (
+                  <div key={s.id} className={`flex items-center gap-4 rounded-2xl border p-4 bg-white dark:bg-slate-900 transition-colors shadow-sm ${
+                    s.isVacant ? 'border-amber-300 dark:border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/10' : 'border-slate-200 dark:border-slate-800'
+                  }`}>
+                    <div className={`min-w-[110px] rounded-xl py-2 text-center text-xs font-black border shrink-0 ${statusConfig.bg}`}>
+                      {formatDateBR(s.date)} <br/>
+                      <span className="font-mono text-xs opacity-90">{s.start_time || '--'} às {s.end_time || '--'}</span>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <strong className={`block text-base break-words ${s.isVacant ? 'text-amber-700 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>
+                        {toTitleCase(s.professional_name) || 'Vaga Aberta'}
+                      </strong>
+                      <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                        <Building2 className="w-3 h-3" /> {toTitleCase(s.sector_name)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {!s.isVacant && (
+                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-wider ${statusConfig.bg}`}>
+                          <statusConfig.icon className="w-3.5 h-3.5" /> {statusConfig.label}
+                        </div>
+                      )}
+
+                      {!s.isVacant && (
+                        <Button size="icon" variant="ghost" onClick={() => handleDelete(s.id)} className="h-9 w-9 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20" title="Cancelar plantão">
+                          <Trash2 className="w-4 h-4"/>
+                        </Button>
+                      )}
+
+                      {s.isVacant && (
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => { setEditing(s); setDialogOpen(true); }} className="h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs">
+                            <UserPlus className="w-3.5 h-3.5 mr-1" /> Alocar
+                          </Button>
+                          {s.id && (
+                            <Button size="sm" variant="ghost" onClick={() => handleDelete(s.id)} className="h-9 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 text-xs">
+                              Cancelar Vaga
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+        </div>
+      )}
+
+      {/* ===================== MODO ESCALA BASE ===================== */}
+      {viewMode === 'base_builder' && (
+        <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
+          <div className="w-full max-w-5xl space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-black text-slate-900 dark:text-white">Escala Base: {activeSectorName}</h2>
+                  <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold">Modo Edição</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Defina os turnos e a quantidade de vagas da semana. Clique nos dias para ativar ou desativar vagas.</p>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <Button onClick={openNewBuilderModal} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-9 gap-1.5">
+                  <Plus className="w-4 h-4" /> Adicionar Turno
+                </Button>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead className="bg-slate-100 dark:bg-slate-950 text-slate-500 border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider text-[10px] font-bold">
+                    <tr>
+                      <th className="p-3.5 w-48 text-center border-r border-slate-200 dark:border-slate-800">Turno / Horário</th>
+                      {WEEK_DAYS_ORDER.map(day => (
+                        <th key={day.index} className={`p-3.5 text-center border-r border-slate-200 dark:border-slate-800 ${day.weekend ? 'bg-slate-200/50 dark:bg-slate-900/90' : ''}`}>
+                          {day.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                    {builderShifts.length === 0 ? (
+                      <tr>
+                        <td colSpan="8" className="p-16 text-center text-slate-400 text-xs">
+                          Nenhum turno configurado para <strong>{activeSectorName}</strong>.<br/>
+                          Clique no botão acima para adicionar seu primeiro horário (ex: Manhã 07:00 às 13:00).
+                        </td>
+                      </tr>
+                    ) : (
+                      builderShifts.map(shift => (
+                        <tr key={shift.id}>
+                          <td className="p-3.5 font-bold border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 relative group">
+                            <div className="flex flex-col items-center justify-center text-center">
+                              <span className="text-xs text-slate-900 dark:text-slate-200">{shift.name}</span>
+                              <span className="text-[11px] font-mono text-sky-600 dark:text-sky-400 mt-0.5">{shift.start} às {shift.end}</span>
+                            </div>
+                            <button onClick={() => openEditBuilderModal(shift)} className="absolute top-2 right-2 p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-700 dark:text-slate-300 opacity-0 group-hover:opacity-100 transition-all">
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                          {WEEK_DAYS_ORDER.map(day => {
+                            const isActive = Boolean(shift.cellStates && shift.cellStates[day.index]);
+                            return (
+                              <td key={day.index} className={`p-0 border-r border-slate-200 dark:border-slate-800 text-center relative ${day.weekend ? 'bg-slate-50/40 dark:bg-slate-950/40' : ''}`}>
+                                <div className="relative w-full h-full min-h-[64px] flex items-center justify-center group/cell cursor-pointer" onClick={() => toggleBuilderCell(shift.id, day.index)}>
+                                  <div className={`w-8 h-8 mx-auto rounded-lg font-black text-sm flex items-center justify-center transition-colors ${
+                                    isActive ? 'bg-slate-100 dark:bg-slate-800 text-sky-600 dark:text-sky-400 border border-slate-300 dark:border-slate-700 shadow-sm' : 'bg-transparent text-slate-300 dark:text-slate-700'
+                                  }`}>
+                                    {isActive ? shift.qty : '-'}
+                                  </div>
+                                  <div className="absolute inset-0 bg-slate-900/90 text-white text-[10px] font-bold flex flex-col items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity">
+                                    {isActive ? 'Desativar vaga?' : 'Ativar vaga?'}
+                                  </div>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+              <Button variant="outline" onClick={() => setViewMode('grade')} className="border-slate-300 dark:border-slate-800 text-xs h-10 px-6">
+                Voltar para a Grade
+              </Button>
+              <Button onClick={() => setConfirmGoToAllocation(true)} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-10 px-8 shadow-md">
+                Salvar Escala Base de {activeSectorName}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ========================================================
-          MODAL HORIZONTAL: ESCALA DO DIA
+          MODAIS E DIALOGS
           ======================================================== */}
+
+      {/* MODAL HORIZONTAL: ESCALA DO DIA */}
       {dayScheduleModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-6xl max-h-[90vh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col">
@@ -1251,9 +1502,7 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* ========================================================
-          MODAL: ALOCAÇÃO E TRAVA RETROATIVA OBRIGATÓRIA
-          ======================================================== */}
+      {/* MODAL: ALOCAÇÃO E TRAVA RETROATIVA OBRIGATÓRIA */}
       {newShiftModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
@@ -1297,7 +1546,7 @@ function EscalasContent() {
                     <Select value={retroactivePerformed} onValueChange={setRetroactivePerformed}>
                       <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-900 border-amber-300"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="concluido">Sim, Plantão Realizado (Entra no pagamento)</SelectItem>
+                        <SelectItem value="concluido">Sim, Plantão Realizado (Entra no faturamento)</SelectItem>
                         <SelectItem value="cancelado">Não, Houve Falta / Cancelado (Sem custo)</SelectItem>
                       </SelectContent>
                     </Select>
@@ -1333,6 +1582,47 @@ function EscalasContent() {
                   Confirmar Alocação
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ALERTA DE CONFLITO / DUPLICIDADE DE HORÁRIO */}
+      {conflictModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
+            <div className="flex items-center gap-3 text-amber-600 dark:text-amber-400 mb-3">
+              <div className="p-2.5 bg-amber-100 dark:bg-amber-950/50 rounded-2xl">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">Conflito de Horário</h3>
+                <p className="text-[11px] text-slate-500">Duplicidade de plantonista detectada</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 my-4">
+              {conflictModal.message}
+            </p>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
+              Deseja <strong>remanejar</strong> o Dr(a). <strong>{conflictModal.prof.name}</strong> para este novo setor cancelando o anterior, ou deseja cancelar a ação?
+            </p>
+
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setConflictModal(null)} className="flex-1 h-10 text-xs">
+                Manter Anterior (Cancelar)
+              </Button>
+              <Button
+                onClick={() => {
+                  const { date, shiftDef, prof, reasonText, explicitStatus, sectorTarget, oldShift } = conflictModal;
+                  setConflictModal(null);
+                  assignShift(date, shiftDef, prof.id, reasonText, explicitStatus, sectorTarget, oldShift.id);
+                }}
+                className="flex-1 h-10 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs flex items-center justify-center gap-1"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5 mr-1" /> Remanejar Plantonista
+              </Button>
             </div>
           </div>
         </div>
