@@ -258,9 +258,6 @@ function EscalasContent() {
     })()
   });
 
-  // Menu de Ação da Vaga
-  const [vacancyMenuModal, setVacancyMenuModal] = useState(null);
-
   // Modal Alocação e Retroativo
   const [newShiftModal, setNewShiftModal] = useState(null); 
   const [selectedProfIdForModal, setSelectedProfIdForModal] = useState(''); 
@@ -269,6 +266,9 @@ function EscalasContent() {
 
   // Modal Conflito de Horário
   const [conflictModal, setConflictModal] = useState(null);
+
+  // Modal Menu de Vaga
+  const [vacancyMenuModal, setVacancyMenuModal] = useState(null);
 
   // Modal Escala do Dia
   const [dayScheduleModal, setDayScheduleModal] = useState(false);
@@ -279,7 +279,6 @@ function EscalasContent() {
   
   // Builder Escala Base
   const [builderModal, setBuilderModal] = useState(null);
-  const [builderScaleDate, setBuilderScaleDate] = useState(() => getLocalDateString());
   const [builderShifts, setBuilderShifts] = useState([]);
   const [builderForm, setBuilderForm] = useState({ id: '', name: '', start: '', end: '', qty: 1, color: BUILDER_COLORS[0], days: [1,2,3,4,5] });
   const [confirmGoToAllocation, setConfirmGoToAllocation] = useState(false);
@@ -427,16 +426,11 @@ function EscalasContent() {
 
   const weeksDataGrid = useMemo(() => getMonthWeeks(selectedMonth), [selectedMonth]);
 
-  /* ============================================================
-     DETECÇÃO INTELIGENTE DE VAGAS PREENCHIDAS / HORÁRIOS CONFIGURADOS
-     ============================================================ */
+  // Montagem Dinâmica de Linhas
   const displayShiftsForSector = useMemo(() => {
     if (sectorFilter === 'todos') return [];
-
-    // 1. Se o gestor já configurou uma Escala Base neste setor, respeita estritamente ela
     if (safeArray(builderShifts).length > 0) return builderShifts;
 
-    // 2. Se não configurou a escala base, mas esse setor possui vagas/plantões registrados no banco (como UTI Adulto ou Bloco Cirúrgico):
     const sectorShiftsInMonth = filteredShifts.filter(s => String(s.sector_id) === String(sectorFilter));
     const timeSlots = new Map();
 
@@ -461,10 +455,7 @@ function EscalasContent() {
       }
     });
 
-    // Se encontrou plantões ou vagas cadastradas, gera as linhas automaticamente para permitir gerenciar
     if (timeSlots.size > 0) return Array.from(timeSlots.values());
-
-    // 3. Se o setor NÃO TEM NENHUMA vaga e NENHUMA escala base: RETORNA VAZIO para exibir o card de configurar!
     return [];
   }, [sectorFilter, builderShifts, filteredShifts]);
 
@@ -488,7 +479,7 @@ function EscalasContent() {
   const handleDragStart = (e, prof) => { if (prof?.id) e.dataTransfer.setData('profId', prof.id); };
   const handleDragOver = (e) => { e.preventDefault(); };
 
-  // Validação de Conflito de Horário no mesmo dia
+  // Validação de Conflito de Horário
   const validateProfessionalShiftConflict = (profId, targetDate, targetStart, targetEnd, currentShiftId = null) => {
     const existingShifts = safeArray(shifts).filter(s => {
       if (currentShiftId && s.id === currentShiftId) return false;
@@ -605,7 +596,7 @@ function EscalasContent() {
     }
   };
 
-  // Enviar para Mural de Oportunidades
+  // Enviar para o Mural de Oportunidades
   const handleSendToOpportunitiesMural = async (date, shiftDef, secId) => {
     const sectorObj = safeArray(sectors).find(s => String(s.id) === String(secId));
     if (!sectorObj) return;
@@ -660,7 +651,7 @@ function EscalasContent() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Deseja cancelar este plantão? Ele será cancelado no faturamento.')) return;
+    if (!confirm('Deseja cancelar este plantão? Ele será removido do faturamento.')) return;
     try {
       await base44.entities.Shift.update(id, { status: 'cancelado' });
       loadData(true);
@@ -669,7 +660,7 @@ function EscalasContent() {
     }
   };
 
-  // Limpeza de Vagas Abertas
+  // Limpeza de Vagas Abertas Corrigida (Cancela plantões reais e limpa da base)
   const handleClearSectorVacancies = async () => {
     if (sectorFilter === 'todos') {
       alert('Selecione uma seção específica para limpar as vagas abertas.');
@@ -691,13 +682,12 @@ function EscalasContent() {
     try {
       await Promise.all(vacantShifts.map(s => base44.entities.Shift.update(s.id, { status: 'cancelado', notes: 'Vaga aberta limpa pelo gestor' })));
       loadData(true);
-      alert('Vagas abertas canceladas com sucesso!');
+      alert('Vagas abertas canceladas e removidas com sucesso!');
     } catch (e) {
-      alert('Erro ao limpar vagas.');
+      alert('Erro ao limpar vagas: ' + e.message);
     }
   };
 
-  // Publicação por Seção
   const handleConfirmPublish = () => {
     if (sectorFilter === 'todos') {
       alert('Selecione um setor específico para publicar a escala.');
@@ -746,7 +736,7 @@ function EscalasContent() {
 
   const saveBuilderShift = () => {
     if (!builderForm.name || !builderForm.start || !builderForm.end) {
-      alert('Preencha o nome do turno, horário de início e fim.');
+      alert('Preencha o nome do turno, início e fim.');
       return;
     }
     const activeDays = {};
@@ -779,7 +769,7 @@ function EscalasContent() {
   };
 
   /* ============================================================
-     IMPRESSÃO OFICIAL DO MURAL (PADRÃO HOSPITALAR A4 HORIZONTAL)
+     IMPRESSÃO OFICIAL DO MURAL (PADRÃO A4 HORIZONTAL)
      ============================================================ */
   const printOfficialHospitalSchedule = () => {
     const targetDate = selectedDate || getLocalDateString(currentTime);
@@ -918,9 +908,6 @@ function EscalasContent() {
     printWin.document.close();
   };
 
-  /* ============================================================
-     PRÉVIA DA ESCALA DO DIA (MODAL HORIZONTAL)
-     ============================================================ */
   const todayTarget = selectedDate || getLocalDateString(currentTime);
   const shiftsTodayModal = safeArray(shifts).filter(s => normalizeDate(s.date) === todayTarget && getStatusKey(s.status) !== 'cancelado');
 
@@ -956,7 +943,7 @@ function EscalasContent() {
            <div className="flex gap-6 items-center">
              <div className="text-right">
                 <div className="text-3xl font-mono text-emerald-400 font-black">{currentTime.toLocaleTimeString('pt-BR')}</div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-widest">Horário Operacional</div>
+                <div className="text-[10px] text-slate-400 uppercase tracking-widest">Horário Oficial</div>
              </div>
              <Button onClick={() => setTvMode(false)} className="bg-slate-800 hover:bg-slate-700 p-3 rounded-2xl border border-slate-700"><Minimize2 className="w-5 h-5"/></Button>
            </div>
@@ -1046,7 +1033,7 @@ function EscalasContent() {
               <span>{fmtDateLong(getLocalDateString(currentTime))} • {formatDateBR(getLocalDateString(currentTime))}</span>
               <span className="font-mono font-bold text-slate-700 dark:text-slate-200">{currentTime.toLocaleTimeString('pt-BR')}</span>
               
-              {/* BOTÃO TEMA AO LADO DA DATA/HORA */}
+              {/* BOTÃO TEMA INTEGRADO */}
               <button
                 type="button"
                 onClick={handleToggleTheme}
@@ -1208,11 +1195,11 @@ function EscalasContent() {
             {/* Calendário da Grade com Suporte a Todos os Setores e Setor Específico */}
             <div className="flex-1 overflow-auto bg-slate-50/30 dark:bg-slate-950 relative">
               {sectorFilter === 'todos' ? (
-                /* VISÃO CONSOLIDADA: MOSTRA APENAS SETORES QUE POSSUEM PLANTÕES/VAGAS */
+                /* VISÃO CONSOLIDADA DE TODOS OS SETORES */
                 <div className="p-4 space-y-6">
                   {safeArray(sectors).map(sec => {
                     const secShifts = filteredShifts.filter(s => String(s.sector_id) === String(sec.id));
-                    if (secShifts.length === 0) return null; // Não exibe seções vazias!
+                    if (secShifts.length === 0) return null;
 
                     return (
                       <div key={sec.id} className="border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
@@ -1220,7 +1207,7 @@ function EscalasContent() {
                           <h3 className="font-black text-sm text-slate-800 dark:text-slate-200 flex items-center gap-2">
                             <Building2 className="w-4 h-4 text-sky-600 dark:text-sky-400" /> {sec.name}
                           </h3>
-                          <span className="text-xs text-slate-500 font-bold">{secShifts.length} plantões no mês</span>
+                          <span className="text-xs text-slate-500">{secShifts.length} plantões no mês</span>
                         </div>
 
                         <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -1346,8 +1333,6 @@ function EscalasContent() {
                                         ? 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-slate-400 opacity-75'
                                         : rStatus === 'andamento'
                                         ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-500'
-                                        : rStatus === 'publicado'
-                                        ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-400 dark:border-emerald-700 text-slate-900 dark:text-slate-100'
                                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100'
                                     }`}>
                                       <div className="min-w-0 flex-1 pr-2">
@@ -1357,7 +1342,6 @@ function EscalasContent() {
                                         {!s.isVacant && (
                                           <div className="text-[10px] font-semibold opacity-75 mt-0.5 capitalize flex items-center gap-1">
                                             {rStatus === 'concluido' && <Lock className="w-2.5 h-2.5 inline" />}
-                                            {rStatus === 'publicado' && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 inline" />}
                                             {rStatus}
                                           </div>
                                         )}
@@ -1453,7 +1437,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO ESCALA BASE (CONFIGURAÇÃO DE TURNOS DA SEÇÃO)
+          MODO ESCALA BASE
           ======================================================== */}
       {viewMode === 'base_builder' && (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
@@ -1609,9 +1593,7 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* ========================================================
-          MODAL: MENU DE AÇÃO DA VAGA (ALOCAR / MURAL / INATIVAR)
-          ======================================================== */}
+      {/* MODAL: MENU DE AÇÃO DA VAGA */}
       {vacancyMenuModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
@@ -1624,7 +1606,6 @@ function EscalasContent() {
             </div>
 
             <div className="space-y-2.5">
-              {/* Opção 1: Alocar Profissional */}
               <button
                 onClick={() => {
                   const { date, shiftObj, sectorId } = vacancyMenuModal;
@@ -1642,7 +1623,6 @@ function EscalasContent() {
                 </div>
               </button>
 
-              {/* Opção 2: Enviar para Mural de Oportunidades */}
               <button
                 onClick={() => {
                   const { date, shiftObj, sectorId } = vacancyMenuModal;
@@ -1660,7 +1640,6 @@ function EscalasContent() {
                 </div>
               </button>
 
-              {/* Opção 3: Inativar / Reativar Vaga do Dia */}
               <button
                 onClick={() => {
                   const { date, shiftObj } = vacancyMenuModal;
@@ -1682,9 +1661,7 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* ========================================================
-          MODAL: ALOCAR PROFISSIONAL COM TRAVA RETROATIVA
-          ======================================================== */}
+      {/* MODAL: ALOCAÇÃO COM TRAVA RETROATIVA */}
       {newShiftModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
@@ -1714,21 +1691,20 @@ function EscalasContent() {
                 <div><span className="text-slate-500">Seção:</span> <strong className="text-slate-800 dark:text-slate-200">{activeSectorName}</strong></div>
               </div>
 
-              {/* TRAVA RETROATIVA OBRIGATÓRIA */}
               {isDateRetroactive(newShiftModal.date) && (
                 <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 space-y-3">
                   <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-black text-xs">
                     <ShieldAlert className="w-4 h-4" /> Lançamento Retroativo Detectado
                   </div>
                   <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                    A data selecionada já passou. Para fins de auditoria e cálculo correto de pagamentos, informe:
+                    A data selecionada já passou. Para fins de auditoria e cálculo de faturamento, informe:
                   </p>
                   <div>
                     <label className="text-[10px] font-bold uppercase text-amber-900 dark:text-amber-300 mb-1 block">O plantão foi realizado?</label>
                     <Select value={retroactivePerformed} onValueChange={setRetroactivePerformed}>
                       <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-900 border-amber-300"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="concluido">Sim, Plantão Realizado (Entra no pagamento)</SelectItem>
+                        <SelectItem value="concluido">Sim, Plantão Realizado (Entra no faturamento)</SelectItem>
                         <SelectItem value="cancelado">Não, Houve Falta / Cancelado (Sem custo)</SelectItem>
                       </SelectContent>
                     </Select>
@@ -1884,7 +1860,7 @@ function EscalasContent() {
             </div>
             <h3 className="text-base font-black text-slate-900 dark:text-white mb-1">Escala Base Salva!</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-5">
-              Deseja ir para a grade e começar a alocar os profissionais nas vagas de {activeSectorName}?
+              Deseja ir para o Builder Visual e começar a alocar os profissionais nas vagas de {activeSectorName}?
             </p>
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1 h-9 text-xs" onClick={() => setConfirmGoToAllocation(false)}>Depois</Button>
