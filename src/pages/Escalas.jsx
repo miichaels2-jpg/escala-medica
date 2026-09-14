@@ -134,6 +134,33 @@ function escapeCSV(val) { return `"${String(val ?? '').replace(/"/g, '""').repla
 function downloadFile(content, filename) { const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 async function generateSHA256(input) { try { if (!window.crypto?.subtle) return 'Indisponível'; const data = new TextEncoder().encode(input); const hashBuffer = await window.crypto.subtle.digest('SHA-256', data); return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join(''); } catch { return 'Erro'; } }
 
+function formatDateBR(val) {
+  const date = normalizeDate(val);
+  if (!date) return '--/--/----';
+  const parts = date.split('-');
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : date;
+}
+
+function fmtDate(val) {
+  const date = normalizeDate(val);
+  if (!date) return '--/--';
+  const parts = date.split('-');
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}` : date;
+}
+
+function fmtDateLong(val) {
+  const date = normalizeDate(val);
+  if (!date) return '';
+  const d = new Date(`${date}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return formatDateBR(date);
+  return d.toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
 /* ============================================================
    COMPONENTE PRINCIPAL
    ============================================================ */
@@ -153,6 +180,9 @@ export default function Escalas() {
   
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ startDate: '', endDate: '', sectorId: 'todos', professionalId: 'todos' });
+  const selectedDate = filters.startDate && filters.endDate && filters.startDate === filters.endDate
+    ? filters.startDate
+    : filters.startDate || '';
   const [selectedMonth, setSelectedMonth] = useState(() => getLocalDateString().slice(0,7));
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -171,6 +201,7 @@ export default function Escalas() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [tvMode, setTvMode] = useState(false);
+  const [createScaleState, setCreateScaleState] = useState(0);
   
   // Builder da Escala Base
   const [builderModal, setBuilderModal] = useState(null);
@@ -444,9 +475,7 @@ export default function Escalas() {
   const toggleBuilderCell = (shiftId, dayIndex) => {
     persistBuilder(builderShifts.map(s => s.id === shiftId ? { ...s, cellStates: { ...s.cellStates, [dayIndex]: !s.cellStates[dayIndex] } } : s));
   };
-  const downloadBackupBase = () => {
-    downloadFile(JSON.stringify(builderShifts, null, 2), 'backup_escala_base.json');
-  };
+  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
 
   /* ============================================================
      TV E MODO VISÃO FOCO
