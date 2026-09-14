@@ -10,7 +10,7 @@ import {
   Clock3, GripVertical, LayoutGrid, List, Loader2, Lock,
   Maximize2, Minimize2, Moon, Pencil, Plus, Printer,
   RefreshCw, Search, Send, SlidersHorizontal, Sun, Trash2, UserPlus,
-  UsersRound, X, FileText, Download, ShieldAlert
+  UsersRound, X, ShieldAlert
 } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
 
@@ -23,7 +23,7 @@ class SafeErrorBoundary extends Component {
     this.state = { hasError: false };
   }
   static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(err, info) { console.error('Crash em Escalas:', err, info); }
+  componentDidCatch(err, info) { console.error('Crash capturado em Escalas:', err, info); }
   render() {
     if (this.state.hasError) {
       return (
@@ -31,9 +31,9 @@ class SafeErrorBoundary extends Component {
           <div className="max-w-md w-full bg-slate-950 border border-slate-800 rounded-3xl p-8 shadow-2xl text-center">
             <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
             <h2 className="text-xl font-black">Recuperação de Interface</h2>
-            <p className="text-xs text-slate-400 mt-2 mb-6">Ocorreu uma instabilidade na escala. Clique para restaurar.</p>
+            <p className="text-xs text-slate-400 mt-2 mb-6">Instabilidade momentânea no layout da escala.</p>
             <Button onClick={() => window.location.reload()} className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11">
-              Recarregar Escalas
+              Recarregar Escala
             </Button>
           </div>
         </div>
@@ -46,9 +46,9 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital-escala-base-v7';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado';
-const STORAGE_PUBLISHED_KEY = 'hospital_escala_publicada';
+const STORAGE_BASE_PREFIX = 'hospital-escala-base-v8';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v8';
+const STORAGE_PUBLISHED_KEY = 'hospital_escala_publicada_v8';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -68,6 +68,12 @@ const BUILDER_COLORS = [
   { id: 'indigo', value: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 border-indigo-200', bg: 'bg-indigo-400' },
   { id: 'emerald', value: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200', bg: 'bg-emerald-400' },
   { id: 'rose', value: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 border-rose-200', bg: 'bg-rose-400' }
+];
+
+const DEFAULT_GENERIC_SHIFTS = [
+  { id: 'p_manha', name: 'Manhã', start: '07:00', end: '13:00', qty: 1, cellStates: { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true } },
+  { id: 'p_tarde', name: 'Tarde', start: '13:00', end: '19:00', qty: 1, cellStates: { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true } },
+  { id: 'p_noite', name: 'Noite', start: '19:00', end: '07:00', qty: 1, cellStates: { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true } }
 ];
 
 function safeArray(val) { return Array.isArray(val) ? val : []; }
@@ -168,9 +174,10 @@ function EscalasContent() {
   const [selectedDate, setSelectedDate] = useState('');
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
+  // Controle de Tema
   const [theme, setTheme] = useState('dark');
 
-  // Setor fixado no storage
+  // Setor fixado
   const [sectorFilter, setSectorFilter] = useState(() => {
     try { return window.localStorage.getItem(STORAGE_SECTOR_KEY) || 'todos'; } catch { return 'todos'; }
   });
@@ -202,6 +209,9 @@ function EscalasContent() {
   const [retroactiveReason, setRetroactiveReason] = useState('');
   const [retroactivePerformed, setRetroactivePerformed] = useState('concluido');
 
+  // Modal de Pré-visualização Horizontal da Escala do Dia
+  const [dayScheduleModal, setDayScheduleModal] = useState(false);
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [tvMode, setTvMode] = useState(false);
@@ -213,23 +223,24 @@ function EscalasContent() {
   const [builderForm, setBuilderForm] = useState({ id: '', name: '', start: '', end: '', qty: 1, color: BUILDER_COLORS[0], days: [] });
   const [confirmGoToAllocation, setConfirmGoToAllocation] = useState(false);
 
-  // Tema Global
+  // Inicializa e Sincroniza Tema no DOM inteiro
   useEffect(() => {
     try {
-      const savedTheme = window.localStorage.getItem('hospital-intelligence-theme');
-      const pref = savedTheme || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      setTheme(pref);
-    } catch { setTheme('dark'); }
+      const savedTheme = window.localStorage.getItem('hospital-intelligence-theme') || 'dark';
+      setTheme(savedTheme);
+      document.documentElement.classList.toggle('dark', savedTheme === 'dark');
+    } catch { 
+      setTheme('dark'); 
+      document.documentElement.classList.add('dark');
+    }
   }, []);
 
-  useEffect(() => {
-    const isDark = theme === 'dark';
-    document.documentElement.classList.toggle('dark', isDark);
-    document.body.className = isDark ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900';
-    try { window.localStorage.setItem('hospital-intelligence-theme', theme); } catch {}
-  }, [theme]);
-
-  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  const handleToggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+    try { window.localStorage.setItem('hospital-intelligence-theme', nextTheme); } catch {}
+  };
 
   const handleSectorChange = (newSectorId) => {
     setSectorFilter(newSectorId);
@@ -247,13 +258,9 @@ function EscalasContent() {
         base44?.entities?.Professional?.filter ? base44.entities.Professional.filter(query, '-created_date', 1500).catch(() => []) : [],
       ]);
 
-      const safeShifts = safeArray(Array.isArray(sRaw) ? sRaw : sRaw?.data);
-      const safeSectors = safeArray(Array.isArray(secRaw) ? secRaw : secRaw?.data);
-      const safeProfessionals = safeArray(Array.isArray(pRaw) ? pRaw : pRaw?.data);
-
-      setShifts(safeShifts);
-      setSectors(safeSectors);
-      setProfessionals(safeProfessionals);
+      setShifts(safeArray(Array.isArray(sRaw) ? sRaw : sRaw?.data));
+      setSectors(safeArray(Array.isArray(secRaw) ? secRaw : secRaw?.data));
+      setProfessionals(safeArray(Array.isArray(pRaw) ? pRaw : pRaw?.data));
     } catch (e) {
       console.warn("Erro ao carregar dados", e);
     } finally {
@@ -265,7 +272,7 @@ function EscalasContent() {
   useEffect(() => { if (!appLoading) loadData(); }, [appLoading, loadData]);
   useEffect(() => { const id = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(id); }, []);
 
-  // Escala Base por Seção
+  // Escala Base Específica por Setor (Vazia por padrão, gestor define)
   useEffect(() => {
     if (sectorFilter === 'todos') {
       setBuilderShifts([]);
@@ -318,7 +325,7 @@ function EscalasContent() {
     return [...opts].filter(Boolean).sort().reverse();
   }, [shifts, selectedMonth]);
 
-  // Lista dos Plantões com Status Real e Ordenação Crescente
+  // Lista dos Plantões Filtrados e Ordenados Crescente
   const filteredShifts = useMemo(() => {
     const result = safeArray(shifts).filter(s => {
       if (!s || getStatusKey(s.status) === 'cancelado') return false;
@@ -346,6 +353,43 @@ function EscalasContent() {
 
   const weeksDataGrid = useMemo(() => getMonthWeeks(selectedMonth), [selectedMonth]);
 
+  // Montagem Dinâmica de Linhas para a Grade (Nunca deixa a tela vazia ou em branco)
+  const displayShiftsForSector = useMemo(() => {
+    if (sectorFilter === 'todos') return [];
+    if (builderShifts.length > 0) return builderShifts;
+
+    // Se a Escala Base ainda não foi montada neste setor, extrai os horários existentes dos plantões daquele setor
+    const sectorShiftsInMonth = filteredShifts.filter(s => String(s.sector_id) === String(sectorFilter));
+    const timeSlots = new Map();
+
+    sectorShiftsInMonth.forEach(s => {
+      if (s.start_time && s.end_time) {
+        const key = `${s.start_time}-${s.end_time}`;
+        if (!timeSlots.has(key)) {
+          let name = 'Turno';
+          if (s.start_time >= '06:00' && s.start_time < '13:00') name = 'Manhã';
+          else if (s.start_time >= '13:00' && s.start_time < '19:00') name = 'Tarde';
+          else name = 'Noite';
+
+          timeSlots.set(key, {
+            id: `auto_${key}`,
+            name,
+            start: s.start_time,
+            end: s.end_time,
+            qty: 1,
+            cellStates: { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true }
+          });
+        }
+      }
+    });
+
+    if (timeSlots.size > 0) return Array.from(timeSlots.values());
+
+    // Se for um setor 100% novo sem nenhum plantão cadastrado, exibe os 3 turnos padrão para permitir alocar
+    return DEFAULT_GENERIC_SHIFTS;
+  }, [sectorFilter, builderShifts, filteredShifts]);
+
+  // Profissionais da Barra Lateral Cruzados com o Setor
   const sidebarProfessionals = useMemo(() => {
     const term = normalizeStr(profSearchQuery);
     return safeArray(professionals).filter(p => {
@@ -356,12 +400,8 @@ function EscalasContent() {
     });
   }, [professionals, profSearchQuery, sectorFilter]);
 
-  // Checagem de retroatividade
-  const isDateRetroactive = (dateStr) => {
-    return normalizeDate(dateStr) < getLocalDateString(currentTime);
-  };
+  const isDateRetroactive = (dateStr) => normalizeDate(dateStr) < getLocalDateString(currentTime);
 
-  // Alocação
   const handleCellClick = (e, date, shiftObj, sectorIdTarget = null) => {
     setSelectedCells([]);
     setSelectedProfIdForModal('');
@@ -375,7 +415,7 @@ function EscalasContent() {
 
   const assignShift = async (date, shiftDef, profId, reasonText = '', explicitStatus = 'confirmado', sectorTarget = null) => {
     const secId = sectorTarget && sectorTarget !== 'todos' ? sectorTarget : sectorFilter;
-    if (secId === 'todos') { alert("Selecione um setor específico no topo antes de alocar."); return; }
+    if (secId === 'todos') { alert("Selecione uma seção específica no topo para alocar o profissional."); return; }
     
     const prof = professionalMap[profId];
     const sectorObj = safeArray(sectors).find(s => String(s.id) === String(secId));
@@ -432,7 +472,7 @@ function EscalasContent() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Deseja cancelar este plantão? Ele será cancelado no faturamento.')) return;
+    if (!confirm('Deseja cancelar este plantão? Ele não entrará no pagamento.')) return;
     try {
       await base44.entities.Shift.update(id, { status: 'cancelado' });
       loadData(true);
@@ -443,15 +483,15 @@ function EscalasContent() {
 
   const handleClearSectorVacancies = async () => {
     if (sectorFilter === 'todos') {
-      alert('Selecione um setor específico para limpar as vagas.');
+      alert('Selecione uma seção específica para limpar as vagas.');
       return;
     }
     const vacantShifts = filteredShifts.filter(s => s.isVacant && s.id);
     if (vacantShifts.length === 0) {
-      alert('Nenhuma vaga aberta encontrada para este setor no período.');
+      alert('Nenhuma vaga aberta encontrada para esta seção.');
       return;
     }
-    if (!confirm(`Deseja cancelar ${vacantShifts.length} vaga(s) aberta(s) de ${activeSectorName}?`)) return;
+    if (!confirm(`Deseja cancelar ${vacantShifts.length} vaga(s) de ${activeSectorName}?`)) return;
 
     try {
       await Promise.all(vacantShifts.map(s => base44.entities.Shift.update(s.id, { status: 'cancelado' })));
@@ -475,7 +515,7 @@ function EscalasContent() {
     } catch (e) {}
     setPublishedInfo(payload);
     setPublishModalOpen(false);
-    alert(`Escala de ${activeSectorName} publicada com sucesso de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
+    alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
   };
 
   // Funções Escala Base
@@ -501,7 +541,7 @@ function EscalasContent() {
 
   const saveBuilderShift = () => {
     if (!builderForm.name || !builderForm.start || !builderForm.end) {
-      alert('Preencha o nome do turno, horário inicial e final.');
+      alert('Preencha o nome do turno, início e fim.');
       return;
     }
     const activeDays = {};
@@ -534,62 +574,138 @@ function EscalasContent() {
   };
 
   /* ============================================================
-     IMPRESSÃO DIÁRIA A4 / PDF DEDICADA
+     IMPRESSÃO OFICIAL DO MURAL (PADRÃO HOSPITALAR A4 HORIZONTAL)
      ============================================================ */
-  const printDaySchedule = () => {
+  const printOfficialHospitalSchedule = () => {
     const targetDate = selectedDate || getLocalDateString(currentTime);
     const dayShifts = safeArray(shifts).filter(s => normalizeDate(s.date) === targetDate && getStatusKey(s.status) !== 'cancelado');
 
-    const printWin = window.open('', '_blank', 'width=1100,height=850');
+    // Agrupa por Setor
+    const groupedBySector = {};
+    dayShifts.forEach(s => {
+      const secName = s.sector_name || 'Setor Geral';
+      if (!groupedBySector[secName]) groupedBySector[secName] = [];
+      groupedBySector[secName].push(s);
+    });
+
+    const printWin = window.open('', '_blank', 'width=1300,height=900');
     if (!printWin) {
-      alert('Permita pop-ups para imprimir a escala do dia.');
+      alert('Permita pop-ups no navegador para emitir a escala de impressão.');
       return;
     }
 
-    const rowsHtml = dayShifts.map(s => `
-      <tr>
-        <td style="padding: 8px; border: 1px solid #cbd5e1; font-weight: bold;">${s.start_time} às ${s.end_time}</td>
-        <td style="padding: 8px; border: 1px solid #cbd5e1;">${escapeHtml(s.sector_name || 'Geral')}</td>
-        <td style="padding: 8px; border: 1px solid #cbd5e1; font-size: 13px; font-weight: bold;">${escapeHtml(s.professional_name || 'Vaga Aberta')}</td>
-        <td style="padding: 8px; border: 1px solid #cbd5e1;">${s.professional_id ? 'Confirmado' : '<span style="color:red;font-weight:bold;">Vaga Aberta</span>'}</td>
-      </tr>
-    `).join('');
+    let tablesHtml = '';
+    Object.keys(groupedBySector).sort().forEach(secName => {
+      const sectorShifts = groupedBySector[secName].sort((a,b) => String(a.start_time).localeCompare(String(b.start_time)));
+      
+      const rows = sectorShifts.map(s => {
+        const rStatus = getRealTimeStatus(s.date, s.start_time, s.end_time, currentTime, s.status);
+        const statusLabel = {
+          concluido: '<span style="color:#059669; font-weight:bold;">Concluído</span>',
+          andamento: '<span style="color:#0284c7; font-weight:bold;">Em Atendimento</span>',
+          programado: '<span style="color:#475569;">Programado</span>'
+        }[rStatus] || 'Programado';
 
-    printWin.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Escala do Dia - ${formatDateBR(targetDate)}</title>
-          <style>
-            @page { size: A4 portrait; margin: 15mm; }
-            body { font-family: Arial, sans-serif; color: #0f172a; margin: 0; padding: 0; }
-            .header { border-bottom: 2px solid #0284c7; padding-bottom: 10px; margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-            th { background: #f1f5f9; padding: 8px; border: 1px solid #cbd5e1; text-align: left; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1 style="margin: 0; font-size: 20px; color: #0284c7;">ESCALA DIÁRIA OPERACIONAL</h1>
-            <p style="margin: 4px 0 0; font-size: 14px;"><strong>Data:</strong> ${formatDateBR(targetDate)} (${fmtDateLong(targetDate)})</p>
+        const isVacant = !s.professional_id || normalizeStr(s.professional_name).includes('vaga');
+        const profName = isVacant ? '<span style="color:#dc2626; font-weight:bold;">[ VAGA DESCOBERTA ]</span>' : escapeHtml(toTitleCase(s.professional_name));
+        const profObj = professionalMap[s.professional_id];
+        const docReg = profObj?.registration_number ? ` (CRM/COREN: ${profObj.registration_number})` : '';
+
+        return `
+          <tr>
+            <td style="padding: 8px 10px; border: 1px solid #94a3b8; font-family: monospace; font-size: 11px; font-weight: bold; background: #f8fafc;">
+              ${s.start_time} às ${s.end_time}
+            </td>
+            <td style="padding: 8px 10px; border: 1px solid #94a3b8; font-size: 12px; font-weight: bold;">
+              ${profName} <span style="font-size: 10px; font-weight: normal; color: #64748b;">${escapeHtml(docReg)}</span>
+            </td>
+            <td style="padding: 8px 10px; border: 1px solid #94a3b8; font-size: 11px;">
+              ${escapeHtml(profObj?.specialty || 'Clínica')}
+            </td>
+            <td style="padding: 8px 10px; border: 1px solid #94a3b8; font-size: 11px; text-align: center;">
+              ${isVacant ? '<span style="color:#dc2626; font-weight:bold;">Aberta</span>' : statusLabel}
+            </td>
+            <td style="padding: 8px 10px; border: 1px solid #94a3b8; width: 140px;"></td>
+          </tr>
+        `;
+      }).join('');
+
+      tablesHtml += `
+        <div style="margin-bottom: 20px; page-break-inside: avoid;">
+          <div style="background: #0f172a; color: white; padding: 6px 10px; font-size: 12px; font-weight: bold; text-transform: uppercase; border-radius: 4px 4px 0 0;">
+            SETOR: ${escapeHtml(secName)} (${sectorShifts.length} Plantonistas)
           </div>
-          <table>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
             <thead>
-              <tr>
-                <th>Horário</th>
-                <th>Setor</th>
-                <th>Profissional</th>
-                <th>Status</th>
+              <tr style="background: #e2e8f0; color: #0f172a; text-transform: uppercase; font-size: 10px;">
+                <th style="padding: 6px 10px; border: 1px solid #94a3b8; text-align: left; width: 120px;">Horário</th>
+                <th style="padding: 6px 10px; border: 1px solid #94a3b8; text-align: left;">Plantonista Escalado</th>
+                <th style="padding: 6px 10px; border: 1px solid #94a3b8; text-align: left; width: 150px;">Especialidade</th>
+                <th style="padding: 6px 10px; border: 1px solid #94a3b8; text-align: center; width: 130px;">Status</th>
+                <th style="padding: 6px 10px; border: 1px solid #94a3b8; text-align: center; width: 140px;">Assinatura / Visto</th>
               </tr>
             </thead>
             <tbody>
-              ${rowsHtml || '<tr><td colspan="4" style="text-align:center;padding:20px;">Nenhum plantão cadastrado para esta data.</td></tr>'}
+              ${rows}
             </tbody>
           </table>
-          <p style="margin-top: 30px; font-size: 10px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 8px;">
-            Documento emitido em ${new Date().toLocaleString('pt-BR')} pelo Sistema de Escala e Plantões.
-          </p>
-          <script>window.onload = function() { window.print(); };</script>
+        </div>
+      `;
+    });
+
+    printWin.document.write(`
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8">
+          <title>Escala Oficial do Dia - ${formatDateBR(targetDate)}</title>
+          <style>
+            @page { size: A4 landscape; margin: 10mm; }
+            body { font-family: 'Arial', sans-serif; color: #0f172a; margin: 0; padding: 0; background: #ffffff; }
+            .header-box { border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: flex-end; }
+            .title { font-size: 18px; font-weight: 900; color: #0f172a; text-transform: uppercase; margin: 0; }
+            .subtitle { font-size: 12px; color: #475569; font-weight: bold; margin-top: 4px; }
+            .meta { text-align: right; font-size: 10px; color: #334155; }
+            .signatures-box { display: flex; justify-content: space-between; margin-top: 35px; page-break-inside: avoid; }
+            .sig-line { width: 280px; border-top: 1px solid #0f172a; text-align: center; font-size: 10px; font-weight: bold; padding-top: 4px; }
+            @media screen {
+              body { background: #e2e8f0; padding: 25px; }
+              .sheet { background: #ffffff; padding: 30px; max-width: 1300px; margin: 0 auto; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+              .no-print { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 15px; }
+              .no-print button { padding: 8px 16px; font-weight: bold; cursor: pointer; border-radius: 6px; border: 0; }
+              .btn-p { background: #0284c7; color: white; }
+              .btn-c { background: #94a3b8; color: white; }
+            }
+            @media print {
+              .no-print { display: none !important; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="no-print">
+            <button class="btn-p" onclick="window.print()">Imprimir A4 Mural</button>
+            <button class="btn-c" onclick="window.close()">Fechar</button>
+          </div>
+          <div class="sheet">
+            <div class="header-box">
+              <div>
+                <h1 class="title">ESCALA OPERACIONAL DIÁRIA DE PLANTÕES</h1>
+                <div class="subtitle">DATA OFICIAL: ${formatDateBR(targetDate)} (${fmtDateLong(targetDate).toUpperCase()})</div>
+              </div>
+              <div class="meta">
+                <div><strong>Unidade:</strong> ${escapeHtml(company?.name || 'Hospital')}</div>
+                <div><strong>Emissão:</strong> ${new Date().toLocaleString('pt-BR')}</div>
+              </div>
+            </div>
+
+            ${tablesHtml || '<div style="padding: 40px; text-align: center; color: #64748b; font-weight: bold;">Nenhum plantão ativo cadastrado para a data de hoje.</div>'}
+
+            <div class="signatures-box">
+              <div class="sig-line">Coordenação Médica / Plantão Controlador</div>
+              <div class="sig-line">Diretoria Clínica / Gestão Hospitalar</div>
+            </div>
+          </div>
+          <script>window.onload = function() { setTimeout(function(){ window.print(); }, 400); };</script>
         </body>
       </html>
     `);
@@ -599,7 +715,23 @@ function EscalasContent() {
   const escapeHtml = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   /* ============================================================
-     MODO TV EM TELA CHEIA (TODOS OS SETORES PLANEJADOS NO DIA)
+     MODAL DE PRÉ-VISUALIZAÇÃO HORIZONTAL DA ESCALA DO DIA
+     ============================================================ */
+  const todayTarget = selectedDate || getLocalDateString(currentTime);
+  const shiftsTodayModal = safeArray(shifts).filter(s => normalizeDate(s.date) === todayTarget && getStatusKey(s.status) !== 'cancelado');
+
+  const groupedModalBySector = useMemo(() => {
+    const map = {};
+    shiftsTodayModal.forEach(s => {
+      const secName = s.sector_name || 'Setor Geral';
+      if (!map[secName]) map[secName] = [];
+      map[secName].push(s);
+    });
+    return map;
+  }, [shiftsTodayModal]);
+
+  /* ============================================================
+     MODAL DE MODO TV EM TELA CHEIA
      ============================================================ */
   if (tvMode) {
     const todayStr = getLocalDateString(currentTime);
@@ -614,13 +746,13 @@ function EscalasContent() {
              </div>
              <div>
                <h1 className="text-3xl font-black tracking-tight text-white">Escala e Plantões TV</h1>
-               <p className="text-sm text-sky-400 font-semibold">{fmtDateLong(todayStr)} • {formatDateBR(todayStr)} (Todos os Setores)</p>
+               <p className="text-sm text-sky-400 font-semibold">{fmtDateLong(todayStr)} • ${formatDateBR(todayStr)} (Todos os Setores Ativos)</p>
              </div>
            </div>
            <div className="flex gap-6 items-center">
              <div className="text-right">
                 <div className="text-3xl font-mono text-emerald-400 font-black">{currentTime.toLocaleTimeString('pt-BR')}</div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-widest">Horário Oficial</div>
+                <div className="text-[10px] text-slate-400 uppercase tracking-widest">Horário Operacional</div>
              </div>
              <Button onClick={() => setTvMode(false)} className="bg-slate-800 hover:bg-slate-700 p-3 rounded-2xl border border-slate-700"><Minimize2 className="w-5 h-5"/></Button>
            </div>
@@ -683,12 +815,12 @@ function EscalasContent() {
   }
 
   /* ============================================================
-     TELA PRINCIPAL (100% LARGURA)
+     LAYOUT PRINCIPAL
      ============================================================ */
   return (
-    <div className="flex flex-col h-screen overflow-hidden transition-colors duration-200">
+    <div className="flex flex-col h-screen overflow-hidden bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
-      {/* CABEÇALHO UNIFICADO NO TOPO */}
+      {/* CABEÇALHO SUPERIOR */}
       <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-3 px-6 lg:px-8 flex flex-wrap items-center justify-between gap-4 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center shadow-md">
@@ -702,11 +834,24 @@ function EscalasContent() {
                 {activeSectorName}
               </div>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium">Gestão Operacional e Alocação Médica</p>
+            <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+              <span>{fmtDateLong(getLocalDateString(currentTime))} • {formatDateBR(getLocalDateString(currentTime))}</span>
+              <span className="font-mono font-bold text-slate-700 dark:text-slate-200">{currentTime.toLocaleTimeString('pt-BR')}</span>
+              
+              {/* BOTÃO TEMA AO LADO DA DATA/HORA */}
+              <button
+                type="button"
+                onClick={handleToggleTheme}
+                className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors ml-1 text-slate-600 dark:text-slate-300"
+                title={theme === 'dark' ? 'Ativar Modo Claro' : 'Ativar Modo Escuro'}
+              >
+                {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* NAVEGAÇÃO DE ABAS SUPERIORES */}
+        {/* NAVEGAÇÃO DE ABAS NO CENTRO */}
         <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
           <button
             onClick={() => setViewMode('grade')}
@@ -736,19 +881,15 @@ function EscalasContent() {
           </button>
         </div>
 
-        {/* AÇÕES DO TOPO */}
+        {/* AÇÕES NO TOPO DIREITO */}
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={toggleTheme} className="border-slate-200 dark:border-slate-800 text-xs h-9">
-            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
-          </Button>
-
           <Button variant="outline" onClick={() => loadData(true)} disabled={refreshing} className="border-slate-200 dark:border-slate-800 text-xs h-9">
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${refreshing ? 'animate-spin' : ''}`} /> Atualizar
           </Button>
 
-          {/* BOTÃO ESCALA DIA DEDICADO */}
-          <Button onClick={printDaySchedule} variant="outline" className="border-sky-500/40 text-sky-600 dark:text-sky-400 text-xs h-9 font-bold bg-sky-50 dark:bg-sky-950/20">
-            <Printer className="w-3.5 h-3.5 mr-1.5" /> Escala do Dia
+          {/* BOTÃO ESCALA DO DIA - ABRE PRÉVIA HORIZONTAL */}
+          <Button onClick={() => setDayScheduleModal(true)} variant="outline" className="border-sky-500/40 text-sky-600 dark:text-sky-400 text-xs h-9 font-bold bg-sky-50 dark:bg-sky-950/20">
+            <FileText className="w-3.5 h-3.5 mr-1.5" /> Escala do Dia
           </Button>
 
           <Button onClick={() => setTvMode(true)} className="bg-slate-800 hover:bg-slate-700 text-white text-xs h-9 font-bold">
@@ -765,12 +906,12 @@ function EscalasContent() {
 
       {/* BARRA DE FILTROS SUPERIOR */}
       {viewMode !== 'base_builder' && (
-        <div className="bg-slate-100/60 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 p-2.5 px-6 lg:px-8 flex flex-wrap items-center justify-between gap-4 shrink-0">
+        <div className="bg-slate-200/50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 p-2.5 px-6 lg:px-8 flex flex-wrap items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase text-slate-400">Mês:</span>
+              <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Mês:</span>
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger className="h-8 w-40 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-8 w-40 text-xs bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {monthOptions.map(m => {
                     const d = new Date(Number(m.split('-')[0]), Number(m.split('-')[1]) - 1, 1);
@@ -782,17 +923,16 @@ function EscalasContent() {
             
             {viewMode === 'list' && (
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase text-slate-400">Dia Específico:</span>
-                <Input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="h-8 w-36 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800" />
+                <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Dia:</span>
+                <Input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="h-8 w-36 text-xs bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800" />
                 {selectedDate && <button onClick={() => setSelectedDate('')} className="text-xs text-sky-600 dark:text-sky-400 hover:underline">Ver mês inteiro</button>}
               </div>
             )}
 
-            {/* SELETOR DE SEÇÃO */}
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase text-slate-400">Seção Ativa:</span>
+              <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Seção Ativa:</span>
               <Select value={sectorFilter} onValueChange={handleSectorChange}>
-                <SelectTrigger className="h-8 w-56 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 font-bold text-sky-600 dark:text-sky-400">
+                <SelectTrigger className="h-8 w-56 text-xs bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800 font-bold text-sky-600 dark:text-sky-400">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -838,7 +978,7 @@ function EscalasContent() {
                 </div>
                 <div className="relative">
                   <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-slate-400" />
-                  <Input placeholder="Buscar médico..." value={profSearchQuery} onChange={e => setProfSearchQuery(e.target.value)} className="pl-8 h-7 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                  <Input placeholder="Buscar profissional..." value={profSearchQuery} onChange={e => setProfSearchQuery(e.target.value)} className="pl-8 h-7 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
                 </div>
               </div>
               
@@ -848,17 +988,17 @@ function EscalasContent() {
                     <GripVertical className="w-4 h-4 text-slate-400 group-hover:text-sky-500 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <div className="font-bold text-xs text-slate-900 dark:text-slate-100 break-words leading-tight">{prof.name || prof.full_name || 'Profissional'}</div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">{prof.specialty || 'Clínico Geral'}</div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{prof.specialty || 'Clínico Geral'}</div>
                     </div>
                   </div>
                 ))}
                 {sidebarProfessionals.length === 0 && (
-                  <div className="p-6 text-center text-xs text-slate-400">Nenhum profissional encontrado para {activeSectorName}.</div>
+                  <div className="p-6 text-center text-xs text-slate-400">Nenhum profissional para {activeSectorName}.</div>
                 )}
               </div>
             </div>
 
-            {/* Calendário da Grade com Suporte a Todos os Setores */}
+            {/* Calendário da Grade */}
             <div className="flex-1 overflow-auto bg-slate-50/30 dark:bg-slate-950 relative">
               {sectorFilter === 'todos' ? (
                 /* VISÃO CONSOLIDADA DE TODOS OS SETORES */
@@ -907,17 +1047,8 @@ function EscalasContent() {
                     );
                   })}
                 </div>
-              ) : builderShifts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">
-                  <SlidersHorizontal className="w-12 h-12 mb-3 text-slate-400" />
-                  <p className="font-bold text-slate-700 dark:text-slate-300">Escala Base Vazia para {activeSectorName}</p>
-                  <p className="text-xs text-slate-500 mt-1 mb-4">Você ainda não configurou os turnos e vagas dessa seção.</p>
-                  <Button onClick={() => setViewMode('base_builder')} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-9">
-                    Configurar Escala Base da Seção
-                  </Button>
-                </div>
               ) : (
-                /* VISÃO DA GRADE DO SETOR ESPECÍFICO */
+                /* VISÃO DA GRADE DO SETOR ESPECÍFICO (Com Fallback Dinâmico) */
                 <div className="min-w-[900px] pb-8">
                   <div className="grid grid-cols-8 border-b border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 sticky top-0 z-20 shadow-sm">
                     <div className="p-3 border-r border-slate-200 dark:border-slate-800 flex items-center justify-center font-black text-xs text-slate-500 uppercase tracking-wider bg-slate-200/60 dark:bg-slate-950">Turno</div>
@@ -937,7 +1068,7 @@ function EscalasContent() {
                         ))}
                       </div>
 
-                      {builderShifts.map((period) => (
+                      {displayShiftsForSector.map((period) => (
                         <div key={period.id} className="grid grid-cols-8 border-b border-slate-200 dark:border-slate-800/80 last:border-b-0 group">
                           
                           <div className="p-3 border-r border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex flex-col items-center justify-center text-center">
@@ -1021,13 +1152,11 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* ========================================================
-          MODO LISTA DIÁRIA (ORDEM CRESCENTE E STATUS REAIS)
-          ======================================================== */}
+      {/* ===================== MODO LISTA DIÁRIA ===================== */}
       {viewMode === 'list' && (
         <div className="overflow-y-auto p-4 sm:px-8 space-y-3 flex-1">
            {filteredShifts.length === 0 ? (
-              <div className="py-16 text-center text-slate-400">Nenhum plantão localizado com os critérios selecionados.</div>
+              <div className="py-16 text-center text-slate-400">Nenhum plantão localizado para o período filtrado.</div>
             ) : (
               filteredShifts.map(s => {
                 const statusConfig = {
@@ -1088,7 +1217,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO ESCALA BASE (SEM HORÁRIOS ENGESSADOS)
+          MODO ESCALA BASE (CONFIGURADOR AUTÔNOMO)
           ======================================================== */}
       {viewMode === 'base_builder' && (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
@@ -1099,7 +1228,7 @@ function EscalasContent() {
                   <h2 className="text-xl font-black text-slate-900 dark:text-white">Escala Base: {activeSectorName}</h2>
                   <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold">Modo Edição</span>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Crie as linhas de turnos que sua escala precisa. Passe o mouse nos dias para ativar ou desativar vagas.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Defina os turnos e a quantidade de vagas da semana. Clique nos dias para ativar ou desativar vagas.</p>
               </div>
               
               <div className="flex items-center gap-3">
@@ -1180,8 +1309,158 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODAL DE PUBLICAÇÃO DE ESCALA POR INTERVALO
+          MODAL HORIZONTAL: ESCALA DO DIA (PRÉVIA COMPLETA)
           ======================================================== */}
+      {dayScheduleModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-6xl max-h-[90vh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col">
+            
+            {/* Header do Modal */}
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4 mb-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <CalendarDays className="w-5 h-5 text-sky-600 dark:text-sky-400" /> Pré-visualização da Escala do Dia
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Data: <strong>{formatDateBR(todayTarget)}</strong> ({fmtDateLong(todayTarget)}) • {shiftsTodayModal.length} plantões cadastrados
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button onClick={printOfficialHospitalSchedule} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-9 gap-1.5">
+                  <Printer className="w-4 h-4" /> Imprimir A4 Mural
+                </Button>
+                <button onClick={() => setDayScheduleModal(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white"><X className="w-5 h-5" /></button>
+              </div>
+            </div>
+
+            {/* Conteúdo Horizontal em Grade por Setor */}
+            <div className="flex-1 overflow-y-auto space-y-6 pr-2">
+              {Object.keys(groupedModalBySector).length === 0 ? (
+                <div className="py-16 text-center text-slate-400 font-medium">Nenhum plantão ativo para esta data.</div>
+              ) : (
+                Object.keys(groupedModalBySector).sort().map(secName => (
+                  <div key={secName} className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50/50 dark:bg-slate-950">
+                    <div className="bg-slate-100 dark:bg-slate-800/80 p-3 px-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
+                      <h3 className="font-bold text-xs uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                        <Building2 className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" /> {secName}
+                      </h3>
+                      <span className="text-[11px] font-bold text-slate-500">{groupedModalBySector[secName].length} Plantonistas</span>
+                    </div>
+
+                    <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {groupedModalBySector[secName].map(s => {
+                        const rStatus = getRealTimeStatus(s.date, s.start_time, s.end_time, currentTime, s.status);
+                        const isVacant = !s.professional_id || normalizeStr(s.professional_name).includes('vaga');
+                        return (
+                          <div key={s.id} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between">
+                            <div>
+                              <div className="flex justify-between items-center text-[10px] font-mono text-sky-600 dark:text-sky-400 font-bold mb-1">
+                                <span>{s.start_time} - {s.end_time}</span>
+                                <span className="capitalize text-slate-500">{rStatus}</span>
+                              </div>
+                              <div className="font-black text-xs text-slate-900 dark:text-slate-100 break-words">{isVacant ? 'Vaga Aberta' : toTitleCase(s.professional_name)}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MODAL: ALOCAR PROFISSIONAL COM TRAVA RETROATIVA
+          ======================================================== */}
+      {newShiftModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
+              <h3 className="text-base font-black text-slate-900 dark:text-white">Alocar Plantonista</h3>
+              <button onClick={() => setNewShiftModal(null)}><X className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Profissional:</label>
+                <Select value={selectedProfIdForModal || newShiftModal.preSelectedProfId || undefined} onValueChange={setSelectedProfIdForModal}>
+                  <SelectTrigger className="h-10 text-xs font-semibold">
+                    <SelectValue placeholder="Selecione o médico..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sidebarProfessionals.map(p => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.name || p.full_name || 'Sem nome'}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-1">
+                <div><span className="text-slate-500">Data:</span> <strong className="text-slate-800 dark:text-slate-200">{formatDateBR(newShiftModal.date)} ({fmtDateLong(newShiftModal.date)})</strong></div>
+                <div><span className="text-slate-500">Horário:</span> <strong className="text-sky-600 dark:text-sky-400 font-mono">{newShiftModal.shiftObj.start} às {newShiftModal.shiftObj.end}</strong></div>
+                <div><span className="text-slate-500">Seção:</span> <strong className="text-slate-800 dark:text-slate-200">{activeSectorName}</strong></div>
+              </div>
+
+              {/* ALERTA E TRAVA RETROATIVA OBRIGATÓRIA */}
+              {isDateRetroactive(newShiftModal.date) && (
+                <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 space-y-3">
+                  <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-black text-xs">
+                    <ShieldAlert className="w-4 h-4" /> Lançamento Retroativo Detectado
+                  </div>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                    A data selecionada já passou. Para fins de pagamento e conformidade, informe o status e a justificativa:
+                  </p>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-amber-900 dark:text-amber-300 mb-1 block">O plantão foi realizado?</label>
+                    <Select value={retroactivePerformed} onValueChange={setRetroactivePerformed}>
+                      <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-900 border-amber-300"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="concluido">Sim, Plantão Realizado (Conta no pagamento)</SelectItem>
+                        <SelectItem value="cancelado">Não, Houve Falta / Cancelado (Sem custo)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-amber-900 dark:text-amber-300 mb-1 block">Justificativa obrigatória *</label>
+                    <Input 
+                      placeholder="Motivo do preenchimento posterior..." 
+                      value={retroactiveReason} 
+                      onChange={e => setRetroactiveReason(e.target.value)}
+                      className="h-8 text-xs bg-white dark:bg-slate-900 border-amber-300"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setNewShiftModal(null)} className="h-9 text-xs">Cancelar</Button>
+                <Button 
+                  onClick={() => {
+                    const profId = selectedProfIdForModal || newShiftModal.preSelectedProfId;
+                    if (!profId) { alert('Selecione um profissional.'); return; }
+                    if (isDateRetroactive(newShiftModal.date) && !retroactiveReason.trim()) {
+                      alert('A justificativa é obrigatória para plantões retroativos.');
+                      return;
+                    }
+                    const explicitStatus = isDateRetroactive(newShiftModal.date) ? retroactivePerformed : 'confirmado';
+                    assignShift(newShiftModal.date, newShiftModal.shiftObj, profId, retroactiveReason, explicitStatus, newShiftModal.sectorIdTarget);
+                    setNewShiftModal(null);
+                  }}
+                  className="h-9 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs"
+                >
+                  Confirmar Alocação
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: PUBLICAÇÃO POR INTERVALO */}
       {publishModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
@@ -1246,93 +1525,6 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* ========================================================
-          MODAL: ALOCAR PROFISSIONAL COM TRAVA RETROATIVA
-          ======================================================== */}
-      {newShiftModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
-              <h3 className="text-base font-black text-slate-900 dark:text-white">Alocar Plantonista</h3>
-              <button onClick={() => setNewShiftModal(null)}><X className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              <div>
-                <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Profissional:</label>
-                <Select value={selectedProfIdForModal || newShiftModal.preSelectedProfId || undefined} onValueChange={setSelectedProfIdForModal}>
-                  <SelectTrigger className="h-10 text-xs font-semibold">
-                    <SelectValue placeholder="Selecione o médico..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sidebarProfessionals.map(p => (
-                      <SelectItem key={p.id} value={String(p.id)}>{p.name || p.full_name || 'Sem nome'}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-1">
-                <div><span className="text-slate-500">Data:</span> <strong className="text-slate-800 dark:text-slate-200">{formatDateBR(newShiftModal.date)} ({fmtDateLong(newShiftModal.date)})</strong></div>
-                <div><span className="text-slate-500">Horário:</span> <strong className="text-sky-600 dark:text-sky-400 font-mono">{newShiftModal.shiftObj.start} às {newShiftModal.shiftObj.end}</strong></div>
-                <div><span className="text-slate-500">Seção:</span> <strong className="text-slate-800 dark:text-slate-200">{activeSectorName}</strong></div>
-              </div>
-
-              {/* ALERTA E BLOQUEIO DE RETROATIVO */}
-              {isDateRetroactive(newShiftModal.date) && (
-                <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 space-y-3">
-                  <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-black text-xs">
-                    <ShieldAlert className="w-4 h-4" /> Plantão Retroativo Detectado
-                  </div>
-                  <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                    A data selecionada já passou. Para fins de pagamento e conformidade, informe o status e a justificativa:
-                  </p>
-                  <div>
-                    <label className="text-[10px] font-bold uppercase text-amber-900 dark:text-amber-300 mb-1 block">O plantão foi realizado?</label>
-                    <Select value={retroactivePerformed} onValueChange={setRetroactivePerformed}>
-                      <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-900 border-amber-300"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="concluido">Sim, Plantão Realizado (Conta em pagamento)</SelectItem>
-                        <SelectItem value="cancelado">Não, Houve Falta / Cancelado (Sem custo)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold uppercase text-amber-900 dark:text-amber-300 mb-1 block">Justificativa da alteração retroativa *</label>
-                    <Input 
-                      placeholder="Motivo da inclusão tardia..." 
-                      value={retroactiveReason} 
-                      onChange={e => setRetroactiveReason(e.target.value)}
-                      className="h-8 text-xs bg-white dark:bg-slate-900 border-amber-300"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setNewShiftModal(null)} className="h-9 text-xs">Cancelar</Button>
-                <Button 
-                  onClick={() => {
-                    const profId = selectedProfIdForModal || newShiftModal.preSelectedProfId;
-                    if (!profId) { alert('Selecione um profissional.'); return; }
-                    if (isDateRetroactive(newShiftModal.date) && !retroactiveReason.trim()) {
-                      alert('A justificativa é obrigatória para lançamento retroativo.');
-                      return;
-                    }
-                    const explicitStatus = isDateRetroactive(newShiftModal.date) ? retroactivePerformed : 'confirmado';
-                    assignShift(newShiftModal.date, newShiftModal.shiftObj, profId, retroactiveReason, explicitStatus, newShiftModal.sectorIdTarget);
-                    setNewShiftModal(null);
-                  }}
-                  className="h-9 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs"
-                >
-                  Confirmar Alocação
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* MODAL: CONFIRMAÇÃO PÓS-SALVAR ESCALA BASE */}
       {confirmGoToAllocation && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1352,7 +1544,7 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* MODAL: NOVO TURNO NA ESCALA BASE */}
+      {/* MODAL: NOVO TURNO NO BUILDER */}
       {builderModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
@@ -1386,7 +1578,7 @@ function EscalasContent() {
               </div>
 
               <div>
-                <label className="text-[10px] font-bold uppercase text-slate-400 mb-2 block">Dias Ativos Iniciais:</label>
+                <label className="text-[10px] font-bold uppercase text-slate-400 mb-2 block">Dias Ativos na Semana:</label>
                 <div className="grid grid-cols-7 gap-1">
                   {WEEK_DAYS_ORDER.map(day => {
                     const isSelected = (builderForm.days || []).includes(day.index);
@@ -1415,6 +1607,7 @@ function EscalasContent() {
         </div>
       )}
 
+      {/* DIALOG DE CRIAÇÃO AVULSA */}
       <ShiftFormDialog 
         open={dialogOpen} 
         onClose={() => setDialogOpen(false)} 
