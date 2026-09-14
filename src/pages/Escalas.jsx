@@ -175,6 +175,35 @@ function getStatus(shift) {
   return String(shift?.status || 'aberto').toLowerCase();
 }
 
+function getOperationalStatus(shift) {
+  const raw = getStatus(shift);
+  if (raw === 'cancelado' || raw === 'canceled') return 'cancelado';
+  if (['finalizado', 'finalizada', 'concluido', 'concluida', 'completed', 'realizado', 'realizada'].includes(raw)) return 'realizado';
+  const date = normalizeDate(shift?.date);
+  const today = localDateString();
+  if (date && date < today) return 'realizado';
+  if (date === today) return 'em_andamento';
+  return 'planejado';
+}
+
+function statusLabel(status) {
+  return ({
+    realizado: 'Realizado',
+    em_andamento: 'Em andamento',
+    planejado: 'Planejado',
+    cancelado: 'Cancelado',
+  })[status] || 'Planejado';
+}
+
+function statusClass(status) {
+  return ({
+    realizado: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+    em_andamento: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
+    planejado: 'bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-200',
+    cancelado: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-200',
+  })[status] || 'bg-slate-100 text-slate-700';
+}
+
 function isAssignedShift(shift) {
   return Boolean(getProfessionalId(shift)) && !normalizeText(shift?.professional_name).includes('vaga');
 }
@@ -401,12 +430,18 @@ export default function CentralInteligenciaHospitalar() {
   }, [sectors, sectorId]);
 
   const filteredShifts = useMemo(() => {
-    return safeArray(shifts).filter((shift) => {
-      const date = normalizeDate(shift?.date);
-      if (!date || !date.startsWith(selectedMonth)) return false;
-      if (sectorId !== 'todos' && String(shift?.sector_id) !== String(sectorId)) return false;
-      return getStatus(shift) !== 'cancelado' && getStatus(shift) !== 'canceled';
-    });
+    return safeArray(shifts)
+      .filter((shift) => {
+        const date = normalizeDate(shift?.date);
+        if (!date || !date.startsWith(selectedMonth)) return false;
+        if (sectorId !== 'todos' && String(shift?.sector_id) !== String(sectorId)) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const dateCompare = normalizeDate(a?.date).localeCompare(normalizeDate(b?.date));
+        if (dateCompare !== 0) return dateCompare;
+        return String(a?.start_time || '').localeCompare(String(b?.start_time || ''));
+      });
   }, [shifts, selectedMonth, sectorId]);
 
   const sidebarProfessionals = useMemo(() => {
@@ -430,9 +465,9 @@ export default function CentralInteligenciaHospitalar() {
     let open = 0;
     let hours = 0;
     safeArray(filteredShifts).forEach((s) => {
-      const status = getStatus(s);
-      if (isAssignedShift(s) && ['confirmado', 'confirmed', 'concluido', 'completed'].includes(status)) confirmed += 1;
-      else if (['pendente', 'pending'].includes(status)) pending += 1;
+      const status = getOperationalStatus(s);
+      if (isAssignedShift(s) && ['realizado', 'em_andamento', 'planejado'].includes(status)) confirmed += 1;
+      else if (status === 'cancelado') pending += 1;
       else open += 1;
       hours += getShiftHours(s);
     });
@@ -565,12 +600,55 @@ export default function CentralInteligenciaHospitalar() {
     persistBuilder({ ...builder, shifts: next });
   };
 
+  const backupLocal = () => {
+    try {
+      const payload = {
+        version: 5,
+        exportedAt: new Date().toISOString(),
+        companyId,
+        unitId,
+        escala: normalizeBuilderData(builder),
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backup-escala-${builder.startDate || localDateString()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      audit('BACKUP', 'Backup local da escala base exportado.');
+      setBuilderSaved(true);
+      setTimeout(() => setBuilderSaved(false), 2500);
+    } catch (err) {
+      console.error(err);
+      alert('Não foi possível gerar o backup local.');
+    }
+  };
+
+  const importBackup = async (file) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const restored = normalizeBuilderData(parsed?.escala || parsed);
+      persistBuilder(restored);
+      audit('RESTAURAÇÃO', 'Backup local restaurado na escala base.');
+      setBuilderSaved(true);
+      setTimeout(() => setBuilderSaved(false), 2500);
+    } catch (err) {
+      console.error(err);
+      alert('Arquivo de backup inválido.');
+    }
+  };
+
   const saveScaleBase = () => {
-    persistBuilder(builder);
-    audit('SALVAMENTO', `Escala base ${builder.scaleName || 'sem nome'} salva.`);
+    const normalized = persistBuilder(builder);
+    setSelectedMonth(normalized.startDate ? normalized.startDate.slice(0, 7) : selectedMonth);
+    audit('SALVAMENTO', `Escala base ${normalized.scaleName || 'sem nome'} salva.`);
     setBuilderSaved(true);
-    setTimeout(() => setBuilderSaved(false), 2500);
-    setViewMode('grade');
+    setTimeout(() => setBuilderSaved(false), 3500);
   };
 
   const openAllocation = (date, builderShift, slotIndex = 0) => {
@@ -593,17 +671,17 @@ export default function CentralInteligenciaHospitalar() {
     return sidebarProfessionals.filter((p) => !term || normalizeText(p?.name).includes(term) || normalizeText(p?.specialty).includes(term));
   }, [sidebarProfessionals, allocationSearch]);
 
-  const assignProfessional = async (professional) => {
-    if (!allocationModal || !professional?.id) return;
+  const assignProfessional = async (professional, target = allocationModal) => {
+    if (!target || !professional?.id) return;
     if (!selectedSector?.id) {
       alert('Selecione um setor antes de alocar um profissional.');
       return;
     }
 
-    const bShift = getBuilderShift(allocationModal.builderShiftId);
+    const bShift = getBuilderShift(target.builderShiftId);
     if (!bShift) return;
 
-    const date = allocationModal.date;
+    const date = target.date;
     const payload = {
       company_id: companyId,
       unit_id: unitId,
@@ -629,6 +707,17 @@ export default function CentralInteligenciaHospitalar() {
       console.error(err);
       alert(`Não foi possível alocar o profissional: ${err?.message || 'erro desconhecido'}`);
     }
+  };
+
+  const dropProfessional = (professional, date, builderShiftId, slotIndex) => {
+    if (!professional?.id) return;
+    const bShift = getBuilderShift(builderShiftId);
+    if (!bShift) return;
+    if (!selectedSector?.id) {
+      alert('Selecione um setor para alocar por arrastar e soltar.');
+      return;
+    }
+    assignProfessional(professional, { date, builderShiftId, slotIndex });
   };
 
   const cancelShift = async (shift) => {
@@ -658,7 +747,7 @@ export default function CentralInteligenciaHospitalar() {
 
   const exportReport = () => {
     const rows = [
-      ['CENTRAL DE INTELIGÊNCIA HOSPITALAR'],
+      ['ESCALA E PLANTÕES'],
       ['Relatório', REPORTS[activeReport]?.label || 'Relatório'],
       ['Mês', selectedMonth],
       ['Setor', selectedSector?.name || 'Todos'],
@@ -683,7 +772,7 @@ export default function CentralInteligenciaHospitalar() {
       return;
     }
     const rows = byProfessional.map((r) => `<tr><td>${escapeHtml(r.name)}</td><td>${r.total}</td><td>${r.hours.toFixed(1)}h</td></tr>`).join('');
-    win.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório Hospitalar</title><style>@page{size:A4 landscape;margin:12mm}body{font-family:Arial,sans-serif;color:#0f172a;font-size:12px}h1{font-size:22px;margin:0 0 4px}h2{font-size:14px;margin:24px 0 8px;border-bottom:1px solid #cbd5e1;padding-bottom:5px}.meta{color:#475569;margin-bottom:20px}.cards{display:flex;gap:10px}.card{border:1px solid #cbd5e1;padding:10px;flex:1}.label{font-size:10px;color:#64748b;text-transform:uppercase}.value{font-size:18px;font-weight:700;margin-top:4px}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #cbd5e1;padding:7px;text-align:left}th{background:#e2e8f0}</style></head><body><h1>CENTRAL DE INTELIGÊNCIA HOSPITALAR</h1><div class="meta">${escapeHtml(REPORTS[activeReport]?.label || 'Relatório')} • ${escapeHtml(selectedMonth)} • ${escapeHtml(selectedSector?.name || 'Todos os setores')}</div><div class="cards"><div class="card"><div class="label">Registros</div><div class="value">${baseMetrics.total}</div></div><div class="card"><div class="label">Confirmados</div><div class="value">${baseMetrics.confirmed}</div></div><div class="card"><div class="label">Cobertura</div><div class="value">${baseMetrics.coverage.toFixed(1)}%</div></div><div class="card"><div class="label">Horas</div><div class="value">${baseMetrics.hours.toFixed(1)}h</div></div></div><h2>Produtividade por profissional</h2><table><thead><tr><th>Profissional</th><th>Plantões</th><th>Horas</th></tr></thead><tbody>${rows || '<tr><td colspan="3">Nenhum registro.</td></tr>'}</tbody></table><p style="margin-top:30px;border-top:1px solid #cbd5e1;padding-top:10px;color:#64748b">Gerado em ${escapeHtml(new Date().toLocaleString('pt-BR'))}</p></body></html>`);
+    win.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório Hospitalar</title><style>@page{size:A4 landscape;margin:12mm}body{font-family:Arial,sans-serif;color:#0f172a;font-size:12px}h1{font-size:22px;margin:0 0 4px}h2{font-size:14px;margin:24px 0 8px;border-bottom:1px solid #cbd5e1;padding-bottom:5px}.meta{color:#475569;margin-bottom:20px}.cards{display:flex;gap:10px}.card{border:1px solid #cbd5e1;padding:10px;flex:1}.label{font-size:10px;color:#64748b;text-transform:uppercase}.value{font-size:18px;font-weight:700;margin-top:4px}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #cbd5e1;padding:7px;text-align:left}th{background:#e2e8f0}</style></head><body><h1>ESCALA E PLANTÕES</h1><div class="meta">${escapeHtml(REPORTS[activeReport]?.label || 'Relatório')} • ${escapeHtml(selectedMonth)} • ${escapeHtml(selectedSector?.name || 'Todos os setores')}</div><div class="cards"><div class="card"><div class="label">Registros</div><div class="value">${baseMetrics.total}</div></div><div class="card"><div class="label">Confirmados</div><div class="value">${baseMetrics.confirmed}</div></div><div class="card"><div class="label">Cobertura</div><div class="value">${baseMetrics.coverage.toFixed(1)}%</div></div><div class="card"><div class="label">Horas</div><div class="value">${baseMetrics.hours.toFixed(1)}h</div></div></div><h2>Produtividade por profissional</h2><table><thead><tr><th>Profissional</th><th>Plantões</th><th>Horas</th></tr></thead><tbody>${rows || '<tr><td colspan="3">Nenhum registro.</td></tr>'}</tbody></table><p style="margin-top:30px;border-top:1px solid #cbd5e1;padding-top:10px;color:#64748b">Gerado em ${escapeHtml(new Date().toLocaleString('pt-BR'))}</p></body></html>`);
     win.document.close();
     win.focus();
     setTimeout(() => win.print(), 400);
@@ -705,7 +794,7 @@ export default function CentralInteligenciaHospitalar() {
         <button type="button" onClick={() => setMobileMenuOpen((v) => !v)} className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
-        <div className="flex items-center gap-2"><Activity className="w-5 h-5 text-sky-400" /><span className="font-bold text-sm">Inteligência Hospitalar</span></div>
+        <div className="flex items-center gap-2"><Activity className="w-5 h-5 text-sky-400" /><span className="font-bold text-sm">Escala e Plantões</span></div>
         <button type="button" onClick={() => setTheme((t) => t === 'dark' ? 'light' : 'dark')} className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
           {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
         </button>
@@ -716,7 +805,7 @@ export default function CentralInteligenciaHospitalar() {
           <div className="px-6 py-6 border-b border-white/10">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-xl bg-sky-600 flex items-center justify-center"><Activity className="w-6 h-6" /></div>
-              <div><div className="font-black text-sm">CENTRAL DE</div><div className="text-xs font-bold text-sky-400">INTELIGÊNCIA HOSPITALAR</div></div>
+              <div><div className="font-black text-sm">ESCALA E</div><div className="text-xs font-bold text-sky-400">PLANTÕES</div></div>
             </div>
           </div>
 
@@ -728,13 +817,8 @@ export default function CentralInteligenciaHospitalar() {
             <SidebarGroup title="Base Estrutural" />
             <SidebarItem active={viewMode === 'base_builder'} icon={SlidersHorizontal} label="Escala Base" onClick={() => { setViewMode('base_builder'); setMobileMenuOpen(false); }} />
 
-            <SidebarGroup title="Painel Executivo" />
-            {Object.entries(REPORTS).filter(([key]) => key !== 'auditoria').map(([key, item]) => (
-              <SidebarItem key={key} active={viewMode === 'relatorios' && activeReport === key} icon={item.icon} label={item.label} onClick={() => { setActiveReport(key); setViewMode('relatorios'); setMobileMenuOpen(false); }} />
-            ))}
-
-            <SidebarGroup title="Governança" />
-            <SidebarItem active={viewMode === 'relatorios' && activeReport === 'auditoria'} icon={ClipboardCheck} label="Log de Auditoria" onClick={() => { setActiveReport('auditoria'); setViewMode('relatorios'); setMobileMenuOpen(false); }} />
+            <SidebarGroup title="Relatórios" />
+            <SidebarItem active={viewMode === 'relatorios'} icon={BarChart3} label="Relatórios e Auditoria" onClick={() => { setViewMode('relatorios'); setMobileMenuOpen(false); }} />
           </div>
         </aside>
 
@@ -772,10 +856,10 @@ export default function CentralInteligenciaHospitalar() {
             </section>
           )}
 
-          {viewMode === 'grade' && <GradeView {...{ monthDates, activeBuilderShifts, filteredShifts, professionalMap, selectedSector, selectedCells, setSelectedCells, openAllocation, cancelShift, isPublished }} />}
+          {viewMode === 'grade' && <GradeView {...{ monthDates, activeBuilderShifts, filteredShifts, professionalMap, selectedSector, selectedCells, setSelectedCells, openAllocation, cancelShift, isPublished, onDropProfessional: dropProfessional, scaleStartDate: builder.startDate }} />}
           {viewMode === 'list' && <ListView shifts={filteredShifts} professionalMap={professionalMap} sectorMap={sectorMap} onCancel={cancelShift} />}
-          {viewMode === 'base_builder' && <BuilderView {...{ builder, builderLoaded, builderHover, setBuilderHover, openNewBuilder, openEditBuilder, toggleBuilderDay, changeDayQty, saveScaleBase, setBuilder, builderSaved }} />}
-          {viewMode === 'relatorios' && <ReportsView {...{ activeReport, baseMetrics, byProfessional, bySector, financialData, auditEvents, reportStatus, setReportStatus }} />}
+          {viewMode === 'base_builder' && <BuilderView {...{ builder, builderLoaded, builderHover, setBuilderHover, openNewBuilder, openEditBuilder, toggleBuilderDay, changeDayQty, saveScaleBase, backupLocal, importBackup, setBuilder, builderSaved }} />}
+          {viewMode === 'relatorios' && <ReportsView {...{ activeReport, setActiveReport, baseMetrics, byProfessional, bySector, financialData, auditEvents }} />}
         </main>
       </div>
 
@@ -805,7 +889,7 @@ function escapeHtml(value) {
 }
 
 function LoadingScreen() {
-  return <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex items-center justify-center"><div className="text-center"><div className="w-14 h-14 rounded-2xl bg-slate-900 mx-auto flex items-center justify-center"><Loader2 className="w-7 h-7 text-white animate-spin" /></div><h2 className="font-bold mt-4">Carregando Central</h2><p className="text-sm text-slate-500 mt-1">Sincronizando dados...</p></div></div>;
+  return <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex items-center justify-center"><div className="text-center"><div className="w-14 h-14 rounded-2xl bg-slate-900 mx-auto flex items-center justify-center"><Loader2 className="w-7 h-7 text-white animate-spin" /></div><h2 className="font-bold mt-4">Carregando Escala e Plantões</h2><p className="text-sm text-slate-500 mt-1">Sincronizando dados...</p></div></div>;
 }
 
 function SidebarGroup({ title }) {
@@ -816,63 +900,63 @@ function SidebarItem({ active, icon: Icon, label, onClick }) {
   return <button type="button" onClick={onClick} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-xs font-semibold transition-colors ${active ? 'bg-sky-600 text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}><Icon className="w-4 h-4" />{label}</button>;
 }
 
-function GradeView({ monthDates, activeBuilderShifts, filteredShifts, professionalMap, selectedSector, selectedCells, setSelectedCells, openAllocation, cancelShift, isPublished }) {
+function GradeView({ monthDates, activeBuilderShifts, filteredShifts, professionalMap, selectedSector, selectedCells, setSelectedCells, openAllocation, cancelShift, isPublished, onDropProfessional, scaleStartDate }) {
   const toggleSelection = (date, shiftId) => {
     const key = `${date}:${shiftId}`;
     setSelectedCells((current) => current.includes(key) ? current.filter((x) => x !== key) : [...current, key]);
   };
 
   return (
-    <div className="flex-1 overflow-auto p-5 sm:px-8 pb-8">
+    <div className="flex-1 overflow-auto p-5 sm:px-8 pb-8 space-y-4">
+      <Card className="p-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-3">
+          <div><div className="text-xs font-black uppercase tracking-wider">Profissionais disponíveis</div><div className="text-[10px] text-slate-400">Arraste um profissional para uma vaga ou clique para escolher pela janela de alocação.</div></div>
+          <div className="text-[10px] font-bold text-slate-500">{selectedSector ? `Setor: ${selectedSector.name || selectedSector.nome || 'Selecionado'}` : 'Selecione um setor no filtro para alocar'}</div>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {Object.values(professionalMap).slice(0, 50).map((p) => <div key={p.id} draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData('application/json', JSON.stringify({ id: p.id })); }} className="shrink-0 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-grab active:cursor-grabbing hover:border-sky-400"><div className="text-[9px] font-black">{p.name || p.full_name || 'Profissional'}</div><div className="text-[8px] text-slate-400">{p.specialty || p.profession || ''}</div></div>)}
+          {Object.keys(professionalMap).length === 0 && <div className="text-xs text-slate-400 py-2">Nenhum profissional carregado.</div>}
+        </div>
+      </Card>
+
       <Card className="min-w-[1050px] overflow-hidden">
-        {!selectedSector ? (
-          <div className="min-h-[420px] flex flex-col items-center justify-center p-8 text-center"><Building2 className="w-12 h-12 text-slate-300 mb-4" /><h3 className="font-bold">Selecione um setor</h3><p className="text-sm text-slate-500 mt-1">O setor é necessário para alocar profissionais nas vagas.</p></div>
-        ) : activeBuilderShifts.length === 0 ? (
-          <div className="min-h-[420px] flex flex-col items-center justify-center p-8 text-center"><SlidersHorizontal className="w-12 h-12 text-slate-300 mb-4" /><h3 className="font-bold">A escala base ainda está vazia</h3><p className="text-sm text-slate-500 mt-1">Abra “Escala Base” e adicione os horários que você quiser.</p></div>
+        {activeBuilderShifts.length === 0 ? (
+          <div className="min-h-[420px] flex flex-col items-center justify-center p-8 text-center"><SlidersHorizontal className="w-12 h-12 text-slate-300 mb-4" /><h3 className="font-bold">A escala base ainda está vazia</h3><p className="text-sm text-slate-500 mt-1">Abra “Escala Base” e adicione os horários que quiser.</p></div>
         ) : (
           <div className="overflow-auto">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-20 bg-slate-100 dark:bg-slate-800">
-                <tr><th className="w-52 p-3 text-left border-r border-slate-200 dark:border-slate-700 text-[10px] uppercase text-slate-500">Horário</th>{monthDates.map((date) => <th key={date} className="min-w-[135px] p-2 text-center border-r border-slate-200 dark:border-slate-700"><div className="text-[10px] text-slate-400">{weekdayShort(date)}</div><div className="font-black text-sm">{date.slice(8, 10)}</div></th>)}</tr>
+                <tr><th className="w-52 p-3 text-left border-r border-slate-200 dark:border-slate-700 text-[10px] uppercase text-slate-500">Horário</th>{monthDates.map((date) => <th key={date} className="min-w-[145px] p-2 text-center border-r border-slate-200 dark:border-slate-700"><div className="text-[9px] text-slate-400">{weekdayShort(date)}</div><div className="font-black text-sm">{formatDateBR(date)}</div></th>)}</tr>
               </thead>
               <tbody>
-                {activeBuilderShifts.map((bShift) => (
-                  <tr key={bShift.id} className="border-t border-slate-200 dark:border-slate-800">
-                    <td className={`p-3 border-r border-slate-200 dark:border-slate-700 align-top ${colorById(bShift.color).cell}`}>
-                      <div className="font-black text-sm">{bShift.name}</div><div className="text-[10px] mt-1 font-semibold">{bShift.start} — {bShift.end}</div>
-                    </td>
-                    {monthDates.map((date) => {
-                      const dayIndex = getWeekDayIndex(date);
-                      const active = Boolean(bShift.days?.[dayIndex]);
-                      const qty = Math.max(1, Math.floor(safeNumber(bShift.dayQty?.[dayIndex], bShift.defaultQty)));
-                      const dayShifts = filteredShifts.filter((s) => shiftMatchesBuilder(s, bShift, date));
-                      const key = `${date}:${bShift.id}`;
-                      const selected = selectedCells.includes(key);
-                      return (
-                        <td key={date} className={`p-1 border-r border-slate-200 dark:border-slate-800 align-top ${selected ? 'bg-sky-100/70 dark:bg-sky-900/20' : ''}`}>
-                          {!active ? (
-                            <button type="button" onClick={() => toggleSelection(date, bShift.id)} className="w-full min-h-[95px] rounded-lg text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-xs">Inativo</button>
-                          ) : (
-                            <div className="min-h-[95px] p-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-                              <div className="flex items-center justify-between mb-1"><span className="text-[9px] font-black text-slate-400">VAGAS {qty}</span><button type="button" onClick={() => toggleSelection(date, bShift.id)} className={`w-5 h-5 rounded ${selected ? 'bg-sky-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}><Check className="w-3 h-3 mx-auto" /></button></div>
-                              {Array.from({ length: qty }).map((_, slot) => {
-                                const allocated = dayShifts[slot];
-                                return <div key={slot} className="mb-1 last:mb-0">
-                                  {allocated ? <div className="group rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-800 p-1.5 flex items-center gap-1.5"><div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[8px] font-bold">{String(getProfessionalName(allocated, professionalMap)).charAt(0).toUpperCase()}</div><div className="min-w-0 flex-1"><div className="text-[9px] font-bold truncate">{getProfessionalName(allocated, professionalMap)}</div><div className="text-[8px] text-emerald-700 dark:text-emerald-300">Alocado</div></div><button type="button" onClick={() => cancelShift(allocated)} className="opacity-0 group-hover:opacity-100 text-red-500"><X className="w-3 h-3" /></button></div> : <button type="button" onClick={() => openAllocation(date, bShift, slot)} className="w-full h-8 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-[9px] font-bold text-slate-400 hover:border-sky-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950/20 transition-colors"><UserPlus className="w-3 h-3 inline mr-1" /> Alocar vaga {slot + 1}</button>}
-                                </div>;
-                              })}
-                              {isPublished && <div className="mt-1 text-[8px] text-emerald-600 font-bold text-center">PUBLICADA</div>}
-                            </div>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                {activeBuilderShifts.map((bShift) => <tr key={bShift.id} className="border-t border-slate-200 dark:border-slate-800">
+                  <td className={`p-3 border-r border-slate-200 dark:border-slate-700 align-top ${colorById(bShift.color).cell}`}><div className="font-black text-sm">{bShift.name}</div><div className="text-[10px] mt-1 font-semibold">{bShift.start} — {bShift.end}</div><div className="text-[9px] mt-1 opacity-70">Padrão: {bShift.defaultQty} vaga(s)</div></td>
+                  {monthDates.map((date) => {
+                    const dayIndex = getWeekDayIndex(date);
+                    const beforeScale = scaleStartDate && date < scaleStartDate;
+                    const active = !beforeScale && Boolean(bShift.days?.[dayIndex]);
+                    const qty = Math.max(1, Math.floor(safeNumber(bShift.dayQty?.[dayIndex], bShift.defaultQty)));
+                    const dayShifts = filteredShifts.filter((item) => shiftMatchesBuilder(item, bShift, date));
+                    const key = `${date}:${bShift.id}`;
+                    const selected = selectedCells.includes(key);
+                    return <td key={date} className={`p-1 border-r border-slate-200 dark:border-slate-800 align-top ${selected ? 'bg-sky-100/70 dark:bg-sky-900/20' : ''}`}>
+                      {beforeScale ? <div className="min-h-[125px] rounded-xl bg-slate-50 dark:bg-slate-950 border border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-[9px] text-slate-300"><span>Fora da escala</span><span className="mt-1">{formatDateBR(date)}</span></div> : !active ? <button type="button" onClick={() => toggleSelection(date, bShift.id)} className="w-full min-h-[125px] rounded-xl bg-slate-50 dark:bg-slate-950 border border-dashed border-slate-300 dark:border-slate-700 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 flex flex-col items-center justify-center text-xs"><span>Vaga desativada</span><span className="text-[8px] mt-1">{formatDateBR(date)}</span></button> : <div className="min-h-[125px] p-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                        <div className="flex items-center justify-between mb-1"><div><div className="text-[8px] font-black text-slate-400">{formatDateBR(date)}</div><div className="text-[8px] font-black text-slate-400">{qty} vaga(s)</div></div><button type="button" onClick={() => toggleSelection(date, bShift.id)} className={`w-5 h-5 rounded ${selected ? 'bg-sky-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}><Check className="w-3 h-3 mx-auto" /></button></div>
+                        {Array.from({ length: qty }).map((_, slot) => { const allocated = dayShifts[slot]; const opStatus = allocated ? getOperationalStatus(allocated) : null; return <div key={slot} className="mb-1 last:mb-0">{allocated ? <div className="group rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-1.5 flex items-center gap-1.5"><div className="w-6 h-6 rounded-full bg-sky-600 text-white flex items-center justify-center text-[8px] font-bold">{String(getProfessionalName(allocated, professionalMap)).charAt(0).toUpperCase()}</div><div className="min-w-0 flex-1"><div className="text-[9px] font-bold truncate">{getProfessionalName(allocated, professionalMap)}</div><span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[7px] font-black ${statusClass(opStatus)}`}>{statusLabel(opStatus)}</span></div>{opStatus !== 'realizado' && <button type="button" onClick={() => cancelShift(allocated)} className="opacity-0 group-hover:opacity-100 text-red-500"><X className="w-3 h-3" /></button>}</div> : <button type="button" onClick={() => openAllocation(date, bShift, slot)} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }} onDrop={(e) => { e.preventDefault(); const raw = e.dataTransfer.getData('application/json'); if (raw) { try { const p = JSON.parse(raw); onDropProfessional(p, date, bShift.id, slot); } catch (err) { console.warn('Drop inválido', err); } } }} className="w-full h-10 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-[9px] font-bold text-slate-400 hover:border-sky-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950/20 transition-colors"><UserPlus className="w-3 h-3 inline mr-1" /> Alocar vaga {slot + 1}<div className="text-[7px] font-normal">clique ou arraste</div></button>}</div>; })}
+                        {isPublished && <div className="mt-1 text-[8px] text-emerald-600 font-bold text-center">PUBLICADA</div>}
+                      </div>}
+                    </td>;
+                  })}
+                </tr>)}
               </tbody>
             </table>
           </div>
         )}
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800"><div className="text-xs font-black uppercase tracking-wider">Plantões registrados no período</div><div className="text-[10px] text-slate-400 mt-1">Os mesmos registros da Lista Diária, também exibidos aqui em ordem crescente.</div></div>
+        <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 dark:bg-slate-800"><tr><th className="p-3 text-left">Data</th><th className="p-3 text-left">Horário</th><th className="p-3 text-left">Profissional</th><th className="p-3 text-left">Setor</th><th className="p-3 text-left">Status</th></tr></thead><tbody>{safeArray(filteredShifts).map((item) => { const st = getOperationalStatus(item); return <tr key={item.id} className="border-t border-slate-100 dark:border-slate-800"><td className="p-3 font-bold">{formatDateBR(item.date)}</td><td className="p-3">{item.start_time || '—'} — {item.end_time || '—'}</td><td className="p-3 font-semibold">{getProfessionalName(item, professionalMap)}</td><td className="p-3">{item.sector_name || 'Setor'}</td><td className="p-3"><span className={`px-2 py-1 rounded-full text-[9px] font-black ${statusClass(st)}`}>{statusLabel(st)}</span></td></tr>; })}{safeArray(filteredShifts).length === 0 && <tr><td colSpan={5} className="p-10 text-center text-slate-400">Nenhum plantão registrado no período.</td></tr>}</tbody></table></div>
       </Card>
     </div>
   );
@@ -883,28 +967,30 @@ function weekdayShort(date) {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '').toUpperCase();
 }
 
-function BuilderView({ builder, builderLoaded, builderHover, setBuilderHover, openNewBuilder, openEditBuilder, toggleBuilderDay, changeDayQty, saveScaleBase, setBuilder, builderSaved }) {
+function BuilderView({ builder, builderLoaded, builderHover, setBuilderHover, openNewBuilder, openEditBuilder, toggleBuilderDay, changeDayQty, saveScaleBase, backupLocal, importBackup, setBuilder, builderSaved }) {
   if (!builderLoaded) return <div className="flex-1 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div>;
-
   return <div className="flex-1 overflow-auto p-5 sm:p-8 bg-slate-50 dark:bg-slate-950"><div className="max-w-[1250px] mx-auto space-y-5">
-    <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4"><div><h2 className="text-2xl font-black text-sky-700 dark:text-sky-400">Escala Base</h2><p className="text-sm text-slate-500 mt-1">Você define os horários, os dias e a quantidade de vagas. Nada é preenchido automaticamente.</p></div><div className="flex gap-2"><Input value={builder.scaleName} onChange={(e) => setBuilder((b) => ({ ...b, scaleName: e.target.value }))} placeholder="Nome da escala (opcional)" className="h-10 w-64" /><Input type="date" value={builder.startDate} onChange={(e) => setBuilder((b) => ({ ...b, startDate: e.target.value }))} className="h-10 w-44" /></div></div>
+    <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+      <div><h2 className="text-2xl font-black text-sky-700 dark:text-sky-400">Escala Base</h2><p className="text-sm text-slate-500 mt-1">Configure livremente horários, dias e quantidade de vagas.</p></div>
+      <div className="flex flex-col items-end gap-2"><div className="flex gap-2"><Input value={builder.scaleName} onChange={(e) => setBuilder((b) => ({ ...b, scaleName: e.target.value }))} placeholder="Nome da escala" className="h-10 w-64" /><Input type="date" value={builder.startDate} onChange={(e) => setBuilder((b) => ({ ...b, startDate: e.target.value }))} className="h-10 w-44" /></div>{builder.startDate && <div className="text-[10px] font-bold text-sky-600">Data de início: {formatDateBR(builder.startDate)} • {monthLabel(builder.startDate.slice(0, 7))}</div>}</div>
+    </div>
 
     <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full min-w-[950px] border-collapse"><thead className="bg-slate-100 dark:bg-slate-800"><tr><th className="w-56 p-4 text-left border-r border-slate-200 dark:border-slate-700 text-[10px] uppercase text-slate-500">Padrão de horário</th>{WEEK_DAYS.map((day) => <th key={day.index} className={`p-4 text-center border-r border-slate-200 dark:border-slate-700 text-[10px] uppercase ${day.weekend ? 'bg-slate-200/60 dark:bg-slate-700/60' : ''}`}>{day.label}</th>)}</tr></thead>
       <tbody>{builder.shifts.length === 0 ? <tr><td colSpan={8} className="p-16 text-center"><Clock3 className="w-10 h-10 mx-auto text-slate-300 mb-3" /><div className="font-bold text-slate-600 dark:text-slate-300">Nenhum horário configurado</div><div className="text-xs text-slate-400 mt-1">Clique em “Adicionar horário” para começar.</div></td></tr> : builder.shifts.slice().sort((a, b) => a.start.localeCompare(b.start)).map((shift) => <tr key={shift.id}>
-        <td className={`p-3 border-r border-slate-200 dark:border-slate-700 relative group ${colorById(shift.color).cell}`}><div className="font-black text-sm">{shift.name}</div><div className="text-[10px] font-semibold mt-1">{shift.start} — {shift.end}</div><div className="text-[9px] mt-1 opacity-70">Qtd. padrão: {shift.defaultQty}</div><button type="button" onClick={() => openEditBuilder(shift)} className="absolute right-2 top-2 p-1.5 rounded-lg bg-white/80 text-slate-600 opacity-0 group-hover:opacity-100 shadow-sm"><Pencil className="w-3.5 h-3.5" /></button></td>
+        <td className={`p-3 border-r border-slate-200 dark:border-slate-700 relative group ${colorById(shift.color).cell}`}><div className="font-black text-sm">{shift.name}</div><div className="text-[10px] font-semibold mt-1">{shift.start} — {shift.end}</div><div className="text-[9px] mt-1 opacity-70">Padrão: {shift.defaultQty} vaga(s)</div><button type="button" onClick={() => openEditBuilder(shift)} className="absolute right-2 top-2 p-1.5 rounded-lg bg-white/80 text-slate-600 opacity-0 group-hover:opacity-100 shadow-sm" title="Editar horário"><Pencil className="w-3.5 h-3.5" /></button></td>
         {WEEK_DAYS.map((day) => { const active = Boolean(shift.days?.[day.index]); const qty = Math.max(1, Math.floor(safeNumber(shift.dayQty?.[day.index], shift.defaultQty))); const hoverKey = `${shift.id}:${day.index}`; return <td key={day.index} className={`p-1 border-r border-slate-200 dark:border-slate-800 ${day.weekend ? 'bg-slate-50/70 dark:bg-slate-800/30' : ''}`} onMouseEnter={() => setBuilderHover(hoverKey)} onMouseLeave={() => setBuilderHover(null)}>
-          <div className={`relative min-h-[88px] rounded-xl border flex flex-col items-center justify-center transition-colors ${active ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700' : 'bg-slate-50 dark:bg-slate-950 border-dashed border-slate-300 dark:border-slate-700'}`}>
+          <div className={`relative min-h-[100px] rounded-xl border flex flex-col items-center justify-center transition-colors ${active ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700' : 'bg-slate-50 dark:bg-slate-950 border-dashed border-slate-300 dark:border-slate-700'}`}>
             <button type="button" onClick={() => toggleBuilderDay(shift.id, day.index)} className="absolute inset-0 z-10 rounded-xl" aria-label={active ? 'Desativar vaga' : 'Ativar vaga'} />
-            {builderHover === hoverKey && <div className="absolute inset-0 z-20 rounded-xl bg-slate-950/85 text-white flex items-center justify-center text-[10px] font-black pointer-events-none">{active ? 'Desativar vaga?' : 'Ativar vaga?'}</div>}
-            <div className={`relative z-0 w-9 h-9 rounded-lg flex items-center justify-center font-black text-sm ${active ? 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white' : 'text-slate-300'}`}>{active ? qty : '—'}</div>
-            {active && <div className="relative z-30 flex items-center gap-1 mt-1"><span className="text-[8px] text-slate-400">vagas</span><input type="number" min="1" value={qty} onClick={(e) => e.stopPropagation()} onChange={(e) => changeDayQty(shift.id, day.index, e.target.value)} className="w-10 h-5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[9px] text-center" /></div>}
+            {builderHover === hoverKey && <div className="absolute inset-0 z-20 rounded-xl bg-slate-950/85 text-white flex items-center justify-center text-[10px] font-black pointer-events-none">{active ? 'Desativar vaga ?' : 'Ativar vaga ?'}</div>}
+            <div className={`relative z-0 w-10 h-10 rounded-lg flex items-center justify-center font-black text-sm ${active ? 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white' : 'text-slate-300'}`}>{active ? qty : '—'}</div>
+            {active && <div className="relative z-30 flex items-center gap-1 mt-1"><span className="text-[8px] text-slate-400">vagas</span><input type="number" min="1" value={qty} onClick={(e) => e.stopPropagation()} onChange={(e) => changeDayQty(shift.id, day.index, e.target.value)} className="w-11 h-6 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[9px] text-center" /></div>}
           </div>
         </td>; })}
       </tr>)}</tbody></table></div>
-      <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2"><Button onClick={openNewBuilder} className="bg-sky-600 hover:bg-sky-700 text-white gap-2"><Plus className="w-4 h-4" /> Adicionar horário</Button><div className="text-[10px] text-slate-400 flex items-center">Passe o mouse sobre um dia e clique para ativar/desativar.</div></div>
+      <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2 items-center"><Button onClick={openNewBuilder} className="bg-sky-600 hover:bg-sky-700 text-white gap-2"><Plus className="w-4 h-4" /> Adicionar horário</Button><div className="text-[10px] text-slate-400">Passe o mouse sobre um dia para ver a ação. Clique para ativar/desativar.</div></div>
     </Card>
 
-    <div className="flex justify-between items-center gap-3 border-t border-slate-200 dark:border-slate-800 pt-5"><div className={`text-xs font-bold ${builderSaved ? 'text-emerald-600' : 'text-slate-400'}`}>{builderSaved ? '✓ Alterações salvas' : `${builder.shifts.length} horário(s) configurado(s)`}</div><div className="flex gap-2"><Button variant="outline" onClick={() => {}} className="gap-2"><Download className="w-4 h-4" /> Backup local</Button><Button onClick={saveScaleBase} className="bg-sky-600 hover:bg-sky-700 text-white font-bold px-7">Salvar Escala Base</Button></div></div>
+    <Card className="p-4"><div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3"><div><div className="text-xs font-black">Persistência da escala</div><div className="text-[10px] text-slate-400 mt-1">As alterações são gravadas no navegador nesta unidade. O botão salvar confirma e registra a configuração atual.</div>{builderSaved && <div className="text-xs font-black text-emerald-600 mt-2">✓ Escala base salva com sucesso.</div>}</div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={backupLocal} className="gap-2"><Download className="w-4 h-4" /> Backup local</Button><label className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-medium cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800"><Download className="w-4 h-4 rotate-180" /> Restaurar backup<input type="file" accept="application/json,.json" className="hidden" onChange={(e) => { importBackup(e.target.files?.[0]); e.target.value = ''; }} /></label><Button onClick={saveScaleBase} className="bg-sky-600 hover:bg-sky-700 text-white font-bold px-7">Salvar Escala Base</Button></div></div></Card>
   </div></div>;
 }
 
@@ -932,11 +1018,56 @@ function AllocationModal({ allocationModal, setAllocationModal, allocationSearch
 }
 
 function ListView({ shifts, professionalMap, sectorMap, onCancel }) {
-  return <div className="flex-1 overflow-auto p-5 sm:p-8"><Card className="overflow-hidden"><div className="p-5 border-b border-slate-200 dark:border-slate-800"><h2 className="font-black">Plantões do período</h2><p className="text-xs text-slate-500 mt-1">Lista dos registros carregados da base.</p></div><div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 dark:bg-slate-800"><tr><th className="p-3 text-left">Data</th><th className="p-3 text-left">Horário</th><th className="p-3 text-left">Profissional</th><th className="p-3 text-left">Setor</th><th className="p-3 text-left">Status</th><th className="p-3" /></tr></thead><tbody>{safeArray(shifts).map((s) => <tr key={s.id} className="border-t border-slate-100 dark:border-slate-800"><td className="p-3">{formatDateBR(s.date)}</td><td className="p-3">{s.start_time || '—'} — {s.end_time || '—'}</td><td className="p-3 font-semibold">{getProfessionalName(s, professionalMap)}</td><td className="p-3">{getSectorName(s, sectorMap)}</td><td className="p-3"><span className="px-2 py-1 rounded-full text-[10px] bg-slate-100 dark:bg-slate-800">{getStatus(s)}</span></td><td className="p-3 text-right"><button type="button" onClick={() => onCancel(s)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg"><Trash2 className="w-4 h-4" /></button></td></tr>)}{shifts.length === 0 && <tr><td colSpan={6} className="p-12 text-center text-slate-400">Nenhum plantão encontrado.</td></tr>}</tbody></table></div></Card></div>;
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('todos');
+  const [sectorFilter, setSectorFilter] = useState('todos');
+
+  const sectors = useMemo(() => {
+    const map = {};
+    safeArray(shifts).forEach((s) => {
+      const id = s?.sector_id || getSectorName(s, sectorMap);
+      if (id) map[id] = getSectorName(s, sectorMap);
+    });
+    return Object.entries(map).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+  }, [shifts, sectorMap]);
+
+  const filtered = useMemo(() => {
+    const term = normalizeText(searchTerm);
+    return safeArray(shifts).filter((s) => {
+      const status = getOperationalStatus(s);
+      const hay = normalizeText(`${getProfessionalName(s, professionalMap)} ${getSectorName(s, sectorMap)} ${s?.start_time || ''} ${s?.end_time || ''}`);
+      if (term && !hay.includes(term)) return false;
+      if (statusFilter !== 'todos' && status !== statusFilter) return false;
+      if (sectorFilter !== 'todos' && String(s?.sector_id || getSectorName(s, sectorMap)) !== String(sectorFilter)) return false;
+      return true;
+    }).sort((a, b) => normalizeDate(a?.date).localeCompare(normalizeDate(b?.date)) || String(a?.start_time || '').localeCompare(String(b?.start_time || '')));
+  }, [shifts, professionalMap, sectorMap, searchTerm, statusFilter, sectorFilter]);
+
+  return <div className="flex-1 overflow-auto p-5 sm:p-8">
+    <Card className="overflow-hidden">
+      <div className="p-5 border-b border-slate-200 dark:border-slate-800 space-y-4">
+        <div><h2 className="font-black">Lista Diária de Plantões</h2><p className="text-xs text-slate-500 mt-1">Registros em ordem cronológica. O status é calculado pela data do plantão.</p></div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <div className="relative"><Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" /><Input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar profissional, setor ou horário..." className="pl-9 h-9 text-xs" /></div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Status" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os status</SelectItem><SelectItem value="realizado">Realizado</SelectItem><SelectItem value="em_andamento">Em andamento</SelectItem><SelectItem value="planejado">Planejado</SelectItem><SelectItem value="cancelado">Cancelado</SelectItem></SelectContent></Select>
+          <Select value={sectorFilter} onValueChange={setSectorFilter}><SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Setor" /></SelectTrigger><SelectContent><SelectItem value="todos">Todos os setores</SelectItem>{sectors.map(([id, name]) => <SelectItem key={id} value={String(id)}>{name}</SelectItem>)}</SelectContent></Select>
+        </div>
+      </div>
+      <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-slate-50 dark:bg-slate-800"><tr><th className="p-3 text-left">Data</th><th className="p-3 text-left">Horário</th><th className="p-3 text-left">Profissional</th><th className="p-3 text-left">Setor</th><th className="p-3 text-left">Status</th><th className="p-3 text-right">Ação</th></tr></thead><tbody>{filtered.map((s) => { const status = getOperationalStatus(s); return <tr key={s.id} className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50/70 dark:hover:bg-slate-800/50"><td className="p-3 font-bold whitespace-nowrap">{formatDateBR(s.date)}<div className="text-[9px] text-slate-400">{weekdayShort(normalizeDate(s.date))}</div></td><td className="p-3 whitespace-nowrap">{s.start_time || '—'} — {s.end_time || '—'}</td><td className="p-3 font-semibold">{getProfessionalName(s, professionalMap)}</td><td className="p-3">{getSectorName(s, sectorMap)}</td><td className="p-3"><span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${statusClass(status)}`}>{statusLabel(status)}</span></td><td className="p-3 text-right">{status !== 'cancelado' && <button type="button" onClick={() => onCancel(s)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg" title="Cancelar plantão"><Trash2 className="w-4 h-4" /></button>}</td></tr>; })}{filtered.length === 0 && <tr><td colSpan={6} className="p-12 text-center text-slate-400">Nenhum plantão encontrado com esses filtros.</td></tr>}</tbody></table></div>
+    </Card>
+  </div>;
 }
 
-function ReportsView({ activeReport, baseMetrics, byProfessional, bySector, financialData, auditEvents }) {
-  return <div className="flex-1 overflow-auto p-5 sm:p-8 space-y-5"><div className="grid grid-cols-1 md:grid-cols-4 gap-4"><Metric label="Registros" value={baseMetrics.total} /><Metric label="Confirmados" value={baseMetrics.confirmed} /><Metric label="Cobertura" value={`${baseMetrics.coverage.toFixed(1)}%`} /><Metric label="Horas" value={formatHours(baseMetrics.hours)} /></div>{activeReport === 'executiva' && <div className="grid grid-cols-1 xl:grid-cols-2 gap-5"><ReportCard title="Resumo executivo"><div className="space-y-3"><Row label="Plantões confirmados" value={baseMetrics.confirmed} /><Row label="Pendentes" value={baseMetrics.pending} /><Row label="Vagas em aberto" value={baseMetrics.open} /><Row label="Custo estimado" value={formatCurrency(financialData.total)} /></div></ReportCard><ReportCard title="Cobertura por setor"><div className="space-y-4">{bySector.map((r) => <div key={r.name}><div className="flex justify-between text-xs mb-1"><span>{r.name}</span><strong>{r.coverage.toFixed(1)}%</strong></div><div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full rounded-full bg-sky-600" style={{ width: `${Math.max(0, Math.min(100, r.coverage))}%` }} /></div></div>)}{bySector.length === 0 && <Empty text="Sem dados de cobertura." />}</div></ReportCard></div>}{activeReport === 'produtividade' && <ReportCard title="Produtividade por profissional"><SimpleTable headers={['Profissional', 'Plantões', 'Horas']} rows={byProfessional.map((r) => [r.name, r.total, formatHours(r.hours)])} /></ReportCard>}{activeReport === 'cobertura' || activeReport === 'risco' ? <ReportCard title={activeReport === 'risco' ? 'Risco operacional' : 'Cobertura por setor'}><SimpleTable headers={['Setor', 'Registros', 'Confirmados', 'Cobertura']} rows={bySector.map((r) => [r.name, r.total, r.confirmed, `${r.coverage.toFixed(1)}%`])} /></ReportCard> : null}{activeReport === 'financeiro' && <ReportCard title="Financeiro & Custos"><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><Metric label="Custo estimado" value={formatCurrency(financialData.total)} /><Metric label="Sem remuneração" value={financialData.missing} /></div></ReportCard>}{activeReport === 'auditoria' && <ReportCard title="Log de Auditoria"><SimpleTable headers={['Tipo', 'Descrição', 'Data/Hora']} rows={auditEvents.map((e) => [e.type, e.description, e.timestamp])} /></ReportCard>}</div>;
+function ReportsView({ activeReport, setActiveReport, baseMetrics, byProfessional, bySector, financialData, auditEvents }) {
+  return <div className="flex-1 overflow-auto p-5 sm:p-8 space-y-5">
+    <Card className="p-4"><div className="flex flex-col md:flex-row md:items-center justify-between gap-3"><div><div className="text-xs font-black uppercase tracking-wider">Central de Relatórios</div><div className="text-[10px] text-slate-400 mt-1">Escolha o relatório que deseja consultar. O log de auditoria fica somente aqui.</div></div><Select value={activeReport} onValueChange={setActiveReport}><SelectTrigger className="h-10 w-full md:w-72"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(REPORTS).map(([key, item]) => <SelectItem key={key} value={key}>{item.label}</SelectItem>)}</SelectContent></Select></div></Card>
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><Metric label="Registros" value={baseMetrics.total} /><Metric label="Confirmados" value={baseMetrics.confirmed} /><Metric label="Cobertura" value={`${baseMetrics.coverage.toFixed(1)}%`} /><Metric label="Horas" value={formatHours(baseMetrics.hours)} /></div>
+    {activeReport === 'executiva' && <div className="grid grid-cols-1 xl:grid-cols-2 gap-5"><ReportCard title="Resumo executivo"><div className="space-y-3"><Row label="Plantões em andamento ou realizados" value={baseMetrics.confirmed} /><Row label="Cancelados" value={baseMetrics.pending} /><Row label="Vagas em aberto" value={baseMetrics.open} /><Row label="Custo informado" value={formatCurrency(financialData.total)} /></div></ReportCard><ReportCard title="Cobertura por setor"><div className="space-y-4">{bySector.map((r) => <div key={r.name}><div className="flex justify-between text-xs mb-1"><span>{r.name}</span><strong>{r.coverage.toFixed(1)}%</strong></div><div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full rounded-full bg-sky-600" style={{ width: `${Math.max(0, Math.min(100, r.coverage))}%` }} /></div></div>)}{bySector.length === 0 && <Empty text="Sem dados de cobertura." />}</div></ReportCard></div>}
+    {activeReport === 'produtividade' && <ReportCard title="Produtividade por profissional"><SimpleTable headers={['Profissional', 'Plantões', 'Horas']} rows={byProfessional.map((r) => [r.name, r.total, formatHours(r.hours)])} /></ReportCard>}
+    {(activeReport === 'cobertura' || activeReport === 'risco') && <ReportCard title={activeReport === 'risco' ? 'Risco operacional' : 'Cobertura por setor'}><SimpleTable headers={['Setor', 'Registros', 'Alocados', 'Cobertura']} rows={bySector.map((r) => [r.name, r.total, r.confirmed, `${r.coverage.toFixed(1)}%`])} /></ReportCard>}
+    {activeReport === 'financeiro' && <ReportCard title="Financeiro & Custos"><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><Metric label="Custo com valor informado" value={formatCurrency(financialData.total)} /><Metric label="Sem remuneração informada" value={financialData.missing} /></div></ReportCard>}
+    {activeReport === 'auditoria' && <ReportCard title="Log de Auditoria"><SimpleTable headers={['Tipo', 'Descrição', 'Data/Hora']} rows={auditEvents.map((e) => [e.type, e.description, e.timestamp])} /></ReportCard>}
+  </div>;
 }
 
 function Metric({ label, value }) { return <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-black mt-1">{value}</div></div>; }
