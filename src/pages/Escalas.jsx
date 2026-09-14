@@ -67,6 +67,51 @@ function normalizeStr(str) { return typeof str === 'string' ? str.toLowerCase().
 function toTitleCase(str) { return typeof str === 'string' ? str.toLowerCase().split(' ').map(w => ['de','da','do','e'].includes(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : ''; }
 function getStatusKey(status) { return String(status || '').trim().toLowerCase(); }
 
+function formatDateBR(val) {
+  const date = normalizeDate(val);
+  if (!date) return '--/--/----';
+  const parts = date.split('-');
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : date;
+}
+
+function fmtDate(val) {
+  const date = normalizeDate(val);
+  if (!date) return '--/--';
+  const parts = date.split('-');
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}` : date;
+}
+
+function fmtDateLong(val) {
+  const date = normalizeDate(val);
+  if (!date) return '';
+  const d = new Date(`${date}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return formatDateBR(date);
+  return d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+}
+
+function getProfessionalName(shift, professionalMap = {}) {
+  const direct = shift?.professional_name || shift?.professionalName;
+  if (direct) return direct;
+  const prof = shift?.professional_id ? professionalMap[shift.professional_id] : null;
+  return prof?.name || prof?.full_name || 'Vaga Aberta';
+}
+
+function getSectorName(shift, sectorMap = {}) {
+  const direct = shift?.sector_name || shift?.sectorName;
+  if (direct) return direct;
+  const sector = shift?.sector_id ? sectorMap[shift.sector_id] : null;
+  return sector?.name || 'Sem setor';
+}
+
+function SidebarItem({ active, icon: Icon, label, onClick }) {
+  return (
+    <button type="button" onClick={onClick} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-colors ${active ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+      <Icon className="w-4 h-4 shrink-0" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
 function getShiftHours(s) {
   if (s?.duration_hours != null) return safeNumber(s.duration_hours);
   if (s?.hours != null) return safeNumber(s.hours);
@@ -134,33 +179,6 @@ function escapeCSV(val) { return `"${String(val ?? '').replace(/"/g, '""').repla
 function downloadFile(content, filename) { const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 async function generateSHA256(input) { try { if (!window.crypto?.subtle) return 'Indisponível'; const data = new TextEncoder().encode(input); const hashBuffer = await window.crypto.subtle.digest('SHA-256', data); return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join(''); } catch { return 'Erro'; } }
 
-function formatDateBR(val) {
-  const date = normalizeDate(val);
-  if (!date) return '--/--/----';
-  const parts = date.split('-');
-  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : date;
-}
-
-function fmtDate(val) {
-  const date = normalizeDate(val);
-  if (!date) return '--/--';
-  const parts = date.split('-');
-  return parts.length === 3 ? `${parts[2]}/${parts[1]}` : date;
-}
-
-function fmtDateLong(val) {
-  const date = normalizeDate(val);
-  if (!date) return '';
-  const d = new Date(`${date}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return formatDateBR(date);
-  return d.toLocaleDateString('pt-BR', {
-    weekday: 'long',
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  });
-}
-
 /* ============================================================
    COMPONENTE PRINCIPAL
    ============================================================ */
@@ -180,9 +198,6 @@ export default function Escalas() {
   
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ startDate: '', endDate: '', sectorId: 'todos', professionalId: 'todos' });
-  const selectedDate = filters.startDate && filters.endDate && filters.startDate === filters.endDate
-    ? filters.startDate
-    : filters.startDate || '';
   const [selectedMonth, setSelectedMonth] = useState(() => getLocalDateString().slice(0,7));
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -201,7 +216,9 @@ export default function Escalas() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [tvMode, setTvMode] = useState(false);
-  const [createScaleState, setCreateScaleState] = useState(0);
+  const [selectedDate, setSelectedDate] = useState('');
+
+  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   
   // Builder da Escala Base
   const [builderModal, setBuilderModal] = useState(null);
@@ -475,7 +492,9 @@ export default function Escalas() {
   const toggleBuilderCell = (shiftId, dayIndex) => {
     persistBuilder(builderShifts.map(s => s.id === shiftId ? { ...s, cellStates: { ...s.cellStates, [dayIndex]: !s.cellStates[dayIndex] } } : s));
   };
-  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  const downloadBackupBase = () => {
+    downloadFile(JSON.stringify(builderShifts, null, 2), 'backup_escala_base.json');
+  };
 
   /* ============================================================
      TV E MODO VISÃO FOCO
