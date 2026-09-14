@@ -53,10 +53,11 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v12';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v12';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v12';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v12';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v13';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v13';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v13';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v13';
+const STORAGE_CUSTOM_SLOTS_PREFIX = 'hospital_custom_slots_v13';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -218,7 +219,6 @@ function EscalasContent() {
 
   const [theme, setTheme] = useState('dark');
 
-  // Setor fixado
   const [sectorFilter, setSectorFilter] = useState(() => {
     try {
       const saved = window.localStorage.getItem(STORAGE_SECTOR_KEY);
@@ -231,22 +231,7 @@ function EscalasContent() {
   const [profSearchQuery, setProfSearchQuery] = useState('');
   const [selectedCells, setSelectedCells] = useState([]);
 
-  // Mapa de Publicações por Setor
-  const [publishedMap, setPublishedMap] = useState(() => {
-    try {
-      const raw = window.localStorage.getItem(`${STORAGE_PUBLISHED_MAP_KEY}:${companyId}`);
-      return raw ? JSON.parse(raw) : {};
-    } catch { return {}; }
-  });
-
-  // Mapa de Vagas Inativadas na Grade
-  const [disabledDaysMap, setDisabledDaysMap] = useState(() => {
-    try {
-      const raw = window.localStorage.getItem(`${STORAGE_DISABLED_DAYS_KEY}:${companyId}`);
-      return raw ? JSON.parse(raw) : {};
-    } catch { return {}; }
-  });
-
+  // Publicação
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [publishRange, setPublishRange] = useState({
     preset: '1_mes',
@@ -256,6 +241,20 @@ function EscalasContent() {
       d.setMonth(d.getMonth() + 1);
       return getLocalDateString(d);
     })()
+  });
+  const [publishedMap, setPublishedMap] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem(`${STORAGE_PUBLISHED_MAP_KEY}:${companyId}`);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
+
+  // Vagas inativadas
+  const [disabledDaysMap, setDisabledDaysMap] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem(`${STORAGE_DISABLED_DAYS_KEY}:${companyId}`);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
   });
 
   // Modal Alocação e Retroativo
@@ -277,11 +276,26 @@ function EscalasContent() {
   const [editing, setEditing] = useState(null);
   const [tvMode, setTvMode] = useState(false);
   
-  // Builder Escala Base
+  // Builder Escala Base & Turnos Customizados do Gestor
   const [builderModal, setBuilderModal] = useState(null);
   const [builderShifts, setBuilderShifts] = useState([]);
   const [builderForm, setBuilderForm] = useState({ id: '', name: '', start: '', end: '', qty: 1, color: BUILDER_COLORS[0], days: [1,2,3,4,5] });
   const [confirmGoToAllocation, setConfirmGoToAllocation] = useState(false);
+
+  // Turnos Adicionais criados manualmente na Grade
+  const [customSlots, setCustomSlots] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem(`${STORAGE_CUSTOM_SLOTS_PREFIX}:${companyId}`);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
+
+  const persistCustomSlots = (newMap) => {
+    setCustomSlots(newMap);
+    try {
+      window.localStorage.setItem(`${STORAGE_CUSTOM_SLOTS_PREFIX}:${companyId}`, JSON.stringify(newMap));
+    } catch (e) {}
+  };
 
   // Sincronização de Tema
   useEffect(() => {
@@ -426,38 +440,21 @@ function EscalasContent() {
 
   const weeksDataGrid = useMemo(() => getMonthWeeks(selectedMonth), [selectedMonth]);
 
-  // Montagem Dinâmica de Linhas
+  // Linhas da Grade para o Setor (Une Escala Base + Turnos Customizados pelo Gestor)
   const displayShiftsForSector = useMemo(() => {
     if (sectorFilter === 'todos') return [];
-    if (safeArray(builderShifts).length > 0) return builderShifts;
-
-    const sectorShiftsInMonth = filteredShifts.filter(s => String(s.sector_id) === String(sectorFilter));
-    const timeSlots = new Map();
-
-    sectorShiftsInMonth.forEach(s => {
-      if (s.start_time && s.end_time) {
-        const key = `${s.start_time}-${s.end_time}`;
-        if (!timeSlots.has(key)) {
-          let name = 'Turno';
-          if (s.start_time >= '06:00' && s.start_time < '13:00') name = 'Manhã';
-          else if (s.start_time >= '13:00' && s.start_time < '19:00') name = 'Tarde';
-          else name = 'Noite';
-
-          timeSlots.set(key, {
-            id: `auto_${key}`,
-            name,
-            start: s.start_time,
-            end: s.end_time,
-            qty: 1,
-            cellStates: { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true }
-          });
-        }
-      }
+    const base = safeArray(builderShifts);
+    const custom = safeArray(customSlots[sectorFilter]);
+    
+    // Combina ambos removendo duplicatas por horário
+    const map = new Map();
+    [...base, ...custom].forEach(item => {
+      const key = `${item.start}-${item.end}`;
+      map.set(key, item);
     });
 
-    if (timeSlots.size > 0) return Array.from(timeSlots.values());
-    return [];
-  }, [sectorFilter, builderShifts, filteredShifts]);
+    return Array.from(map.values()).sort((a,b) => String(a.start).localeCompare(String(b.start)));
+  }, [sectorFilter, builderShifts, customSlots]);
 
   const sidebarProfessionals = useMemo(() => {
     const term = normalizeStr(profSearchQuery);
@@ -596,7 +593,7 @@ function EscalasContent() {
     }
   };
 
-  // Enviar para o Mural de Oportunidades
+  // Enviar para Mural de Oportunidades
   const handleSendToOpportunitiesMural = async (date, shiftDef, secId) => {
     const sectorObj = safeArray(sectors).find(s => String(s.id) === String(secId));
     if (!sectorObj) return;
@@ -660,7 +657,7 @@ function EscalasContent() {
     }
   };
 
-  // Limpeza de Vagas Abertas Corrigida (Cancela plantões reais e limpa da base)
+  // Limpeza de Vagas Abertas CORRIGIDA (Cancela plantões reais na base)
   const handleClearSectorVacancies = async () => {
     if (sectorFilter === 'todos') {
       alert('Selecione uma seção específica para limpar as vagas abertas.');
@@ -710,10 +707,10 @@ function EscalasContent() {
 
     setPublishModalOpen(false);
     loadData(true);
-    alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}! Os plantões agora estão com status Publicado.`);
+    alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
   };
 
-  // Funções Escala Base
+  // Funções Escala Base / Gestão de Turnos
   const openNewBuilderModal = () => {
     setBuilderForm({ id: '', name: '', start: '', end: '', qty: 1, color: BUILDER_COLORS[0], days: [1,2,3,4,5] });
     setBuilderModal({ isNew: true });
@@ -752,8 +749,25 @@ function EscalasContent() {
       cellStates: activeDays
     };
 
-    if (builderModal?.isNew) persistBuilder([...builderShifts, newObj]);
-    else persistBuilder(builderShifts.map(s => s.id === newObj.id ? newObj : s));
+    if (builderModal?.isNew) {
+      persistBuilder([...builderShifts, newObj]);
+      // Também adiciona nos custom slots do setor atual
+      const currentCustom = safeArray(customSlots[sectorFilter]);
+      persistCustomSlots({ ...customSlots, [sectorFilter]: [...currentCustom, newObj] });
+    } else {
+      persistBuilder(builderShifts.map(s => s.id === newObj.id ? newObj : s));
+      const currentCustom = safeArray(customSlots[sectorFilter]);
+      persistCustomSlots({ ...customSlots, [sectorFilter]: currentCustom.map(s => s.id === newObj.id ? newObj : s) });
+    }
+    setBuilderModal(null);
+  };
+
+  const deleteBuilderShift = (shiftId) => {
+    if (!confirm('Deseja excluir este turno da grade?')) return;
+    const nextShifts = builderShifts.filter(s => s.id !== shiftId);
+    persistBuilder(nextShifts);
+    const currentCustom = safeArray(customSlots[sectorFilter]).filter(s => s.id !== shiftId);
+    persistCustomSlots({ ...customSlots, [sectorFilter]: currentCustom });
     setBuilderModal(null);
   };
 
@@ -769,7 +783,7 @@ function EscalasContent() {
   };
 
   /* ============================================================
-     IMPRESSÃO OFICIAL DO MURAL (PADRÃO A4 HORIZONTAL)
+     IMPRESSÃO DO MURAL A4
      ============================================================ */
   const printOfficialHospitalSchedule = () => {
     const targetDate = selectedDate || getLocalDateString(currentTime);
@@ -922,7 +936,7 @@ function EscalasContent() {
   }, [shiftsTodayModal]);
 
   /* ============================================================
-     RENDER DO MODO TV
+     RENDER MODO TV
      ============================================================ */
   if (tvMode) {
     const todayStr = getLocalDateString(currentTime);
@@ -943,7 +957,7 @@ function EscalasContent() {
            <div className="flex gap-6 items-center">
              <div className="text-right">
                 <div className="text-3xl font-mono text-emerald-400 font-black">{currentTime.toLocaleTimeString('pt-BR')}</div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-widest">Horário Oficial</div>
+                <div className="text-[10px] text-slate-400 uppercase tracking-widest">Horário Operacional</div>
              </div>
              <Button onClick={() => setTvMode(false)} className="bg-slate-800 hover:bg-slate-700 p-3 rounded-2xl border border-slate-700"><Minimize2 className="w-5 h-5"/></Button>
            </div>
@@ -1015,7 +1029,7 @@ function EscalasContent() {
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
-      {/* CABEÇALHO SUPERIOR */}
+      {/* CABEÇALHO */}
       <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-3 px-6 lg:px-8 flex flex-wrap items-center justify-between gap-4 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center shadow-md">
@@ -1033,7 +1047,6 @@ function EscalasContent() {
               <span>{fmtDateLong(getLocalDateString(currentTime))} • {formatDateBR(getLocalDateString(currentTime))}</span>
               <span className="font-mono font-bold text-slate-700 dark:text-slate-200">{currentTime.toLocaleTimeString('pt-BR')}</span>
               
-              {/* BOTÃO TEMA INTEGRADO */}
               <button
                 type="button"
                 onClick={handleToggleTheme}
@@ -1046,7 +1059,7 @@ function EscalasContent() {
           </div>
         </div>
 
-        {/* NAVEGAÇÃO DE ABAS CENTRAIS */}
+        {/* ABAS */}
         <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
           <button
             onClick={() => setViewMode('grade')}
@@ -1098,7 +1111,7 @@ function EscalasContent() {
         </div>
       </header>
 
-      {/* BARRA DE FILTROS SUPERIOR */}
+      {/* BARRA DE FILTROS */}
       {viewMode !== 'base_builder' && (
         <div className="bg-slate-200/50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 p-2.5 px-6 lg:px-8 flex flex-wrap items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-4 flex-wrap">
@@ -1155,7 +1168,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO GRADE VISUAL (BUILDER)
+          MÓDULO DE GRADE VISUAL
           ======================================================== */}
       {viewMode === 'grade' && (
         <div className="flex-1 flex overflow-hidden p-4 sm:px-6 pb-4">
@@ -1192,10 +1205,9 @@ function EscalasContent() {
               </div>
             </div>
 
-            {/* Calendário da Grade com Suporte a Todos os Setores e Setor Específico */}
+            {/* Grade de Calendário */}
             <div className="flex-1 overflow-auto bg-slate-50/30 dark:bg-slate-950 relative">
               {sectorFilter === 'todos' ? (
-                /* VISÃO CONSOLIDADA DE TODOS OS SETORES */
                 <div className="p-4 space-y-6">
                   {safeArray(sectors).map(sec => {
                     const secShifts = filteredShifts.filter(s => String(s.sector_id) === String(sec.id));
@@ -1243,7 +1255,6 @@ function EscalasContent() {
                   })}
                 </div>
               ) : displayShiftsForSector.length === 0 ? (
-                /* SETOR SEM NENHUMA VAGA OU ESCALA BASE: MOSTRA TELA PARA CONFIGURAR */
                 <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">
                   <div className="w-16 h-16 rounded-3xl bg-slate-100 dark:bg-slate-800/60 flex items-center justify-center mx-auto mb-4 border border-slate-200 dark:border-slate-700">
                     <SlidersHorizontal className="w-8 h-8 text-sky-600 dark:text-sky-400" />
@@ -1259,7 +1270,6 @@ function EscalasContent() {
                   </Button>
                 </div>
               ) : (
-                /* SETOR COM VAGAS / ESCALA CADASTRADA: MOSTRA A GRADE COMPLETA */
                 <div className="min-w-[900px] pb-8">
                   <div className="grid grid-cols-8 border-b border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 sticky top-0 z-20 shadow-sm">
                     <div className="p-3 border-r border-slate-200 dark:border-slate-800 flex items-center justify-center font-black text-xs text-slate-500 uppercase tracking-wider bg-slate-200/60 dark:bg-slate-950">Turno</div>
@@ -1299,7 +1309,6 @@ function EscalasContent() {
                             const dIndexBase = new Date(`${date}T12:00:00`).getDay();
                             const isActiveInBase = Boolean(period.cellStates && period.cellStates[dIndexBase]);
                             
-                            // Checa se o dia foi inativado manualmente
                             const disabledKey = `${date}:${period.id}`;
                             const isDayManuallyDisabled = Boolean(disabledDaysMap[disabledKey]);
                             const requiredQty = (isActiveInBase && !isDayManuallyDisabled) ? (period.qty || 1) : 0;
@@ -1437,7 +1446,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO ESCALA BASE
+          MODO ESCALA BASE (COM EDITAR E EXCLUIR LINHA)
           ======================================================== */}
       {viewMode === 'base_builder' && (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
@@ -1448,7 +1457,7 @@ function EscalasContent() {
                   <h2 className="text-xl font-black text-slate-900 dark:text-white">Escala Base: {activeSectorName}</h2>
                   <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold">Modo Edição</span>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Defina os turnos e a quantidade de vagas da semana. Clique nos dias para ativar ou desativar vagas.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Crie as linhas de turnos que sua escala precisa. Clique nos dias para ativar ou desativar vagas.</p>
               </div>
               
               <div className="flex items-center gap-3">
@@ -1487,9 +1496,11 @@ function EscalasContent() {
                               <span className="text-xs text-slate-900 dark:text-slate-200">{shift.name}</span>
                               <span className="text-[11px] font-mono text-sky-600 dark:text-sky-400 mt-0.5">{shift.start} às {shift.end}</span>
                             </div>
-                            <button onClick={() => openEditBuilderModal(shift)} className="absolute top-2 right-2 p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-700 dark:text-slate-300 opacity-0 group-hover:opacity-100 transition-all">
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                              <button onClick={() => openEditBuilderModal(shift)} className="p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-700 dark:text-slate-300" title="Editar Turno">
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            </div>
                           </td>
                           {WEEK_DAYS_ORDER.map(day => {
                             const isActive = Boolean(shift.cellStates && shift.cellStates[day.index]);
@@ -1878,7 +1889,12 @@ function EscalasContent() {
               <h3 className="text-sm font-black text-slate-900 dark:text-white">
                 {builderModal.isNew ? 'Adicionar Linha de Turno' : 'Editar Turno'}
               </h3>
-              <button onClick={() => setBuilderModal(null)}><X className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
+              <div className="flex items-center gap-2">
+                {!builderModal.isNew && (
+                  <Button variant="ghost" onClick={() => deleteBuilderShift(builderForm.id)} className="h-7 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 px-2">Excluir</Button>
+                )}
+                <button onClick={() => setBuilderModal(null)}><X className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
+              </div>
             </div>
 
             <div className="space-y-4 text-xs">
