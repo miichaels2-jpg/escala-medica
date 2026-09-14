@@ -11,7 +11,7 @@ import {
   FileSpreadsheet, Filter, GripVertical, Hash, History, LayoutDashboard,
   LayoutGrid, List, Loader2, Lock, MapPin, Maximize2, Menu, MessageCircle,
   Minimize2, Moon, Pencil, Plus, Printer, RefreshCw, Search, Send, ShieldCheck,
-  SlidersHorizontal, Sun, Trash2, TrendingDown, UserPlus, Users, X
+  Sun, Trash2, TrendingDown, UserPlus, Users, UsersRound, X
 } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
 import { exportSchedulePDF } from '@/lib/exportReport';
@@ -64,7 +64,7 @@ const STATUS_OPTIONS = [
 ];
 
 /* ============================================================
-   FUNÇÕES UTILITÁRIAS BLINDADAS (Previnem Tela Branca)
+   FUNÇÕES UTILITÁRIAS BLINDADAS (Anti-WSoD)
    ============================================================ */
 
 function safeNumber(value) { const n = Number(value); return Number.isFinite(n) ? n : 0; }
@@ -141,14 +141,20 @@ function buildPrintTable(columns = [], rows = [], totalsRow = null) {
 /* ============================================================
    COMPONENTE PRINCIPAL
    ============================================================ */
+
 export default function Escalas() {
   const { user, company, loading: appLoading } = useAppData();
+  
   const [shifts, setShifts] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [professionals, setProfessionals] = useState([]);
-  
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+
   const [viewMode, setViewMode] = useState('grade'); 
   const [activeTab, setActiveTab] = useState('executiva');
+  
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ startDate: '', endDate: '', sectorId: 'todos', status: 'todos', professionalId: 'todos', category: 'todos' });
   const [selectedMonth, setSelectedMonth] = useState(() => getLocalDateString().slice(0,7));
@@ -156,29 +162,26 @@ export default function Escalas() {
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState('light');
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState('');
 
-  // Estados dos modais e grade
+  // Estados da Grade Mensal
   const [profSearchQuery, setProfSearchQuery] = useState('');
   const [inlineEditingCell, setInlineEditingCell] = useState(null);
   const [inlineSearchText, setInlineSearchText] = useState('');
   const [selectedCells, setSelectedCells] = useState([]);
   const [isPublished, setIsPublished] = useState(false);
-  const [newShiftModal, setNewShiftModal] = useState(null);
-  const [selectedProfIdForModal, setSelectedProfIdForModal] = useState('');
-  const [createScaleState, setCreateScaleState] = useState(0); 
+  const [newShiftModal, setNewShiftModal] = useState(null); 
+  const [selectedProfIdForModal, setSelectedProfIdForModal] = useState(''); 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [tvMode, setTvMode] = useState(false);
   
-  // Escala Base
+  // Estados da Escala Base (Builder)
+  const [createScaleState, setCreateScaleState] = useState(0); 
   const [builderModal, setBuilderModal] = useState(null);
   const [builderShifts, setBuilderShifts] = useState([]);
   const [builderForm, setBuilderForm] = useState({ id: '', name: '', start: '', end: '', qty: 1, color: BUILDER_COLORS[0], days: [] });
 
-  // Relatórios
+  // Estados dos Relatórios
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportStatus, setReportStatus] = useState('Rascunho');
   const [reportVersion, setReportVersion] = useState(1);
@@ -207,7 +210,6 @@ export default function Escalas() {
 
   const toggleTheme = () => setTheme((c) => (c === 'dark' ? 'light' : 'dark'));
 
-  // Previne loop infinito removendo 'filters.sectorId' das dependências pesadas
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
     setError('');
@@ -224,14 +226,12 @@ export default function Escalas() {
 
       setShifts(safeShifts); setSectors(safeSectors); setProfessionals(safeProfessionals);
       
-      // Ajuste seguro de filtros base
       setFilters(current => {
         if (current.sectorId === 'todos' && safeSectors.length > 0) {
           return { ...current, sectorId: String(safeSectors[0].id) };
         }
         return current;
       });
-
     } catch (err) { setError('Falha na sincronização.'); } finally { setLoading(false); setRefreshing(false); }
   }, [companyId, unitId]);
 
@@ -240,7 +240,6 @@ export default function Escalas() {
 
   const professionalMap = useMemo(() => { const m = {}; (professionals || []).forEach(p => { if (p?.id) m[p.id] = p; }); return m; }, [professionals]);
   const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if (s?.id) m[s.id] = s; }); return m; }, [sectors]);
-  
   const monthOptions = useMemo(() => {
     const opts = new Set((shifts || []).map(s => typeof s?.date === 'string' ? s.date.slice(0, 7) : ''));
     if (selectedMonth) opts.add(selectedMonth);
@@ -382,7 +381,7 @@ export default function Escalas() {
       totalsRow = ['TOTAL', baseMetrics.total, baseMetrics.confirmed, baseMetrics.pending, baseMetrics.canceled, baseMetrics.open, Number(baseMetrics.coverage.toFixed(2))];
     } else if (activeTab === 'financeiro') {
       columns = ['Profissional', 'Setor', 'Horas', 'Valor/Hora', 'Custo Projetado'];
-      rows = financialData.rows.map(r => { const isC = r.status === 'cancelado' || r.status === 'canceled'; return [isC ? `${r.professional} (CANCELADO)` : r.professional, r.sector, Number(r.hours.toFixed(2)), r.rate === null ? 'Não informado' : Number(r.rate.toFixed(2)), isC ? 'Cancelado' : (r.cost === null ? 'Não informado' : Number(r.cost.toFixed(2)))]; });
+      rows = financialData.rows.map(r => { const isC = r.status === 'cancelado' || r.status === 'canceled'; return [isC ? `${r.professional} (CANCELADO)` : r.professional, r.sector, Number(r.hours.toFixed(2)), typeof r.rate === 'number' ? Number(r.rate.toFixed(2)) : 'Não informado', isC ? 'Cancelado' : (typeof r.cost === 'number' ? Number(r.cost.toFixed(2)) : 'Não informado')]; });
       totalsRow = ['TOTAL ESTIMADO (SEM CANCELAMENTOS)', '', '', '', Number(financialData.estimatedCost.toFixed(2))];
     } else if (activeTab === 'turnover') {
       columns = ['Data', 'Profissional', 'Setor', 'Motivo'];
@@ -398,7 +397,7 @@ export default function Escalas() {
   const calculateReportHash = useCallback(async () => { setHashLoading(true); try { const h = await generateSHA256(JSON.stringify({ id: reportPayload.reportId, rows: reportPayload.rows })); setReportHash(h); return h; } finally { setHashLoading(false); } }, [reportPayload]);
 
   /* ============================================================
-     AÇÕES DA GRADE, LISTA E TV
+     AÇÕES DA GRADE E LISTA
      ============================================================ */
   const weeksDataGrid = useMemo(() => getMonthWeeks(selectedMonth), [selectedMonth]);
   const sidebarProfessionals = useMemo(() => { const term = normalizeStr(profSearchQuery); return (professionals || []).filter(p => p?.id && (!term || normalizeStr(p.name || p.full_name).includes(term) || normalizeStr(p.specialty || '').includes(term))); }, [professionals, profSearchQuery]);
@@ -449,7 +448,7 @@ export default function Escalas() {
   };
 
   const handlePublish = () => {
-    if (confirm('Publicar escala? Isso fixará a visualização para os profissionais e emitirá os alertas.')) {
+    if (confirm('Publicar escala? Isso emitirá alertas e destacará na grade.')) {
       setIsPublished(true);
       setTimeout(() => alert('Escala publicada com sucesso! Notificações enviadas aos profissionais.'), 500);
     }
@@ -473,14 +472,14 @@ export default function Escalas() {
   const saveBuilderShift = () => {
     if (!builderForm.name || !builderForm.start || !builderForm.end) { alert('Preencha os campos obrigatórios.'); return; }
     const activeDays = {}; [1,2,3,4,5,6,0].forEach(d => { activeDays[d] = (builderForm.days || []).includes(d); });
-    const newObj = { id: builderModal.isNew ? Math.random().toString(36).substr(2) : builderForm.id, name: builderForm.name, start: builderForm.start, end: builderForm.end, color: builderForm.color.value, qty: builderForm.qty, cellStates: builderModal.isNew ? { ...activeDays } : ((builderShifts || []).find(s => s.id === builderForm.id)?.cellStates || { ...activeDays }) };
+    const newObj = { id: builderModal.isNew ? Date.now().toString() : builderForm.id, name: builderForm.name, start: builderForm.start, end: builderForm.end, color: builderForm.color.value, qty: builderForm.qty, cellStates: builderModal.isNew ? { ...activeDays } : ((builderShifts || []).find(s => s.id === builderForm.id)?.cellStates || { ...activeDays }) };
     if (builderModal.isNew) setBuilderShifts(prev => [...prev, newObj]); else setBuilderShifts(prev => prev.map(s => s.id === newObj.id ? newObj : s));
     setBuilderModal(null);
   };
   const toggleBuilderCell = (shiftId, dayIndex) => setBuilderShifts(prev => prev.map(s => s.id === shiftId ? { ...s, cellStates: { ...s.cellStates, [dayIndex]: !s.cellStates[dayIndex] } } : s));
 
   /* ============================================================
-     EXPORTAÇÃO IMPRESSÃO (NOVA ABA HTML LIMPO)
+     EXPORTAÇÃO IMPRESSÃO E CSV
      ============================================================ */
   const printReport = useCallback(() => {
     addAuditEvent('IMPRESSÃO', `Solicitação de impressão do relatório "${REPORT_CONFIG[activeTab]?.label}".`);
@@ -488,7 +487,7 @@ export default function Escalas() {
     const printWindow = window.open('', '_blank');
     if (!printWindow) { alert('A impressão foi bloqueada pelo navegador. Permita pop-ups.'); return; }
 
-    const kpiItems = [['Registros', formatNumber(payload.kpis?.total)], ['Confirmados', formatNumber(payload.kpis?.confirmed)], ['Pendentes', formatNumber(payload.kpis?.pending)], ['Cancelados', formatNumber(payload.kpis?.canceled)], ['Abertos', formatNumber(payload.kpis?.open)], ['Horas confirmadas', formatNumber(payload.kpis?.confirmedHours, 1)], ['Cobertura operacional', `${formatNumber(payload.kpis?.coverage, 1)}%`]];
+    const kpiItems = [['Registros', formatNumber(payload.kpis?.total)], ['Confirmados', formatNumber(payload.kpis?.confirmed)], ['Pendentes', formatNumber(payload.kpis?.pending)], ['Cancelados', formatNumber(payload.kpis?.canceled)], ['Abertos', formatNumber(payload.kpis?.open)], ['Horas', formatNumber(payload.kpis?.confirmedHours, 1)], ['Cobertura', `${formatNumber(payload.kpis?.coverage, 1)}%`]];
     const kpisHtml = kpiItems.map(([l, v]) => `<div class="kpi-box"><div class="kpi-label">${escapeHtml(l)}</div><div class="kpi-value">${escapeHtml(v)}</div></div>`).join('');
     const tableHtml = buildPrintTable(payload.columns, payload.rows, payload.totalsRow);
 
@@ -595,6 +594,7 @@ export default function Escalas() {
                 <Send className="w-4 h-4" /> Publicar Escala
               </Button>
             )}
+            <Button onClick={openReportPreview} className="bg-slate-900 dark:bg-sky-600 text-white font-bold gap-2"><Eye className="w-4 h-4" /> Relatório Oficial</Button>
           </div>
         </header>
 
@@ -828,7 +828,7 @@ export default function Escalas() {
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Configure os padrões de horário e distribuição de vagas antes de preencher os nomes da equipe.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400">Data de Início</label>
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400">Data de Início das Alterações</label>
                   <Input type="date" className="h-10 w-40 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
                 </div>
               </div>
@@ -900,7 +900,7 @@ export default function Escalas() {
           </div>
         )}
 
-        {/* ===================== RELATÓRIOS ===================== */}
+        {/* ===================== RELATÓRIOS E PAINEL EXECUTIVO ===================== */}
         {viewMode === 'relatorios' && (
           <div className="flex-1 overflow-auto p-5 sm:p-8 space-y-6">
             <Card className="p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col md:flex-row items-center gap-4">
@@ -933,7 +933,7 @@ export default function Escalas() {
 
       {/* Modal 1: Adicionar Escala Inicial (Passo 1 do Builder) */}
       {createScaleState === 1 && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
               <h2 className="text-lg font-black text-sky-600 dark:text-sky-400">Adicionar Escala</h2>
@@ -943,6 +943,7 @@ export default function Escalas() {
               <div>
                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 block">Nome do Setor / Escala <span className="text-red-500">*</span></label>
                 <Input placeholder="Ex: UTI Adulto" className="h-11 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950" />
+                <p className="text-[10px] text-slate-400 mt-1.5">Este é o nome que será apresentado aos profissionais na grade de plantões.</p>
               </div>
               <div>
                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 block">Endereço da Unidade (Opcional)</label>
@@ -975,7 +976,7 @@ export default function Escalas() {
 
       {/* Modal 2: Confirmação e Direcionamento (Passo 2 do Builder) */}
       {createScaleState === 2 && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-8 text-center">
             <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-5 shadow-sm">
               <CheckCircle2 className="w-8 h-8" />
@@ -992,7 +993,7 @@ export default function Escalas() {
 
       {/* Modal 3: Configurar Horário Específico no Builder (Passo 3) */}
       {builderModal && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
               <h2 className="text-lg font-black text-sky-600 dark:text-sky-400">
@@ -1060,7 +1061,7 @@ export default function Escalas() {
 
       {/* Modal 4: Novo Plantão Individual (Clique Simples na Célula) */}
       {newShiftModal && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
               <h2 className="text-lg font-black text-sky-600 dark:text-sky-400">Novo Plantão</h2>
@@ -1159,7 +1160,7 @@ function ExecutiveView({ baseMetrics, riskRows, byProfessional, criticalAlerts, 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <Card className="p-6 border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 transition-colors">
           <div className="flex items-center justify-between mb-5"><div><h2 className="font-bold text-slate-900 dark:text-white">Cobertura por setor</h2></div></div>
-          <div className="space-y-4">{(riskRows || []).slice(0, 8).map((row) => <CoverageBar key={row.name} label={row.name} value={row.coverage} />)} {(!riskRows || riskRows.length === 0) && <EmptyState title="Sem dados" description="Não existem registros." />}</div>
+          <div className="space-y-4">{(riskRows || []).slice(0, 8).map((row) => <CoverageBar key={row.name} label={row.name} value={row.coverage} />)} {(!riskRows || riskRows.length === 0) && <EmptyState title="Sem dados de cobertura" description="Não existem registros." />}</div>
         </Card>
         <Card className="p-6 border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 transition-colors">
           <div className="flex items-center justify-between mb-5"><div><h2 className="font-bold text-slate-900 dark:text-white">Profissionais por horas</h2></div></div>
@@ -1424,7 +1425,7 @@ function EmptyState({ title, description }) {
 
 function ReportPreviewModal({ reportPayload, reportHash, hashLoading, reportStatus, reportVersion, onClose, onPrint, onExport, onStatusChange }) {
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-5">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-5">
       <div className="w-full h-full max-w-[1500px] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         <div className="h-auto min-h-[68px] bg-slate-950 text-white px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -1444,7 +1445,7 @@ function ReportPreviewModal({ reportPayload, reportHash, hashLoading, reportStat
               </SelectContent>
             </Select>
             <Button type="button" variant="outline" onClick={onExport} className="gap-2 bg-transparent text-white border-white/20 hover:bg-white/10"><Download className="w-4 h-4" /> CSV</Button>
-            <Button type="button" onClick={onPrint} className="gap-2 bg-sky-600 hover:bg-sky-500 border-0"><Printer className="w-4 h-4" /> Imprimir / PDF</Button>
+            <Button type="button" onClick={onPrint} className="gap-2 bg-sky-600 hover:bg-sky-500 border-0"><Printer className="w-4 h-4" /> Imprimir A4 / PDF</Button>
             <Button type="button" variant="ghost" onClick={onClose} className="text-white hover:bg-white/10"><X className="w-5 h-5" /></Button>
           </div>
         </div>
