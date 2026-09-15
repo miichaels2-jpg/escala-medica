@@ -38,9 +38,7 @@ class SafeErrorBoundary extends Component {
             <p className="text-xs text-slate-400 mt-2 mb-6">{this.state.errorMsg}</p>
             <Button
               onClick={() => {
-                try {
-                  window.localStorage.removeItem('escala_setor_fixado_v19');
-                } catch (e) {}
+                try { window.localStorage.removeItem('escala_setor_fixado_v21'); } catch (e) {}
                 window.location.reload();
               }}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11"
@@ -58,10 +56,10 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v20';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v20';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v20';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v20';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v21';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v21';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v21';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v21';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -1469,7 +1467,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO ESCALA BASE (COM SELETOR OBRIGATÓRIO DE SETOR)
+          MODO ESCALA BASE (COM SELEÇÃO DE SETOR OBRIGATÓRIA)
           ======================================================== */}
       {viewMode === 'base_builder' && (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
@@ -1943,7 +1941,7 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* MODAL: ADICIONAR / EDITAR TURNO (COM PROPAGAÇÃO GLOBAL) */}
+      {/* MODAL: ADICIONAR / EDITAR TURNO (COM FUNÇÕES SEGURAS) */}
       {builderModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
