@@ -38,7 +38,7 @@ class SafeErrorBoundary extends Component {
             <p className="text-xs text-slate-400 mt-2 mb-6">{this.state.errorMsg}</p>
             <Button
               onClick={() => {
-                try { window.localStorage.removeItem('escala_setor_fixado_v25'); } catch (e) {}
+                try { window.localStorage.removeItem('escala_setor_fixado_v26'); } catch (e) {}
                 window.location.reload();
               }}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11"
@@ -56,10 +56,10 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v25';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v25';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v25';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v25';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v26';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v26';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v26';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v26';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -249,8 +249,8 @@ function EscalasContent() {
   });
 
   const [profSearchQuery, setProfSearchQuery] = useState('');
-  const [selectedCells, setSelectedCells] = useState([]);
 
+  // Publicação
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [publishRange, setPublishRange] = useState({
     preset: '1_mes',
@@ -268,6 +268,7 @@ function EscalasContent() {
     } catch { return {}; }
   });
 
+  // Vagas inativadas
   const [disabledDaysMap, setDisabledDaysMap] = useState(() => {
     try {
       const raw = window.localStorage.getItem(`${STORAGE_DISABLED_DAYS_KEY}:${companyId}`);
@@ -275,6 +276,7 @@ function EscalasContent() {
     } catch { return {}; }
   });
 
+  // Modais de Ação
   const [newShiftModal, setNewShiftModal] = useState(null); 
   const [selectedProfIdForModal, setSelectedProfIdForModal] = useState(''); 
   const [retroactiveReason, setRetroactiveReason] = useState('');
@@ -287,6 +289,7 @@ function EscalasContent() {
   const [editing, setEditing] = useState(null);
   const [tvMode, setTvMode] = useState(false);
   
+  // Builder Escala Base
   const [builderModal, setBuilderModal] = useState(null);
   const [builderShifts, setBuilderShifts] = useState([]);
   const [builderForm, setBuilderForm] = useState({ 
@@ -306,48 +309,7 @@ function EscalasContent() {
   });
   const [confirmGoToAllocation, setConfirmGoToAllocation] = useState(false);
 
-  const openNewBuilderModal = useCallback(() => {
-    setBuilderForm({ 
-      id: '', 
-      name: '', 
-      start: '', 
-      end: '', 
-      qty: 1, 
-      color: BUILDER_COLORS[0], 
-      days: [1,2,3,4,5],
-      startDate: getLocalDateString(),
-      endDate: (() => {
-        const d = new Date();
-        d.setMonth(d.getMonth() + 1);
-        return getLocalDateString(d);
-      })()
-    });
-    setBuilderModal({ isNew: true });
-  }, []);
-
-  const openEditBuilderModal = useCallback((shiftObj) => {
-    if (!shiftObj) return;
-    const selectedColor = BUILDER_COLORS.find(c => c.value === shiftObj.color) || BUILDER_COLORS[0];
-    const activeDays = [];
-    [0, 1, 2, 3, 4, 5, 6].forEach(d => { if ((shiftObj.cellStates || {})[d]) activeDays.push(d); });
-    setBuilderForm({ 
-      id: shiftObj.id, 
-      name: shiftObj.name, 
-      start: shiftObj.start, 
-      end: shiftObj.end, 
-      qty: shiftObj.qty || 1, 
-      color: selectedColor, 
-      days: activeDays,
-      startDate: shiftObj.startDate || getLocalDateString(),
-      endDate: shiftObj.endDate || (() => {
-        const d = new Date();
-        d.setMonth(d.getMonth() + 1);
-        return getLocalDateString(d);
-      })()
-    });
-    setBuilderModal({ isNew: false });
-  }, []);
-
+  // Sincronização de Tema
   useEffect(() => {
     try {
       const savedTheme = window.localStorage.getItem('hospital-intelligence-theme') || 'dark';
@@ -371,6 +333,7 @@ function EscalasContent() {
     try { window.localStorage.setItem(STORAGE_SECTOR_KEY, newSectorId); } catch (e) {}
   };
 
+  // Carregamento de dados
   const loadData = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true); else setLoading(true);
     try {
@@ -395,6 +358,7 @@ function EscalasContent() {
   useEffect(() => { if (!appLoading) loadData(); }, [appLoading, loadData]);
   useEffect(() => { const id = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(id); }, []);
 
+  // Leitura da Escala Base Específica por Setor
   useEffect(() => {
     if (sectorFilter === 'todos') {
       setBuilderShifts([]);
@@ -454,6 +418,7 @@ function EscalasContent() {
     return date >= normalizeDate(pub.start) && date <= normalizeDate(pub.end);
   }, [publishedMap]);
 
+  // Lista dos Plantões Filtrados e Ordenados Crescente
   const filteredShifts = useMemo(() => {
     const result = safeArray(shifts).filter(s => {
       if (!s || getStatusKey(s.status) === 'cancelado') return false;
@@ -475,7 +440,7 @@ function EscalasContent() {
       return { 
         ...s, 
         rTimeStatus, 
-        isVacant: !s.professional_id || pName.includes('vaga')
+        isVacant: !s.professional_id || pName.includes('vaga') || getStatusKey(s.status) === 'disponivel' || getStatusKey(s.status) === 'aberto'
       };
     });
 
@@ -493,6 +458,7 @@ function EscalasContent() {
     return getMonthWeeks(selectedMonth, sDateFilter, eDateFilter);
   }, [selectedMonth, scaleModeScope, scaleStartDate, builderShifts]);
 
+  // Montagem Dinâmica de Linhas
   const displayShiftsForSector = useMemo(() => {
     if (sectorFilter === 'todos') return [];
     
@@ -527,10 +493,11 @@ function EscalasContent() {
     return [];
   }, [sectorFilter, builderShifts, filteredShifts]);
 
+  // Corpo Clínico lateral filtrando apenas profissionais ATIVOS
   const sidebarProfessionals = useMemo(() => {
     const term = normalizeStr(profSearchQuery);
     return safeArray(professionals).filter(p => {
-      if (!p?.id) return false;
+      if (!p?.id || p.status === 'inativo') return false;
       const matchesSearch = !term || normalizeStr(p.name || p.full_name).includes(term) || normalizeStr(p.specialty).includes(term);
       const matchesSector = sectorFilter === 'todos' || !p.sector_id || String(p.sector_id) === String(sectorFilter) || (Array.isArray(p.sectors) && p.sectors.includes(sectorFilter));
       return matchesSearch && matchesSector;
@@ -548,6 +515,7 @@ function EscalasContent() {
   const handleDragStart = (e, prof) => { if (prof?.id) e.dataTransfer.setData('profId', prof.id); };
   const handleDragOver = (e) => { e.preventDefault(); };
 
+  // Validação de Conflito de Horário
   const validateProfessionalShiftConflict = (profId, targetDate, targetStart, targetEnd, currentShiftId = null) => {
     const existingShifts = safeArray(shifts).filter(s => {
       if (currentShiftId && s.id === currentShiftId) return false;
@@ -568,6 +536,7 @@ function EscalasContent() {
     return { conflict: false };
   };
 
+  // Alocação compatível com faturamento
   const assignShift = async (date, shiftDef, profId, reasonText = '', explicitStatus = 'confirmado', sectorTarget = null, forceRemapShiftId = null) => {
     const secId = sectorTarget && sectorTarget !== 'todos' ? sectorTarget : sectorFilter;
     if (secId === 'todos') { alert("Selecione uma seção específica no topo para alocar o profissional."); return; }
@@ -622,6 +591,7 @@ function EscalasContent() {
 
       const notes = [
         `Turno: ${shiftDef.name}`,
+        prof?.registration_code ? `Matrícula: ${prof.registration_code}` : null,
         reasonText ? `Justificativa Retroativo: ${reasonText}` : null
       ].filter(Boolean).join(' | ');
 
@@ -663,12 +633,24 @@ function EscalasContent() {
     }
   };
 
+  /* ============================================================
+     ENVIO REAL PARA O MURAL DE OPORTUNIDADES (DISPONÍVEL)
+     ============================================================ */
   const handleSendToOpportunitiesMural = async (date, shiftDef, secId) => {
-    const sectorObj = safeArray(sectors).find(s => String(s.id) === String(secId));
+    const targetSecId = secId && secId !== 'todos' ? secId : sectorFilter;
+    if (targetSecId === 'todos') {
+      alert('Selecione uma seção específica no topo para publicar esta oportunidade.');
+      return;
+    }
+
+    const sectorObj = safeArray(sectors).find(s => String(s.id) === String(targetSecId));
     if (!sectorObj) return;
 
     try {
       const hours = getShiftHours({ start_time: shiftDef.start, end_time: shiftDef.end });
+      const defaultHourlyRate = 120; // Valor padrão base para cálculo prévio de faturamento
+      const estimatedTotal = defaultHourlyRate * hours;
+
       const payload = {
         company_id: companyId,
         unit_id: unitId,
@@ -680,18 +662,39 @@ function EscalasContent() {
         start_time: shiftDef.start,
         end_time: shiftDef.end,
         duration_hours: hours,
-        status: 'aberto',
+        hours: hours,
+        hourly_rate: defaultHourlyRate,
+        rate: defaultHourlyRate,
+        total_amount: estimatedTotal,
+        valor_total: estimatedTotal,
+        cost: estimatedTotal,
+        status: 'disponivel', // Compatível com o Mural de Oportunidades
+        is_opportunity: true,
         notes: `Disponível no Mural de Oportunidades • Turno: ${shiftDef.name}`
       };
 
-      await base44.entities.Shift.create(payload);
-      loadData(true);
-      alert('Vaga disponibilizada no Mural de Oportunidades!');
+      // Se já existe vaga cadastrada naquele slot, atualiza para status disponível
+      const existingShift = safeArray(filteredShifts).find(s => 
+        String(s.date || '').startsWith(date) && 
+        s.start_time === shiftDef.start && 
+        s.end_time === shiftDef.end && 
+        String(s.sector_id) === String(sectorObj.id)
+      );
+
+      if (existingShift?.id) {
+        await base44.entities.Shift.update(existingShift.id, payload);
+      } else {
+        await base44.entities.Shift.create(payload);
+      }
+
+      await loadData(true);
+      alert('Vaga disponibilizada com sucesso no Mural de Oportunidades!');
     } catch (e) {
       alert('Erro ao enviar vaga ao mural: ' + e.message);
     }
   };
 
+  // Inativar Vaga do Dia
   const handleToggleDayInactive = (date, shiftId) => {
     const key = `${date}:${shiftId}`;
     const nextMap = { ...disabledDaysMap, [key]: !disabledDaysMap[key] };
@@ -723,6 +726,83 @@ function EscalasContent() {
     } catch (e) {
       alert('Erro ao cancelar.');
     }
+  };
+
+  /* ============================================================
+     CONFIRMAÇÃO DE PUBLICAÇÃO DA ESCALA (CORRIGIDO)
+     ============================================================ */
+  const handleConfirmPublish = () => {
+    if (sectorFilter === 'todos') {
+      alert('Selecione um setor específico para publicar a escala.');
+      return;
+    }
+
+    const payload = {
+      sectorId: sectorFilter,
+      sectorName: activeSectorName,
+      start: publishRange.start,
+      end: publishRange.end,
+      publishedAt: new Date().toISOString()
+    };
+
+    const nextMap = { ...publishedMap, [sectorFilter]: payload };
+    setPublishedMap(nextMap);
+    try {
+      window.localStorage.setItem(`${STORAGE_PUBLISHED_MAP_KEY}:${companyId}`, JSON.stringify(nextMap));
+    } catch (e) {}
+
+    setPublishModalOpen(false);
+    loadData(true);
+    alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
+  };
+
+  const openNewBuilderModal = useCallback(() => {
+    setBuilderForm({ 
+      id: '', 
+      name: '', 
+      start: '', 
+      end: '', 
+      qty: 1, 
+      color: BUILDER_COLORS[0], 
+      days: [1,2,3,4,5],
+      startDate: getLocalDateString(),
+      endDate: (() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() + 1);
+        return getLocalDateString(d);
+      })()
+    });
+    setBuilderModal({ isNew: true });
+  }, []);
+
+  const openEditBuilderModal = useCallback((shiftObj) => {
+    if (!shiftObj) return;
+    const selectedColor = BUILDER_COLORS.find(c => c.value === shiftObj.color) || BUILDER_COLORS[0];
+    const activeDays = [];
+    [0, 1, 2, 3, 4, 5, 6].forEach(d => { if ((shiftObj.cellStates || {})[d]) activeDays.push(d); });
+    setBuilderForm({ 
+      id: shiftObj.id, 
+      name: shiftObj.name, 
+      start: shiftObj.start, 
+      end: shiftObj.end, 
+      qty: shiftObj.qty || 1, 
+      color: selectedColor, 
+      days: activeDays,
+      startDate: shiftObj.startDate || getLocalDateString(),
+      endDate: shiftObj.endDate || (() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() + 1);
+        return getLocalDateString(d);
+      })()
+    });
+    setBuilderModal({ isNew: false });
+  }, []);
+
+  const toggleBuilderDay = (dayIndex) => {
+    setBuilderForm(prev => ({
+      ...prev,
+      days: (prev.days || []).includes(dayIndex) ? (prev.days || []).filter(d => d !== dayIndex) : [...(prev.days || []), dayIndex]
+    }));
   };
 
   const saveBuilderShiftAndPropagate = async () => {
@@ -978,8 +1058,6 @@ function EscalasContent() {
 
     return (
       <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col p-4 sm:p-6 font-sans overflow-hidden">
-        
-        {/* CABEÇALHO DO MODO TV COM RELÓGIO CENTRAL E BOTÃO SAIR SEM SOBREPOSIÇÃO */}
         <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-4 mb-4 gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-sky-600 rounded-xl flex items-center justify-center shadow-lg shadow-sky-600/30">
@@ -1006,7 +1084,6 @@ function EscalasContent() {
           </button>
         </div>
 
-        {/* CORPO DA TV COM CARDS NEUTROS E BOLINHA DE STATUS COLORIDA */}
         <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-8">
            {safeArray(sectors).map(sector => {
              const secShifts = todayShifts.filter(s => String(s.sector_id) === String(sector.id));
@@ -1027,12 +1104,11 @@ function EscalasContent() {
                      {secShifts.map(s => {
                        const published = isShiftPublished(s.date, s.sector_id);
                        const rStatus = getRealTimeStatus(s.date, s.start_time, s.end_time, currentTime, s.status, published);
-                       const isVacant = !s.professional_id || normalizeStr(s.professional_name).includes('vaga');
+                       const isVacant = !s.professional_id || normalizeStr(s.professional_name).includes('vaga') || getStatusKey(s.status) === 'disponivel';
 
                        return (
                          <div key={s.id} className="p-3 border rounded-xl flex items-center justify-between gap-2.5 transition-all shadow-md bg-slate-900/90 border-slate-800">
                             <div className="min-w-0 flex-1">
-                              {/* BOLINHA COLORIDA INDICADORA COM NOME DO STATUS */}
                               <div className="flex items-center gap-1.5 mb-1 text-[10px] font-black tracking-wider uppercase">
                                 {isVacant ? (
                                   <span className="text-amber-400 flex items-center gap-1.5">
@@ -1231,7 +1307,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO GRADE VISUAL (BUILDER) - COM BOLINHAS DE STATUS
+          MODO GRADE VISUAL (BUILDER)
           ======================================================== */}
       {viewMode === 'grade' && (
         <div className="flex-1 flex overflow-hidden p-4 sm:px-6 pb-4">
@@ -1415,7 +1491,6 @@ function EscalasContent() {
                                           {s.isVacant ? 'Vaga Aberta' : toTitleCase(s.professional_name)}
                                         </div>
                                         
-                                        {/* STATUS DISCRETO COM BOLINHA INDICADORA */}
                                         <div className="text-[10px] font-bold tracking-wider uppercase mt-1 flex items-center gap-1.5">
                                           {s.isVacant ? (
                                             <span className="text-amber-500 flex items-center gap-1">
@@ -1460,7 +1535,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO LISTA DIÁRIA - COM BOLINHAS DE STATUS
+          MODO LISTA DIÁRIA
           ======================================================== */}
       {viewMode === 'list' && (
         <div className="overflow-y-auto p-4 sm:px-8 space-y-3 flex-1">
@@ -1522,7 +1597,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO ESCALA BASE (COM SELETOR OBRIGATÓRIO DE SETOR)
+          MODO ESCALA BASE
           ======================================================== */}
       {viewMode === 'base_builder' && (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
@@ -1688,7 +1763,7 @@ function EscalasContent() {
                     <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                       {groupedModalBySector[secName].map(s => {
                         const rStatus = getRealTimeStatus(s.date, s.start_time, s.end_time, currentTime, s.status);
-                        const isVacant = !s.professional_id || normalizeStr(s.professional_name).includes('vaga');
+                        const isVacant = !s.professional_id || normalizeStr(s.professional_name).includes('vaga') || getStatusKey(s.status) === 'disponivel';
                         return (
                           <div key={s.id} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between">
                             <div>
