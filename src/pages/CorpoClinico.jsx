@@ -68,7 +68,7 @@ export default function CorpoClinico() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   
-  const [activeTab, setActiveTab] = useState('ativos'); // 'ativos' ou 'pendentes'
+  const [activeTab, setActiveTab] = useState('ativos');
   const [viewMode, setViewMode] = useState('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState('');
@@ -89,7 +89,7 @@ export default function CorpoClinico() {
   const [phone, setPhone] = useState('');
   const [unitId, setUnitId] = useState('');
   
-  // Remuneração Contratual
+  // Remuneração
   const [remunerationType, setRemunerationType] = useState('hora');
   const [hourlyRate, setHourlyRate] = useState('120');
   const [dailyRate, setDailyRate] = useState('1500');
@@ -100,10 +100,10 @@ export default function CorpoClinico() {
   const [pixKey, setPixKey] = useState('');
   const [bankInfo, setBankInfo] = useState('');
 
-  // Acesso, Perfil e Permissões (RBAC)
+  // Acesso e Permissões (RBAC)
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('medico'); // 'medico', 'coordenador', 'gestor'
+  const [role, setRole] = useState('medico');
   const [allowedModules, setAllowedModules] = useState(['minha_escala', 'trocas_plantao', 'mural_oportunidades', 'meus_repasses']);
 
   const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
@@ -152,8 +152,8 @@ export default function CorpoClinico() {
     if (!searchQuery.trim()) return listToFilter;
     const query = searchQuery.toLowerCase().trim();
     return listToFilter.filter((p) => {
-      const pName = (p.name || p.full_name || '').toLowerCase();
-      const pDoc = (p.document || p.registration_number || '').toLowerCase();
+      const pName = (p.name || '').toLowerCase();
+      const pDoc = (p.document || '').toLowerCase();
       const pSpec = (p.specialty || p.category || '').toLowerCase();
       const pEmail = (p.email || '').toLowerCase();
       return pName.includes(query) || pDoc.includes(query) || pSpec.includes(query) || pEmail.includes(query);
@@ -193,7 +193,7 @@ export default function CorpoClinico() {
     }
     if (rawPhone.length === 10 || rawPhone.length === 11) rawPhone = `55${rawPhone}`;
     
-    const text = encodeURIComponent(`Olá, Dr(a). ${prof.name || prof.full_name}!\n\nSeu cadastro no sistema ScaleMedic foi atualizado com sucesso. Você já pode acessar seu painel de escalas e repasses.\n\nQualquer dúvida, estamos à disposição!`);
+    const text = encodeURIComponent(`Olá, Dr(a). ${prof.name}!\n\nSeu cadastro no sistema ScaleMedic foi atualizado com sucesso. Você já pode acessar seu painel de escalas e repasses.\n\nQualquer dúvida, estamos à disposição!`);
     window.open(`https://wa.me/${rawPhone}?text=${text}`, '_blank');
   };
 
@@ -209,7 +209,7 @@ export default function CorpoClinico() {
   };
 
   const handleApprove = async (prof) => {
-    if (!confirm(`Aprovar o credenciamento do Dr(a). ${prof.name || prof.full_name} e liberar seu acesso ao hospital?`)) return;
+    if (!confirm(`Aprovar o credenciamento do Dr(a). ${prof.name}?`)) return;
     try {
       await base44.entities.Professional.update(prof.id, {
         status: 'ativo',
@@ -297,12 +297,12 @@ export default function CorpoClinico() {
 
   const handleEditProfessional = async (prof) => {
     setEditingId(prof.id);
-    setName(prof.name || prof.full_name || '');
-    setCpf(prof.cpf || prof.document_cpf || '');
+    setName(prof.name || '');
+    setCpf(prof.cpf || '');
     setBirthDate(prof.birth_date || '');
     setSpecialty(prof.specialty || prof.category || 'Clínica Médica');
     setSection(prof.section || '');
-    setDocument(prof.document || prof.registration_number || '');
+    setDocument(prof.document || '');
     setEmail(prof.email || '');
     setPhone(prof.phone || '');
     setUnitId(String(prof.unit_id || units[0]?.id || 'unit_h1'));
@@ -312,16 +312,12 @@ export default function CorpoClinico() {
     setDailyRate(String(prof.daily_rate || '1500'));
     setMonthlySalary(String(prof.monthly_salary || '18000'));
 
-    setPixType(prof.pix_type || prof.pix_key_type || 'cpf');
+    setPixType(prof.pix_type || 'cpf');
     setPixKey(prof.pix_key || '');
     setBankInfo(prof.bank_info || '');
 
     const userRole = prof.role === 'gestor' || prof.is_manager ? 'gestor' : prof.role === 'coordenador' ? 'coordenador' : 'medico';
     setRole(userRole);
-    setAllowedModules(Array.isArray(prof.permissions) && prof.permissions.length > 0
-      ? prof.permissions
-      : userRole === 'gestor' ? SYSTEM_MODULES.map(m => m.id) : ['minha_escala', 'trocas_plantao', 'mural_oportunidades', 'meus_repasses']
-    );
 
     try {
       const usersFound = await base44.entities.User.filter({ email: (prof.email || '').toLowerCase().trim() });
@@ -330,14 +326,18 @@ export default function CorpoClinico() {
         setPassword(usersFound[0].password || '123456');
         if (usersFound[0]?.data?.allowed_modules) {
           setAllowedModules(usersFound[0].data.allowed_modules);
+        } else {
+          setAllowedModules(userRole === 'gestor' ? SYSTEM_MODULES.map(m => m.id) : ['minha_escala', 'trocas_plantao', 'mural_oportunidades', 'meus_repasses']);
         }
       } else {
         setUsername(prof.email ? prof.email.split('@')[0] : '');
         setPassword(prof.birth_date ? computeDefaultPassword(prof.birth_date, prof.name) : '123456');
+        setAllowedModules(userRole === 'gestor' ? SYSTEM_MODULES.map(m => m.id) : ['minha_escala', 'trocas_plantao', 'mural_oportunidades', 'meus_repasses']);
       }
     } catch {
       setUsername(prof.email ? prof.email.split('@')[0] : '');
       setPassword(prof.birth_date ? computeDefaultPassword(prof.birth_date, prof.name) : '123456');
+      setAllowedModules(['minha_escala', 'trocas_plantao', 'mural_oportunidades', 'meus_repasses']);
     }
 
     setDialogOpen(true);
@@ -384,21 +384,18 @@ export default function CorpoClinico() {
       const numDaily = Number(dailyRate) || 0;
       const numMonthly = Number(monthlySalary) || 0;
 
-      // Payload estritamente compatível com o schema de Professional (SEM allowed_modules)
+      // PAYLOAD SANITIZADO: sem 'full_name' nem 'allowed_modules'
       const profPayload = {
         company_id: companyId,
         unit_id: unitId || units[0]?.id,
         name,
-        full_name: name,
         specialty,
         category: specialty,
-        role: role,
+        role,
         document,
-        registration_number: document,
         email,
         phone,
         status: 'ativo',
-        permissions: allowedModules, // Grava nas permissions nativas da tabela
         remuneration_type: remunerationType,
         hourly_rate: numHourly,
         daily_rate: numDaily,
@@ -412,30 +409,34 @@ export default function CorpoClinico() {
       if (birthDate) profPayload.birth_date = birthDate;
       if (section) profPayload.section = section;
 
-      // Fallback defensivo contra colunas variáveis no banco
-      try {
-        if (editingId) {
-          await base44.entities.Professional.update(editingId, profPayload);
-        } else {
-          await base44.entities.Professional.create(profPayload);
-        }
-      } catch (err) {
-        if (err.message && (err.message.includes('cpf') || err.message.includes('birth_date') || err.message.includes('section') || err.message.includes('permissions'))) {
-          delete profPayload.cpf;
-          delete profPayload.birth_date;
-          delete profPayload.section;
-          delete profPayload.permissions;
+      // Auto-recuperação resiliente contra colunas ausentes no schema cache
+      const payloadToSend = { ...profPayload };
+      let saved = false;
+
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
           if (editingId) {
-            await base44.entities.Professional.update(editingId, profPayload);
+            await base44.entities.Professional.update(editingId, payloadToSend);
           } else {
-            await base44.entities.Professional.create(profPayload);
+            await base44.entities.Professional.create(payloadToSend);
           }
-        } else {
-          throw err;
+          saved = true;
+          break;
+        } catch (dbErr) {
+          const colMatch = dbErr.message?.match(/Could not find the '(\w+)' column/i);
+          if (colMatch && colMatch[1]) {
+            delete payloadToSend[colMatch[1]];
+          } else {
+            throw dbErr;
+          }
         }
       }
 
-      // Sincronização do registro de autenticação na tabela User
+      if (!saved) {
+        throw new Error('Falha ao persistir dados do profissional no banco.');
+      }
+
+      // Sincronização de credenciais na tabela User
       const userNick = (username || (email ? email.split('@')[0] : name.toLowerCase().replace(/\s+/g, ''))).trim();
       const finalPass = password || (birthDate ? computeDefaultPassword(birthDate, name) : '123456');
       const userEmail = (email || `${userNick}@scalemedic.local`).toLowerCase().trim();
@@ -444,8 +445,8 @@ export default function CorpoClinico() {
         company_id: companyId,
         selected_unit_id: unitId,
         app_role: role,
-        permissions: allowedModules,
         allowed_modules: allowedModules,
+        permissions: allowedModules,
         must_change_password: !editingId || password === computeDefaultPassword(birthDate, name)
       };
 
@@ -470,10 +471,12 @@ export default function CorpoClinico() {
           });
         }
       } catch (userErr) {
-        console.warn('Aviso: Não foi possível atualizar a tabela de autenticação:', userErr);
+        console.warn('Aviso na sincronização de usuário:', userErr);
       }
 
       setDialogOpen(false);
+      setToastMessage('Profissional salvo com sucesso!');
+      setTimeout(() => setToastMessage(''), 3000);
       await loadData();
     } catch (err) {
       alert('Erro ao salvar profissional: ' + (err.message || 'Verifique os dados e tente novamente.'));
@@ -484,7 +487,6 @@ export default function CorpoClinico() {
 
   return (
     <div className="p-4 md:p-8 space-y-6 relative">
-      {/* Toast Notificação */}
       {toastMessage && (
         <div className="fixed top-6 right-6 z-[9999] flex items-center gap-2 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300 font-medium text-sm">
           <CheckCircle2 className="w-5 h-5 text-emerald-100" />
@@ -533,7 +535,7 @@ export default function CorpoClinico() {
         </div>
       </div>
 
-      {/* Abas: Ativos vs Pendentes */}
+      {/* Abas */}
       <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         <button
           onClick={() => setActiveTab('ativos')}
@@ -605,9 +607,9 @@ export default function CorpoClinico() {
               >
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <strong className="text-base text-slate-900 dark:text-white">{prof.name || prof.full_name}</strong>
+                    <strong className="text-base text-slate-900 dark:text-white">{prof.name}</strong>
                     <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase border border-amber-500/20">
-                      CRM/Reg: {prof.document || prof.registration_number || '--'}
+                      CRM/Reg: {prof.document || '--'}
                     </span>
                     <span className="text-xs text-sky-600 font-semibold">{prof.specialty}</span>
                   </div>
@@ -672,7 +674,7 @@ export default function CorpoClinico() {
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <h3 className="font-bold text-base text-slate-900 dark:text-white">{prof.name || prof.full_name}</h3>
+                        <h3 className="font-bold text-base text-slate-900 dark:text-white">{prof.name}</h3>
                         <p className="text-xs text-sky-600 font-semibold uppercase tracking-wide">
                           {prof.specialty || prof.category || 'Clínica Geral'} {prof.document ? `• CRM/Reg: ${prof.document}` : ''}
                         </p>
@@ -760,7 +762,7 @@ export default function CorpoClinico() {
                     <tr key={prof.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                       <td className="p-4">
                         <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                          {prof.name || prof.full_name} {isGestor && <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" title="Gestor" />}
+                          {prof.name} {isGestor && <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" title="Gestor" />}
                         </div>
                         <div className="text-xs text-sky-600 font-semibold uppercase mt-0.5">
                           {prof.specialty || prof.category || 'Clínica Geral'} {prof.document ? `• ${prof.document}` : ''}
@@ -806,7 +808,6 @@ export default function CorpoClinico() {
           </DialogHeader>
 
           <form onSubmit={handleSave} className="space-y-5 py-2">
-            {/* Dados Pessoais & Documentos */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Label className="text-xs font-semibold">Nome completo *</Label>
@@ -980,7 +981,7 @@ export default function CorpoClinico() {
                     <User className="w-4 h-4 text-sky-600" /> Acesso ao Sistema & Perfil de Permissões
                   </h4>
                   <p className="text-xs text-slate-500">
-                    Defina o papel do profissional e o que ele poderá acessar no aplicativo.
+                    Defina o papel do profissional e as telas que ele poderá acessar.
                   </p>
                 </div>
                 <div className="flex gap-2">
