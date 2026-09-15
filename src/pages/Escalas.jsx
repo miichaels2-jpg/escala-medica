@@ -38,9 +38,7 @@ class SafeErrorBoundary extends Component {
             <p className="text-xs text-slate-400 mt-2 mb-6">{this.state.errorMsg}</p>
             <Button
               onClick={() => {
-                try {
-                  window.localStorage.removeItem('escala_setor_fixado_v22');
-                } catch (e) {}
+                try { window.localStorage.removeItem('escala_setor_fixado_v23'); } catch (e) {}
                 window.location.reload();
               }}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11"
@@ -58,10 +56,10 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v22';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v22';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v22';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v22';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v23';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v23';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v23';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v23';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -155,20 +153,21 @@ function getSectorName(s, m = {}) {
 function getRealTimeStatus(dateStr, startStr, endStr, currentTime, explicitStatus, isPublished = false) {
   const currentKey = getStatusKey(explicitStatus);
   if (currentKey === 'cancelado' || currentKey === 'falta') return 'cancelado';
-  if (currentKey === 'concluido' || currentKey === 'realizado') return 'concluido';
+  if (currentKey === 'concluido' || currentKey === 'realizado' || currentKey === 'encerrado') return 'encerrado';
 
   const shiftDate = normalizeDate(dateStr);
   const today = getLocalDateString(currentTime);
 
-  if (shiftDate < today) return 'concluido';
+  if (shiftDate < today) return 'encerrado';
 
   if (shiftDate === today && startStr && endStr) {
     const currentHour = `${String(currentTime.getHours()).padStart(2, '0')}:${String(currentTime.getMinutes()).padStart(2, '0')}`;
     if (startStr > endStr) {
       if (currentHour >= startStr || currentHour <= endStr) return 'andamento';
     } else {
+      if (currentHour < startStr) return isPublished ? 'publicado' : 'programado';
       if (currentHour >= startStr && currentHour <= endStr) return 'andamento';
-      if (currentHour > endStr) return 'concluido';
+      if (currentHour > endStr) return 'encerrado';
     }
   }
 
@@ -311,7 +310,6 @@ function EscalasContent() {
   });
   const [confirmGoToAllocation, setConfirmGoToAllocation] = useState(false);
 
-  /* FUNÇÕES DE ABERTURA E GESTÃO DO BUILDER COM ESCOPO COMPLETO */
   const openNewBuilderModal = useCallback(() => {
     setBuilderForm({ 
       id: '', 
@@ -740,38 +738,7 @@ function EscalasContent() {
     }
   };
 
-  const handleConfirmPublish = () => {
-    if (sectorFilter === 'todos') {
-      alert('Selecione um setor específico para publicar a escala.');
-      return;
-    }
-
-    const payload = {
-      sectorId: sectorFilter,
-      sectorName: activeSectorName,
-      start: publishRange.start,
-      end: publishRange.end,
-      publishedAt: new Date().toISOString()
-    };
-
-    const nextMap = { ...publishedMap, [sectorFilter]: payload };
-    setPublishedMap(nextMap);
-    try {
-      window.localStorage.setItem(`${STORAGE_PUBLISHED_MAP_KEY}:${companyId}`, JSON.stringify(nextMap));
-    } catch (e) {}
-
-    setPublishModalOpen(false);
-    loadData(true);
-    alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
-  };
-
-  const toggleBuilderDay = (dayIndex) => {
-    setBuilderForm(prev => ({
-      ...prev,
-      days: (prev.days || []).includes(dayIndex) ? (prev.days || []).filter(d => d !== dayIndex) : [...(prev.days || []), dayIndex]
-    }));
-  };
-
+  // Propagação Global de Alteração de Turno (Atualiza Painel, Escala e Faturamento em Lote)
   const saveBuilderShiftAndPropagate = async () => {
     if (sectorFilter === 'todos') {
       alert('Selecione um setor específico no topo antes de salvar os turnos da Escala Base.');
@@ -890,7 +857,7 @@ function EscalasContent() {
         const published = isShiftPublished(s.date, s.sector_id);
         const rStatus = getRealTimeStatus(s.date, s.start_time, s.end_time, currentTime, s.status, published);
         const statusLabel = {
-          concluido: '<span style="color:#059669; font-weight:bold;">Concluído</span>',
+          encerrado: '<span style="color:#64748b; font-weight:bold;">Encerrado</span>',
           andamento: '<span style="color:#0284c7; font-weight:bold;">Em Atendimento</span>',
           publicado: '<span style="color:#10b981; font-weight:bold;">Publicado</span>',
           programado: '<span style="color:#475569;">Programado</span>'
@@ -1024,73 +991,93 @@ function EscalasContent() {
 
     return (
       <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col p-4 sm:p-6 font-sans overflow-hidden">
-        <button 
-          onClick={() => setTvMode(false)}
-          className="absolute top-4 right-4 z-50 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 border border-red-500"
-        >
-          <X className="w-5 h-5" /> Sair do Modo TV
-        </button>
+        
+        {/* CABEÇALHO COM HORÁRIO CENTRAL E BOTÃO SAIR SEM SOBREPOSIÇÃO */}
+        <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-4 mb-4 gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-sky-600 rounded-xl flex items-center justify-center shadow-lg shadow-sky-600/30">
+              <Activity className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">Escala do Dia (Modo TV)</h1>
+              <p className="text-xs text-sky-400 font-semibold">{fmtDateLong(todayStr)} • {formatDateBR(todayStr)}</p>
+            </div>
+          </div>
 
-        <div className="flex justify-between items-center border-b border-slate-800 pb-4 mb-4 pr-32">
-           <div className="flex items-center gap-3">
-             <div className="w-10 h-10 bg-sky-600 rounded-xl flex items-center justify-center shadow-lg">
-               <Activity className="w-5 h-5 text-white" />
-             </div>
-             <div>
-               <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">Escala do Dia (Modo TV)</h1>
-               <p className="text-xs text-sky-400 font-semibold">{fmtDateLong(todayStr)} • {formatDateBR(todayStr)}</p>
-             </div>
-           </div>
-           <div className="text-right hidden sm:block">
-              <div className="text-2xl font-mono text-emerald-400 font-black">{currentTime.toLocaleTimeString('pt-BR')}</div>
-           </div>
+          {/* RELÓGIO DIGITAL CENTRALIZADO */}
+          <div className="text-center px-4 py-1.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-inner">
+            <div className="text-2xl sm:text-3xl font-mono text-emerald-400 font-black tracking-wider leading-tight">
+              {currentTime.toLocaleTimeString('pt-BR')}
+            </div>
+            <div className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold">Horário Operacional</div>
+          </div>
+
+          {/* BOTÃO DE SAÍDA ISOLADO */}
+          <button 
+            onClick={() => setTvMode(false)}
+            className="bg-red-600 hover:bg-red-700 active:scale-95 transition-all text-white px-4 py-2 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 border border-red-500 shrink-0"
+          >
+            <X className="w-4 h-4" /> Sair do Modo TV
+          </button>
         </div>
 
-        <div className="flex-1 overflow-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pb-10">
+        {/* CORPO DA TV COM ROLAGEM VERTICAL SUAVE E FAIXAS HORIZONTAIS */}
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-8">
            {safeArray(sectors).map(sector => {
              const secShifts = todayShifts.filter(s => String(s.sector_id) === String(sector.id));
              if (secShifts.length === 0) return null;
 
              return (
-               <div key={sector.id} className="p-4 rounded-2xl border bg-slate-900 border-slate-800 flex flex-col shadow-lg">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
-                    <h2 className="text-base font-black text-white flex items-center gap-1.5">
+               <div key={sector.id} className="p-4 rounded-2xl border bg-slate-900/90 border-slate-800 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5 mb-3">
+                    <h2 className="text-base font-black text-white flex items-center gap-2">
                       <Building2 className="w-4 h-4 text-sky-400" /> {sector.name}
                     </h2>
-                    <span className="text-[10px] bg-slate-800 px-2.5 py-0.5 rounded-full text-slate-300 font-bold">{secShifts.length} plantões</span>
+                    <span className="text-[10px] bg-slate-800 px-3 py-0.5 rounded-full text-slate-300 font-bold">
+                      {secShifts.length} plantonistas ativos
+                    </span>
                   </div>
 
-                  <div className="space-y-2.5 flex-1 overflow-y-auto pr-1">
+                  {/* CARDS EM GRID HORIZONTAL COMPACTO */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
                      {secShifts.map(s => {
                        const published = isShiftPublished(s.date, s.sector_id);
                        const rStatus = getRealTimeStatus(s.date, s.start_time, s.end_time, currentTime, s.status, published);
                        const isVacant = !s.professional_id || normalizeStr(s.professional_name).includes('vaga');
 
                        const cardStyles = {
-                         concluido: 'bg-slate-800/40 border-slate-800 opacity-60',
-                         andamento: 'bg-emerald-950/40 border-emerald-500/60 ring-1 ring-emerald-500/50',
-                         publicado: 'bg-emerald-950/20 border-emerald-500/30',
-                         programado: 'bg-slate-800 border-slate-700'
-                       }[rStatus];
+                         encerrado: 'bg-slate-800/40 border-slate-800/80 opacity-60',
+                         andamento: 'bg-emerald-950/40 border-emerald-500/60 ring-1 ring-emerald-500/40',
+                         publicado: 'bg-slate-800/80 border-slate-700',
+                         programado: 'bg-slate-800/80 border-slate-700'
+                       }[rStatus] || 'bg-slate-800 border-slate-700';
 
                        return (
-                         <div key={s.id} className={`p-3 border rounded-xl flex items-center justify-between gap-2 ${isVacant ? 'bg-amber-950/30 border-amber-500/60 animate-pulse' : cardStyles}`}>
+                         <div key={s.id} className={`p-3 border rounded-xl flex items-center justify-between gap-2.5 transition-all shadow-sm ${isVacant ? 'bg-amber-950/30 border-amber-500/60 animate-pulse' : cardStyles}`}>
                             <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 mb-0.5">
+                              <div className="flex items-center gap-1.5 mb-1">
                                 {isVacant ? (
                                   <span className="text-amber-400 text-[9px] font-black tracking-widest uppercase">⚠️ VAGA ABERTA</span>
                                 ) : rStatus === 'andamento' ? (
-                                  <span className="text-emerald-400 text-[9px] font-black tracking-widest uppercase flex items-center gap-1">● EM ATENDIMENTO</span>
-                                ) : rStatus === 'concluido' ? (
-                                  <span className="text-slate-400 text-[9px] font-black tracking-widest uppercase">CONCLUÍDO</span>
+                                  <span className="text-emerald-400 text-[9px] font-black tracking-widest uppercase flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" /> EM ATENDIMENTO
+                                  </span>
+                                ) : rStatus === 'encerrado' ? (
+                                  <span className="text-slate-400 text-[9px] font-black tracking-widest uppercase flex items-center gap-1">
+                                    <Lock className="w-2.5 h-2.5" /> ENCERRADO
+                                  </span>
                                 ) : (
                                   <span className="text-sky-400 text-[9px] font-black tracking-widest uppercase">PROGRAMADO</span>
                                 )}
                               </div>
-                              <b className="text-sm text-white block truncate">{isVacant ? 'PLANTÃO DESCOBERTO' : toTitleCase(s.professional_name)}</b>
+                              <b className="text-sm text-white block truncate leading-tight">
+                                {isVacant ? 'PLANTÃO DESCOBERTO' : toTitleCase(s.professional_name)}
+                              </b>
                             </div>
                             <div className="text-right shrink-0">
-                              <span className="text-xs font-mono font-bold text-slate-300 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">{s.start_time} - {s.end_time}</span>
+                              <span className="text-xs font-mono font-bold text-slate-300 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 block">
+                                {s.start_time} - {s.end_time}
+                              </span>
                             </div>
                          </div>
                        );
@@ -1293,7 +1280,7 @@ function EscalasContent() {
               </div>
             </div>
 
-            {/* Calendário da Grade com Suporte a Todos os Setores e Setor Específico */}
+            {/* Grade de Calendário */}
             <div className="flex-1 overflow-auto bg-slate-50/30 dark:bg-slate-950 relative">
               {sectorFilter === 'todos' ? (
                 <div className="p-4 space-y-6">
@@ -1313,7 +1300,7 @@ function EscalasContent() {
                         <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                           {secShifts.map(s => {
                             const statusStyles = {
-                              concluido: 'border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-400',
+                              encerrado: 'border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-400',
                               andamento: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/50',
                               publicado: 'border-emerald-300 dark:border-emerald-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100',
                               programado: 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100'
@@ -1330,7 +1317,7 @@ function EscalasContent() {
                                 </div>
                                 <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-[10px]">
                                   <span className="capitalize font-bold">{s.rTimeStatus}</span>
-                                  {!s.isVacant && s.rTimeStatus !== 'concluido' && (
+                                  {!s.isVacant && s.rTimeStatus !== 'encerrado' && (
                                     <button onClick={() => handleDelete(s.id)} className="text-red-500 hover:underline">Cancelar</button>
                                   )}
                                 </div>
@@ -1435,10 +1422,12 @@ function EscalasContent() {
                                     <div key={s.id || `vaga_${idx}`} className={`relative p-2 rounded-xl text-xs border flex items-center justify-between group/item transition-all shadow-sm ${
                                       s.isVacant 
                                         ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-500/40 text-amber-800 dark:text-amber-300 border-dashed' 
-                                        : rStatus === 'concluido'
+                                        : rStatus === 'encerrado'
                                         ? 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-slate-400 opacity-75'
                                         : rStatus === 'andamento'
                                         ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-500'
+                                        : rStatus === 'publicado'
+                                        ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-400 dark:border-emerald-700 text-slate-900 dark:text-slate-100'
                                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100'
                                     }`}>
                                       <div className="min-w-0 flex-1 pr-2">
@@ -1447,7 +1436,8 @@ function EscalasContent() {
                                         </div>
                                         {!s.isVacant && (
                                           <div className="text-[10px] font-semibold opacity-75 mt-0.5 capitalize flex items-center gap-1">
-                                            {rStatus === 'concluido' && <Lock className="w-2.5 h-2.5 inline" />}
+                                            {rStatus === 'encerrado' && <Lock className="w-2.5 h-2.5 inline" />}
+                                            {rStatus === 'publicado' && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 inline" />}
                                             {rStatus}
                                           </div>
                                         )}
@@ -1485,7 +1475,7 @@ function EscalasContent() {
             ) : (
               filteredShifts.map(s => {
                 const statusConfig = {
-                  concluido: { bg: 'bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-400', icon: Lock, label: 'Concluído' },
+                  encerrado: { bg: 'bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-400', icon: Lock, label: 'Encerrado' },
                   andamento: { bg: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-500/50 text-emerald-700 dark:text-emerald-400', icon: Activity, label: 'Em Andamento' },
                   publicado: { bg: 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-400 text-emerald-700 dark:text-emerald-400', icon: CheckCircle2, label: 'Publicado' },
                   programado: { bg: 'bg-sky-50 dark:bg-sky-950/30 border-sky-300 dark:border-sky-500/50 text-sky-700 dark:text-sky-400', icon: CalendarDays, label: 'Programado' }
