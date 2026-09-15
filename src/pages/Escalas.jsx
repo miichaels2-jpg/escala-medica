@@ -10,7 +10,7 @@ import {
   Clock3, GripVertical, LayoutGrid, List, Loader2, Lock,
   Maximize2, Minimize2, Moon, Pencil, Plus, Printer,
   RefreshCw, Search, Send, SlidersHorizontal, Sun, Trash2, UserPlus,
-  UsersRound, X, FileText, ShieldAlert, ArrowRightLeft, Megaphone, Ban, Check
+  UsersRound, X, FileText, ShieldAlert, ArrowRightLeft, Megaphone, Ban, Check, Smartphone
 } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
 
@@ -53,10 +53,10 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v15';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v15';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v15';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v15';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v16';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v16';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v16';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v16';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -190,7 +190,6 @@ function getMonthWeeks(monthStr, startDateFilter = '') {
   for (let d = 1; d <= lastDay.getDate(); d++) {
     const dateStr = getLocalDateString(new Date(year, month - 1, d));
     
-    // Se houver filtro de data de início (ex: a partir de hoje), oculta os dias anteriores do mês
     if (startDateFilter && dateStr < startDateFilter) {
       currentWeek.push('disabled');
     } else {
@@ -233,9 +232,9 @@ function EscalasContent() {
 
   const [theme, setTheme] = useState('dark');
 
-  // Filtro de Data de Início da Escala (A partir de qual dia montar)
+  // Filtro de Início Inteligente da Escala
   const [scaleStartDate, setScaleStartDate] = useState(() => getLocalDateString());
-  const [scaleModeScope, setScaleModeScope] = useState('apartir_hoje'); // 'mes_inteiro' ou 'apartir_hoje'
+  const [scaleModeScope, setScaleModeScope] = useState('apartir_hoje');
 
   const [sectorFilter, setSectorFilter] = useState(() => {
     try {
@@ -440,13 +439,15 @@ function EscalasContent() {
     return getMonthWeeks(selectedMonth, startDateFilter);
   }, [selectedMonth, scaleModeScope, scaleStartDate]);
 
-  // Montagem Dinâmica de Linhas (Respeita Escala Base ou Plantões Já Existentes)
+  // Montagem Dinâmica de Linhas (Respeita Escala Base ou Plantões Já Existentes no Banco)
   const displayShiftsForSector = useMemo(() => {
     if (sectorFilter === 'todos') return [];
     
+    // 1. Se houver turnos na Escala Base do localStorage, usa eles
     const base = safeArray(builderShifts);
     if (base.length > 0) return base;
 
+    // 2. Caso contrário, extrai automaticamente dos plantões já existentes no banco para este setor
     const sectorShiftsInMonth = filteredShifts.filter(s => String(s.sector_id) === String(sectorFilter));
     const timeSlots = new Map();
 
@@ -677,7 +678,7 @@ function EscalasContent() {
     }
   };
 
-  // Limpeza Corrigida de Vagas Abertas na Base
+  // Limpeza Corrigida de Vagas Abertas na Base (Varre por nome "Vaga Aberta" ou sem ID)
   const handleClearSectorVacancies = async () => {
     if (sectorFilter === 'todos') {
       alert('Selecione uma seção específica para limpar as vagas abertas.');
@@ -685,7 +686,12 @@ function EscalasContent() {
     }
     const vacantShifts = safeArray(shifts).filter(s => 
       String(s.sector_id) === String(sectorFilter) && 
-      (!s.professional_id || normalizeStr(s.professional_name).includes('vaga') || getStatusKey(s.status) === 'aberto') &&
+      (
+        !s.professional_id || 
+        normalizeStr(s.professional_name).includes('vaga') || 
+        getStatusKey(s.status) === 'aberto' ||
+        normalizeStr(s.professional_name) === 'vaga aberta'
+      ) &&
       getStatusKey(s.status) !== 'cancelado'
     );
 
@@ -945,7 +951,7 @@ function EscalasContent() {
   }, [shiftsTodayModal]);
 
   /* ============================================================
-     RENDER MODO TV (OTIMIZADO PARA MÓVEL COM BOTÃO FLUTUANTE DE SAÍDA)
+     RENDER DO MODO TV (OTIMIZADO MOBILE COM BOTÃO DE SAÍDA)
      ============================================================ */
   if (tvMode) {
     const todayStr = getLocalDateString(currentTime);
@@ -953,7 +959,6 @@ function EscalasContent() {
 
     return (
       <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col p-4 sm:p-6 font-sans overflow-hidden">
-        {/* BOTÃO FLUTUANTE DE FECHAR PARA MOBILE / ANDROID / IOS */}
         <button 
           onClick={() => setTvMode(false)}
           className="absolute top-4 right-4 z-50 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 border border-red-500"
@@ -1139,7 +1144,6 @@ function EscalasContent() {
               </Select>
             </div>
             
-            {/* CONFIGURAÇÃO RÁPIDA DE INÍCIO DA ESCALA (A PARTIR DE HOJE OU MÊS INTEIRO) */}
             <div className="flex items-center gap-2 bg-white dark:bg-slate-950 px-3 py-1 rounded-xl border border-slate-300 dark:border-slate-800">
               <span className="text-[10px] font-bold uppercase text-slate-400">Início:</span>
               <select 
@@ -1232,7 +1236,6 @@ function EscalasContent() {
             {/* Calendário da Grade com Suporte a Todos os Setores e Setor Específico */}
             <div className="flex-1 overflow-auto bg-slate-50/30 dark:bg-slate-950 relative">
               {sectorFilter === 'todos' ? (
-                /* VISÃO CONSOLIDADA DE TODOS OS SETORES */
                 <div className="p-4 space-y-6">
                   {safeArray(sectors).map(sec => {
                     const secShifts = filteredShifts.filter(s => String(s.sector_id) === String(sec.id));
@@ -1280,7 +1283,6 @@ function EscalasContent() {
                   })}
                 </div>
               ) : displayShiftsForSector.length === 0 ? (
-                /* SETOR SEM NENHUMA VAGA OU ESCALA BASE: MOSTRA TELA PARA CONFIGURAR */
                 <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">
                   <div className="w-16 h-16 rounded-3xl bg-slate-100 dark:bg-slate-800/60 flex items-center justify-center mx-auto mb-4 border border-slate-200 dark:border-slate-700">
                     <SlidersHorizontal className="w-8 h-8 text-sky-600 dark:text-sky-400" />
@@ -1296,7 +1298,6 @@ function EscalasContent() {
                   </Button>
                 </div>
               ) : (
-                /* SETOR COM VAGAS / ESCALA CADASTRADA: MOSTRA A GRADE COMPLETA */
                 <div className="min-w-[900px] pb-8">
                   <div className="grid grid-cols-8 border-b border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 sticky top-0 z-20 shadow-sm">
                     <div className="p-3 border-r border-slate-200 dark:border-slate-800 flex items-center justify-center font-black text-xs text-slate-500 uppercase tracking-wider bg-slate-200/60 dark:bg-slate-950">Turno</div>
@@ -1319,9 +1320,17 @@ function EscalasContent() {
                       {displayShiftsForSector.map((period) => (
                         <div key={period.id} className="grid grid-cols-8 border-b border-slate-200 dark:border-slate-800/80 last:border-b-0 group">
                           
-                          <div className="p-3 border-r border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex flex-col items-center justify-center text-center">
+                          {/* COLUNA TURNO EDITÁVEL DIRETAMENTE AO CLICAR NO LÁPIS */}
+                          <div className="p-3 border-r border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex flex-col items-center justify-center text-center relative group/turn">
                             <span className="font-bold text-xs text-slate-900 dark:text-slate-200">{period.name}</span>
                             <span className="text-[10px] text-sky-600 dark:text-sky-400 font-mono mt-0.5">{period.start} - {period.end}</span>
+                            <button 
+                              onClick={() => openEditBuilderModal(period)}
+                              className="absolute top-1 right-1 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-600 dark:text-slate-300 opacity-0 group-hover/turn:opacity-100 transition-all shadow-sm"
+                              title="Editar Nome ou Horário deste Turno"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
                           </div>
 
                           {week.map((date, dIndex) => {
@@ -1369,8 +1378,6 @@ function EscalasContent() {
                                         ? 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-slate-400 opacity-75'
                                         : rStatus === 'andamento'
                                         ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-500'
-                                        : rStatus === 'publicado'
-                                        ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-400 dark:border-emerald-700 text-slate-900 dark:text-slate-100'
                                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100'
                                     }`}>
                                       <div className="min-w-0 flex-1 pr-2">
@@ -1569,7 +1576,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODAIS E DIALOGS
+          MODAIS E DIALOGóS
           ======================================================== */}
 
       {/* MODAL HORIZONTAL: ESCALA DO DIA */}
