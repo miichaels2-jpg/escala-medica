@@ -37,7 +37,12 @@ class SafeErrorBoundary extends Component {
             <h2 className="text-xl font-black">Recuperação de Interface</h2>
             <p className="text-xs text-slate-400 mt-2 mb-6">{this.state.errorMsg}</p>
             <Button
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                try {
+                  window.localStorage.removeItem('escala_setor_fixado_v17');
+                } catch (e) {}
+                window.location.reload();
+              }}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11"
             >
               Recarregar Escala
@@ -53,10 +58,10 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v17';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v17';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v17';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v17';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v18';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v18';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v18';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v18';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -190,7 +195,6 @@ function getMonthWeeks(monthStr, startDateFilter = '', endDateFilter = '') {
   for (let d = 1; d <= lastDay.getDate(); d++) {
     const dateStr = getLocalDateString(new Date(year, month - 1, d));
     
-    // Valida intervalo personalizado se houver
     if ((startDateFilter && dateStr < startDateFilter) || (endDateFilter && dateStr > endDateFilter)) {
       currentWeek.push('disabled');
     } else {
@@ -232,6 +236,10 @@ function EscalasContent() {
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
   const [theme, setTheme] = useState('dark');
+
+  // Declaração restaurada do escopo de início da escala
+  const [scaleStartDate, setScaleStartDate] = useState(() => getLocalDateString());
+  const [scaleModeScope, setScaleModeScope] = useState('apartir_hoje');
 
   const [sectorFilter, setSectorFilter] = useState(() => {
     try {
@@ -446,12 +454,12 @@ function EscalasContent() {
   }, [shifts, sectorFilter, selectedMonth, selectedDate, viewMode, currentTime, isShiftPublished]);
 
   const weeksDataGrid = useMemo(() => {
-    // Pega o turno com o menor start date ou usa o primeiro turno do builder para balizar o intervalo
+    const startDateFilter = scaleModeScope === 'apartir_hoje' ? scaleStartDate : '';
     const firstShift = builderShifts[0];
-    const sDateFilter = firstShift?.startDate || '';
+    const sDateFilter = startDateFilter || firstShift?.startDate || '';
     const eDateFilter = firstShift?.endDate || '';
     return getMonthWeeks(selectedMonth, sDateFilter, eDateFilter);
-  }, [selectedMonth, builderShifts]);
+  }, [selectedMonth, scaleModeScope, scaleStartDate, builderShifts]);
 
   // Montagem Dinâmica de Linhas
   const displayShiftsForSector = useMemo(() => {
@@ -687,41 +695,6 @@ function EscalasContent() {
       loadData(true);
     } catch (e) {
       alert('Erro ao cancelar.');
-    }
-  };
-
-  // Limpeza Corrigida de Vagas Abertas na Base (Varre tanto plantões com status aberto quanto vagas virtuais ou por nome)
-  const handleClearSectorVacancies = async () => {
-    if (sectorFilter === 'todos') {
-      alert('Selecione uma seção específica para limpar as vagas abertas.');
-      return;
-    }
-    
-    // Busca plantões com status 'aberto' ou sem profissional associado
-    const vacantShifts = safeArray(shifts).filter(s => 
-      String(s.sector_id) === String(sectorFilter) && 
-      (
-        !s.professional_id || 
-        normalizeStr(s.professional_name).includes('vaga') || 
-        getStatusKey(s.status) === 'aberto' ||
-        normalizeStr(s.professional_name) === 'vaga aberta'
-      ) &&
-      getStatusKey(s.status) !== 'cancelado'
-    );
-
-    if (vacantShifts.length === 0) {
-      alert(`Nenhuma vaga aberta encontrada para ${activeSectorName}.`);
-      return;
-    }
-
-    if (!confirm(`Deseja cancelar definitivamente ${vacantShifts.length} vaga(s) aberta(s) de ${activeSectorName}?`)) return;
-
-    try {
-      await Promise.all(vacantShifts.map(s => base44.entities.Shift.update(s.id, { status: 'cancelado', notes: 'Vaga limpa pelo gestor' })));
-      loadData(true);
-      alert('Vagas abertas canceladas e removidas com sucesso!');
-    } catch (e) {
-      alert('Erro ao limpar vagas: ' + e.message);
     }
   };
 
@@ -995,7 +968,7 @@ function EscalasContent() {
   }, [shiftsTodayModal]);
 
   /* ============================================================
-     RENDER DO MODO TV (OTIMIZADO MOBILE COM BOTÃO DE SAÍDA)
+     RENDER DO MODO TV
      ============================================================ */
   if (tvMode) {
     const todayStr = getLocalDateString(currentTime);
@@ -1171,7 +1144,7 @@ function EscalasContent() {
         </div>
       </header>
 
-      {/* BARRA DE FILTROS E ESCOPO DE DATA */}
+      {/* BARRA DE FILTROS */}
       {viewMode !== 'base_builder' && (
         <div className="bg-slate-200/50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 p-2.5 px-6 lg:px-8 flex flex-wrap items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-4 flex-wrap">
@@ -1229,11 +1202,6 @@ function EscalasContent() {
               <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full font-bold">
                 ✓ Publicada até {formatDateBR(publishedMap[sectorFilter].end)}
               </span>
-            )}
-            {sectorFilter !== 'todos' && (
-              <Button variant="ghost" onClick={handleClearSectorVacancies} className="text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 h-8">
-                <Trash2 className="w-3.5 h-3.5 mr-1" /> Limpar Vagas Abertas
-              </Button>
             )}
           </div>
         </div>
@@ -1364,7 +1332,6 @@ function EscalasContent() {
                       {displayShiftsForSector.map((period) => (
                         <div key={period.id} className="grid grid-cols-8 border-b border-slate-200 dark:border-slate-800/80 last:border-b-0 group">
                           
-                          {/* COLUNA TURNO COM BOTÃO DE EDIÇÃO RÁPIDA (LÁPIS) */}
                           <div className="p-3 border-r border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex flex-col items-center justify-center text-center relative group/turn">
                             <span className="font-bold text-xs text-slate-900 dark:text-slate-200">{period.name}</span>
                             <span className="text-[10px] text-sky-600 dark:text-sky-400 font-mono mt-0.5">{period.start} - {period.end}</span>
@@ -1389,9 +1356,12 @@ function EscalasContent() {
                             const dIndexBase = new Date(`${date}T12:00:00`).getDay();
                             const isActiveInBase = Boolean(period.cellStates && period.cellStates[dIndexBase]);
                             
+                            // Validação de intervalo de vigência do turno
+                            const inDateRange = (!period.startDate || date >= period.startDate) && (!period.endDate || date <= period.endDate);
+                            
                             const disabledKey = `${date}:${period.id}`;
                             const isDayManuallyDisabled = Boolean(disabledDaysMap[disabledKey]);
-                            const requiredQty = (isActiveInBase && !isDayManuallyDisabled) ? (period.qty || 1) : 0;
+                            const requiredQty = (isActiveInBase && inDateRange && !isDayManuallyDisabled) ? (period.qty || 1) : 0;
                             
                             const renders = [...slotShifts];
                             for (let q = slotShifts.length; q < requiredQty; q++) {
@@ -1406,7 +1376,7 @@ function EscalasContent() {
                                 onDrop={(e) => handleDrop(e, date, period)} 
                                 onClick={(e) => handleCellClick(e, date, period)}
                               >
-                                {renders.length === 0 && (!isActiveInBase || isDayManuallyDisabled) && (
+                                {renders.length === 0 && (!isActiveInBase || !inDateRange || isDayManuallyDisabled) && (
                                   <div className="absolute inset-0 flex items-center justify-center opacity-20 text-xs font-black text-slate-400">
                                     {isDayManuallyDisabled ? 'Inativo' : '-'}
                                   </div>
@@ -1526,7 +1496,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO ESCALA BASE (COM DATAS DE INÍCIO E FIM)
+          MODO ESCALA BASE (COM DATAS DE VIGÊNCIA)
           ======================================================== */}
       {viewMode === 'base_builder' && (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
@@ -1537,7 +1507,7 @@ function EscalasContent() {
                   <h2 className="text-xl font-black text-slate-900 dark:text-white">Escala Base: {activeSectorName}</h2>
                   <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold">Modo Edição</span>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Defina os turnos, o período de validade e a quantidade de vagas da semana.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Defina os turnos, o período de vigência e a quantidade de vagas da semana.</p>
               </div>
               
               <div className="flex items-center gap-3">
@@ -1971,7 +1941,7 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* MODAL: ADICIONAR / EDITAR TURNO (COM CAMPOS DE INÍCIO E FIM DE PERÍODO) */}
+      {/* MODAL: ADICIONAR / EDITAR TURNO (COM CAMPOS DE VIGÊNCIA INICIAL E FINAL) */}
       {builderModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
