@@ -39,7 +39,7 @@ class SafeErrorBoundary extends Component {
             <p className="text-xs text-slate-400 mt-2 mb-6">{this.state.errorMsg}</p>
             <Button
               onClick={() => {
-                try { window.localStorage.removeItem('escala_setor_fixado_v28'); } catch (e) {}
+                try { window.localStorage.removeItem('escala_setor_fixado_v29'); } catch (e) {}
                 window.location.reload();
               }}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11"
@@ -57,17 +57,14 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v28';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v28';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v28';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v28';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v29';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v29';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v29';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v29';
 
-// Tempo máximo de exibição de plantões encerrados no modo TV (em minutos)
 const PREVIOUS_SHIFT_DISPLAY_MINUTES = 60;
-
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
-// Mapeamento correto dos dias da semana (0 = Domingo, 1 = Segunda, ..., 6 = Sábado)
 const WEEK_DAYS_ORDER = [
   { label: 'Segunda', index: 1, short: 'SEG' },
   { label: 'Terça', index: 2, short: 'TER' },
@@ -88,41 +85,32 @@ const BUILDER_COLORS = [
 
 function safeArray(val) { return Array.isArray(val) ? val : []; }
 function safeNumber(val, fb = 0) { const n = Number(val); return Number.isFinite(n) ? n : fb; }
-
 function normalizeDate(val) {
   if (!val) return '';
   const t = String(val).trim();
   return /^\d{4}-\d{2}-\d{2}/.test(t) ? t.substring(0, 10) : t;
 }
-
 function getLocalDateString(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-
-// Resolução sem desvio de fuso para finais de semana
 function getDayOfWeekIndex(dateStr) {
   if (!dateStr || dateStr === 'disabled') return -1;
   const parts = dateStr.split('-');
   if (parts.length < 3) return -1;
   return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0).getDay();
 }
-
 function normalizeStr(str) {
   return typeof str === 'string' ? str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
 }
-
 function toTitleCase(str) {
   return typeof str === 'string' ? str.toLowerCase().split(' ').map(w => ['de','da','do','e'].includes(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '';
 }
-
 function getStatusKey(status) { return String(status || '').trim().toLowerCase(); }
-
 function formatDateBR(dateStr) {
   if (!dateStr) return '—';
   const parts = normalizeDate(dateStr).split('-');
   return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(dateStr);
 }
-
 function fmtDateLong(dateStr) {
   if (!dateStr) return '';
   const parts = normalizeDate(dateStr).split('-');
@@ -168,9 +156,6 @@ function getSectorName(s, m = {}) {
   return s?.sector_id && m[s.sector_id] ? m[s.sector_id].name : 'Setor Geral';
 }
 
-/* ============================================================
-   MOTOR DE TEMPO REAL PRECISO (CROSS-MIDNIGHT & TRACKS DA TV)
-   ============================================================ */
 function getDetailedShiftStatus(dateStr, startStr, endStr, now, explicitStatus, isPublished = false) {
   const currentKey = getStatusKey(explicitStatus);
   if (currentKey === 'cancelado' || currentKey === 'falta') return { code: 'cancelado', isFinishedRecent: false };
@@ -188,7 +173,6 @@ function getDetailedShiftStatus(dateStr, startStr, endStr, now, explicitStatus, 
   const shiftStart = new Date(y, m - 1, d, sh, sm, 0);
   const shiftEnd = new Date(y, m - 1, d, eh, em, 0);
 
-  // Plantão noturno que ultrapassa meia-noite
   if (shiftEnd <= shiftStart) {
     shiftEnd.setDate(shiftEnd.getDate() + 1);
   }
@@ -205,7 +189,6 @@ function getDetailedShiftStatus(dateStr, startStr, endStr, now, explicitStatus, 
     return { code: isPublished ? 'publicado' : 'programado', isFinishedRecent: false };
   }
 
-  // Plantão ultrapassou o horário de término
   const minutesSinceEnd = (nowMs - endMs) / (1000 * 60);
   const isFinishedRecent = minutesSinceEnd >= 0 && minutesSinceEnd <= PREVIOUS_SHIFT_DISPLAY_MINUTES;
 
@@ -250,7 +233,6 @@ function getMonthWeeks(monthStr, startDateFilter = '', endDateFilter = '') {
   return weeks;
 }
 
-// Gerador contínuo de navegação mensal (3 meses passados e até 21 meses futuros)
 function generateMonthOptions(pivotDate = new Date()) {
   const options = [];
   const base = new Date(pivotDate.getFullYear(), pivotDate.getMonth() - 3, 1);
@@ -265,9 +247,14 @@ function generateMonthOptions(pivotDate = new Date()) {
 
 const escapeHtml = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/* ============================================================
-   COMPONENTE PRINCIPAL
-   ============================================================ */
+export default function Escalas() {
+  return (
+    <SafeErrorBoundary>
+      <EscalasContent />
+    </SafeErrorBoundary>
+  );
+}
+
 function EscalasContent() {
   const { user, company, loading: appLoading } = useAppData() || {};
   
@@ -319,7 +306,6 @@ function EscalasContent() {
     } catch { return {}; }
   });
 
-  // Vagas inativadas manualmente por dia
   const [disabledDaysMap, setDisabledDaysMap] = useState(() => {
     try {
       const raw = window.localStorage.getItem(`${STORAGE_DISABLED_DAYS_KEY}:${companyId}`);
@@ -327,7 +313,7 @@ function EscalasContent() {
     } catch { return {}; }
   });
 
-  // Modal de Duplicação Mensal
+  // Duplicação
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [duplicateConfig, setDuplicateConfig] = useState({
     sourceMonth: getLocalDateString().slice(0, 7),
@@ -340,7 +326,7 @@ function EscalasContent() {
   });
   const [duplicating, setDuplicating] = useState(false);
 
-  // Modais de Ação Operacional
+  // Modais de Ação
   const [newShiftModal, setNewShiftModal] = useState(null); 
   const [selectedProfIdForModal, setSelectedProfIdForModal] = useState(''); 
   const [retroactiveReason, setRetroactiveReason] = useState('');
@@ -353,7 +339,7 @@ function EscalasContent() {
   const [editing, setEditing] = useState(null);
   const [tvMode, setTvMode] = useState(false);
   
-  // Builder da Escala Base (Molde)
+  // Escala Base (Molde)
   const [builderModal, setBuilderModal] = useState(null);
   const [builderShifts, setBuilderShifts] = useState([]);
   const [builderForm, setBuilderForm] = useState({ 
@@ -371,9 +357,7 @@ function EscalasContent() {
       return getLocalDateString(d);
     })()
   });
-  const [confirmGoToAllocation, setConfirmGoToAllocation] = useState(false);
 
-  // Sincronização de Tema
   useEffect(() => {
     try {
       const savedTheme = window.localStorage.getItem('hospital-intelligence-theme') || 'dark';
@@ -397,7 +381,6 @@ function EscalasContent() {
     try { window.localStorage.setItem(STORAGE_SECTOR_KEY, newSectorId); } catch (e) {}
   };
 
-  // Carregamento de dados
   const loadData = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true); else setLoading(true);
     try {
@@ -422,7 +405,6 @@ function EscalasContent() {
   useEffect(() => { if (!appLoading) loadData(); }, [appLoading, loadData]);
   useEffect(() => { const id = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(id); }, []);
 
-  // Leitura da Escala Base (Molde) por Setor
   useEffect(() => {
     if (sectorFilter === 'todos') {
       setBuilderShifts([]);
@@ -469,7 +451,6 @@ function EscalasContent() {
     return s?.name || 'Setor Selecionado';
   }, [sectors, sectorFilter]);
 
-  // Lista dinâmica de meses para navegação contínua
   const monthOptions = useMemo(() => generateMonthOptions(new Date()), []);
 
   const isShiftPublished = useCallback((shiftDate, secId) => {
@@ -479,7 +460,6 @@ function EscalasContent() {
     return date >= normalizeDate(pub.start) && date <= normalizeDate(pub.end);
   }, [publishedMap]);
 
-  // Plantões Mensais Filtrados
   const filteredShifts = useMemo(() => {
     const result = safeArray(shifts).filter(s => {
       if (!s || getStatusKey(s.status) === 'cancelado') return false;
@@ -520,7 +500,6 @@ function EscalasContent() {
     return getMonthWeeks(selectedMonth, sDateFilter, eDateFilter);
   }, [selectedMonth, scaleModeScope, scaleStartDate, builderShifts]);
 
-  // Linhas da grade mensal (turnos operacionais)
   const displayShiftsForSector = useMemo(() => {
     if (sectorFilter === 'todos') return [];
     
@@ -576,7 +555,6 @@ function EscalasContent() {
   const handleDragStart = (e, prof) => { if (prof?.id) e.dataTransfer.setData('profId', prof.id); };
   const handleDragOver = (e) => { e.preventDefault(); };
 
-  // Validação de Conflito de Horário
   const validateProfessionalShiftConflict = (profId, targetDate, targetStart, targetEnd, currentShiftId = null) => {
     const existingShifts = safeArray(shifts).filter(s => {
       if (currentShiftId && s.id === currentShiftId) return false;
@@ -597,7 +575,6 @@ function EscalasContent() {
     return { conflict: false };
   };
 
-  // Persistência com eliminação defensiva de colunas ausentes no schema
   const saveShiftResilient = async (payload, shiftId = null) => {
     const payloadToSend = { ...payload };
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -619,8 +596,8 @@ function EscalasContent() {
     throw new Error('Falha ao persistir plantão no banco.');
   };
 
-  // Alocação de médico
-  const assignShift = async (date, shiftDef, profId, reasonText = '', explicitStatus = 'confirmado', sectorTarget = null, forceRemapShiftId = null) => {
+  // Alocação com fluxo unificado (status: aguardando_confirmacao)
+  const assignShift = async (date, shiftDef, profId, reasonText = '', explicitStatus = 'aguardando_confirmacao', sectorTarget = null, forceRemapShiftId = null) => {
     const secId = sectorTarget && sectorTarget !== 'todos' ? sectorTarget : sectorFilter;
     if (secId === 'todos') { alert("Selecione uma seção específica no topo para alocar o profissional."); return; }
     
@@ -675,7 +652,8 @@ function EscalasContent() {
       const notes = [
         `Turno: ${shiftDef.name}`,
         prof?.registration_code ? `Matrícula: ${prof.registration_code}` : null,
-        reasonText ? `Justificativa Retroativo: ${reasonText}` : null
+        `Origem: Alocação Manual (Aguardando Confirmação)`,
+        reasonText ? `Justificativa: ${reasonText}` : null
       ].filter(Boolean).join(' | ');
 
       const payload = { 
@@ -704,14 +682,42 @@ function EscalasContent() {
         });
       }
       
-      await saveShiftResilient(payload, existingShift?.id);
+      const savedShift = await saveShiftResilient(payload, existingShift?.id);
+
+      // Cria a solicitação correspondente em ShiftSwap para fluxo de aceite do profissional
+      try {
+        if (base44.entities.ShiftSwap?.create) {
+          await base44.entities.ShiftSwap.create({
+            company_id: companyId,
+            unit_id: unitId,
+            shift_id: savedShift?.id || existingShift?.id,
+            shift_date: date,
+            shift_time: `${shiftDef.start} - ${shiftDef.end}`,
+            sector_name: sectorObj.name,
+            requester_name: 'Coordenação Médica',
+            target_professional_id: prof.id,
+            target_name: prof.name,
+            target_specialty: prof.specialty || 'Geral',
+            swap_type: 'alocacao_manual',
+            source_type: 'alocacao_manual',
+            request_type: 'convite_alocacao',
+            status: 'pendente',
+            confirmation_status: 'aguardando_profissional',
+            approval_status: 'aguardando_gestor'
+          });
+        }
+      } catch (swapErr) {
+        console.warn('Registro em ShiftSwap:', swapErr);
+      }
+
       loadData(true);
+      alert(`Dr(a). ${prof.name} indicado(a). A solicitação foi encaminhada para aceite do médico!`);
     } catch (error) {
-      alert("Erro ao salvar plantão: " + (error?.message || 'Tente novamente.'));
+      alert("Erro ao alocar plantão: " + (error?.message || 'Tente novamente.'));
     }
   };
 
-  // Envio ao Mural de Oportunidades
+  // Envio ao Mural de Oportunidades com registro transacional
   const handleSendToOpportunitiesMural = async (date, shiftDef, secId) => {
     const targetSecId = secId && secId !== 'todos' ? secId : sectorFilter;
     if (targetSecId === 'todos') {
@@ -753,15 +759,34 @@ function EscalasContent() {
         String(s.sector_id) === String(sectorObj.id)
       );
 
-      await saveShiftResilient(payload, existingShift?.id);
+      const savedShift = await saveShiftResilient(payload, existingShift?.id);
+
+      // Cria o registro no Mural (ShiftSwap)
+      if (base44.entities.ShiftSwap?.create) {
+        await base44.entities.ShiftSwap.create({
+          company_id: companyId,
+          unit_id: unitId,
+          shift_id: savedShift?.id || existingShift?.id,
+          shift_date: date,
+          shift_time: `${shiftDef.start} - ${shiftDef.end}`,
+          sector_name: sectorObj.name,
+          requester_name: 'Coordenação Hospitalar',
+          target_name: 'Mural de Oportunidades',
+          swap_type: 'mural',
+          source_type: 'mural',
+          request_type: 'mural',
+          status: 'pendente',
+          confirmation_status: 'aberto'
+        });
+      }
+
       await loadData(true);
-      alert('Vaga disponibilizada com sucesso no Mural de Oportunidades!');
+      alert('Vaga disponibilizada no Mural de Oportunidades com sucesso!');
     } catch (e) {
       alert('Erro ao enviar vaga ao mural: ' + (e?.message || 'Verifique o banco.'));
     }
   };
 
-  // Inativação manual de vaga do dia
   const handleToggleDayInactive = (date, shiftId) => {
     const key = `${date}:${shiftId}`;
     const nextMap = { ...disabledDaysMap, [key]: !disabledDaysMap[key] };
@@ -782,7 +807,7 @@ function EscalasContent() {
       return;
     }
 
-    assignShift(date, shiftDef, profId, '', 'confirmado', sectorTarget);
+    assignShift(date, shiftDef, profId, '', 'aguardando_confirmacao', sectorTarget);
   };
 
   const handleDelete = async (id) => {
@@ -792,6 +817,40 @@ function EscalasContent() {
       loadData(true);
     } catch (e) {
       alert('Erro ao cancelar.');
+    }
+  };
+
+  // EXCLUIR ESCALA MENSAL INTEIRA (LIMPEZA TOTAL DO MÊS)
+  const handleDeleteMonthShifts = async () => {
+    const monthShifts = safeArray(shifts).filter(s => 
+      s.date && 
+      String(s.date).startsWith(selectedMonth) && 
+      (sectorFilter === 'todos' || String(s.sector_id) === String(sectorFilter)) &&
+      getStatusKey(s.status) !== 'cancelado'
+    );
+
+    if (monthShifts.length === 0) {
+      alert(`Não há plantões ativos em ${selectedMonth} para excluir.`);
+      return;
+    }
+
+    if (!confirm(`ATENÇÃO: Deseja realmente excluir TODOS os ${monthShifts.length} plantões do mês ${selectedMonth} (${activeSectorName})? Esta ação cancela os registros no banco de dados.`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const updates = monthShifts.map(s => base44.entities.Shift.update(s.id, { 
+        status: 'cancelado',
+        notes: 'Cancelado em lote na exclusão mensal'
+      }));
+      await Promise.all(updates);
+      await loadData(true);
+      alert(`Escala de ${selectedMonth} excluída com sucesso!`);
+    } catch (e) {
+      alert('Erro ao excluir escala mensal: ' + e.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -820,23 +879,21 @@ function EscalasContent() {
     alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
   };
 
-  /* ============================================================
-     GERAÇÃO MENSAL A PARTIR DA BASE (PREENCHIMENTO DE VAGAS)
-     ============================================================ */
+  // GERAÇÃO MENSAL A PARTIR DO MODELO BASE
   const handleGenerateMonthFromBase = async () => {
     if (sectorFilter === 'todos') {
       alert('Selecione um setor específico para gerar a escala mensal.');
       return;
     }
     if (builderShifts.length === 0) {
-      alert(`A Escala Base de ${activeSectorName} não possui turnos cadastrados.`);
+      alert(`O Modelo Base de ${activeSectorName} não possui turnos cadastrados.`);
       return;
     }
 
     const [year, month] = selectedMonth.split('-').map(Number);
     const lastDay = new Date(year, month, 0, 12, 0, 0).getDate();
 
-    if (!confirm(`Deseja gerar a estrutura de vagas para ${selectedMonth} em ${activeSectorName}? Plantões com médicos já alocados serão preservados.`)) {
+    if (!confirm(`Deseja gerar a estrutura de vagas para ${selectedMonth} em ${activeSectorName}? Plantões já cadastrados serão preservados.`)) {
       return;
     }
 
@@ -852,11 +909,9 @@ function EscalasContent() {
           const isActiveOnDay = Boolean(period.cellStates && period.cellStates[dayOfWeek]);
           if (!isActiveOnDay) continue;
 
-          // Valida período de vigência
           if (period.startDate && dateStr < period.startDate) continue;
           if (period.endDate && dateStr > period.endDate) continue;
 
-          // Verifica se já existem plantões criados no slot
           const existingInSlot = safeArray(shifts).filter(s => 
             normalizeDate(s.date) === dateStr &&
             s.start_time === period.start &&
@@ -898,17 +953,15 @@ function EscalasContent() {
       }
 
       await loadData(true);
-      alert(`Escala mensal gerada com sucesso! (${createdPayloads.length} vagas inseridas)`);
+      alert(`Estrutura gerada com sucesso! (${createdPayloads.length} vagas adicionadas)`);
     } catch (e) {
-      alert('Erro ao gerar escala mensal: ' + e.message);
+      alert('Erro ao gerar escala: ' + e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  /* ============================================================
-     DUPLICAÇÃO MENSAL REAL NO BASE44
-     ============================================================ */
+  // DUPLICAÇÃO MENSAL REAL NO BASE44
   const handleExecuteDuplication = async () => {
     if (duplicateConfig.sourceMonth === duplicateConfig.targetMonth) {
       alert('O mês de destino deve ser diferente do mês de origem.');
@@ -938,7 +991,6 @@ function EscalasContent() {
 
       for (const src of sourceShifts) {
         const srcDay = Number(src.date.split('-')[2]);
-        // Ajusta se o mês de destino tiver menos dias (ex: 31 para 30 ou 28)
         if (srcDay > targetLastDay) continue;
 
         const targetDate = `${tYear}-${String(tMonth).padStart(2, '0')}-${String(srcDay).padStart(2, '0')}`;
@@ -1030,7 +1082,6 @@ function EscalasContent() {
     }));
   };
 
-  // Salva a Escala Base como modelo estrito (sem sobrescrever escalas mensais manuais)
   const saveBuilderShiftModel = () => {
     if (sectorFilter === 'todos') {
       alert('Selecione um setor específico no topo antes de salvar os turnos da Escala Base.');
@@ -1081,12 +1132,12 @@ function EscalasContent() {
     }));
   };
 
-  // Segregação de plantões diários para o Modo TV e Escala do Dia
   const todayTarget = selectedDate || getLocalDateString(currentTime);
   const shiftsForDayModal = useMemo(() => {
     return safeArray(shifts).filter(s => normalizeDate(s.date) === todayTarget && getStatusKey(s.status) !== 'cancelado');
   }, [shifts, todayTarget]);
 
+  // Modo TV e Escala do Dia separados em 4 raias
   const tvTracks = useMemo(() => {
     const active = [];
     const upcoming = [];
@@ -1113,7 +1164,7 @@ function EscalasContent() {
   }, [shiftsForDayModal, currentTime, isShiftPublished]);
 
   /* ============================================================
-     RENDER DO MODO TV (ORGANIZAÇÃO EM 4 RAIAS DE STATUS)
+     RENDER DO MODO TV (4 RAIAS OPERACIONAIS)
      ============================================================ */
   if (tvMode) {
     return (
@@ -1124,7 +1175,7 @@ function EscalasContent() {
               <Activity className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">Escala Operacional (Modo TV)</h1>
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">Escala do Dia (Modo TV)</h1>
               <p className="text-xs text-sky-400 font-semibold">{fmtDateLong(todayTarget)} • {formatDateBR(todayTarget)}</p>
             </div>
           </div>
@@ -1145,8 +1196,7 @@ function EscalasContent() {
         </div>
 
         <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-4 gap-4 pr-1 pb-8">
-          
-          {/* RAIÃO 1: EM ATENDIMENTO */}
+          {/* RAIA 1: ATIVOS */}
           <div className="flex flex-col bg-slate-900/60 border border-emerald-500/30 rounded-2xl p-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2 mb-3">
               <h2 className="text-sm font-black text-emerald-400 uppercase tracking-wider flex items-center gap-2">
@@ -1170,7 +1220,7 @@ function EscalasContent() {
             </div>
           </div>
 
-          {/* RAIÃO 2: PRÓXIMOS PLANTÕES */}
+          {/* RAIA 2: PRÓXIMOS */}
           <div className="flex flex-col bg-slate-900/60 border border-sky-500/30 rounded-2xl p-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-sky-500/20 pb-2 mb-3">
               <h2 className="text-sm font-black text-sky-400 uppercase tracking-wider flex items-center gap-2">
@@ -1194,7 +1244,7 @@ function EscalasContent() {
             </div>
           </div>
 
-          {/* RAIÃO 3: VAGAS ABERTAS */}
+          {/* RAIA 3: VAGAS ABERTAS */}
           <div className="flex flex-col bg-slate-900/60 border border-amber-500/30 rounded-2xl p-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-amber-500/20 pb-2 mb-3">
               <h2 className="text-sm font-black text-amber-400 uppercase tracking-wider flex items-center gap-2">
@@ -1218,7 +1268,7 @@ function EscalasContent() {
             </div>
           </div>
 
-          {/* RAIÃO 4: PLANTÕES ANTERIORES (ENCERRADOS RECENTEMENTE) */}
+          {/* RAIA 4: PLANTÃO ANTERIOR */}
           <div className="flex flex-col bg-slate-900/40 border border-slate-800 rounded-2xl p-4 shadow-xl opacity-80">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
               <h2 className="text-sm font-black text-slate-400 uppercase tracking-wider flex items-center gap-2">
@@ -1242,7 +1292,6 @@ function EscalasContent() {
               {tvTracks.previous.length === 0 && <p className="text-xs text-slate-600 italic py-6 text-center">Nenhum plantão recente.</p>}
             </div>
           </div>
-
         </div>
       </div>
     );
@@ -1324,6 +1373,13 @@ function EscalasContent() {
             <Copy className="w-3.5 h-3.5" /> Duplicar Escala
           </Button>
 
+          {/* BOTÃO PARA EXCLUIR ESCALA MENSAL INTEIRA */}
+          {viewMode === 'grade' && (
+            <Button onClick={handleDeleteMonthShifts} variant="outline" className="border-rose-500/40 text-rose-600 dark:text-rose-400 text-xs h-9 font-bold hover:bg-rose-50 dark:hover:bg-rose-950/30 gap-1.5">
+              <Trash2 className="w-3.5 h-3.5" /> Excluir Mês
+            </Button>
+          )}
+
           <Button onClick={() => setDayScheduleModal(true)} variant="outline" className="border-slate-300 dark:border-slate-700 text-xs h-9 font-bold">
             <FileText className="w-3.5 h-3.5 mr-1.5" /> Escala do Dia
           </Button>
@@ -1340,12 +1396,10 @@ function EscalasContent() {
         </div>
       </header>
 
-      {/* BARRA DE FILTROS E NAVEGAÇÃO TEMPORAL (ATÉ 24 MESES) */}
+      {/* BARRA DE FILTROS E SELETOR DE MÊS */}
       {viewMode !== 'base_builder' && (
         <div className="bg-slate-200/50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 p-2.5 px-6 lg:px-8 flex flex-wrap items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-4 flex-wrap">
-            
-            {/* Navegador Mensal com botões de avanço rápido */}
             <div className="flex items-center gap-1 bg-white dark:bg-slate-950 p-0.5 rounded-xl border border-slate-300 dark:border-slate-800">
               <Button
                 variant="ghost"
@@ -1415,14 +1469,11 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* ========================================================
-          MODO GRADE MENSAL (SÁBADOS E DOMINGOS INDEPENDENTES)
-          ======================================================== */}
+      {/* GRADE MENSAL */}
       {viewMode === 'grade' && (
         <div className="flex-1 flex overflow-hidden p-4 sm:px-6 pb-4">
           <Card className="flex-1 border-slate-200 dark:border-slate-800 shadow-sm flex overflow-hidden bg-white dark:bg-slate-900">
             
-            {/* Lateral de Profissionais */}
             <div className="w-72 bg-slate-50/70 dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0">
               <div className="p-3 border-b border-slate-200 dark:border-slate-800">
                 <div className="flex items-center justify-between mb-2">
@@ -1453,7 +1504,6 @@ function EscalasContent() {
               </div>
             </div>
 
-            {/* Calendário da Grade Mensal */}
             <div className="flex-1 overflow-auto bg-slate-50/30 dark:bg-slate-950 relative">
               {displayShiftsForSector.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">
@@ -1464,7 +1514,7 @@ function EscalasContent() {
                     Nenhum turno configurado para {activeSectorName}
                   </h3>
                   <p className="text-xs text-slate-500 max-w-sm mt-1 mb-5">
-                    Configure os horários no Modelo Base ou clique em "Duplicar Escala" para importar de outro mês.
+                    Configure os horários no Modelo Base ou use a Duplicação para copiar de outro mês.
                   </p>
                   <Button onClick={() => setViewMode('base_builder')} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-10 px-6 shadow-md gap-2">
                     <Plus className="w-4 h-4" /> Configurar Modelo Base
@@ -1510,7 +1560,6 @@ function EscalasContent() {
                           {week.map((date, dIndex) => {
                             if (!date || date === 'disabled') return <div key={dIndex} className="bg-slate-100/40 dark:bg-slate-950/40 border-r border-slate-200 dark:border-slate-800"></div>;
 
-                            // Plantões reais gravados no banco para esta célula
                             const slotShifts = filteredShifts.filter(s => 
                               String(s.date || '').startsWith(date) && 
                               s.start_time === period.start && 
@@ -1523,7 +1572,6 @@ function EscalasContent() {
                             const disabledKey = `${date}:${period.id}`;
                             const isDayManuallyDisabled = Boolean(disabledDaysMap[disabledKey]);
 
-                            // Quantidade requerida respeitando sábados e domingos
                             const requiredQty = (isActiveInBase && inDateRange && !isDayManuallyDisabled) ? (period.qty || 1) : 0;
                             
                             const renders = [...slotShifts];
@@ -1547,9 +1595,12 @@ function EscalasContent() {
 
                                 {renders.map((s, idx) => {
                                   const rStatus = s.rTimeStatus;
+                                  const isPendingConfirmation = s.status === 'aguardando_confirmacao';
 
                                   return (
-                                    <div key={s.id || `vaga_${idx}`} className="relative p-2 rounded-xl text-xs border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between group/item transition-all shadow-sm">
+                                    <div key={s.id || `vaga_${idx}`} className={`relative p-2 rounded-xl text-xs border bg-white dark:bg-slate-900 flex items-center justify-between group/item transition-all shadow-sm ${
+                                      isPendingConfirmation ? 'border-amber-400 ring-1 ring-amber-400/40' : 'border-slate-200 dark:border-slate-800'
+                                    }`}>
                                       <div className="min-w-0 flex-1 pr-2">
                                         <div className="font-bold text-xs break-words leading-tight text-slate-900 dark:text-slate-100">
                                           {s.isVacant ? 'Vaga Aberta' : toTitleCase(s.professional_name)}
@@ -1559,6 +1610,10 @@ function EscalasContent() {
                                           {s.isVacant ? (
                                             <span className="text-amber-500 flex items-center gap-1">
                                               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" /> Aberta
+                                            </span>
+                                          ) : isPendingConfirmation ? (
+                                            <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                              <Clock className="w-2.5 h-2.5" /> Aguardando Confirmação
                                             </span>
                                           ) : rStatus === 'encerrado' ? (
                                             <span className="text-rose-500 flex items-center gap-1">
@@ -1598,13 +1653,10 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* ========================================================
-          MODO MODELO BASE (BLUEPRINT ISOLADO)
-          ======================================================== */}
+      {/* MODELO BASE (MOLDE) */}
       {viewMode === 'base_builder' && (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
           <div className="w-full max-w-5xl space-y-6">
-            
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
               <div>
                 <h3 className="text-sm font-black text-slate-900 dark:text-white">Selecione o Setor do Modelo Base:</h3>
@@ -1627,7 +1679,7 @@ function EscalasContent() {
               <div className="py-16 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8">
                 <Building2 className="w-12 h-12 text-sky-500 mx-auto mb-3 opacity-60" />
                 <h3 className="text-base font-black text-slate-900 dark:text-white">Nenhum setor selecionado</h3>
-                <p className="text-xs text-slate-400 mt-1">Por favor, selecione um setor no menu acima para configurar a Escala Base.</p>
+                <p className="text-xs text-slate-400 mt-1">Selecione um setor no menu acima para configurar a Escala Base.</p>
               </div>
             ) : (
               <>
@@ -1664,8 +1716,7 @@ function EscalasContent() {
                         {builderShifts.length === 0 ? (
                           <tr>
                             <td colSpan="8" className="p-16 text-center text-slate-400 text-xs">
-                              Nenhum turno configurado para <strong>{activeSectorName}</strong>.<br/>
-                              Clique no botão acima para adicionar o primeiro horário deste setor.
+                              Nenhum turno configurado para <strong>{activeSectorName}</strong>.
                             </td>
                           </tr>
                         ) : (
@@ -1715,11 +1766,7 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* ========================================================
-          MODAIS E DIALOGS
-          ======================================================== */}
-
-      {/* MODAL DE DUPLICAÇÃO MENSAL (BASE44) */}
+      {/* MODAL DE DUPLICAÇÃO */}
       {duplicateModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
@@ -1732,7 +1779,7 @@ function EscalasContent() {
 
             <div className="space-y-4 text-xs">
               <div>
-                <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Mês de Origem (Copiar de):</label>
+                <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Mês de Origem:</label>
                 <Select value={duplicateConfig.sourceMonth} onValueChange={(val) => setDuplicateConfig({ ...duplicateConfig, sourceMonth: val })}>
                   <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent className="max-h-52">
@@ -1744,7 +1791,7 @@ function EscalasContent() {
               </div>
 
               <div>
-                <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Mês de Destino (Aplicar em):</label>
+                <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Mês de Destino:</label>
                 <Select value={duplicateConfig.targetMonth} onValueChange={(val) => setDuplicateConfig({ ...duplicateConfig, targetMonth: val })}>
                   <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent className="max-h-52">
@@ -1767,7 +1814,7 @@ function EscalasContent() {
                   }`}
                 >
                   <strong className="block text-slate-900 dark:text-white">Duplicar Somente Estrutura (Recomendado)</strong>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Cria as vagas em aberto com os mesmos horários para alocação posterior.</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Cria as vagas em aberto com os mesmos horários para alocação.</p>
                 </div>
 
                 <div 
@@ -1779,7 +1826,7 @@ function EscalasContent() {
                   }`}
                 >
                   <strong className="block text-slate-900 dark:text-white">Duplicar com os Médicos Alocados</strong>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Copia a escala idêntica, incluindo os profissionais já escalados.</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Copia a escala mantendo os profissionais já escalados.</p>
                 </div>
               </div>
 
@@ -1794,7 +1841,7 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* MODAL: ESCALA DO DIA E IMPRESSÃO A4 */}
+      {/* MODAL: ESCALA DO DIA */}
       {dayScheduleModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-6xl max-h-[90vh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col">
@@ -1871,7 +1918,7 @@ function EscalasContent() {
                 </div>
                 <div>
                   <div className="font-bold text-xs text-sky-900 dark:text-sky-200">Alocar Plantonista</div>
-                  <div className="text-[11px] text-sky-700 dark:text-sky-400">Escolha um médico do corpo clínico ativo</div>
+                  <div className="text-[11px] text-sky-700 dark:text-sky-400">Encaminha convite de confirmação ao médico</div>
                 </div>
               </button>
 
@@ -1888,7 +1935,7 @@ function EscalasContent() {
                 </div>
                 <div>
                   <div className="font-bold text-xs text-emerald-900 dark:text-emerald-200">Mural de Oportunidades</div>
-                  <div className="text-[11px] text-emerald-700 dark:text-emerald-400">Publicar vaga com remuneração calculada</div>
+                  <div className="text-[11px] text-emerald-700 dark:text-emerald-400">Disponibiliza vaga para candidatura médica</div>
                 </div>
               </button>
 
@@ -1958,7 +2005,7 @@ function EscalasContent() {
                     <ShieldAlert className="w-4 h-4" /> Lançamento Retroativo Detectado
                   </div>
                   <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                    A data selecionada já passou. Para fins de auditoria e cálculo de faturamento, informe:
+                    A data selecionada já passou. Para fins de auditoria, confirme:
                   </p>
                   <div>
                     <label className="text-[10px] font-bold uppercase text-amber-900 dark:text-amber-300 mb-1 block">O plantão foi realizado?</label>
@@ -1992,13 +2039,13 @@ function EscalasContent() {
                       alert('A justificativa é obrigatória para plantões retroativos.');
                       return;
                     }
-                    const explicitStatus = isDateRetroactive(newShiftModal.date) ? retroactivePerformed : 'confirmado';
+                    const explicitStatus = isDateRetroactive(newShiftModal.date) ? retroactivePerformed : 'aguardando_confirmacao';
                     assignShift(newShiftModal.date, newShiftModal.shiftObj, profId, retroactiveReason, explicitStatus, newShiftModal.sectorIdTarget);
                     setNewShiftModal(null);
                   }}
                   className="h-9 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs"
                 >
-                  Confirmar Alocação
+                  Confirmar Indicação
                 </Button>
               </div>
             </div>
@@ -2108,7 +2155,7 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* MODAL: ADICIONAR / EDITAR TURNO NA ESCALA BASE */}
+      {/* MODAL: ADICIONAR / EDITAR TURNO NO MODELO BASE */}
       {builderModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
@@ -2190,13 +2237,5 @@ function EscalasContent() {
         unitId={unitId} 
       />
     </div>
-  );
-}
-
-export default function Escalas() {
-  return (
-    <SafeErrorBoundary>
-      <EscalasContent />
-    </SafeErrorBoundary>
   );
 }
