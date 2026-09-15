@@ -37,7 +37,12 @@ class SafeErrorBoundary extends Component {
             <h2 className="text-xl font-black">Recuperação de Interface</h2>
             <p className="text-xs text-slate-400 mt-2 mb-6">{this.state.errorMsg}</p>
             <Button
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                try {
+                  window.localStorage.removeItem('escala_setor_fixado_v19');
+                } catch (e) {}
+                window.location.reload();
+              }}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11"
             >
               Recarregar Escala
@@ -53,10 +58,10 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v19';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v19';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v19';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v19';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v20';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v20';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v20';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v20';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -235,7 +240,6 @@ function EscalasContent() {
   const [scaleStartDate, setScaleStartDate] = useState(() => getLocalDateString());
   const [scaleModeScope, setScaleModeScope] = useState('apartir_hoje');
 
-  // Setor fixado (com opção de forçar escolha na Escala Base se estiver em 'todos')
   const [sectorFilter, setSectorFilter] = useState(() => {
     try {
       const saved = window.localStorage.getItem(STORAGE_SECTOR_KEY);
@@ -693,7 +697,7 @@ function EscalasContent() {
     }
   };
 
-  // PROPAGAÇÃO GLOBAL DE ALTERAÇÃO DE TURNO (ATUALIZA PAINEL, ESCALA E FATURAMENTO EM LOTE)
+  // Propagação Global de Alteração de Turno (Atualiza Painel, Escala e Faturamento em Lote)
   const saveBuilderShiftAndPropagate = async () => {
     if (sectorFilter === 'todos') {
       alert('Selecione um setor específico no topo antes de salvar os turnos da Escala Base.');
@@ -726,13 +730,11 @@ function EscalasContent() {
     persistBuilder(nextShifts);
     setBuilderModal(null);
 
-    // Se estiver editando um turno existente, pergunta se deseja propagar para os plantões em aberto/agendados
     if (!builderModal.isNew) {
       const confirmPropagate = confirm(`Deseja propagar a alteração de horário/regras do turno "${newObj.name}" para todos os plantões futuros vinculados no sistema (atualizando escala, painel e faturamento)?`);
       if (confirmPropagate) {
         setLoading(true);
         try {
-          // Varre os plantões futuros daquele setor que tenham o nome antigo ou horário correspondente
           const targetShifts = safeArray(shifts).filter(s => 
             String(s.sector_id) === String(sectorFilter) &&
             getStatusKey(s.status) !== 'cancelado' &&
@@ -759,7 +761,7 @@ function EscalasContent() {
 
           await Promise.all(updates);
           await loadData(true);
-          alert('Alteração propagada com sucesso em todo o sistema (Painel, Escala e Faturamento)!');
+          alert('Alteração propagada com sucesso em todo o sistema!');
         } catch (e) {
           alert('Erro ao propagar alterações: ' + e.message);
         } finally {
@@ -1467,13 +1469,12 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO ESCALA BASE (COM SELEÇÃO DE SETOR OBRIGATÓRIA E EDIÇÃO)
+          MODO ESCALA BASE (COM SELETOR OBRIGATÓRIO DE SETOR)
           ======================================================== */}
       {viewMode === 'base_builder' && (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
           <div className="w-full max-w-5xl space-y-6">
             
-            {/* Seletor de Setor específico para criação da Escala Base (Evita o problema de "Todos os Setores") */}
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
               <div>
                 <h3 className="text-sm font-black text-slate-900 dark:text-white">Selecione a Seção para Configurar:</h3>
