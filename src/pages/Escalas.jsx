@@ -38,7 +38,7 @@ class SafeErrorBoundary extends Component {
             <p className="text-xs text-slate-400 mt-2 mb-6">{this.state.errorMsg}</p>
             <Button
               onClick={() => {
-                try { window.localStorage.removeItem('escala_setor_fixado_v23'); } catch (e) {}
+                try { window.localStorage.removeItem('escala_setor_fixado_v24'); } catch (e) {}
                 window.location.reload();
               }}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11"
@@ -56,10 +56,10 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v23';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v23';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v23';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v23';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v24';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v24';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v24';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v24';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -251,7 +251,6 @@ function EscalasContent() {
   const [profSearchQuery, setProfSearchQuery] = useState('');
   const [selectedCells, setSelectedCells] = useState([]);
 
-  // Publicação
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [publishRange, setPublishRange] = useState({
     preset: '1_mes',
@@ -269,7 +268,6 @@ function EscalasContent() {
     } catch { return {}; }
   });
 
-  // Vagas inativadas
   const [disabledDaysMap, setDisabledDaysMap] = useState(() => {
     try {
       const raw = window.localStorage.getItem(`${STORAGE_DISABLED_DAYS_KEY}:${companyId}`);
@@ -277,7 +275,6 @@ function EscalasContent() {
     } catch { return {}; }
   });
 
-  // Modais de Ação
   const [newShiftModal, setNewShiftModal] = useState(null); 
   const [selectedProfIdForModal, setSelectedProfIdForModal] = useState(''); 
   const [retroactiveReason, setRetroactiveReason] = useState('');
@@ -290,7 +287,6 @@ function EscalasContent() {
   const [editing, setEditing] = useState(null);
   const [tvMode, setTvMode] = useState(false);
   
-  // Builder Escala Base
   const [builderModal, setBuilderModal] = useState(null);
   const [builderShifts, setBuilderShifts] = useState([]);
   const [builderForm, setBuilderForm] = useState({ 
@@ -352,7 +348,6 @@ function EscalasContent() {
     setBuilderModal({ isNew: false });
   }, []);
 
-  // Sincronização de Tema
   useEffect(() => {
     try {
       const savedTheme = window.localStorage.getItem('hospital-intelligence-theme') || 'dark';
@@ -376,7 +371,6 @@ function EscalasContent() {
     try { window.localStorage.setItem(STORAGE_SECTOR_KEY, newSectorId); } catch (e) {}
   };
 
-  // Carregamento de dados
   const loadData = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true); else setLoading(true);
     try {
@@ -401,7 +395,6 @@ function EscalasContent() {
   useEffect(() => { if (!appLoading) loadData(); }, [appLoading, loadData]);
   useEffect(() => { const id = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(id); }, []);
 
-  // Leitura da Escala Base Específica por Setor
   useEffect(() => {
     if (sectorFilter === 'todos') {
       setBuilderShifts([]);
@@ -461,7 +454,6 @@ function EscalasContent() {
     return date >= normalizeDate(pub.start) && date <= normalizeDate(pub.end);
   }, [publishedMap]);
 
-  // Lista dos Plantões Filtrados e Ordenados Crescente
   const filteredShifts = useMemo(() => {
     const result = safeArray(shifts).filter(s => {
       if (!s || getStatusKey(s.status) === 'cancelado') return false;
@@ -501,7 +493,6 @@ function EscalasContent() {
     return getMonthWeeks(selectedMonth, sDateFilter, eDateFilter);
   }, [selectedMonth, scaleModeScope, scaleStartDate, builderShifts]);
 
-  // Montagem Dinâmica de Linhas
   const displayShiftsForSector = useMemo(() => {
     if (sectorFilter === 'todos') return [];
     
@@ -557,7 +548,6 @@ function EscalasContent() {
   const handleDragStart = (e, prof) => { if (prof?.id) e.dataTransfer.setData('profId', prof.id); };
   const handleDragOver = (e) => { e.preventDefault(); };
 
-  // Validação de Conflito de Horário
   const validateProfessionalShiftConflict = (profId, targetDate, targetStart, targetEnd, currentShiftId = null) => {
     const existingShifts = safeArray(shifts).filter(s => {
       if (currentShiftId && s.id === currentShiftId) return false;
@@ -578,7 +568,6 @@ function EscalasContent() {
     return { conflict: false };
   };
 
-  // Alocação compatível com faturamento
   const assignShift = async (date, shiftDef, profId, reasonText = '', explicitStatus = 'confirmado', sectorTarget = null, forceRemapShiftId = null) => {
     const secId = sectorTarget && sectorTarget !== 'todos' ? sectorTarget : sectorFilter;
     if (secId === 'todos') { alert("Selecione uma seção específica no topo para alocar o profissional."); return; }
@@ -674,7 +663,6 @@ function EscalasContent() {
     }
   };
 
-  // Enviar para Mural de Oportunidades
   const handleSendToOpportunitiesMural = async (date, shiftDef, secId) => {
     const sectorObj = safeArray(sectors).find(s => String(s.id) === String(secId));
     if (!sectorObj) return;
@@ -704,7 +692,6 @@ function EscalasContent() {
     }
   };
 
-  // Inativar Vaga do Dia
   const handleToggleDayInactive = (date, shiftId) => {
     const key = `${date}:${shiftId}`;
     const nextMap = { ...disabledDaysMap, [key]: !disabledDaysMap[key] };
@@ -738,7 +725,38 @@ function EscalasContent() {
     }
   };
 
-  // Propagação Global de Alteração de Turno (Atualiza Painel, Escala e Faturamento em Lote)
+  const handleConfirmPublish = () => {
+    if (sectorFilter === 'todos') {
+      alert('Selecione um setor específico para publicar a escala.');
+      return;
+    }
+
+    const payload = {
+      sectorId: sectorFilter,
+      sectorName: activeSectorName,
+      start: publishRange.start,
+      end: publishRange.end,
+      publishedAt: new Date().toISOString()
+    };
+
+    const nextMap = { ...publishedMap, [sectorFilter]: payload };
+    setPublishedMap(nextMap);
+    try {
+      window.localStorage.setItem(`${STORAGE_PUBLISHED_MAP_KEY}:${companyId}`, JSON.stringify(nextMap));
+    } catch (e) {}
+
+    setPublishModalOpen(false);
+    loadData(true);
+    alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
+  };
+
+  const toggleBuilderDay = (dayIndex) => {
+    setBuilderForm(prev => ({
+      ...prev,
+      days: (prev.days || []).includes(dayIndex) ? (prev.days || []).filter(d => d !== dayIndex) : [...(prev.days || []), dayIndex]
+    }));
+  };
+
   const saveBuilderShiftAndPropagate = async () => {
     if (sectorFilter === 'todos') {
       alert('Selecione um setor específico no topo antes de salvar os turnos da Escala Base.');
@@ -856,15 +874,17 @@ function EscalasContent() {
       const rows = sectorShifts.map(s => {
         const published = isShiftPublished(s.date, s.sector_id);
         const rStatus = getRealTimeStatus(s.date, s.start_time, s.end_time, currentTime, s.status, published);
+        
+        // Cores da Tabela de Impressão Oficial
         const statusLabel = {
-          encerrado: '<span style="color:#64748b; font-weight:bold;">Encerrado</span>',
-          andamento: '<span style="color:#0284c7; font-weight:bold;">Em Atendimento</span>',
-          publicado: '<span style="color:#10b981; font-weight:bold;">Publicado</span>',
-          programado: '<span style="color:#475569;">Programado</span>'
+          encerrado: '<span style="color:#e11d48; font-weight:bold;">Encerrado</span>',
+          andamento: '<span style="color:#059669; font-weight:bold;">Em Atendimento</span>',
+          publicado: '<span style="color:#0284c7; font-weight:bold;">Publicado</span>',
+          programado: '<span style="color:#0284c7; font-weight:bold;">Programado</span>'
         }[rStatus] || 'Programado';
 
         const isVacant = !s.professional_id || normalizeStr(s.professional_name).includes('vaga');
-        const profName = isVacant ? '<span style="color:#dc2626; font-weight:bold;">[ VAGA DESCOBERTA ]</span>' : escapeHtml(toTitleCase(s.professional_name));
+        const profName = isVacant ? '<span style="color:#ea580c; font-weight:bold;">[ VAGA DESCOBERTA ]</span>' : escapeHtml(toTitleCase(s.professional_name));
         const profObj = professionalMap[s.professional_id];
         const docReg = profObj?.registration_number ? ` (CRM/COREN: ${profObj.registration_number})` : '';
 
@@ -880,7 +900,7 @@ function EscalasContent() {
               ${escapeHtml(profObj?.specialty || 'Clínica')}
             </td>
             <td style="padding: 8px 10px; border: 1px solid #94a3b8; font-size: 11px; text-align: center;">
-              ${isVacant ? '<span style="color:#dc2626; font-weight:bold;">Aberta</span>' : statusLabel}
+              ${isVacant ? '<span style="color:#ea580c; font-weight:bold;">Aberta</span>' : statusLabel}
             </td>
             <td style="padding: 8px 10px; border: 1px solid #94a3b8; width: 140px;"></td>
           </tr>
@@ -992,7 +1012,7 @@ function EscalasContent() {
     return (
       <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col p-4 sm:p-6 font-sans overflow-hidden">
         
-        {/* CABEÇALHO COM HORÁRIO CENTRAL E BOTÃO SAIR SEM SOBREPOSIÇÃO */}
+        {/* CABEÇALHO DO MODO TV */}
         <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-4 mb-4 gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-sky-600 rounded-xl flex items-center justify-center shadow-lg shadow-sky-600/30">
@@ -1004,24 +1024,22 @@ function EscalasContent() {
             </div>
           </div>
 
-          {/* RELÓGIO DIGITAL CENTRALIZADO */}
-          <div className="text-center px-4 py-1.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-inner">
+          <div className="text-center px-5 py-1.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-inner">
             <div className="text-2xl sm:text-3xl font-mono text-emerald-400 font-black tracking-wider leading-tight">
               {currentTime.toLocaleTimeString('pt-BR')}
             </div>
-            <div className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold">Horário Operacional</div>
+            <div className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold">Horário Oficial</div>
           </div>
 
-          {/* BOTÃO DE SAÍDA ISOLADO */}
           <button 
             onClick={() => setTvMode(false)}
-            className="bg-red-600 hover:bg-red-700 active:scale-95 transition-all text-white px-4 py-2 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 border border-red-500 shrink-0"
+            className="bg-rose-600 hover:bg-rose-700 active:scale-95 transition-all text-white px-4 py-2 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 border border-rose-500 shrink-0"
           >
             <X className="w-4 h-4" /> Sair do Modo TV
           </button>
         </div>
 
-        {/* CORPO DA TV COM ROLAGEM VERTICAL SUAVE E FAIXAS HORIZONTAIS */}
+        {/* CORPO DA TV COM DESTAQUE VISUAL DE CORES */}
         <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-8">
            {safeArray(sectors).map(sector => {
              const secShifts = todayShifts.filter(s => String(s.sector_id) === String(sector.id));
@@ -1034,48 +1052,52 @@ function EscalasContent() {
                       <Building2 className="w-4 h-4 text-sky-400" /> {sector.name}
                     </h2>
                     <span className="text-[10px] bg-slate-800 px-3 py-0.5 rounded-full text-slate-300 font-bold">
-                      {secShifts.length} plantonistas ativos
+                      {secShifts.length} plantonistas
                     </span>
                   </div>
 
-                  {/* CARDS EM GRID HORIZONTAL COMPACTO */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
                      {secShifts.map(s => {
                        const published = isShiftPublished(s.date, s.sector_id);
                        const rStatus = getRealTimeStatus(s.date, s.start_time, s.end_time, currentTime, s.status, published);
                        const isVacant = !s.professional_id || normalizeStr(s.professional_name).includes('vaga');
 
+                       // CORES DESTACADAS SOLICITADAS:
+                       // Encerrado: Vermelho / Carmim
+                       // Em Atendimento: Verde Esmeralda vibrante com efeito pulse
+                       // Programado / Publicado: Azul vivo
+                       // Vaga Aberta: Âmbar
                        const cardStyles = {
-                         encerrado: 'bg-slate-800/40 border-slate-800/80 opacity-60',
-                         andamento: 'bg-emerald-950/40 border-emerald-500/60 ring-1 ring-emerald-500/40',
-                         publicado: 'bg-slate-800/80 border-slate-700',
-                         programado: 'bg-slate-800/80 border-slate-700'
+                         encerrado: 'bg-rose-950/20 border-rose-600/40 text-rose-300 opacity-80',
+                         andamento: 'bg-emerald-950/40 border-emerald-500 ring-2 ring-emerald-500/40 text-emerald-100',
+                         publicado: 'bg-sky-950/30 border-sky-500/50 text-sky-100',
+                         programado: 'bg-sky-950/30 border-sky-500/50 text-sky-100'
                        }[rStatus] || 'bg-slate-800 border-slate-700';
 
                        return (
-                         <div key={s.id} className={`p-3 border rounded-xl flex items-center justify-between gap-2.5 transition-all shadow-sm ${isVacant ? 'bg-amber-950/30 border-amber-500/60 animate-pulse' : cardStyles}`}>
+                         <div key={s.id} className={`p-3 border rounded-xl flex items-center justify-between gap-2.5 transition-all shadow-md ${isVacant ? 'bg-amber-950/30 border-amber-500/60 animate-pulse text-amber-200' : cardStyles}`}>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 mb-1">
                                 {isVacant ? (
-                                  <span className="text-amber-400 text-[9px] font-black tracking-widest uppercase">⚠️ VAGA ABERTA</span>
+                                  <span className="text-amber-400 text-[10px] font-black tracking-wider uppercase">⚠️ VAGA ABERTA</span>
                                 ) : rStatus === 'andamento' ? (
-                                  <span className="text-emerald-400 text-[9px] font-black tracking-widest uppercase flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" /> EM ATENDIMENTO
+                                  <span className="text-emerald-400 text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" /> EM ATENDIMENTO
                                   </span>
                                 ) : rStatus === 'encerrado' ? (
-                                  <span className="text-slate-400 text-[9px] font-black tracking-widest uppercase flex items-center gap-1">
-                                    <Lock className="w-2.5 h-2.5" /> ENCERRADO
+                                  <span className="text-rose-400 text-[10px] font-black tracking-wider uppercase flex items-center gap-1">
+                                    <Lock className="w-2.5 h-2.5 inline" /> ENCERRADO
                                   </span>
                                 ) : (
-                                  <span className="text-sky-400 text-[9px] font-black tracking-widest uppercase">PROGRAMADO</span>
+                                  <span className="text-sky-400 text-[10px] font-black tracking-wider uppercase">PROGRAMADO</span>
                                 )}
                               </div>
-                              <b className="text-sm text-white block truncate leading-tight">
+                              <b className="text-sm font-bold block truncate leading-tight text-white">
                                 {isVacant ? 'PLANTÃO DESCOBERTO' : toTitleCase(s.professional_name)}
                               </b>
                             </div>
                             <div className="text-right shrink-0">
-                              <span className="text-xs font-mono font-bold text-slate-300 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 block">
+                              <span className="text-xs font-mono font-bold text-slate-200 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 block">
                                 {s.start_time} - {s.end_time}
                               </span>
                             </div>
@@ -1243,7 +1265,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO GRADE VISUAL (BUILDER)
+          MODO GRADE VISUAL (BUILDER) - COM CORES DESTACADAS
           ======================================================== */}
       {viewMode === 'grade' && (
         <div className="flex-1 flex overflow-hidden p-4 sm:px-6 pb-4">
@@ -1299,26 +1321,29 @@ function EscalasContent() {
 
                         <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                           {secShifts.map(s => {
+                            // Cores dos status destacados
                             const statusStyles = {
-                              encerrado: 'border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-400',
-                              andamento: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/50',
-                              publicado: 'border-emerald-300 dark:border-emerald-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100',
-                              programado: 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100'
-                            }[s.rTimeStatus];
+                              encerrado: 'border-rose-600/40 bg-rose-950/20 text-rose-300',
+                              andamento: 'border-emerald-500 bg-emerald-950/30 text-emerald-300 ring-2 ring-emerald-500/40',
+                              publicado: 'border-sky-500/50 bg-sky-950/20 text-sky-200',
+                              programado: 'border-sky-500/50 bg-sky-950/20 text-sky-200'
+                            }[s.rTimeStatus] || 'border-slate-700 bg-slate-800 text-slate-200';
 
                             return (
-                              <div key={s.id} className={`p-3 rounded-xl border flex flex-col justify-between ${s.isVacant ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-300 text-amber-800 dark:text-amber-200 border-dashed' : statusStyles}`}>
+                              <div key={s.id} className={`p-3 rounded-xl border flex flex-col justify-between shadow-sm ${s.isVacant ? 'bg-amber-950/20 border-amber-400/60 text-amber-200 border-dashed animate-pulse' : statusStyles}`}>
                                 <div>
-                                  <div className="flex items-center justify-between text-[10px] font-bold opacity-70 mb-1">
+                                  <div className="flex items-center justify-between text-[10px] font-bold opacity-80 mb-1">
                                     <span>{formatDateBR(s.date)}</span>
                                     <span className="font-mono">{s.start_time} - {s.end_time}</span>
                                   </div>
                                   <div className="font-black text-xs break-words">{s.isVacant ? 'Vaga Aberta' : toTitleCase(s.professional_name)}</div>
                                 </div>
-                                <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/50 flex items-center justify-between text-[10px]">
-                                  <span className="capitalize font-bold">{s.rTimeStatus}</span>
+                                <div className="mt-2 pt-2 border-t border-slate-100/10 flex items-center justify-between text-[10px]">
+                                  <span className="capitalize font-black tracking-wider">
+                                    {s.rTimeStatus === 'encerrado' ? 'Encerrado' : s.rTimeStatus === 'andamento' ? 'Em Atendimento' : 'Programado'}
+                                  </span>
                                   {!s.isVacant && s.rTimeStatus !== 'encerrado' && (
-                                    <button onClick={() => handleDelete(s.id)} className="text-red-500 hover:underline">Cancelar</button>
+                                    <button onClick={() => handleDelete(s.id)} className="text-rose-400 hover:underline">Cancelar</button>
                                   )}
                                 </div>
                               </div>
@@ -1418,33 +1443,40 @@ function EscalasContent() {
 
                                 {renders.map((s, idx) => {
                                   const rStatus = s.rTimeStatus;
+                                  
+                                  // CORES DESTACADAS NA GRADE VISUAL
+                                  const statusStyles = {
+                                    encerrado: 'bg-rose-950/20 border-rose-500/50 text-rose-300',
+                                    andamento: 'bg-emerald-950/40 border-emerald-500 text-emerald-200 ring-2 ring-emerald-500/50',
+                                    publicado: 'bg-sky-950/20 border-sky-500/50 text-sky-100',
+                                    programado: 'bg-sky-950/20 border-sky-500/50 text-sky-100'
+                                  }[rStatus] || 'bg-slate-800 border-slate-700 text-slate-100';
+
                                   return (
-                                    <div key={s.id || `vaga_${idx}`} className={`relative p-2 rounded-xl text-xs border flex items-center justify-between group/item transition-all shadow-sm ${
+                                    <div key={s.id || `vaga_${idx}`} className={`relative p-2 rounded-xl text-xs border flex items-center justify-between group/item transition-all shadow-md ${
                                       s.isVacant 
-                                        ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-500/40 text-amber-800 dark:text-amber-300 border-dashed' 
-                                        : rStatus === 'encerrado'
-                                        ? 'bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-slate-400 opacity-75'
-                                        : rStatus === 'andamento'
-                                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-500'
-                                        : rStatus === 'publicado'
-                                        ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-400 dark:border-emerald-700 text-slate-900 dark:text-slate-100'
-                                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100'
+                                        ? 'bg-amber-950/20 border-amber-400/50 text-amber-300 border-dashed animate-pulse' 
+                                        : statusStyles
                                     }`}>
                                       <div className="min-w-0 flex-1 pr-2">
-                                        <div className="font-bold text-xs break-words leading-tight">
+                                        <div className="font-black text-xs break-words leading-tight">
                                           {s.isVacant ? 'Vaga Aberta' : toTitleCase(s.professional_name)}
                                         </div>
                                         {!s.isVacant && (
-                                          <div className="text-[10px] font-semibold opacity-75 mt-0.5 capitalize flex items-center gap-1">
-                                            {rStatus === 'encerrado' && <Lock className="w-2.5 h-2.5 inline" />}
-                                            {rStatus === 'publicado' && <CheckCircle2 className="w-2.5 h-2.5 text-emerald-500 inline" />}
-                                            {rStatus}
+                                          <div className="text-[10px] font-black tracking-wider uppercase opacity-90 mt-0.5 flex items-center gap-1">
+                                            {rStatus === 'encerrado' ? (
+                                              <span className="text-rose-400 flex items-center gap-0.5"><Lock className="w-2.5 h-2.5" /> Encerrado</span>
+                                            ) : rStatus === 'andamento' ? (
+                                              <span className="text-emerald-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" /> Em Atendimento</span>
+                                            ) : (
+                                              <span className="text-sky-400">Programado</span>
+                                            )}
                                           </div>
                                         )}
                                       </div>
                                       
                                       {!s.isVacant && s.id && (
-                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} className="opacity-0 group-hover/item:opacity-100 p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 rounded transition-opacity">
+                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} className="opacity-0 group-hover/item:opacity-100 p-1 text-rose-400 hover:bg-rose-950/50 rounded transition-opacity">
                                           <X className="w-3.5 h-3.5" />
                                         </button>
                                       )}
@@ -1466,7 +1498,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO LISTA DIÁRIA
+          MODO LISTA DIÁRIA - COM CORES DESTACADAS
           ======================================================== */}
       {viewMode === 'list' && (
         <div className="overflow-y-auto p-4 sm:px-8 space-y-3 flex-1">
@@ -1475,15 +1507,15 @@ function EscalasContent() {
             ) : (
               filteredShifts.map(s => {
                 const statusConfig = {
-                  encerrado: { bg: 'bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-400', icon: Lock, label: 'Encerrado' },
-                  andamento: { bg: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-500/50 text-emerald-700 dark:text-emerald-400', icon: Activity, label: 'Em Andamento' },
-                  publicado: { bg: 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-400 text-emerald-700 dark:text-emerald-400', icon: CheckCircle2, label: 'Publicado' },
-                  programado: { bg: 'bg-sky-50 dark:bg-sky-950/30 border-sky-300 dark:border-sky-500/50 text-sky-700 dark:text-sky-400', icon: CalendarDays, label: 'Programado' }
-                }[s.rTimeStatus] || { bg: 'bg-slate-100 border-slate-200', icon: CalendarDays, label: 'Programado' };
+                  encerrado: { bg: 'bg-rose-950/20 border-rose-500/50 text-rose-300', icon: Lock, label: 'Encerrado' },
+                  andamento: { bg: 'bg-emerald-950/30 border-emerald-500 text-emerald-300 ring-1 ring-emerald-500/40', icon: Activity, label: 'Em Atendimento' },
+                  publicado: { bg: 'bg-sky-950/30 border-sky-500/50 text-sky-300', icon: CalendarDays, label: 'Programado' },
+                  programado: { bg: 'bg-sky-950/30 border-sky-500/50 text-sky-300', icon: CalendarDays, label: 'Programado' }
+                }[s.rTimeStatus] || { bg: 'bg-slate-800 border-slate-700', icon: CalendarDays, label: 'Programado' };
 
                 return (
                   <div key={s.id} className={`flex items-center gap-4 rounded-2xl border p-4 bg-white dark:bg-slate-900 transition-colors shadow-sm ${
-                    s.isVacant ? 'border-amber-300 dark:border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/10' : 'border-slate-200 dark:border-slate-800'
+                    s.isVacant ? 'border-amber-400/60 bg-amber-950/10' : 'border-slate-200 dark:border-slate-800'
                   }`}>
                     <div className={`min-w-[110px] rounded-xl py-2 text-center text-xs font-black border shrink-0 ${statusConfig.bg}`}>
                       {formatDateBR(s.date)} <br/>
@@ -1491,7 +1523,7 @@ function EscalasContent() {
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <strong className={`block text-base break-words ${s.isVacant ? 'text-amber-700 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>
+                      <strong className={`block text-base break-words ${s.isVacant ? 'text-amber-400' : 'text-slate-900 dark:text-white'}`}>
                         {toTitleCase(s.professional_name) || 'Vaga Aberta'}
                       </strong>
                       <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
@@ -1501,13 +1533,13 @@ function EscalasContent() {
 
                     <div className="flex items-center gap-2">
                       {!s.isVacant && (
-                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-wider ${statusConfig.bg}`}>
+                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-black uppercase tracking-wider ${statusConfig.bg}`}>
                           <statusConfig.icon className="w-3.5 h-3.5" /> {statusConfig.label}
                         </div>
                       )}
 
                       {!s.isVacant && (
-                        <Button size="icon" variant="ghost" onClick={() => handleDelete(s.id)} className="h-9 w-9 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20" title="Cancelar plantão">
+                        <Button size="icon" variant="ghost" onClick={() => handleDelete(s.id)} className="h-9 w-9 text-rose-400 hover:bg-rose-950/20" title="Cancelar plantão">
                           <Trash2 className="w-4 h-4"/>
                         </Button>
                       )}
@@ -1518,7 +1550,7 @@ function EscalasContent() {
                             <UserPlus className="w-3.5 h-3.5 mr-1" /> Alocar
                           </Button>
                           {s.id && (
-                            <Button size="sm" variant="ghost" onClick={() => handleDelete(s.id)} className="h-9 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 text-xs">
+                            <Button size="sm" variant="ghost" onClick={() => handleDelete(s.id)} className="h-9 text-rose-400 hover:bg-rose-950/20 text-xs">
                               Cancelar Vaga
                             </Button>
                           )}
@@ -1533,7 +1565,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO ESCALA BASE (COM SELETOR OBRIGATÓRIO DE SETOR)
+          MODO ESCALA BASE
           ======================================================== */}
       {viewMode === 'base_builder' && (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
@@ -1705,7 +1737,9 @@ function EscalasContent() {
                             <div>
                               <div className="flex justify-between items-center text-[10px] font-mono text-sky-600 dark:text-sky-400 font-bold mb-1">
                                 <span>{s.start_time} - {s.end_time}</span>
-                                <span className="capitalize text-slate-500">{rStatus}</span>
+                                <span className={`capitalize font-black ${rStatus === 'encerrado' ? 'text-rose-400' : rStatus === 'andamento' ? 'text-emerald-400' : 'text-sky-400'}`}>
+                                  {rStatus}
+                                </span>
                               </div>
                               <div className="font-black text-xs text-slate-900 dark:text-slate-100 break-words">{isVacant ? 'Vaga Aberta' : toTitleCase(s.professional_name)}</div>
                             </div>
@@ -2017,7 +2051,7 @@ function EscalasContent() {
               </h3>
               <div className="flex items-center gap-2">
                 {!builderModal.isNew && (
-                  <Button variant="ghost" onClick={() => deleteBuilderShift(builderForm.id)} className="h-7 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 px-2">Excluir</Button>
+                  <Button variant="ghost" onClick={() => deleteBuilderShift(builderForm.id)} className="h-7 text-xs text-rose-500 hover:bg-rose-950/50 px-2">Excluir</Button>
                 )}
                 <button onClick={() => setBuilderModal(null)}><X className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
               </div>
