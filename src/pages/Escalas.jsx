@@ -38,7 +38,9 @@ class SafeErrorBoundary extends Component {
             <p className="text-xs text-slate-400 mt-2 mb-6">{this.state.errorMsg}</p>
             <Button
               onClick={() => {
-                try { window.localStorage.removeItem('escala_setor_fixado_v21'); } catch (e) {}
+                try {
+                  window.localStorage.removeItem('escala_setor_fixado_v22');
+                } catch (e) {}
                 window.location.reload();
               }}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11"
@@ -56,10 +58,10 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v21';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v21';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v21';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v21';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v22';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v22';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v22';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v22';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -308,6 +310,49 @@ function EscalasContent() {
     })()
   });
   const [confirmGoToAllocation, setConfirmGoToAllocation] = useState(false);
+
+  /* FUNÇÕES DE ABERTURA E GESTÃO DO BUILDER COM ESCOPO COMPLETO */
+  const openNewBuilderModal = useCallback(() => {
+    setBuilderForm({ 
+      id: '', 
+      name: '', 
+      start: '', 
+      end: '', 
+      qty: 1, 
+      color: BUILDER_COLORS[0], 
+      days: [1,2,3,4,5],
+      startDate: getLocalDateString(),
+      endDate: (() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() + 1);
+        return getLocalDateString(d);
+      })()
+    });
+    setBuilderModal({ isNew: true });
+  }, []);
+
+  const openEditBuilderModal = useCallback((shiftObj) => {
+    if (!shiftObj) return;
+    const selectedColor = BUILDER_COLORS.find(c => c.value === shiftObj.color) || BUILDER_COLORS[0];
+    const activeDays = [];
+    [0, 1, 2, 3, 4, 5, 6].forEach(d => { if ((shiftObj.cellStates || {})[d]) activeDays.push(d); });
+    setBuilderForm({ 
+      id: shiftObj.id, 
+      name: shiftObj.name, 
+      start: shiftObj.start, 
+      end: shiftObj.end, 
+      qty: shiftObj.qty || 1, 
+      color: selectedColor, 
+      days: activeDays,
+      startDate: shiftObj.startDate || getLocalDateString(),
+      endDate: shiftObj.endDate || (() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() + 1);
+        return getLocalDateString(d);
+      })()
+    });
+    setBuilderModal({ isNew: false });
+  }, []);
 
   // Sincronização de Tema
   useEffect(() => {
@@ -695,7 +740,38 @@ function EscalasContent() {
     }
   };
 
-  // Propagação Global de Alteração de Turno (Atualiza Painel, Escala e Faturamento em Lote)
+  const handleConfirmPublish = () => {
+    if (sectorFilter === 'todos') {
+      alert('Selecione um setor específico para publicar a escala.');
+      return;
+    }
+
+    const payload = {
+      sectorId: sectorFilter,
+      sectorName: activeSectorName,
+      start: publishRange.start,
+      end: publishRange.end,
+      publishedAt: new Date().toISOString()
+    };
+
+    const nextMap = { ...publishedMap, [sectorFilter]: payload };
+    setPublishedMap(nextMap);
+    try {
+      window.localStorage.setItem(`${STORAGE_PUBLISHED_MAP_KEY}:${companyId}`, JSON.stringify(nextMap));
+    } catch (e) {}
+
+    setPublishModalOpen(false);
+    loadData(true);
+    alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
+  };
+
+  const toggleBuilderDay = (dayIndex) => {
+    setBuilderForm(prev => ({
+      ...prev,
+      days: (prev.days || []).includes(dayIndex) ? (prev.days || []).filter(d => d !== dayIndex) : [...(prev.days || []), dayIndex]
+    }));
+  };
+
   const saveBuilderShiftAndPropagate = async () => {
     if (sectorFilter === 'todos') {
       alert('Selecione um setor específico no topo antes de salvar os turnos da Escala Base.');
@@ -1467,7 +1543,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO ESCALA BASE (COM SELEÇÃO DE SETOR OBRIGATÓRIA)
+          MODO ESCALA BASE (COM SELETOR OBRIGATÓRIO DE SETOR)
           ======================================================== */}
       {viewMode === 'base_builder' && (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
@@ -1941,7 +2017,7 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* MODAL: ADICIONAR / EDITAR TURNO (COM FUNÇÕES SEGURAS) */}
+      {/* MODAL: ADICIONAR / EDITAR TURNO */}
       {builderModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
