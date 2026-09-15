@@ -56,12 +56,12 @@ export default function ProfessionalFormDialog({
   const [isActive, setIsActive] = useState(true);
 
   // Identificação Institucional
-  const [registrationCode, setRegistrationCode] = useState(''); // ID / Matrícula interna
+  const [registrationCode, setRegistrationCode] = useState('');
 
   // Enquadramento Contratual / Cooperativa
-  const [contractType, setContractType] = useState('cooperado'); // cooperado, pj, rpa, clt
+  const [contractType, setContractType] = useState('cooperado');
   const [cooperativeName, setCooperativeName] = useState('');
-  const [coopTaxRate, setCoopTaxRate] = useState('5'); // Taxa administrativa (%)
+  const [coopTaxRate, setCoopTaxRate] = useState('5');
   const [pjCnpj, setPjCnpj] = useState('');
   const [pjCorporateName, setPjCorporateName] = useState('');
 
@@ -108,23 +108,19 @@ export default function ProfessionalFormDialog({
       setPhone(professional.phone || '');
       setUnitId(String(professional.unit_id || units[0]?.id || 'unit_h1'));
 
-      // Matrícula / ID
       setRegistrationCode(professional.registration_code || professional.matricula || `MED-${String(professional.id || '').slice(-4).toUpperCase()}`);
 
-      // Dados Contratuais / Cooperativa
       setContractType(professional.contract_type || 'cooperado');
       setCooperativeName(professional.cooperative_name || '');
       setCoopTaxRate(String(professional.coop_tax_rate ?? '5'));
       setPjCnpj(professional.pj_cnpj || '');
       setPjCorporateName(professional.pj_corporate_name || '');
 
-      // Remuneração
       setRemunerationType(professional.remuneration_type || 'hora');
       setHourlyRate(String(professional.hourly_rate || '120'));
       setDailyRate(String(professional.daily_rate || '1500'));
       setMonthlySalary(String(professional.monthly_salary || '18000'));
 
-      // PIX
       setPixType(professional.pix_type || 'cpf');
       setPixKey(professional.pix_key || '');
       setBankInfo(professional.bank_info || '');
@@ -235,7 +231,7 @@ export default function ProfessionalFormDialog({
     const passDisplay = password || (birthDate ? computeDefaultPassword(birthDate, name) : '123456');
     const idDisplay = registrationCode || 'MED-0000';
 
-    const textToCopy = `*ScaleMedic - Seus dados de acesso*\n\nOlá, ${name || 'Profissional'}!\nVocê foi cadastrado na plataforma de gestão hospitalar.\n\n🆔 *Matrícula / ID:* ${idDisplay}\n👤 *Usuário:* ${userDisplay}\n🔑 *Senha:* ${passDisplay}\n🔗 *Acesso:* ${host}/login\n\n⚠️ *Atenção:* Troque sua senha no primeiro acesso.`;
+    const textToCopy = `*ScaleMedic - Seus dados de acesso*\n\nOlá, ${name || 'Profissional'}!\nVocê foi cadastrado na plataforma hospitalar.\n\n🆔 *Matrícula / ID:* ${idDisplay}\n👤 *Usuário:* ${userDisplay}\n🔑 *Senha:* ${passDisplay}\n🔗 *Acesso:* ${host}/login\n\n⚠️ *Atenção:* Recomendamos alterar sua senha no primeiro acesso.`;
 
     navigator.clipboard.writeText(textToCopy);
     alert('Dados de acesso e Matrícula copiados!');
@@ -251,7 +247,6 @@ export default function ProfessionalFormDialog({
       const numMonthly = Number(monthlySalary) || 0;
       const numTaxRate = Number(coopTaxRate) || 0;
 
-      // Monta notas societárias rastreáveis para cooperativas / PJ
       const contractSummary = [
         `ID/Matrícula: ${registrationCode}`,
         `Regime: ${contractType.toUpperCase()}`,
@@ -259,14 +254,13 @@ export default function ProfessionalFormDialog({
         contractType === 'pj' ? `CNPJ: ${pjCnpj} - ${pjCorporateName}` : null
       ].filter(Boolean).join(' | ');
 
-      // PAYLOAD RIGOROSAMENTE LIMPO (apenas colunas do banco de dados)
       const cleanProfPayload = {
         company_id: companyId,
         unit_id: unitId || units[0]?.id,
         name,
         specialty,
         category: specialty,
-        role,
+        role: role,
         document,
         email,
         phone,
@@ -285,7 +279,6 @@ export default function ProfessionalFormDialog({
       if (birthDate) cleanProfPayload.birth_date = birthDate;
       if (section) cleanProfPayload.section = section;
 
-      // Auto-recuperação contra divergências de schema cache
       const payloadToSend = { ...cleanProfPayload };
       let saved = false;
 
@@ -312,7 +305,6 @@ export default function ProfessionalFormDialog({
         throw new Error('Falha ao persistir dados do profissional no banco.');
       }
 
-      // Sincronização do Usuário (dados societários completos armazenados em JSON no data)
       const userNick = (username || (email ? email.split('@')[0] : name.toLowerCase().replace(/\s+/g, ''))).trim();
       const finalPass = password || (birthDate ? computeDefaultPassword(birthDate, name) : '123456');
       const userEmail = (email || `${userNick}@scalemedic.local`).toLowerCase().trim();
@@ -359,7 +351,7 @@ export default function ProfessionalFormDialog({
           });
         }
       } catch (uErr) {
-        console.warn('Aviso: Sincronização de usuário:', uErr);
+        console.warn('Aviso: Sincronização secundária de usuário:', uErr);
       }
 
       if (onSaved) onSaved();
@@ -383,7 +375,6 @@ export default function ProfessionalFormDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-5 py-2">
-          
           {/* BLOCO DE STATUS: ATIVO / INATIVO */}
           <div className={`p-4 rounded-xl border flex items-center justify-between transition-colors ${
             isActive 
