@@ -38,7 +38,7 @@ class SafeErrorBoundary extends Component {
             <p className="text-xs text-slate-400 mt-2 mb-6">{this.state.errorMsg}</p>
             <Button
               onClick={() => {
-                try { window.localStorage.removeItem('escala_setor_fixado_v24'); } catch (e) {}
+                try { window.localStorage.removeItem('escala_setor_fixado_v25'); } catch (e) {}
                 window.location.reload();
               }}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11"
@@ -56,10 +56,10 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v24';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v24';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v24';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v24';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v25';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v25';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v25';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v25';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -725,38 +725,6 @@ function EscalasContent() {
     }
   };
 
-  const handleConfirmPublish = () => {
-    if (sectorFilter === 'todos') {
-      alert('Selecione um setor específico para publicar a escala.');
-      return;
-    }
-
-    const payload = {
-      sectorId: sectorFilter,
-      sectorName: activeSectorName,
-      start: publishRange.start,
-      end: publishRange.end,
-      publishedAt: new Date().toISOString()
-    };
-
-    const nextMap = { ...publishedMap, [sectorFilter]: payload };
-    setPublishedMap(nextMap);
-    try {
-      window.localStorage.setItem(`${STORAGE_PUBLISHED_MAP_KEY}:${companyId}`, JSON.stringify(nextMap));
-    } catch (e) {}
-
-    setPublishModalOpen(false);
-    loadData(true);
-    alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
-  };
-
-  const toggleBuilderDay = (dayIndex) => {
-    setBuilderForm(prev => ({
-      ...prev,
-      days: (prev.days || []).includes(dayIndex) ? (prev.days || []).filter(d => d !== dayIndex) : [...(prev.days || []), dayIndex]
-    }));
-  };
-
   const saveBuilderShiftAndPropagate = async () => {
     if (sectorFilter === 'todos') {
       alert('Selecione um setor específico no topo antes de salvar os turnos da Escala Base.');
@@ -875,16 +843,15 @@ function EscalasContent() {
         const published = isShiftPublished(s.date, s.sector_id);
         const rStatus = getRealTimeStatus(s.date, s.start_time, s.end_time, currentTime, s.status, published);
         
-        // Cores da Tabela de Impressão Oficial
         const statusLabel = {
-          encerrado: '<span style="color:#e11d48; font-weight:bold;">Encerrado</span>',
-          andamento: '<span style="color:#059669; font-weight:bold;">Em Atendimento</span>',
-          publicado: '<span style="color:#0284c7; font-weight:bold;">Publicado</span>',
-          programado: '<span style="color:#0284c7; font-weight:bold;">Programado</span>'
-        }[rStatus] || 'Programado';
+          encerrado: '<span style="color:#ef4444; font-weight:bold;">● Encerrado</span>',
+          andamento: '<span style="color:#10b981; font-weight:bold;">● Em Atendimento</span>',
+          publicado: '<span style="color:#0284c7; font-weight:bold;">● Publicado</span>',
+          programado: '<span style="color:#0284c7; font-weight:bold;">● Programado</span>'
+        }[rStatus] || '● Programado';
 
         const isVacant = !s.professional_id || normalizeStr(s.professional_name).includes('vaga');
-        const profName = isVacant ? '<span style="color:#ea580c; font-weight:bold;">[ VAGA DESCOBERTA ]</span>' : escapeHtml(toTitleCase(s.professional_name));
+        const profName = isVacant ? '<span style="color:#f59e0b; font-weight:bold;">[ VAGA DESCOBERTA ]</span>' : escapeHtml(toTitleCase(s.professional_name));
         const profObj = professionalMap[s.professional_id];
         const docReg = profObj?.registration_number ? ` (CRM/COREN: ${profObj.registration_number})` : '';
 
@@ -900,7 +867,7 @@ function EscalasContent() {
               ${escapeHtml(profObj?.specialty || 'Clínica')}
             </td>
             <td style="padding: 8px 10px; border: 1px solid #94a3b8; font-size: 11px; text-align: center;">
-              ${isVacant ? '<span style="color:#ea580c; font-weight:bold;">Aberta</span>' : statusLabel}
+              ${isVacant ? '<span style="color:#f59e0b; font-weight:bold;">● Aberta</span>' : statusLabel}
             </td>
             <td style="padding: 8px 10px; border: 1px solid #94a3b8; width: 140px;"></td>
           </tr>
@@ -1012,7 +979,7 @@ function EscalasContent() {
     return (
       <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col p-4 sm:p-6 font-sans overflow-hidden">
         
-        {/* CABEÇALHO DO MODO TV */}
+        {/* CABEÇALHO DO MODO TV COM RELÓGIO CENTRAL E BOTÃO SAIR SEM SOBREPOSIÇÃO */}
         <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-4 mb-4 gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-sky-600 rounded-xl flex items-center justify-center shadow-lg shadow-sky-600/30">
@@ -1033,13 +1000,13 @@ function EscalasContent() {
 
           <button 
             onClick={() => setTvMode(false)}
-            className="bg-rose-600 hover:bg-rose-700 active:scale-95 transition-all text-white px-4 py-2 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 border border-rose-500 shrink-0"
+            className="bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all text-rose-400 hover:text-rose-300 px-4 py-2 rounded-2xl font-bold text-xs shadow-lg flex items-center gap-2 border border-slate-700 shrink-0"
           >
-            <X className="w-4 h-4" /> Sair do Modo TV
+            <X className="w-4 h-4 text-rose-500" /> Sair do Modo TV
           </button>
         </div>
 
-        {/* CORPO DA TV COM DESTAQUE VISUAL DE CORES */}
+        {/* CORPO DA TV COM CARDS NEUTROS E BOLINHA DE STATUS COLORIDA */}
         <div className="flex-1 overflow-y-auto space-y-4 pr-1 pb-8">
            {safeArray(sectors).map(sector => {
              const secShifts = todayShifts.filter(s => String(s.sector_id) === String(sector.id));
@@ -1062,42 +1029,41 @@ function EscalasContent() {
                        const rStatus = getRealTimeStatus(s.date, s.start_time, s.end_time, currentTime, s.status, published);
                        const isVacant = !s.professional_id || normalizeStr(s.professional_name).includes('vaga');
 
-                       // CORES DESTACADAS SOLICITADAS:
-                       // Encerrado: Vermelho / Carmim
-                       // Em Atendimento: Verde Esmeralda vibrante com efeito pulse
-                       // Programado / Publicado: Azul vivo
-                       // Vaga Aberta: Âmbar
-                       const cardStyles = {
-                         encerrado: 'bg-rose-950/20 border-rose-600/40 text-rose-300 opacity-80',
-                         andamento: 'bg-emerald-950/40 border-emerald-500 ring-2 ring-emerald-500/40 text-emerald-100',
-                         publicado: 'bg-sky-950/30 border-sky-500/50 text-sky-100',
-                         programado: 'bg-sky-950/30 border-sky-500/50 text-sky-100'
-                       }[rStatus] || 'bg-slate-800 border-slate-700';
-
                        return (
-                         <div key={s.id} className={`p-3 border rounded-xl flex items-center justify-between gap-2.5 transition-all shadow-md ${isVacant ? 'bg-amber-950/30 border-amber-500/60 animate-pulse text-amber-200' : cardStyles}`}>
+                         <div key={s.id} className="p-3 border rounded-xl flex items-center justify-between gap-2.5 transition-all shadow-md bg-slate-900/90 border-slate-800">
                             <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 mb-1">
+                              {/* BOLINHA COLORIDA INDICADORA COM NOME DO STATUS */}
+                              <div className="flex items-center gap-1.5 mb-1 text-[10px] font-black tracking-wider uppercase">
                                 {isVacant ? (
-                                  <span className="text-amber-400 text-[10px] font-black tracking-wider uppercase">⚠️ VAGA ABERTA</span>
+                                  <span className="text-amber-400 flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse inline-block" />
+                                    VAGA ABERTA
+                                  </span>
                                 ) : rStatus === 'andamento' ? (
-                                  <span className="text-emerald-400 text-[10px] font-black tracking-wider uppercase flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" /> EM ATENDIMENTO
+                                  <span className="text-emerald-400 flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+                                    EM ATENDIMENTO
                                   </span>
                                 ) : rStatus === 'encerrado' ? (
-                                  <span className="text-rose-400 text-[10px] font-black tracking-wider uppercase flex items-center gap-1">
-                                    <Lock className="w-2.5 h-2.5 inline" /> ENCERRADO
+                                  <span className="text-rose-500 flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
+                                    ENCERRADO
                                   </span>
                                 ) : (
-                                  <span className="text-sky-400 text-[10px] font-black tracking-wider uppercase">PROGRAMADO</span>
+                                  <span className="text-sky-400 flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-sky-400 inline-block" />
+                                    PROGRAMADO
+                                  </span>
                                 )}
                               </div>
-                              <b className="text-sm font-bold block truncate leading-tight text-white">
+                              
+                              <b className="text-sm font-bold block truncate leading-tight text-slate-100">
                                 {isVacant ? 'PLANTÃO DESCOBERTO' : toTitleCase(s.professional_name)}
                               </b>
                             </div>
+                            
                             <div className="text-right shrink-0">
-                              <span className="text-xs font-mono font-bold text-slate-200 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 block">
+                              <span className="text-xs font-mono font-bold text-slate-300 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 block">
                                 {s.start_time} - {s.end_time}
                               </span>
                             </div>
@@ -1265,7 +1231,7 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO GRADE VISUAL (BUILDER) - COM CORES DESTACADAS
+          MODO GRADE VISUAL (BUILDER) - COM BOLINHAS DE STATUS
           ======================================================== */}
       {viewMode === 'grade' && (
         <div className="flex-1 flex overflow-hidden p-4 sm:px-6 pb-4">
@@ -1316,39 +1282,37 @@ function EscalasContent() {
                           <h3 className="font-black text-sm text-slate-800 dark:text-slate-200 flex items-center gap-2">
                             <Building2 className="w-4 h-4 text-sky-600 dark:text-sky-400" /> {sec.name}
                           </h3>
-                          <span className="text-xs text-slate-500">{secShifts.length} plantões no mês</span>
+                          <span className="text-xs text-slate-500 font-bold">{secShifts.length} plantões no mês</span>
                         </div>
 
                         <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                          {secShifts.map(s => {
-                            // Cores dos status destacados
-                            const statusStyles = {
-                              encerrado: 'border-rose-600/40 bg-rose-950/20 text-rose-300',
-                              andamento: 'border-emerald-500 bg-emerald-950/30 text-emerald-300 ring-2 ring-emerald-500/40',
-                              publicado: 'border-sky-500/50 bg-sky-950/20 text-sky-200',
-                              programado: 'border-sky-500/50 bg-sky-950/20 text-sky-200'
-                            }[s.rTimeStatus] || 'border-slate-700 bg-slate-800 text-slate-200';
-
-                            return (
-                              <div key={s.id} className={`p-3 rounded-xl border flex flex-col justify-between shadow-sm ${s.isVacant ? 'bg-amber-950/20 border-amber-400/60 text-amber-200 border-dashed animate-pulse' : statusStyles}`}>
-                                <div>
-                                  <div className="flex items-center justify-between text-[10px] font-bold opacity-80 mb-1">
-                                    <span>{formatDateBR(s.date)}</span>
-                                    <span className="font-mono">{s.start_time} - {s.end_time}</span>
-                                  </div>
-                                  <div className="font-black text-xs break-words">{s.isVacant ? 'Vaga Aberta' : toTitleCase(s.professional_name)}</div>
+                          {secShifts.map(s => (
+                            <div key={s.id} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between shadow-sm">
+                              <div>
+                                <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 mb-1">
+                                  <span>{formatDateBR(s.date)}</span>
+                                  <span className="font-mono">{s.start_time} - {s.end_time}</span>
                                 </div>
-                                <div className="mt-2 pt-2 border-t border-slate-100/10 flex items-center justify-between text-[10px]">
-                                  <span className="capitalize font-black tracking-wider">
-                                    {s.rTimeStatus === 'encerrado' ? 'Encerrado' : s.rTimeStatus === 'andamento' ? 'Em Atendimento' : 'Programado'}
-                                  </span>
-                                  {!s.isVacant && s.rTimeStatus !== 'encerrado' && (
-                                    <button onClick={() => handleDelete(s.id)} className="text-rose-400 hover:underline">Cancelar</button>
-                                  )}
-                                </div>
+                                <div className="font-black text-xs text-slate-900 dark:text-slate-100 break-words">{s.isVacant ? 'Vaga Aberta' : toTitleCase(s.professional_name)}</div>
                               </div>
-                            );
-                          })}
+                              <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px]">
+                                <span className="flex items-center gap-1.5 font-bold uppercase">
+                                  {s.isVacant ? (
+                                    <span className="text-amber-500 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Vaga Aberta</span>
+                                  ) : s.rTimeStatus === 'encerrado' ? (
+                                    <span className="text-rose-500 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Encerrado</span>
+                                  ) : s.rTimeStatus === 'andamento' ? (
+                                    <span className="text-emerald-500 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" /> Em Atendimento</span>
+                                  ) : (
+                                    <span className="text-sky-500 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Programado</span>
+                                  )}
+                                </span>
+                                {!s.isVacant && s.rTimeStatus !== 'encerrado' && (
+                                  <button onClick={() => handleDelete(s.id)} className="text-rose-500 hover:underline">Cancelar</button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     );
@@ -1443,40 +1407,38 @@ function EscalasContent() {
 
                                 {renders.map((s, idx) => {
                                   const rStatus = s.rTimeStatus;
-                                  
-                                  // CORES DESTACADAS NA GRADE VISUAL
-                                  const statusStyles = {
-                                    encerrado: 'bg-rose-950/20 border-rose-500/50 text-rose-300',
-                                    andamento: 'bg-emerald-950/40 border-emerald-500 text-emerald-200 ring-2 ring-emerald-500/50',
-                                    publicado: 'bg-sky-950/20 border-sky-500/50 text-sky-100',
-                                    programado: 'bg-sky-950/20 border-sky-500/50 text-sky-100'
-                                  }[rStatus] || 'bg-slate-800 border-slate-700 text-slate-100';
 
                                   return (
-                                    <div key={s.id || `vaga_${idx}`} className={`relative p-2 rounded-xl text-xs border flex items-center justify-between group/item transition-all shadow-md ${
-                                      s.isVacant 
-                                        ? 'bg-amber-950/20 border-amber-400/50 text-amber-300 border-dashed animate-pulse' 
-                                        : statusStyles
-                                    }`}>
+                                    <div key={s.id || `vaga_${idx}`} className="relative p-2 rounded-xl text-xs border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between group/item transition-all shadow-sm">
                                       <div className="min-w-0 flex-1 pr-2">
-                                        <div className="font-black text-xs break-words leading-tight">
+                                        <div className="font-bold text-xs break-words leading-tight text-slate-900 dark:text-slate-100">
                                           {s.isVacant ? 'Vaga Aberta' : toTitleCase(s.professional_name)}
                                         </div>
-                                        {!s.isVacant && (
-                                          <div className="text-[10px] font-black tracking-wider uppercase opacity-90 mt-0.5 flex items-center gap-1">
-                                            {rStatus === 'encerrado' ? (
-                                              <span className="text-rose-400 flex items-center gap-0.5"><Lock className="w-2.5 h-2.5" /> Encerrado</span>
-                                            ) : rStatus === 'andamento' ? (
-                                              <span className="text-emerald-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" /> Em Atendimento</span>
-                                            ) : (
-                                              <span className="text-sky-400">Programado</span>
-                                            )}
-                                          </div>
-                                        )}
+                                        
+                                        {/* STATUS DISCRETO COM BOLINHA INDICADORA */}
+                                        <div className="text-[10px] font-bold tracking-wider uppercase mt-1 flex items-center gap-1.5">
+                                          {s.isVacant ? (
+                                            <span className="text-amber-500 flex items-center gap-1">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" /> Aberta
+                                            </span>
+                                          ) : rStatus === 'encerrado' ? (
+                                            <span className="text-rose-500 flex items-center gap-1">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block" /> Encerrado
+                                            </span>
+                                          ) : rStatus === 'andamento' ? (
+                                            <span className="text-emerald-500 flex items-center gap-1">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping inline-block" /> Atendimento
+                                            </span>
+                                          ) : (
+                                            <span className="text-sky-500 flex items-center gap-1">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-sky-500 inline-block" /> Programado
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                       
                                       {!s.isVacant && s.id && (
-                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} className="opacity-0 group-hover/item:opacity-100 p-1 text-rose-400 hover:bg-rose-950/50 rounded transition-opacity">
+                                        <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }} className="opacity-0 group-hover/item:opacity-100 p-1 text-slate-400 hover:text-rose-500 rounded transition-opacity">
                                           <X className="w-3.5 h-3.5" />
                                         </button>
                                       )}
@@ -1498,74 +1460,69 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO LISTA DIÁRIA - COM CORES DESTACADAS
+          MODO LISTA DIÁRIA - COM BOLINHAS DE STATUS
           ======================================================== */}
       {viewMode === 'list' && (
         <div className="overflow-y-auto p-4 sm:px-8 space-y-3 flex-1">
            {filteredShifts.length === 0 ? (
               <div className="py-16 text-center text-slate-400">Nenhum plantão localizado para o período filtrado.</div>
             ) : (
-              filteredShifts.map(s => {
-                const statusConfig = {
-                  encerrado: { bg: 'bg-rose-950/20 border-rose-500/50 text-rose-300', icon: Lock, label: 'Encerrado' },
-                  andamento: { bg: 'bg-emerald-950/30 border-emerald-500 text-emerald-300 ring-1 ring-emerald-500/40', icon: Activity, label: 'Em Atendimento' },
-                  publicado: { bg: 'bg-sky-950/30 border-sky-500/50 text-sky-300', icon: CalendarDays, label: 'Programado' },
-                  programado: { bg: 'bg-sky-950/30 border-sky-500/50 text-sky-300', icon: CalendarDays, label: 'Programado' }
-                }[s.rTimeStatus] || { bg: 'bg-slate-800 border-slate-700', icon: CalendarDays, label: 'Programado' };
-
-                return (
-                  <div key={s.id} className={`flex items-center gap-4 rounded-2xl border p-4 bg-white dark:bg-slate-900 transition-colors shadow-sm ${
-                    s.isVacant ? 'border-amber-400/60 bg-amber-950/10' : 'border-slate-200 dark:border-slate-800'
-                  }`}>
-                    <div className={`min-w-[110px] rounded-xl py-2 text-center text-xs font-black border shrink-0 ${statusConfig.bg}`}>
-                      {formatDateBR(s.date)} <br/>
-                      <span className="font-mono text-xs opacity-90">{s.start_time || '--'} às {s.end_time || '--'}</span>
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <strong className={`block text-base break-words ${s.isVacant ? 'text-amber-400' : 'text-slate-900 dark:text-white'}`}>
-                        {toTitleCase(s.professional_name) || 'Vaga Aberta'}
-                      </strong>
-                      <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                        <Building2 className="w-3 h-3" /> {toTitleCase(s.sector_name)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {!s.isVacant && (
-                        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-black uppercase tracking-wider ${statusConfig.bg}`}>
-                          <statusConfig.icon className="w-3.5 h-3.5" /> {statusConfig.label}
-                        </div>
-                      )}
-
-                      {!s.isVacant && (
-                        <Button size="icon" variant="ghost" onClick={() => handleDelete(s.id)} className="h-9 w-9 text-rose-400 hover:bg-rose-950/20" title="Cancelar plantão">
-                          <Trash2 className="w-4 h-4"/>
-                        </Button>
-                      )}
-
-                      {s.isVacant && (
-                        <div className="flex gap-2">
-                          <Button size="sm" onClick={() => { setEditing(s); setDialogOpen(true); }} className="h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs">
-                            <UserPlus className="w-3.5 h-3.5 mr-1" /> Alocar
-                          </Button>
-                          {s.id && (
-                            <Button size="sm" variant="ghost" onClick={() => handleDelete(s.id)} className="h-9 text-rose-400 hover:bg-rose-950/20 text-xs">
-                              Cancelar Vaga
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </div>
+              filteredShifts.map(s => (
+                <div key={s.id} className="flex items-center gap-4 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900 transition-colors shadow-sm">
+                  <div className="min-w-[110px] rounded-xl py-2 text-center text-xs font-black border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 shrink-0">
+                    {formatDateBR(s.date)} <br/>
+                    <span className="font-mono text-xs opacity-90 text-slate-400">{s.start_time || '--'} às {s.end_time || '--'}</span>
                   </div>
-                );
-              })
+
+                  <div className="flex-1 min-w-0">
+                    <strong className="block text-base break-words text-slate-900 dark:text-white">
+                      {toTitleCase(s.professional_name) || 'Vaga Aberta'}
+                    </strong>
+                    <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                      <Building2 className="w-3 h-3" /> {toTitleCase(s.sector_name)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {!s.isVacant && (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-950">
+                        {s.rTimeStatus === 'encerrado' ? (
+                          <span className="text-rose-500 flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500" /> Encerrado</span>
+                        ) : s.rTimeStatus === 'andamento' ? (
+                          <span className="text-emerald-500 flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" /> Em Atendimento</span>
+                        ) : (
+                          <span className="text-sky-500 flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-sky-500" /> Programado</span>
+                        )}
+                      </div>
+                    )}
+
+                    {!s.isVacant && (
+                      <Button size="icon" variant="ghost" onClick={() => handleDelete(s.id)} className="h-9 w-9 text-slate-400 hover:text-rose-500 hover:bg-rose-950/20" title="Cancelar plantão">
+                        <Trash2 className="w-4 h-4"/>
+                      </Button>
+                    )}
+
+                    {s.isVacant && (
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => { setEditing(s); setDialogOpen(true); }} className="h-9 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs">
+                          <UserPlus className="w-3.5 h-3.5 mr-1" /> Alocar
+                        </Button>
+                        {s.id && (
+                          <Button size="sm" variant="ghost" onClick={() => handleDelete(s.id)} className="h-9 text-slate-400 hover:text-rose-500 hover:bg-rose-950/20 text-xs">
+                            Cancelar Vaga
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
             )}
         </div>
       )}
 
       {/* ========================================================
-          MODO ESCALA BASE
+          MODO ESCALA BASE (COM SELETOR OBRIGATÓRIO DE SETOR)
           ======================================================== */}
       {viewMode === 'base_builder' && (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
@@ -1737,7 +1694,8 @@ function EscalasContent() {
                             <div>
                               <div className="flex justify-between items-center text-[10px] font-mono text-sky-600 dark:text-sky-400 font-bold mb-1">
                                 <span>{s.start_time} - {s.end_time}</span>
-                                <span className={`capitalize font-black ${rStatus === 'encerrado' ? 'text-rose-400' : rStatus === 'andamento' ? 'text-emerald-400' : 'text-sky-400'}`}>
+                                <span className={`capitalize font-bold flex items-center gap-1 ${rStatus === 'encerrado' ? 'text-rose-500' : rStatus === 'andamento' ? 'text-emerald-500' : 'text-sky-500'}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${rStatus === 'encerrado' ? 'bg-rose-500' : rStatus === 'andamento' ? 'bg-emerald-500 animate-ping' : 'bg-sky-500'}`} />
                                   {rStatus}
                                 </span>
                               </div>
