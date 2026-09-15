@@ -37,12 +37,7 @@ class SafeErrorBoundary extends Component {
             <h2 className="text-xl font-black">Recuperação de Interface</h2>
             <p className="text-xs text-slate-400 mt-2 mb-6">{this.state.errorMsg}</p>
             <Button
-              onClick={() => {
-                try {
-                  window.localStorage.removeItem('escala_setor_fixado_v17');
-                } catch (e) {}
-                window.location.reload();
-              }}
+              onClick={() => window.location.reload()}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11"
             >
               Recarregar Escala
@@ -58,10 +53,10 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v18';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v18';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v18';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v18';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v19';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v19';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v19';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v19';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -237,10 +232,10 @@ function EscalasContent() {
 
   const [theme, setTheme] = useState('dark');
 
-  // Declaração restaurada do escopo de início da escala
   const [scaleStartDate, setScaleStartDate] = useState(() => getLocalDateString());
   const [scaleModeScope, setScaleModeScope] = useState('apartir_hoje');
 
+  // Setor fixado (com opção de forçar escolha na Escala Base se estiver em 'todos')
   const [sectorFilter, setSectorFilter] = useState(() => {
     try {
       const saved = window.localStorage.getItem(STORAGE_SECTOR_KEY);
@@ -698,85 +693,17 @@ function EscalasContent() {
     }
   };
 
-  const handleConfirmPublish = () => {
+  // PROPAGAÇÃO GLOBAL DE ALTERAÇÃO DE TURNO (ATUALIZA PAINEL, ESCALA E FATURAMENTO EM LOTE)
+  const saveBuilderShiftAndPropagate = async () => {
     if (sectorFilter === 'todos') {
-      alert('Selecione um setor específico para publicar a escala.');
+      alert('Selecione um setor específico no topo antes de salvar os turnos da Escala Base.');
       return;
     }
-
-    const payload = {
-      sectorId: sectorFilter,
-      sectorName: activeSectorName,
-      start: publishRange.start,
-      end: publishRange.end,
-      publishedAt: new Date().toISOString()
-    };
-
-    const nextMap = { ...publishedMap, [sectorFilter]: payload };
-    setPublishedMap(nextMap);
-    try {
-      window.localStorage.setItem(`${STORAGE_PUBLISHED_MAP_KEY}:${companyId}`, JSON.stringify(nextMap));
-    } catch (e) {}
-
-    setPublishModalOpen(false);
-    loadData(true);
-    alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
-  };
-
-  // Funções Escala Base
-  const openNewBuilderModal = () => {
-    setBuilderForm({ 
-      id: '', 
-      name: '', 
-      start: '', 
-      end: '', 
-      qty: 1, 
-      color: BUILDER_COLORS[0], 
-      days: [1,2,3,4,5],
-      startDate: getLocalDateString(),
-      endDate: (() => {
-        const d = new Date();
-        d.setMonth(d.getMonth() + 1);
-        return getLocalDateString(d);
-      })()
-    });
-    setBuilderModal({ isNew: true });
-  };
-
-  const openEditBuilderModal = (shiftObj) => {
-    const selectedColor = BUILDER_COLORS.find(c => c.value === shiftObj.color) || BUILDER_COLORS[0];
-    const activeDays = [];
-    [0, 1, 2, 3, 4, 5, 6].forEach(d => { if ((shiftObj.cellStates || {})[d]) activeDays.push(d); });
-    setBuilderForm({ 
-      id: shiftObj.id, 
-      name: shiftObj.name, 
-      start: shiftObj.start, 
-      end: shiftObj.end, 
-      qty: shiftObj.qty, 
-      color: selectedColor, 
-      days: activeDays,
-      startDate: shiftObj.startDate || getLocalDateString(),
-      endDate: shiftObj.endDate || (() => {
-        const d = new Date();
-        d.setMonth(d.getMonth() + 1);
-        return getLocalDateString(d);
-      })()
-    });
-    setBuilderModal({ isNew: false });
-  };
-
-  const toggleBuilderDay = (dayIndex) => {
-    setBuilderForm(prev => ({
-      ...prev,
-      days: (prev.days || []).includes(dayIndex) ? (prev.days || []).filter(d => d !== dayIndex) : [...(prev.days || []), dayIndex]
-    }));
-  };
-
-  const saveBuilderShift = () => {
     if (!builderForm.name || !builderForm.start || !builderForm.end) {
-      alert('Preencha o nome do turno, início e fim.');
+      alert('Preencha o nome do turno, horário inicial e final.');
       return;
     }
+
     const activeDays = {};
     [0, 1, 2, 3, 4, 5, 6].forEach(d => { activeDays[d] = (builderForm.days || []).includes(d); });
     
@@ -792,9 +719,54 @@ function EscalasContent() {
       endDate: builderForm.endDate
     };
 
-    if (builderModal?.isNew) persistBuilder([...builderShifts, newObj]);
-    else persistBuilder(builderShifts.map(s => s.id === newObj.id ? newObj : s));
+    const nextShifts = builderModal?.isNew 
+      ? [...builderShifts, newObj] 
+      : builderShifts.map(s => s.id === newObj.id ? newObj : s);
+
+    persistBuilder(nextShifts);
     setBuilderModal(null);
+
+    // Se estiver editando um turno existente, pergunta se deseja propagar para os plantões em aberto/agendados
+    if (!builderModal.isNew) {
+      const confirmPropagate = confirm(`Deseja propagar a alteração de horário/regras do turno "${newObj.name}" para todos os plantões futuros vinculados no sistema (atualizando escala, painel e faturamento)?`);
+      if (confirmPropagate) {
+        setLoading(true);
+        try {
+          // Varre os plantões futuros daquele setor que tenham o nome antigo ou horário correspondente
+          const targetShifts = safeArray(shifts).filter(s => 
+            String(s.sector_id) === String(sectorFilter) &&
+            getStatusKey(s.status) !== 'cancelado' &&
+            normalizeDate(s.date) >= getLocalDateString(currentTime)
+          );
+
+          const updates = targetShifts.map(async (s) => {
+            const hours = getShiftHours({ start_time: newObj.start, end_time: newObj.end });
+            const prof = professionalMap[s.professional_id];
+            let rate = safeNumber(s.hourly_rate || prof?.hourly_rate, 120);
+            let calculatedTotal = rate * hours;
+
+            return base44.entities.Shift.update(s.id, {
+              start_time: newObj.start,
+              end_time: newObj.end,
+              duration_hours: hours,
+              hours: hours,
+              total_amount: calculatedTotal,
+              valor_total: calculatedTotal,
+              cost: calculatedTotal,
+              notes: `Turno atualizado: ${newObj.name}`
+            });
+          });
+
+          await Promise.all(updates);
+          await loadData(true);
+          alert('Alteração propagada com sucesso em todo o sistema (Painel, Escala e Faturamento)!');
+        } catch (e) {
+          alert('Erro ao propagar alterações: ' + e.message);
+        } finally {
+          setLoading(false);
+        }
+      }
+    }
   };
 
   const deleteBuilderShift = (shiftId) => {
@@ -1144,7 +1116,7 @@ function EscalasContent() {
         </div>
       </header>
 
-      {/* BARRA DE FILTROS */}
+      {/* BARRA DE FILTROS E ESCOPO DE DATA */}
       {viewMode !== 'base_builder' && (
         <div className="bg-slate-200/50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 p-2.5 px-6 lg:px-8 flex flex-wrap items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-4 flex-wrap">
@@ -1356,7 +1328,6 @@ function EscalasContent() {
                             const dIndexBase = new Date(`${date}T12:00:00`).getDay();
                             const isActiveInBase = Boolean(period.cellStates && period.cellStates[dIndexBase]);
                             
-                            // Validação de intervalo de vigência do turno
                             const inDateRange = (!period.startDate || date >= period.startDate) && (!period.endDate || date <= period.endDate);
                             
                             const disabledKey = `${date}:${period.id}`;
@@ -1496,96 +1467,126 @@ function EscalasContent() {
       )}
 
       {/* ========================================================
-          MODO ESCALA BASE (COM DATAS DE VIGÊNCIA)
+          MODO ESCALA BASE (COM SELEÇÃO DE SETOR OBRIGATÓRIA E EDIÇÃO)
           ======================================================== */}
       {viewMode === 'base_builder' && (
         <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 p-6 flex justify-center">
           <div className="w-full max-w-5xl space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+            
+            {/* Seletor de Setor específico para criação da Escala Base (Evita o problema de "Todos os Setores") */}
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-black text-slate-900 dark:text-white">Escala Base: {activeSectorName}</h2>
-                  <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold">Modo Edição</span>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Defina os turnos, o período de vigência e a quantidade de vagas da semana.</p>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white">Selecione a Seção para Configurar:</h3>
+                <p className="text-xs text-slate-400">Escolha abaixo qual setor terá sua Escala Base editada.</p>
               </div>
-              
-              <div className="flex items-center gap-3">
-                <Button onClick={openNewBuilderModal} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-9 gap-1.5">
-                  <Plus className="w-4 h-4" /> Adicionar Turno
-                </Button>
-              </div>
+              <Select value={sectorFilter} onValueChange={handleSectorChange}>
+                <SelectTrigger className="h-10 w-72 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-sky-600 dark:text-sky-400">
+                  <SelectValue placeholder="Selecione um setor..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos" disabled>Selecione um setor específico...</SelectItem>
+                  {safeArray(sectors).filter(s => s?.id).map(s => (
+                    <SelectItem key={s.id} value={String(s.id)}>{s.name || 'Sem nome'}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs whitespace-nowrap">
-                  <thead className="bg-slate-100 dark:bg-slate-950 text-slate-500 border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider text-[10px] font-bold">
-                    <tr>
-                      <th className="p-3.5 w-48 text-center border-r border-slate-200 dark:border-slate-800">Turno / Período</th>
-                      {WEEK_DAYS_ORDER.map(day => (
-                        <th key={day.index} className={`p-3.5 text-center border-r border-slate-200 dark:border-slate-800 ${day.weekend ? 'bg-slate-200/50 dark:bg-slate-900/90' : ''}`}>
-                          {day.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                    {builderShifts.length === 0 ? (
-                      <tr>
-                        <td colSpan="8" className="p-16 text-center text-slate-400 text-xs">
-                          Nenhum turno configurado para <strong>{activeSectorName}</strong>.<br/>
-                          Clique no botão acima para adicionar o primeiro horário deste setor.
-                        </td>
-                      </tr>
-                    ) : (
-                      builderShifts.map(shift => (
-                        <tr key={shift.id}>
-                          <td className="p-3.5 font-bold border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 relative group">
-                            <div className="flex flex-col items-center justify-center text-center">
-                              <span className="text-xs text-slate-900 dark:text-slate-200">{shift.name}</span>
-                              <span className="text-[11px] font-mono text-sky-600 dark:text-sky-400 mt-0.5">{shift.start} às {shift.end}</span>
-                              <span className="text-[9px] text-slate-400 mt-1">{formatDateBR(shift.startDate)} até {formatDateBR(shift.endDate)}</span>
-                            </div>
-                            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                              <button onClick={() => openEditBuilderModal(shift)} className="p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-700 dark:text-slate-300" title="Editar Turno">
-                                <Pencil className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </td>
-                          {WEEK_DAYS_ORDER.map(day => {
-                            const isActive = Boolean(shift.cellStates && shift.cellStates[day.index]);
-                            return (
-                              <td key={day.index} className={`p-0 border-r border-slate-200 dark:border-slate-800 text-center relative ${day.weekend ? 'bg-slate-50/40 dark:bg-slate-950/40' : ''}`}>
-                                <div className="relative w-full h-full min-h-[64px] flex items-center justify-center group/cell cursor-pointer" onClick={() => toggleBuilderCell(shift.id, day.index)}>
-                                  <div className={`w-8 h-8 mx-auto rounded-lg font-black text-sm flex items-center justify-center transition-colors ${
-                                    isActive ? 'bg-slate-100 dark:bg-slate-800 text-sky-600 dark:text-sky-400 border border-slate-300 dark:border-slate-700 shadow-sm' : 'bg-transparent text-slate-300 dark:text-slate-700'
-                                  }`}>
-                                    {isActive ? shift.qty : '-'}
-                                  </div>
-                                  <div className="absolute inset-0 bg-slate-900/90 text-white text-[10px] font-bold flex flex-col items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity">
-                                    {isActive ? 'Desativar vaga?' : 'Ativar vaga?'}
-                                  </div>
+            {sectorFilter === 'todos' ? (
+              <div className="py-16 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8">
+                <Building2 className="w-12 h-12 text-sky-500 mx-auto mb-3 opacity-60" />
+                <h3 className="text-base font-black text-slate-900 dark:text-white">Nenhum setor selecionado</h3>
+                <p className="text-xs text-slate-400 mt-1">Por favor, selecione uma seção específica no seletor acima para montar ou editar os turnos.</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-xl font-black text-slate-900 dark:text-white">Escala Base: {activeSectorName}</h2>
+                      <span className="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full font-bold">Modo Edição</span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Defina os turnos, o período de vigência e a quantidade de vagas da semana.</p>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <Button onClick={openNewBuilderModal} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-9 gap-1.5">
+                      <Plus className="w-4 h-4" /> Adicionar Turno
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs whitespace-nowrap">
+                      <thead className="bg-slate-100 dark:bg-slate-950 text-slate-500 border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider text-[10px] font-bold">
+                        <tr>
+                          <th className="p-3.5 w-48 text-center border-r border-slate-200 dark:border-slate-800">Turno / Período</th>
+                          {WEEK_DAYS_ORDER.map(day => (
+                            <th key={day.index} className={`p-3.5 text-center border-r border-slate-200 dark:border-slate-800 ${day.weekend ? 'bg-slate-200/50 dark:bg-slate-900/90' : ''}`}>
+                              {day.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                        {builderShifts.length === 0 ? (
+                          <tr>
+                            <td colSpan="8" className="p-16 text-center text-slate-400 text-xs">
+                              Nenhum turno configurado para <strong>{activeSectorName}</strong>.<br/>
+                              Clique no botão acima para adicionar o primeiro horário deste setor.
+                            </td>
+                          </tr>
+                        ) : (
+                          builderShifts.map(shift => (
+                            <tr key={shift.id}>
+                              <td className="p-3.5 font-bold border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 relative group">
+                                <div className="flex flex-col items-center justify-center text-center">
+                                  <span className="text-xs text-slate-900 dark:text-slate-200">{shift.name}</span>
+                                  <span className="text-[11px] font-mono text-sky-600 dark:text-sky-400 mt-0.5">{shift.start} às {shift.end}</span>
+                                  <span className="text-[9px] text-slate-400 mt-1">{formatDateBR(shift.startDate)} até {formatDateBR(shift.endDate)}</span>
+                                </div>
+                                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                  <button onClick={() => openEditBuilderModal(shift)} className="p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-700 dark:text-slate-300" title="Editar Turno">
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
                                 </div>
                               </td>
-                            );
-                          })}
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                              {WEEK_DAYS_ORDER.map(day => {
+                                const isActive = Boolean(shift.cellStates && shift.cellStates[day.index]);
+                                return (
+                                  <td key={day.index} className={`p-0 border-r border-slate-200 dark:border-slate-800 text-center relative ${day.weekend ? 'bg-slate-50/40 dark:bg-slate-950/40' : ''}`}>
+                                    <div className="relative w-full h-full min-h-[64px] flex items-center justify-center group/cell cursor-pointer" onClick={() => toggleBuilderCell(shift.id, day.index)}>
+                                      <div className={`w-8 h-8 mx-auto rounded-lg font-black text-sm flex items-center justify-center transition-colors ${
+                                        isActive ? 'bg-slate-100 dark:bg-slate-800 text-sky-600 dark:text-sky-400 border border-slate-300 dark:border-slate-700 shadow-sm' : 'bg-transparent text-slate-300 dark:text-slate-700'
+                                      }`}>
+                                        {isActive ? shift.qty : '-'}
+                                      </div>
+                                      <div className="absolute inset-0 bg-slate-900/90 text-white text-[10px] font-bold flex flex-col items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity">
+                                        {isActive ? 'Desativar vaga?' : 'Ativar vaga?'}
+                                      </div>
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-              <Button variant="outline" onClick={() => setViewMode('grade')} className="border-slate-300 dark:border-slate-800 text-xs h-10 px-6">
-                Voltar para a Grade
-              </Button>
-              <Button onClick={() => setConfirmGoToAllocation(true)} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-10 px-8 shadow-md">
-                Salvar Escala Base de {activeSectorName}
-              </Button>
-            </div>
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+                  <Button variant="outline" onClick={() => setViewMode('grade')} className="border-slate-300 dark:border-slate-800 text-xs h-10 px-6">
+                    Voltar para a Grade
+                  </Button>
+                  <Button onClick={() => setConfirmGoToAllocation(true)} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-10 px-8 shadow-md">
+                    Salvar Escala Base de {activeSectorName}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1941,7 +1942,7 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* MODAL: ADICIONAR / EDITAR TURNO (COM CAMPOS DE VIGÊNCIA INICIAL E FINAL) */}
+      {/* MODAL: ADICIONAR / EDITAR TURNO (COM PROPAGAÇÃO GLOBAL) */}
       {builderModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
@@ -2013,7 +2014,7 @@ function EscalasContent() {
 
               <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setBuilderModal(null)} className="h-9 text-xs">Cancelar</Button>
-                <Button onClick={saveBuilderShift} className="h-9 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs">Salvar Turno</Button>
+                <Button onClick={saveBuilderShiftAndPropagate} className="h-9 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs">Salvar e Propagar</Button>
               </div>
             </div>
           </div>
