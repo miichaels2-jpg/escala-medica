@@ -10,7 +10,7 @@ import {
   Clock3, GripVertical, LayoutGrid, List, Loader2, Lock,
   Maximize2, Minimize2, Moon, Pencil, Plus, Printer,
   RefreshCw, Search, Send, SlidersHorizontal, Sun, Trash2, UserPlus,
-  UsersRound, X, FileText, ShieldAlert, ArrowRightLeft, Megaphone, Ban
+  UsersRound, X, FileText, ShieldAlert, ArrowRightLeft, Megaphone, Ban, Check
 } from 'lucide-react';
 import ShiftFormDialog from '@/components/shifts/ShiftFormDialog';
 
@@ -53,10 +53,10 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v13';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v13';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v13';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v13';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v14';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v14';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v14';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v14';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -418,7 +418,7 @@ function EscalasContent() {
 
   const weeksDataGrid = useMemo(() => getMonthWeeks(selectedMonth), [selectedMonth]);
 
-  // Montagem Dinâmica de Linhas (Garante que setores com plantões salvos apareçam perfeitamente)
+  // Montagem Dinâmica de Linhas
   const displayShiftsForSector = useMemo(() => {
     if (sectorFilter === 'todos') return [];
     
@@ -592,7 +592,7 @@ function EscalasContent() {
     }
   };
 
-  // Enviar para o Mural de Oportunidades
+  // Enviar para Mural de Oportunidades
   const handleSendToOpportunitiesMural = async (date, shiftDef, secId) => {
     const sectorObj = safeArray(sectors).find(s => String(s.id) === String(secId));
     if (!sectorObj) return;
@@ -661,14 +661,16 @@ function EscalasContent() {
       alert('Selecione uma seção específica para limpar as vagas abertas.');
       return;
     }
+    
+    // Busca plantões abertos reais cadastrados no banco para este setor
     const vacantShifts = safeArray(shifts).filter(s => 
       String(s.sector_id) === String(sectorFilter) && 
-      (!s.professional_id || normalizeStr(s.professional_name).includes('vaga')) &&
+      (!s.professional_id || normalizeStr(s.professional_name).includes('vaga') || getStatusKey(s.status) === 'aberto') &&
       getStatusKey(s.status) !== 'cancelado'
     );
 
     if (vacantShifts.length === 0) {
-      alert(`Nenhuma vaga aberta encontrada para ${activeSectorName}.`);
+      alert(`Nenhuma vaga aberta encontrada no banco para ${activeSectorName}.`);
       return;
     }
 
@@ -677,7 +679,7 @@ function EscalasContent() {
     try {
       await Promise.all(vacantShifts.map(s => base44.entities.Shift.update(s.id, { status: 'cancelado', notes: 'Vaga limpa pelo gestor' })));
       loadData(true);
-      alert('Vagas abertas removidas com sucesso!');
+      alert('Vagas abertas canceladas e removidas com sucesso!');
     } catch (e) {
       alert('Erro ao limpar vagas: ' + e.message);
     }
@@ -708,7 +710,7 @@ function EscalasContent() {
     alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
   };
 
-  // Funções Escala Base / Turnos
+  // Funções Escala Base
   const openNewBuilderModal = () => {
     setBuilderForm({ id: '', name: '', start: '', end: '', qty: 1, color: BUILDER_COLORS[0], days: [1,2,3,4,5] });
     setBuilderModal({ isNew: true });
@@ -1596,7 +1598,7 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* MODAL: MENU DE AÇÃO DA VAGA */}
+      {/* MODAL: MENU DE AÇÃO DA VAGA (COM ATIVAR / INATIVAR DINÂMICO) */}
       {vacancyMenuModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
@@ -1643,22 +1645,32 @@ function EscalasContent() {
                 </div>
               </button>
 
-              <button
-                onClick={() => {
-                  const { date, shiftObj } = vacancyMenuModal;
-                  setVacancyMenuModal(null);
-                  handleToggleDayInactive(date, shiftObj.id);
-                }}
-                className="w-full p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-900 text-left flex items-center gap-3 transition-all"
-              >
-                <div className="w-10 h-10 rounded-xl bg-slate-700 text-white flex items-center justify-center shrink-0">
-                  <Ban className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="font-bold text-xs text-slate-800 dark:text-slate-200">Inativar neste dia</div>
-                  <div className="text-[11px] text-slate-400">Desligar a vaga apenas para esta data</div>
-                </div>
-              </button>
+              {/* Botão Dinâmico Ativar / Inativar */}
+              {(() => {
+                const isCurrentlyDisabled = Boolean(disabledDaysMap[`${vacancyMenuModal.date}:${vacancyMenuModal.shiftObj.id}`]);
+                return (
+                  <button
+                    onClick={() => {
+                      const { date, shiftObj } = vacancyMenuModal;
+                      setVacancyMenuModal(null);
+                      handleToggleDayInactive(date, shiftObj.id);
+                    }}
+                    className="w-full p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-900 text-left flex items-center gap-3 transition-all"
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isCurrentlyDisabled ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-white'}`}>
+                      {isCurrentlyDisabled ? <Check className="w-5 h-5" /> : <Ban className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs text-slate-800 dark:text-slate-200">
+                        {isCurrentlyDisabled ? 'Ativar vaga neste dia' : 'Inativar neste dia'}
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        {isCurrentlyDisabled ? 'Tornar a vaga visível novamente' : 'Desligar a vaga apenas para esta data'}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1863,7 +1875,7 @@ function EscalasContent() {
             </div>
             <h3 className="text-base font-black text-slate-900 dark:text-white mb-1">Escala Base Salva!</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-5">
-              Deseja ir para o Builder Visual e começar a alocar os profissionais nas vagas de {activeSectorName}?
+              Deseja ir para a grade e começar a alocar os profissionais nas vagas de {activeSectorName}?
             </p>
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1 h-9 text-xs" onClick={() => setConfirmGoToAllocation(false)}>Depois</Button>
