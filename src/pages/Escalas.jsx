@@ -39,7 +39,7 @@ class SafeErrorBoundary extends Component {
             <p className="text-xs text-slate-400 mt-2 mb-6">{this.state.errorMsg}</p>
             <Button
               onClick={() => {
-                try { window.localStorage.removeItem('escala_setor_fixado_v29'); } catch (e) {}
+                try { window.localStorage.removeItem('escala_setor_fixado_v30'); } catch (e) {}
                 window.location.reload();
               }}
               className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11"
@@ -57,10 +57,10 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v29';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v29';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v29';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v29';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v30';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v30';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v30';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v30';
 
 const PREVIOUS_SHIFT_DISPLAY_MINUTES = 60;
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
@@ -85,32 +85,40 @@ const BUILDER_COLORS = [
 
 function safeArray(val) { return Array.isArray(val) ? val : []; }
 function safeNumber(val, fb = 0) { const n = Number(val); return Number.isFinite(n) ? n : fb; }
+
 function normalizeDate(val) {
   if (!val) return '';
   const t = String(val).trim();
   return /^\d{4}-\d{2}-\d{2}/.test(t) ? t.substring(0, 10) : t;
 }
+
 function getLocalDateString(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+
 function getDayOfWeekIndex(dateStr) {
   if (!dateStr || dateStr === 'disabled') return -1;
   const parts = dateStr.split('-');
   if (parts.length < 3) return -1;
   return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0).getDay();
 }
+
 function normalizeStr(str) {
   return typeof str === 'string' ? str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
 }
+
 function toTitleCase(str) {
   return typeof str === 'string' ? str.toLowerCase().split(' ').map(w => ['de','da','do','e'].includes(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '';
 }
+
 function getStatusKey(status) { return String(status || '').trim().toLowerCase(); }
+
 function formatDateBR(dateStr) {
   if (!dateStr) return '—';
   const parts = normalizeDate(dateStr).split('-');
   return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(dateStr);
 }
+
 function fmtDateLong(dateStr) {
   if (!dateStr) return '';
   const parts = normalizeDate(dateStr).split('-');
@@ -146,14 +154,17 @@ function checkTimeOverlap(startA, endA, startB, endB) {
 }
 
 function getProfessionalId(s) { return s?.professional_id || s?.professionalId || s?.professional?.id || null; }
+
 function getProfessionalName(s, m = {}) {
-  if (s?.professional_name) return s.professional_name;
+  if (s?.professional_name && !s.professional_name.toLowerCase().includes('vaga')) return s.professional_name;
   const id = getProfessionalId(s);
   return id && m[id] ? m[id].name || m[id].full_name || 'Profissional' : 'Vaga Aberta';
 }
+
 function getSectorName(s, m = {}) {
   if (s?.sector_name) return s.sector_name;
-  return s?.sector_id && m[s.sector_id] ? m[s.sector_id].name : 'Setor Geral';
+  const secId = String(s?.sector_id || '');
+  return secId && m[secId] ? m[secId].name : 'Setor Geral';
 }
 
 function getDetailedShiftStatus(dateStr, startStr, endStr, now, explicitStatus, isPublished = false) {
@@ -245,8 +256,6 @@ function generateMonthOptions(pivotDate = new Date()) {
   return options;
 }
 
-const escapeHtml = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
 export default function Escalas() {
   return (
     <SafeErrorBoundary>
@@ -275,7 +284,7 @@ function EscalasContent() {
   const [theme, setTheme] = useState('dark');
 
   const [scaleStartDate, setScaleStartDate] = useState(() => getLocalDateString());
-  const [scaleModeScope, setScaleModeScope] = useState('apartir_hoje');
+  const [scaleModeScope, setScaleModeScope] = useState('mes_inteiro');
 
   const [sectorFilter, setSectorFilter] = useState(() => {
     try {
@@ -405,24 +414,90 @@ function EscalasContent() {
   useEffect(() => { if (!appLoading) loadData(); }, [appLoading, loadData]);
   useEffect(() => { const id = setInterval(() => setCurrentTime(new Date()), 1000); return () => clearInterval(id); }, []);
 
+  const professionalMap = useMemo(() => {
+    const m = {};
+    safeArray(professionals).forEach(p => { if (p?.id) m[p.id] = p; });
+    return m;
+  }, [professionals]);
+
+  const sectorMap = useMemo(() => {
+    const m = {};
+    safeArray(sectors).forEach(s => { if (s?.id) m[String(s.id)] = s; });
+    return m;
+  }, [sectors]);
+
+  const activeSectorName = useMemo(() => {
+    if (sectorFilter === 'todos') return 'Todos os Setores';
+    const s = safeArray(sectors).find(sec => String(sec.id) === String(sectorFilter));
+    return s?.name || 'Setor Selecionado';
+  }, [sectors, sectorFilter]);
+
+  // RECONSTITUIÇÃO INTELIGENTE DO MODELO BASE
   useEffect(() => {
     if (sectorFilter === 'todos') {
       setBuilderShifts([]);
       return;
     }
+
     try {
       const key = `${STORAGE_BASE_PREFIX}:${companyId}:${sectorFilter}`;
       const raw = window.localStorage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           setBuilderShifts(parsed);
           return;
         }
       }
     } catch (e) {}
+
+    // Auto-discovery: reconstrói a base a partir de plantões reais já salvos no banco deste setor
+    const sectorShifts = safeArray(shifts).filter(s => 
+      String(s.sector_id) === String(sectorFilter) && 
+      getStatusKey(s.status) !== 'cancelado'
+    );
+
+    if (sectorShifts.length > 0) {
+      const slotMap = new Map();
+      sectorShifts.forEach(s => {
+        if (!s.start_time || !s.end_time) return;
+        const slotKey = `${s.start_time}-${s.end_time}`;
+        const dayIdx = getDayOfWeekIndex(s.date);
+        
+        if (!slotMap.has(slotKey)) {
+          let name = 'Turno';
+          if (s.start_time >= '06:00' && s.start_time < '13:00') name = 'Diurno';
+          else if (s.start_time >= '13:00' && s.start_time < '19:00') name = 'Tarde';
+          else name = 'Noturno';
+
+          slotMap.set(slotKey, {
+            id: `bld_auto_${slotKey.replace(':', '')}`,
+            name,
+            start: s.start_time,
+            end: s.end_time,
+            color: BUILDER_COLORS[0].value,
+            qty: 1,
+            cellStates: { 0: false, 1: false, 2: false, 3: false, 4: false, 5: false, 6: false },
+            startDate: getLocalDateString(),
+            endDate: ''
+          });
+        }
+
+        if (dayIdx >= 0 && dayIdx <= 6) {
+          slotMap.get(slotKey).cellStates[dayIdx] = true;
+        }
+      });
+
+      const discovered = Array.from(slotMap.values());
+      setBuilderShifts(discovered);
+      try {
+        window.localStorage.setItem(`${STORAGE_BASE_PREFIX}:${companyId}:${sectorFilter}`, JSON.stringify(discovered));
+      } catch (e) {}
+      return;
+    }
+
     setBuilderShifts([]);
-  }, [companyId, sectorFilter]);
+  }, [companyId, sectorFilter, shifts]);
 
   const persistBuilder = (newShifts) => {
     setBuilderShifts(newShifts);
@@ -433,24 +508,6 @@ function EscalasContent() {
     }
   };
 
-  const professionalMap = useMemo(() => {
-    const m = {};
-    safeArray(professionals).forEach(p => { if (p?.id) m[p.id] = p; });
-    return m;
-  }, [professionals]);
-
-  const sectorMap = useMemo(() => {
-    const m = {};
-    safeArray(sectors).forEach(s => { if (s?.id) m[s.id] = s; });
-    return m;
-  }, [sectors]);
-
-  const activeSectorName = useMemo(() => {
-    if (sectorFilter === 'todos') return 'Todos os Setores';
-    const s = safeArray(sectors).find(sec => String(sec.id) === String(sectorFilter));
-    return s?.name || 'Setor Selecionado';
-  }, [sectors, sectorFilter]);
-
   const monthOptions = useMemo(() => generateMonthOptions(new Date()), []);
 
   const isShiftPublished = useCallback((shiftDate, secId) => {
@@ -460,12 +517,14 @@ function EscalasContent() {
     return date >= normalizeDate(pub.start) && date <= normalizeDate(pub.end);
   }, [publishedMap]);
 
+  // FILTRAGEM ROBUSTA DE PLANTÕES (GRADE E LISTA)
   const filteredShifts = useMemo(() => {
     const result = safeArray(shifts).filter(s => {
       if (!s || getStatusKey(s.status) === 'cancelado') return false;
       const sDate = normalizeDate(s.date);
       if (!sDate) return false;
 
+      // Na lista diária, se tiver dia selecionado, filtra pelo dia; senão pelo mês
       if (viewMode === 'list' && selectedDate) {
         if (sDate !== selectedDate) return false;
       } else {
@@ -478,11 +537,12 @@ function EscalasContent() {
       const pName = typeof s.professional_name === 'string' ? s.professional_name.toLowerCase() : '';
       const published = isShiftPublished(s.date, s.sector_id);
       const timeInfo = getDetailedShiftStatus(s.date, s.start_time, s.end_time, currentTime, s.status, published);
+      const hasProf = Boolean(s.professional_id) && !pName.includes('vaga') && getStatusKey(s.status) !== 'disponivel' && getStatusKey(s.status) !== 'aberto';
       return { 
         ...s, 
         rTimeStatus: timeInfo.code,
         isFinishedRecent: timeInfo.isFinishedRecent,
-        isVacant: !s.professional_id || pName.includes('vaga') || getStatusKey(s.status) === 'disponivel' || getStatusKey(s.status) === 'aberto'
+        isVacant: !hasProf
       };
     });
 
@@ -500,11 +560,29 @@ function EscalasContent() {
     return getMonthWeeks(selectedMonth, sDateFilter, eDateFilter);
   }, [selectedMonth, scaleModeScope, scaleStartDate, builderShifts]);
 
+  // TURNOS OPERACIONAIS DA GRADE (INCLUINDO SUPORTE A "TODOS OS SETORES")
   const displayShiftsForSector = useMemo(() => {
-    if (sectorFilter === 'todos') return [];
-    
-    const base = safeArray(builderShifts);
-    if (base.length > 0) return base;
+    if (sectorFilter === 'todos') {
+      // Quando todos os setores estão ativos, consolida os horários únicos de todos os plantões do mês
+      const uniqueSlots = new Map();
+      filteredShifts.forEach(s => {
+        if (!s.start_time || !s.end_time) return;
+        const key = `${s.start_time}-${s.end_time}`;
+        if (!uniqueSlots.has(key)) {
+          uniqueSlots.set(key, {
+            id: `slot_${key}`,
+            name: `Turno ${s.start_time} - ${s.end_time}`,
+            start: s.start_time,
+            end: s.end_time,
+            qty: 1,
+            cellStates: { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true }
+          });
+        }
+      });
+      return Array.from(uniqueSlots.values()).sort((a,b) => a.start.localeCompare(b.start));
+    }
+
+    if (builderShifts.length > 0) return builderShifts;
 
     const sectorShiftsInMonth = filteredShifts.filter(s => String(s.sector_id) === String(sectorFilter));
     const timeSlots = new Map();
@@ -514,9 +592,9 @@ function EscalasContent() {
         const key = `${s.start_time}-${s.end_time}`;
         if (!timeSlots.has(key)) {
           let name = 'Turno';
-          if (s.start_time >= '06:00' && s.start_time < '13:00') name = 'Manhã';
+          if (s.start_time >= '06:00' && s.start_time < '13:00') name = 'Diurno';
           else if (s.start_time >= '13:00' && s.start_time < '19:00') name = 'Tarde';
-          else name = 'Noite';
+          else name = 'Noturno';
 
           timeSlots.set(key, {
             id: `auto_${key}`,
@@ -524,14 +602,13 @@ function EscalasContent() {
             start: s.start_time,
             end: s.end_time,
             qty: 1,
-            cellStates: { 0: false, 1: true, 2: true, 3: true, 4: true, 5: true, 6: false }
+            cellStates: { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true }
           });
         }
       }
     });
 
-    if (timeSlots.size > 0) return Array.from(timeSlots.values());
-    return [];
+    return Array.from(timeSlots.values());
   }, [sectorFilter, builderShifts, filteredShifts]);
 
   const sidebarProfessionals = useMemo(() => {
@@ -548,7 +625,11 @@ function EscalasContent() {
 
   const handleCellClick = (e, date, shiftObj, sectorIdTarget = null) => {
     if (date === 'disabled') return;
-    const secId = sectorIdTarget || sectorFilter;
+    const secId = sectorIdTarget || (sectorFilter !== 'todos' ? sectorFilter : null);
+    if (!secId) {
+      alert('Selecione uma seção específica no topo para gerenciar vagas nesta data.');
+      return;
+    }
     setVacancyMenuModal({ date, shiftObj, sectorId: secId });
   };
 
@@ -596,10 +677,9 @@ function EscalasContent() {
     throw new Error('Falha ao persistir plantão no banco.');
   };
 
-  // Alocação com fluxo unificado (status: aguardando_confirmacao)
-  const assignShift = async (date, shiftDef, profId, reasonText = '', explicitStatus = 'aguardando_confirmacao', sectorTarget = null, forceRemapShiftId = null) => {
+  const assignShift = async (date, shiftDef, profId, reasonText = '', explicitStatus = 'confirmado', sectorTarget = null, forceRemapShiftId = null) => {
     const secId = sectorTarget && sectorTarget !== 'todos' ? sectorTarget : sectorFilter;
-    if (secId === 'todos') { alert("Selecione uma seção específica no topo para alocar o profissional."); return; }
+    if (secId === 'todos') { alert("Selecione um setor específico para alocar o profissional."); return; }
     
     const prof = professionalMap[profId];
     const sectorObj = safeArray(sectors).find(s => String(s.id) === String(secId));
@@ -652,7 +732,6 @@ function EscalasContent() {
       const notes = [
         `Turno: ${shiftDef.name}`,
         prof?.registration_code ? `Matrícula: ${prof.registration_code}` : null,
-        `Origem: Alocação Manual (Aguardando Confirmação)`,
         reasonText ? `Justificativa: ${reasonText}` : null
       ].filter(Boolean).join(' | ');
 
@@ -682,46 +761,17 @@ function EscalasContent() {
         });
       }
       
-      const savedShift = await saveShiftResilient(payload, existingShift?.id);
-
-      // Cria a solicitação correspondente em ShiftSwap para fluxo de aceite do profissional
-      try {
-        if (base44.entities.ShiftSwap?.create) {
-          await base44.entities.ShiftSwap.create({
-            company_id: companyId,
-            unit_id: unitId,
-            shift_id: savedShift?.id || existingShift?.id,
-            shift_date: date,
-            shift_time: `${shiftDef.start} - ${shiftDef.end}`,
-            sector_name: sectorObj.name,
-            requester_name: 'Coordenação Médica',
-            target_professional_id: prof.id,
-            target_name: prof.name,
-            target_specialty: prof.specialty || 'Geral',
-            swap_type: 'alocacao_manual',
-            source_type: 'alocacao_manual',
-            request_type: 'convite_alocacao',
-            status: 'pendente',
-            confirmation_status: 'aguardando_profissional',
-            approval_status: 'aguardando_gestor'
-          });
-        }
-      } catch (swapErr) {
-        console.warn('Registro em ShiftSwap:', swapErr);
-      }
-
+      await saveShiftResilient(payload, existingShift?.id);
       loadData(true);
-      alert(`Dr(a). ${prof.name} indicado(a). A solicitação foi encaminhada para aceite do médico!`);
     } catch (error) {
       alert("Erro ao alocar plantão: " + (error?.message || 'Tente novamente.'));
     }
   };
 
-  // Envio ao Mural de Oportunidades com registro transacional
   const handleSendToOpportunitiesMural = async (date, shiftDef, secId) => {
     const targetSecId = secId && secId !== 'todos' ? secId : sectorFilter;
     if (targetSecId === 'todos') {
-      alert('Selecione uma seção específica no topo para disponibilizar esta vaga.');
+      alert('Selecione um setor específico para disponibilizar esta vaga.');
       return;
     }
 
@@ -761,7 +811,6 @@ function EscalasContent() {
 
       const savedShift = await saveShiftResilient(payload, existingShift?.id);
 
-      // Cria o registro no Mural (ShiftSwap)
       if (base44.entities.ShiftSwap?.create) {
         await base44.entities.ShiftSwap.create({
           company_id: companyId,
@@ -781,9 +830,9 @@ function EscalasContent() {
       }
 
       await loadData(true);
-      alert('Vaga disponibilizada no Mural de Oportunidades com sucesso!');
+      alert('Vaga disponibilizada com sucesso no Mural de Oportunidades!');
     } catch (e) {
-      alert('Erro ao enviar vaga ao mural: ' + (e?.message || 'Verifique o banco.'));
+      alert('Erro ao enviar vaga ao mural: ' + (e?.message || 'Tente novamente.'));
     }
   };
 
@@ -807,7 +856,7 @@ function EscalasContent() {
       return;
     }
 
-    assignShift(date, shiftDef, profId, '', 'aguardando_confirmacao', sectorTarget);
+    assignShift(date, shiftDef, profId, '', 'confirmado', sectorTarget);
   };
 
   const handleDelete = async (id) => {
@@ -820,7 +869,6 @@ function EscalasContent() {
     }
   };
 
-  // EXCLUIR ESCALA MENSAL INTEIRA (LIMPEZA TOTAL DO MÊS)
   const handleDeleteMonthShifts = async () => {
     const monthShifts = safeArray(shifts).filter(s => 
       s.date && 
@@ -834,7 +882,7 @@ function EscalasContent() {
       return;
     }
 
-    if (!confirm(`ATENÇÃO: Deseja realmente excluir TODOS os ${monthShifts.length} plantões do mês ${selectedMonth} (${activeSectorName})? Esta ação cancela os registros no banco de dados.`)) {
+    if (!confirm(`ATENÇÃO: Deseja realmente excluir TODOS os ${monthShifts.length} plantões do mês ${selectedMonth} (${activeSectorName})?`)) {
       return;
     }
 
@@ -876,10 +924,9 @@ function EscalasContent() {
 
     setPublishModalOpen(false);
     loadData(true);
-    alert(`Escala de ${activeSectorName} publicada de ${formatDateBR(publishRange.start)} até ${formatDateBR(publishRange.end)}!`);
+    alert(`Escala de ${activeSectorName} publicada com sucesso!`);
   };
 
-  // GERAÇÃO MENSAL A PARTIR DO MODELO BASE
   const handleGenerateMonthFromBase = async () => {
     if (sectorFilter === 'todos') {
       alert('Selecione um setor específico para gerar a escala mensal.');
@@ -893,7 +940,7 @@ function EscalasContent() {
     const [year, month] = selectedMonth.split('-').map(Number);
     const lastDay = new Date(year, month, 0, 12, 0, 0).getDate();
 
-    if (!confirm(`Deseja gerar a estrutura de vagas para ${selectedMonth} em ${activeSectorName}? Plantões já cadastrados serão preservados.`)) {
+    if (!confirm(`Deseja gerar a estrutura de vagas para ${selectedMonth} em ${activeSectorName}? Plantões com médicos já escalados serão mantidos.`)) {
       return;
     }
 
@@ -961,7 +1008,6 @@ function EscalasContent() {
     }
   };
 
-  // DUPLICAÇÃO MENSAL REAL NO BASE44
   const handleExecuteDuplication = async () => {
     if (duplicateConfig.sourceMonth === duplicateConfig.targetMonth) {
       alert('O mês de destino deve ser diferente do mês de origem.');
@@ -1025,7 +1071,7 @@ function EscalasContent() {
       setSelectedMonth(duplicateConfig.targetMonth);
       setDuplicateModalOpen(false);
       await loadData(true);
-      alert(`Escala de ${duplicateConfig.targetMonth} criada com sucesso! (${payloadsToCreate.length} plantões duplicados)`);
+      alert(`Escala de ${duplicateConfig.targetMonth} duplicada com sucesso!`);
     } catch (e) {
       alert('Erro durante a duplicação: ' + e.message);
     } finally {
@@ -1043,11 +1089,7 @@ function EscalasContent() {
       color: BUILDER_COLORS[0], 
       days: [1,2,3,4,5],
       startDate: getLocalDateString(),
-      endDate: (() => {
-        const d = new Date();
-        d.setMonth(d.getMonth() + 1);
-        return getLocalDateString(d);
-      })()
+      endDate: ''
     });
     setBuilderModal({ isNew: true });
   }, []);
@@ -1066,11 +1108,7 @@ function EscalasContent() {
       color: selectedColor, 
       days: activeDays,
       startDate: shiftObj.startDate || getLocalDateString(),
-      endDate: shiftObj.endDate || (() => {
-        const d = new Date();
-        d.setMonth(d.getMonth() + 1);
-        return getLocalDateString(d);
-      })()
+      endDate: shiftObj.endDate || ''
     });
     setBuilderModal({ isNew: false });
   }, []);
@@ -1082,7 +1120,8 @@ function EscalasContent() {
     }));
   };
 
-  const saveBuilderShiftModel = () => {
+  // Salva na Base e propaga opcionalmente as vagas abertas
+  const saveBuilderShiftModel = async () => {
     if (sectorFilter === 'todos') {
       alert('Selecione um setor específico no topo antes de salvar os turnos da Escala Base.');
       return;
@@ -1113,6 +1152,7 @@ function EscalasContent() {
 
     persistBuilder(nextShifts);
     setBuilderModal(null);
+    alert(`Turno "${newObj.name}" salvo no Modelo Base de ${activeSectorName}!`);
   };
 
   const deleteBuilderShift = (shiftId) => {
@@ -1137,7 +1177,6 @@ function EscalasContent() {
     return safeArray(shifts).filter(s => normalizeDate(s.date) === todayTarget && getStatusKey(s.status) !== 'cancelado');
   }, [shifts, todayTarget]);
 
-  // Modo TV e Escala do Dia separados em 4 raias
   const tvTracks = useMemo(() => {
     const active = [];
     const upcoming = [];
@@ -1164,7 +1203,7 @@ function EscalasContent() {
   }, [shiftsForDayModal, currentTime, isShiftPublished]);
 
   /* ============================================================
-     RENDER DO MODO TV (4 RAIAS OPERACIONAIS)
+     RENDER DO MODO TV
      ============================================================ */
   if (tvMode) {
     return (
@@ -1196,7 +1235,6 @@ function EscalasContent() {
         </div>
 
         <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-4 gap-4 pr-1 pb-8">
-          {/* RAIA 1: ATIVOS */}
           <div className="flex flex-col bg-slate-900/60 border border-emerald-500/30 rounded-2xl p-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2 mb-3">
               <h2 className="text-sm font-black text-emerald-400 uppercase tracking-wider flex items-center gap-2">
@@ -1220,7 +1258,6 @@ function EscalasContent() {
             </div>
           </div>
 
-          {/* RAIA 2: PRÓXIMOS */}
           <div className="flex flex-col bg-slate-900/60 border border-sky-500/30 rounded-2xl p-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-sky-500/20 pb-2 mb-3">
               <h2 className="text-sm font-black text-sky-400 uppercase tracking-wider flex items-center gap-2">
@@ -1244,7 +1281,6 @@ function EscalasContent() {
             </div>
           </div>
 
-          {/* RAIA 3: VAGAS ABERTAS */}
           <div className="flex flex-col bg-slate-900/60 border border-amber-500/30 rounded-2xl p-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-amber-500/20 pb-2 mb-3">
               <h2 className="text-sm font-black text-amber-400 uppercase tracking-wider flex items-center gap-2">
@@ -1268,7 +1304,6 @@ function EscalasContent() {
             </div>
           </div>
 
-          {/* RAIA 4: PLANTÃO ANTERIOR */}
           <div className="flex flex-col bg-slate-900/40 border border-slate-800 rounded-2xl p-4 shadow-xl opacity-80">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
               <h2 className="text-sm font-black text-slate-400 uppercase tracking-wider flex items-center gap-2">
@@ -1373,7 +1408,6 @@ function EscalasContent() {
             <Copy className="w-3.5 h-3.5" /> Duplicar Escala
           </Button>
 
-          {/* BOTÃO PARA EXCLUIR ESCALA MENSAL INTEIRA */}
           {viewMode === 'grade' && (
             <Button onClick={handleDeleteMonthShifts} variant="outline" className="border-rose-500/40 text-rose-600 dark:text-rose-400 text-xs h-9 font-bold hover:bg-rose-50 dark:hover:bg-rose-950/30 gap-1.5">
               <Trash2 className="w-3.5 h-3.5" /> Excluir Mês
@@ -1548,18 +1582,21 @@ function EscalasContent() {
                           <div className="p-3 border-r border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex flex-col items-center justify-center text-center relative group/turn">
                             <span className="font-bold text-xs text-slate-900 dark:text-slate-200">{period.name}</span>
                             <span className="text-[10px] text-sky-600 dark:text-sky-400 font-mono mt-0.5">{period.start} - {period.end}</span>
-                            <button 
-                              onClick={() => openEditBuilderModal(period)}
-                              className="absolute top-1 right-1 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-600 dark:text-slate-300 opacity-0 group-hover/turn:opacity-100 transition-all shadow-sm"
-                              title="Editar Turno"
-                            >
-                              <Pencil className="w-3 h-3" />
-                            </button>
+                            {sectorFilter !== 'todos' && (
+                              <button 
+                                onClick={() => openEditBuilderModal(period)}
+                                className="absolute top-1 right-1 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-slate-600 dark:text-slate-300 opacity-0 group-hover/turn:opacity-100 transition-all shadow-sm"
+                                title="Editar Turno"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            )}
                           </div>
 
                           {week.map((date, dIndex) => {
                             if (!date || date === 'disabled') return <div key={dIndex} className="bg-slate-100/40 dark:bg-slate-950/40 border-r border-slate-200 dark:border-slate-800"></div>;
 
+                            // Localiza todos os plantões do slot
                             const slotShifts = filteredShifts.filter(s => 
                               String(s.date || '').startsWith(date) && 
                               s.start_time === period.start && 
@@ -1575,8 +1612,11 @@ function EscalasContent() {
                             const requiredQty = (isActiveInBase && inDateRange && !isDayManuallyDisabled) ? (period.qty || 1) : 0;
                             
                             const renders = [...slotShifts];
-                            for (let q = slotShifts.length; q < requiredQty; q++) {
-                              renders.push({ isVirtualVacant: true, isVacant: true });
+                            // Se estiver em um setor específico e faltar alocação, projeta vagas virtuais
+                            if (sectorFilter !== 'todos') {
+                              for (let q = slotShifts.length; q < requiredQty; q++) {
+                                renders.push({ isVirtualVacant: true, isVacant: true });
+                              }
                             }
 
                             return (
@@ -1605,6 +1645,12 @@ function EscalasContent() {
                                         <div className="font-bold text-xs break-words leading-tight text-slate-900 dark:text-slate-100">
                                           {s.isVacant ? 'Vaga Aberta' : toTitleCase(s.professional_name)}
                                         </div>
+
+                                        {sectorFilter === 'todos' && s.sector_id && (
+                                          <div className="text-[9px] text-sky-600 font-bold uppercase truncate mt-0.5">
+                                            {getSectorName(s, sectorMap)}
+                                          </div>
+                                        )}
                                         
                                         <div className="text-[10px] font-bold tracking-wider uppercase mt-1 flex items-center gap-1.5">
                                           {s.isVacant ? (
@@ -1650,6 +1696,95 @@ function EscalasContent() {
               )}
             </div>
           </Card>
+        </div>
+      )}
+
+      {/* ========================================================
+          LISTA DIÁRIA
+          ======================================================== */}
+      {viewMode === 'list' && (
+        <div className="overflow-y-auto p-4 sm:px-8 space-y-3 flex-1">
+          <div className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+              Exibindo plantões do mês {selectedMonth} {selectedDate && `(Dia específico: ${formatDateBR(selectedDate)})`}
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-500">Filtrar por dia:</span>
+              <Input 
+                type="date" 
+                value={selectedDate} 
+                onChange={(e) => setSelectedDate(e.target.value)} 
+                className="h-8 w-36 text-xs bg-slate-50 dark:bg-slate-950" 
+              />
+              {selectedDate && (
+                <Button size="sm" variant="ghost" onClick={() => setSelectedDate('')} className="h-8 text-xs text-sky-600">
+                  Ver mês todo
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {filteredShifts.length === 0 ? (
+            <div className="py-16 text-center text-slate-400">Nenhum plantão localizado para o período filtrado.</div>
+          ) : (
+            filteredShifts.map(s => {
+              const hasDoctor = Boolean(s.professional_id) && !s.isVacant;
+              const profName = hasDoctor ? toTitleCase(s.professional_name) : 'Vaga Aberta';
+
+              return (
+                <div key={s.id} className={`flex items-center gap-4 rounded-2xl border p-4 bg-white dark:bg-slate-900 transition-colors shadow-sm ${
+                  !hasDoctor ? 'border-amber-300 bg-amber-50/20 dark:bg-amber-950/10' : 'border-slate-200 dark:border-slate-800'
+                }`}>
+                  <div className="min-w-[110px] rounded-xl py-2 text-center text-xs font-black border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 shrink-0">
+                    {formatDateBR(s.date)} <br/>
+                    <span className="font-mono text-xs opacity-90 text-slate-400">{s.start_time || '--'} às {s.end_time || '--'}</span>
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <strong className={`block text-base break-words ${!hasDoctor ? 'text-amber-500' : 'text-slate-900 dark:text-white'}`}>
+                      {profName}
+                    </strong>
+                    <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                      <Building2 className="w-3 h-3" /> {getSectorName(s, sectorMap)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {hasDoctor && (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-bold uppercase tracking-wider bg-slate-50 dark:bg-slate-950">
+                        {s.rTimeStatus === 'encerrado' ? (
+                          <span className="text-rose-500 flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500" /> Encerrado</span>
+                        ) : s.rTimeStatus === 'andamento' ? (
+                          <span className="text-emerald-500 flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" /> Em Atendimento</span>
+                        ) : (
+                          <span className="text-sky-500 flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-sky-500" /> Programado</span>
+                        )}
+                      </div>
+                    )}
+
+                    {hasDoctor && (
+                      <Button size="icon" variant="ghost" onClick={() => handleDelete(s.id)} className="h-9 w-9 text-slate-400 hover:text-rose-500 hover:bg-rose-950/20" title="Cancelar plantão">
+                        <Trash2 className="w-4 h-4"/>
+                      </Button>
+                    )}
+
+                    {!hasDoctor && (
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => { setEditing(s); setDialogOpen(true); }} className="h-9 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs">
+                          <UserPlus className="w-3.5 h-3.5 mr-1" /> Alocar Médico
+                        </Button>
+                        {s.id && (
+                          <Button size="sm" variant="ghost" onClick={() => handleDelete(s.id)} className="h-9 text-slate-400 hover:text-rose-500 hover:bg-rose-950/20 text-xs">
+                            Cancelar Vaga
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       )}
 
@@ -1918,7 +2053,7 @@ function EscalasContent() {
                 </div>
                 <div>
                   <div className="font-bold text-xs text-sky-900 dark:text-sky-200">Alocar Plantonista</div>
-                  <div className="text-[11px] text-sky-700 dark:text-sky-400">Encaminha convite de confirmação ao médico</div>
+                  <div className="text-[11px] text-sky-700 dark:text-sky-400">Escala o médico diretamente na vaga</div>
                 </div>
               </button>
 
@@ -2039,13 +2174,13 @@ function EscalasContent() {
                       alert('A justificativa é obrigatória para plantões retroativos.');
                       return;
                     }
-                    const explicitStatus = isDateRetroactive(newShiftModal.date) ? retroactivePerformed : 'aguardando_confirmacao';
+                    const explicitStatus = isDateRetroactive(newShiftModal.date) ? retroactivePerformed : 'confirmado';
                     assignShift(newShiftModal.date, newShiftModal.shiftObj, profId, retroactiveReason, explicitStatus, newShiftModal.sectorIdTarget);
                     setNewShiftModal(null);
                   }}
                   className="h-9 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs"
                 >
-                  Confirmar Indicação
+                  Confirmar Alocação
                 </Button>
               </div>
             </div>
