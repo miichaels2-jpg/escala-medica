@@ -235,7 +235,7 @@ export default function CorpoClinico() {
           <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block" />
 
           <Button variant="outline" onClick={handleCopyLink} className="gap-2 border-sky-300 text-sky-700 hover:bg-sky-50 dark:border-slate-700 dark:text-sky-400">
-            <Share2 className="w-4 h-4 text-sky-600" /> Copiar Link Auto-Cadastro (/register)
+            <Share2 className="w-4 h-4 text-sky-600" /> Copiar Link Auto-Cadastro
           </Button>
           
           <Button variant="outline" onClick={() => setNewSpecialtyModal(true)} className="gap-2">
