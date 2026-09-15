@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 import { 
   ShieldCheck, 
   Building2, 
@@ -29,7 +30,11 @@ import {
   MessageCircle,
   Search,
   X,
-  UserCheck
+  UserCheck,
+  UserX,
+  Briefcase,
+  Hash,
+  Percent
 } from 'lucide-react';
 
 const SYSTEM_MODULES = [
@@ -77,8 +82,18 @@ export default function CorpoClinico() {
   const [newSpecialtyName, setNewSpecialtyName] = useState('');
   const [savingSpecialty, setSavingSpecialty] = useState(false);
 
+  // Status de Acesso
+  const [isActive, setIsActive] = useState(true);
+
   // Form State
   const [editingId, setEditingId] = useState(null);
+  const [registrationCode, setRegistrationCode] = useState('');
+  const [contractType, setContractType] = useState('cooperado');
+  const [cooperativeName, setCooperativeName] = useState('');
+  const [coopTaxRate, setCoopTaxRate] = useState('5');
+  const [pjCnpj, setPjCnpj] = useState('');
+  const [pjCorporateName, setPjCorporateName] = useState('');
+
   const [name, setName] = useState('');
   const [cpf, setCpf] = useState('');
   const [birthDate, setBirthDate] = useState('');
@@ -100,7 +115,7 @@ export default function CorpoClinico() {
   const [pixKey, setPixKey] = useState('');
   const [bankInfo, setBankInfo] = useState('');
 
-  // Acesso e Permissões (RBAC)
+  // Acesso, Perfil e Permissões (RBAC)
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('medico');
@@ -197,14 +212,15 @@ export default function CorpoClinico() {
     window.open(`https://wa.me/${rawPhone}?text=${text}`, '_blank');
   };
 
+  // LINK DE AUTO-CADASTRO APONTANDO DIRETAMENTE PARA /register
   const handleCopyLink = () => {
-    const url = `${window.location.origin}/cadastro-medico`;
+    const url = `${window.location.origin}/register`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(url);
-      setToastMessage('Link de auto-cadastro copiado!');
+      setToastMessage('Link de auto-cadastro copiado com sucesso!');
       setTimeout(() => setToastMessage(''), 3000);
     } else {
-      alert(`Envie o link para o profissional: ${url}`);
+      alert(`Link de auto-cadastro: ${url}`);
     }
   };
 
@@ -268,9 +284,16 @@ export default function CorpoClinico() {
 
   const openNewModal = () => {
     setEditingId(null);
+    setIsActive(true);
     setName('');
     setCpf('');
     setBirthDate('');
+    setRegistrationCode(`MED-${Math.floor(1000 + Math.random() * 9000)}`);
+    setContractType('cooperado');
+    setCooperativeName('Cooperativa Médica');
+    setCoopTaxRate('5');
+    setPjCnpj('');
+    setPjCorporateName('');
     setSpecialty(specialties[0]?.name || 'Clínica Médica');
     setSection('');
     setDocument('');
@@ -297,15 +320,23 @@ export default function CorpoClinico() {
 
   const handleEditProfessional = async (prof) => {
     setEditingId(prof.id);
+    setIsActive(prof.status !== 'inativo');
     setName(prof.name || '');
     setCpf(prof.cpf || '');
     setBirthDate(prof.birth_date || '');
+    setRegistrationCode(prof.registration_code || `MED-${String(prof.id || '').slice(-4).toUpperCase()}`);
     setSpecialty(prof.specialty || prof.category || 'Clínica Médica');
     setSection(prof.section || '');
     setDocument(prof.document || '');
     setEmail(prof.email || '');
     setPhone(prof.phone || '');
     setUnitId(String(prof.unit_id || units[0]?.id || 'unit_h1'));
+
+    setContractType(prof.contract_type || 'cooperado');
+    setCooperativeName(prof.cooperative_name || '');
+    setCoopTaxRate(String(prof.coop_tax_rate ?? '5'));
+    setPjCnpj(prof.pj_cnpj || '');
+    setPjCorporateName(prof.pj_corporate_name || '');
 
     setRemunerationType(prof.remuneration_type || 'hora');
     setHourlyRate(String(prof.hourly_rate || '120'));
@@ -322,12 +353,18 @@ export default function CorpoClinico() {
     try {
       const usersFound = await base44.entities.User.filter({ email: (prof.email || '').toLowerCase().trim() });
       if (usersFound.length > 0) {
-        setUsername(usersFound[0].username || '');
-        setPassword(usersFound[0].password || '123456');
-        if (usersFound[0]?.data?.allowed_modules) {
-          setAllowedModules(usersFound[0].data.allowed_modules);
-        } else {
-          setAllowedModules(userRole === 'gestor' ? SYSTEM_MODULES.map(m => m.id) : ['minha_escala', 'trocas_plantao', 'mural_oportunidades', 'meus_repasses']);
+        const u = usersFound[0];
+        setUsername(u.username || '');
+        setPassword(u.password || '123456');
+        if (u.data?.allowed_modules) {
+          setAllowedModules(u.data.allowed_modules);
+        }
+        if (u.data?.contract_details) {
+          setContractType(u.data.contract_details.type || 'cooperado');
+          setCooperativeName(u.data.contract_details.cooperative || '');
+          setCoopTaxRate(String(u.data.contract_details.tax_rate ?? '5'));
+          setPjCnpj(u.data.contract_details.cnpj || '');
+          setPjCorporateName(u.data.contract_details.corporate_name || '');
         }
       } else {
         setUsername(prof.email ? prof.email.split('@')[0] : '');
@@ -368,7 +405,7 @@ export default function CorpoClinico() {
     const userDisplay = username || (email ? email.split('@')[0] : 'usuario');
     const passDisplay = password || (birthDate ? computeDefaultPassword(birthDate, name) : '123456');
 
-    const textToCopy = `*ScaleMedic - Seus dados de acesso*\n\nOlá, ${name || 'Profissional'}!\nVocê foi cadastrado no sistema da escala hospitalar.\n\n👤 *Usuário:* ${userDisplay}\n🔑 *Senha Provisória:* ${passDisplay}\n🔗 *Acesso:* ${host}/login\n\n⚠️ *Atenção:* Ao acessar, troque sua senha no primeiro login.`;
+    const textToCopy = `*ScaleMedic - Seus dados de acesso*\n\nOlá, ${name || 'Profissional'}!\nVocê foi cadastrado no sistema da escala hospitalar.\n\n🆔 *Matrícula / ID:* ${registrationCode}\n👤 *Usuário:* ${userDisplay}\n🔑 *Senha Provisória:* ${passDisplay}\n🔗 *Acesso:* ${host}/login\n\n⚠️ *Atenção:* Ao acessar, troque sua senha no primeiro login.`;
 
     navigator.clipboard.writeText(textToCopy);
     setToastMessage('Dados de acesso copiados!');
@@ -383,8 +420,16 @@ export default function CorpoClinico() {
       const numHourly = Number(hourlyRate) || 0;
       const numDaily = Number(dailyRate) || 0;
       const numMonthly = Number(monthlySalary) || 0;
+      const numTaxRate = Number(coopTaxRate) || 0;
 
-      // PAYLOAD SANITIZADO: sem 'full_name' nem 'allowed_modules'
+      const contractSummary = [
+        `ID/Matrícula: ${registrationCode}`,
+        `Regime: ${contractType.toUpperCase()}`,
+        contractType === 'cooperado' ? `Cooperativa: ${cooperativeName || 'Geral'} (Taxa: ${numTaxRate}%)` : null,
+        contractType === 'pj' ? `CNPJ: ${pjCnpj} - ${pjCorporateName}` : null
+      ].filter(Boolean).join(' | ');
+
+      // PAYLOAD LIMPO E SEGURO: Apenas campos nativos aceitos
       const profPayload = {
         company_id: companyId,
         unit_id: unitId || units[0]?.id,
@@ -395,14 +440,15 @@ export default function CorpoClinico() {
         document,
         email,
         phone,
-        status: 'ativo',
+        status: isActive ? 'ativo' : 'inativo',
         remuneration_type: remunerationType,
         hourly_rate: numHourly,
         daily_rate: numDaily,
         monthly_salary: numMonthly,
         pix_type: pixType,
         pix_key: pixKey.trim(),
-        bank_info: bankInfo.trim()
+        bank_info: bankInfo.trim(),
+        notes: contractSummary
       };
 
       if (cpf) profPayload.cpf = cpf;
@@ -436,7 +482,7 @@ export default function CorpoClinico() {
         throw new Error('Falha ao persistir dados do profissional no banco.');
       }
 
-      // Sincronização de credenciais na tabela User
+      // Sincronização do Usuário (is_active, allowed_modules e contract_details)
       const userNick = (username || (email ? email.split('@')[0] : name.toLowerCase().replace(/\s+/g, ''))).trim();
       const finalPass = password || (birthDate ? computeDefaultPassword(birthDate, name) : '123456');
       const userEmail = (email || `${userNick}@scalemedic.local`).toLowerCase().trim();
@@ -445,8 +491,18 @@ export default function CorpoClinico() {
         company_id: companyId,
         selected_unit_id: unitId,
         app_role: role,
+        registration_code: registrationCode,
         allowed_modules: allowedModules,
         permissions: allowedModules,
+        is_active: isActive,
+        status: isActive ? 'ativo' : 'inativo',
+        contract_details: {
+          type: contractType,
+          cooperative: cooperativeName,
+          tax_rate: numTaxRate,
+          cnpj: pjCnpj,
+          corporate_name: pjCorporateName
+        },
         must_change_password: !editingId || password === computeDefaultPassword(birthDate, name)
       };
 
@@ -458,6 +514,7 @@ export default function CorpoClinico() {
             password: finalPass,
             full_name: name,
             role: role === 'gestor' ? 'admin' : 'user',
+            is_active: isActive,
             data: { ...(existingUsers[0].data || {}), ...userData }
           });
         } else {
@@ -467,6 +524,7 @@ export default function CorpoClinico() {
             password: finalPass,
             full_name: name,
             role: role === 'gestor' ? 'admin' : 'user',
+            is_active: isActive,
             data: userData
           });
         }
@@ -499,7 +557,7 @@ export default function CorpoClinico() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Corpo Clínico</h1>
           <p className="text-sm text-slate-500">
-            Gerenciamento cadastral, parâmetros financeiros de contrato e aprovação de credenciamento.
+            Gerenciamento cadastral, cooperativas médicas, repasses e aprovação de credenciamento.
           </p>
         </div>
 
@@ -521,8 +579,9 @@ export default function CorpoClinico() {
 
           <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block" />
 
+          {/* BOTÃO QUE COPIA O LINK REAL: /register */}
           <Button variant="outline" onClick={handleCopyLink} className="gap-2 border-sky-300 text-sky-700 hover:bg-sky-50 dark:border-slate-700 dark:text-sky-400">
-            <Share2 className="w-4 h-4 text-sky-600" /> Link de Auto-Cadastro
+            <Share2 className="w-4 h-4 text-sky-600" /> Copiar Link Auto-Cadastro (/register)
           </Button>
           
           <Button variant="outline" onClick={() => setNewSpecialtyModal(true)} className="gap-2">
@@ -573,7 +632,7 @@ export default function CorpoClinico() {
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Pesquisar por nome, CRM/COREN, especialidade ou e-mail..."
+            placeholder="Pesquisar por nome, CRM/COREN, matrícula, especialidade ou e-mail..."
             className="pl-9 pr-8 h-10 text-xs border-0 bg-transparent focus-visible:ring-0"
           />
           {searchQuery && (
@@ -597,7 +656,7 @@ export default function CorpoClinico() {
             <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
               <Clock className="w-10 h-10 text-slate-400 mx-auto mb-2 opacity-50" />
               <p className="text-slate-400 text-sm">Nenhum cadastro aguardando aprovação no momento.</p>
-              <p className="text-xs text-slate-500 mt-1">Quando os médicos utilizarem o Link de Auto-Cadastro, eles aparecerão aqui para validação.</p>
+              <p className="text-xs text-slate-500 mt-1">Quando os médicos utilizarem a rota <strong>/register</strong>, eles aparecerão aqui para validação.</p>
             </div>
           ) : (
             filteredProfessionals.map((prof) => (
@@ -798,7 +857,7 @@ export default function CorpoClinico() {
         )
       )}
 
-      {/* Modal de Cadastro & Edição (Perfil Mestre) */}
+      {/* MODAL INLINE COM TODOS OS RECURSOS: STATUS, MATRÍCULA, COOPERATIVA E BLINDAGEM */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -808,8 +867,54 @@ export default function CorpoClinico() {
           </DialogHeader>
 
           <form onSubmit={handleSave} className="space-y-5 py-2">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            {/* BLOCO DE STATUS: ATIVO / INATIVO */}
+            <div className={`p-4 rounded-xl border flex items-center justify-between transition-colors ${
+              isActive 
+                ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800' 
+                : 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-300 dark:border-rose-800'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  isActive ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
+                }`}>
+                  {isActive ? <UserCheck className="w-5 h-5" /> : <UserX className="w-5 h-5" />}
+                </div>
+                <div>
+                  <div className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    Status da Conta: 
+                    <span className={isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                      {isActive ? 'ATIVO' : 'INATIVO (ACESSO BLOQUEADO)'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    {isActive 
+                      ? 'O profissional pode fazer login no aplicativo e ser escalado nos plantões.' 
+                      : 'O profissional NÃO poderá acessar o sistema e ficará oculto em novas escalas.'}
+                  </p>
+                </div>
+              </div>
+              <Switch 
+                checked={isActive} 
+                onCheckedChange={setIsActive} 
+              />
+            </div>
+
+            {/* MATRÍCULA E DADOS PESSOAIS */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
+                <Label className="text-xs font-semibold flex items-center gap-1">
+                  <Hash className="w-3.5 h-3.5 text-sky-600" /> Matrícula / ID *
+                </Label>
+                <Input 
+                  required 
+                  placeholder="Ex: MED-1042" 
+                  value={registrationCode} 
+                  onChange={(e) => setRegistrationCode(e.target.value.toUpperCase())} 
+                  className="font-mono font-bold"
+                />
+              </div>
+              <div className="md:col-span-2">
                 <Label className="text-xs font-semibold">Nome completo *</Label>
                 <Input required value={name} onChange={(e) => handleNameChange(e.target.value)} />
               </div>
@@ -817,6 +922,7 @@ export default function CorpoClinico() {
                 <Label className="text-xs font-semibold">CPF *</Label>
                 <Input required placeholder="000.000.000-00" value={cpf} onChange={(e) => setCpf(e.target.value)} />
               </div>
+
               <div>
                 <Label className="text-xs font-semibold">Data de Nascimento *</Label>
                 <Input 
@@ -866,9 +972,79 @@ export default function CorpoClinico() {
                 <Input type="email" placeholder="medico@hospital.com" value={email} onChange={(e) => setEmail(e.target.value)} />
               </div>
 
-              <div>
+              <div className="md:col-span-2">
                 <Label className="text-xs font-semibold">WhatsApp / Telefone *</Label>
                 <Input required placeholder="(00) 00000-0000" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              </div>
+            </div>
+
+            {/* BLOCO SOCIETÁRIO: COOPERATIVAS & PJ */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-sky-600" /> Vínculo Societário & Contratual (Cooperativas e Terceirizados)
+                </h4>
+                <span className="text-[11px] text-slate-400 font-semibold">Configuração Fiscal</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs font-semibold">Regime de Contrato</Label>
+                  <Select value={contractType} onValueChange={setContractType}>
+                    <SelectTrigger className="h-10 text-xs font-bold"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cooperado">Sócio Cooperado (Cooperativa Médica)</SelectItem>
+                      <SelectItem value="pj">Pessoa Jurídica (Empresa Médica / PJ)</SelectItem>
+                      <SelectItem value="rpa">Autônomo (RPA)</SelectItem>
+                      <SelectItem value="clt">CLT / Corpo Clínico Próprio</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {contractType === 'cooperado' && (
+                  <>
+                    <div>
+                      <Label className="text-xs font-semibold">Nome da Cooperativa</Label>
+                      <Input 
+                        placeholder="Ex: Unimed, Coopego, etc." 
+                        value={cooperativeName} 
+                        onChange={(e) => setCooperativeName(e.target.value)} 
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold flex items-center gap-1">
+                        <Percent className="w-3 h-3 text-emerald-600" /> Taxa Cooperativa / Fundo (%)
+                      </Label>
+                      <Input 
+                        type="number" 
+                        placeholder="Ex: 5" 
+                        value={coopTaxRate} 
+                        onChange={(e) => setCoopTaxRate(e.target.value)} 
+                      />
+                    </div>
+                  </>
+                )}
+
+                {contractType === 'pj' && (
+                  <>
+                    <div>
+                      <Label className="text-xs font-semibold">CNPJ da Empresa Médica</Label>
+                      <Input 
+                        placeholder="00.000.000/0001-00" 
+                        value={pjCnpj} 
+                        onChange={(e) => setPjCnpj(e.target.value)} 
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold">Razão Social da Clínica</Label>
+                      <Input 
+                        placeholder="Clínica Médica LTDA" 
+                        value={pjCorporateName} 
+                        onChange={(e) => setPjCorporateName(e.target.value)} 
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -963,9 +1139,9 @@ export default function CorpoClinico() {
                 </div>
 
                 <div className="sm:col-span-3">
-                  <Label className="text-xs font-semibold">Dados Bancários Complementares (Banco / Agência / Conta)</Label>
+                  <Label className="text-xs font-semibold">Dados Bancários / Cooperativa de Crédito (Sicoob, Sicredi, Unicred, etc.)</Label>
                   <Input
-                    placeholder="Ex: Banco Itaú (341) - Agência: 0123 - CC: 45678-9"
+                    placeholder="Ex: Sicoob (756) - Cooperativa: 4321 - Conta Corrente / Capital: 12345-6"
                     value={bankInfo}
                     onChange={(e) => setBankInfo(e.target.value)}
                   />
@@ -1003,7 +1179,7 @@ export default function CorpoClinico() {
                     className="text-xs font-medium gap-1.5 bg-white dark:bg-slate-900 border-sky-300 text-sky-700 hover:bg-sky-50"
                   >
                     <Share2 className="w-3.5 h-3.5" />
-                    Copiar Acesso
+                    Copiar Acesso & Matrícula
                   </Button>
                 </div>
               </div>
@@ -1075,7 +1251,7 @@ export default function CorpoClinico() {
 
             <DialogFooter className="gap-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={saving} className="bg-sky-600 hover:bg-sky-700 text-white px-6">
+              <Button type="submit" disabled={saving} className="bg-sky-600 hover:bg-sky-700 text-white px-6 font-bold text-xs h-10">
                 {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Gravando...</> : (editingId ? 'Salvar Alterações' : 'Concluir Cadastro')}
               </Button>
             </DialogFooter>
