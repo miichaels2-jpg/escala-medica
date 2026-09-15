@@ -12,27 +12,10 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from '@/components/ui/dialog';
 import {
-  Repeat, 
-  CheckCircle2, 
-  XCircle, 
-  Clock, 
-  Plus, 
-  Search,
-  Calendar, 
-  Stethoscope, 
-  ArrowRight, 
-  ShieldAlert, 
-  Loader2,
-  Globe,
-  Inbox,
-  Send,
-  ShieldCheck,
-  MessageCircle,
-  Building2,
-  UserCheck,
-  Handshake,
-  User,
-  AlertCircle
+  Repeat, CheckCircle2, XCircle, Clock, Plus, Search,
+  Calendar, Stethoscope, ArrowRight, ShieldAlert, Loader2,
+  Globe, Inbox, Send, ShieldCheck, MessageCircle, Building2,
+  UserCheck, Handshake, User, AlertCircle
 } from 'lucide-react';
 
 const statusBadge = {
@@ -71,7 +54,7 @@ export default function Trocas() {
   const [activeTab, setActiveTab] = useState('received');
 
   // Formulário
-  const [swapType, setSwapType] = useState('cessao'); // 'cessao', 'direta', 'mural'
+  const [swapType, setSwapType] = useState('cessao');
   const [selectedOwnerProfessionalId, setSelectedOwnerProfessionalId] = useState('');
   const [selectedShiftId, setSelectedShiftId] = useState('');
   const [targetProfessionalId, setTargetProfessionalId] = useState('');
@@ -117,7 +100,6 @@ export default function Trocas() {
     if (!loading) loadData();
   }, [loading, companyId, unitId]);
 
-  // Função auxiliar de notificação interna (não quebra se a entidade não existir no schema)
   const createNotificationSilent = async (recipientProfId, title, message, shiftId = null) => {
     if (!recipientProfId || !base44.entities.Notification?.create) return;
     try {
@@ -132,7 +114,7 @@ export default function Trocas() {
         created_date: new Date().toISOString()
       });
     } catch (e) {
-      console.warn('Aviso: Notificação interna não persistida:', e.message);
+      console.warn('Aviso: Notificação interna:', e.message);
     }
   };
 
@@ -173,7 +155,6 @@ export default function Trocas() {
     });
   }, [requesterProfessional, professionals]);
 
-  // Criação estruturada da solicitação com blindagem contra duplicidade
   const handleCreateSwap = async (e) => {
     e.preventDefault();
     if (!currentSelectedShift) {
@@ -187,7 +168,6 @@ export default function Trocas() {
       return;
     }
 
-    // Bloqueio de duplicidade de solicitações pendentes para o mesmo plantão
     const existingActiveSwap = swaps.find(s => 
       String(s.shift_id) === String(currentSelectedShift.id) && 
       (s.status === 'pendente' || s.status === 'aguardando_homologacao')
@@ -226,9 +206,8 @@ export default function Trocas() {
         reason: swapReason.trim()
       };
 
-      const createdSwap = await base44.entities.ShiftSwap.create(payload);
+      await base44.entities.ShiftSwap.create(payload);
 
-      // Se for publicado no Mural, atualiza o plantão original no Shift para vaga disponível
       if (isMural) {
         await base44.entities.Shift.update(currentSelectedShift.id, {
           status: 'disponivel',
@@ -237,7 +216,6 @@ export default function Trocas() {
           notes: `Publicado no Mural por ${requesterProfessional?.name || 'Coordenação'}`
         });
 
-        // Notifica colegas elegíveis
         eligibleProfessionals.forEach(p => {
           createNotificationSilent(
             p.id,
@@ -247,7 +225,6 @@ export default function Trocas() {
           );
         });
       } else {
-        // Notifica o médico indicado
         createNotificationSilent(
           targetProf?.id,
           'Solicitação de Plantão Recebida',
@@ -271,7 +248,6 @@ export default function Trocas() {
     }
   };
 
-  // Aceite pelo profissional indicado (envia para homologação do gestor)
   const handleProfessionalConfirm = async (swap) => {
     if (!confirm(`Confirmar o aceite deste plantão em ${swap.shift_date}? A solicitação será enviada para homologação do gestor.`)) return;
 
@@ -295,7 +271,6 @@ export default function Trocas() {
     }
   };
 
-  // Recusa da troca pelo profissional
   const handleProfessionalReject = async (swap) => {
     const reason = prompt('Informe o motivo da recusa (opcional):');
     if (reason === null) return;
@@ -307,7 +282,6 @@ export default function Trocas() {
         reason: reason ? `Recusado: ${reason}` : 'Recusado pelo profissional'
       });
 
-      // Notifica o médico solicitante que o colega recusou
       createNotificationSilent(
         swap.requester_professional_id,
         'Troca não aceita',
@@ -322,7 +296,7 @@ export default function Trocas() {
     }
   };
 
-  // Homologação final pelo Gestor (atribuição definitiva no Shift e faturamento)
+  // HOMOLOGAÇÃO COM CÁLCULO DE FATURAMENTO CORRETO
   const handleManagerHomologate = async (swap, approved = true) => {
     const actionName = approved ? 'homologar e atribuir' : 'rejeitar';
     if (!confirm(`Deseja realmente ${actionName} este plantão para ${swap.target_name}?`)) return;
@@ -339,9 +313,21 @@ export default function Trocas() {
           const shiftObj = allShifts.find(s => String(s.id) === String(swap.shift_id));
           
           let updatedTotal = shiftObj?.total_amount;
-          if (targetProf && shiftObj?.duration_hours) {
-            const rate = Number(targetProf.hourly_rate) || 120;
-            updatedTotal = rate * Number(shiftObj.duration_hours);
+          if (targetProf && shiftObj) {
+            const hours = Number(shiftObj.duration_hours || shiftObj.hours) || 12;
+            const remType = String(targetProf.remuneration_type || 'hora').toLowerCase();
+
+            if (remType === 'diaria') {
+              updatedTotal = Number(targetProf.daily_rate) || 1500;
+            } else if (remType === 'mensal') {
+              const monthly = Number(targetProf.monthly_salary) || 18000;
+              const workHours = Number(targetProf.monthly_work_hours) || 220;
+              const rate = workHours > 0 ? monthly / workHours : 80;
+              updatedTotal = Number((rate * hours).toFixed(2));
+            } else {
+              const rate = Number(targetProf.hourly_rate) || 120;
+              updatedTotal = Number((rate * hours).toFixed(2));
+            }
           }
 
           await base44.entities.Shift.update(swap.shift_id, {
@@ -373,7 +359,6 @@ export default function Trocas() {
     }
   };
 
-  // Manifestação de interesse no Mural (NÃO aprova direto; envia para o gestor)
   const handleClaimMuralShift = async (swap) => {
     if (!myProfessional && !currentProfessionalId && !isManager) {
       alert('Você precisa ter um perfil profissional ativo para assumir este plantão.');
@@ -440,7 +425,6 @@ export default function Trocas() {
     });
   }, [swaps, search]);
 
-  // Trocas recebidas pelo médico que aguardam seu aceite
   const tabReceived = useMemo(() => {
     return searchedSwaps.filter((s) => 
       String(s.target_professional_id) === String(currentProfessionalId) && 
@@ -449,14 +433,12 @@ export default function Trocas() {
     );
   }, [searchedSwaps, currentProfessionalId]);
 
-  // Trocas enviadas pelo médico
   const tabSent = useMemo(() => {
     return searchedSwaps.filter((s) => 
       String(s.requester_professional_id) === String(currentProfessionalId)
     );
   }, [searchedSwaps, currentProfessionalId]);
 
-  // Mural de oportunidades ativas
   const tabMural = useMemo(() => {
     return searchedSwaps.filter((s) => 
       (!s.target_professional_id || s.swap_type === 'mural' || s.target_name?.toLowerCase().includes('mural')) && 
@@ -464,7 +446,6 @@ export default function Trocas() {
     );
   }, [searchedSwaps]);
 
-  // Aba exclusiva do Gestor: Todas as pendências de homologação
   const tabHomologation = useMemo(() => {
     return searchedSwaps.filter((s) => s.status === 'aguardando_homologacao');
   }, [searchedSwaps]);
@@ -665,8 +646,6 @@ export default function Trocas() {
                 </div>
 
                 <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
-                  
-                  {/* BOTÃO DO MURAL: MANIFESTAR INTERESSE (NÃO HOMOLOGA DIRETO) */}
                   {isMuralCard && (
                     <Button
                       size="sm"
@@ -677,7 +656,6 @@ export default function Trocas() {
                     </Button>
                   )}
 
-                  {/* AÇÕES DO MÉDICO DESTINATÁRIO (ACEITAR OU RECUSAR) */}
                   {isPendingTargetAccept && String(swap.target_professional_id) === String(currentProfessionalId) && (
                     <>
                       <Button
@@ -698,7 +676,6 @@ export default function Trocas() {
                     </>
                   )}
 
-                  {/* AÇÕES DO GESTOR: HOMOLOGAR OU REJEITAR */}
                   {isAwaitingHomologation && isManager && (
                     <>
                       <Button
@@ -719,7 +696,6 @@ export default function Trocas() {
                     </>
                   )}
 
-                  {/* Botão WhatsApp para contato rápido */}
                   {swap.target_professional_id && (
                     <Button
                       size="sm"
