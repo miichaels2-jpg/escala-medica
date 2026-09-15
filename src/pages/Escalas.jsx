@@ -53,10 +53,10 @@ class SafeErrorBoundary extends Component {
 /* ============================================================
    CONSTANTES E UTILITÁRIOS
    ============================================================ */
-const STORAGE_BASE_PREFIX = 'hospital_escala_base_v14';
-const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v14';
-const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v14';
-const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v14';
+const STORAGE_BASE_PREFIX = 'hospital_escala_base_v15';
+const STORAGE_SECTOR_KEY = 'escala_setor_fixado_v15';
+const STORAGE_PUBLISHED_MAP_KEY = 'hospital_escalas_publicadas_map_v15';
+const STORAGE_DISABLED_DAYS_KEY = 'hospital_vagas_inativadas_map_v15';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -170,22 +170,37 @@ function getRealTimeStatus(dateStr, startStr, endStr, currentTime, explicitStatu
   return isPublished ? 'publicado' : 'programado';
 }
 
-function getMonthWeeks(monthStr) {
+function getMonthWeeks(monthStr, startDateFilter = '') {
   if (!monthStr || typeof monthStr !== 'string') return [];
   const parts = monthStr.split('-');
   if (parts.length < 2) return [];
   const year = Number(parts[0]);
   const month = Number(parts[1]);
+  
   const firstDay = new Date(year, month - 1, 1);
   const lastDay = new Date(year, month, 0);
+  
   const weeks = [];
   let currentWeek = [];
   let startDay = firstDay.getDay(); 
   let emptyDays = startDay === 0 ? 6 : startDay - 1; 
+  
   for (let i = 0; i < emptyDays; i++) currentWeek.push(null);
+  
   for (let d = 1; d <= lastDay.getDate(); d++) {
-    currentWeek.push(getLocalDateString(new Date(year, month - 1, d)));
-    if (currentWeek.length === 7) { weeks.push(currentWeek); currentWeek = []; }
+    const dateStr = getLocalDateString(new Date(year, month - 1, d));
+    
+    // Se houver filtro de data de início (ex: a partir de hoje), oculta os dias anteriores do mês
+    if (startDateFilter && dateStr < startDateFilter) {
+      currentWeek.push('disabled');
+    } else {
+      currentWeek.push(dateStr);
+    }
+
+    if (currentWeek.length === 7) { 
+      weeks.push(currentWeek); 
+      currentWeek = []; 
+    }
   }
   if (currentWeek.length > 0) {
     while (currentWeek.length < 7) currentWeek.push(null);
@@ -217,6 +232,10 @@ function EscalasContent() {
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
   const [theme, setTheme] = useState('dark');
+
+  // Filtro de Data de Início da Escala (A partir de qual dia montar)
+  const [scaleStartDate, setScaleStartDate] = useState(() => getLocalDateString());
+  const [scaleModeScope, setScaleModeScope] = useState('apartir_hoje'); // 'mes_inteiro' ou 'apartir_hoje'
 
   const [sectorFilter, setSectorFilter] = useState(() => {
     try {
@@ -256,7 +275,7 @@ function EscalasContent() {
     } catch { return {}; }
   });
 
-  // Modais de Ação e Alocação
+  // Modais de Ação
   const [newShiftModal, setNewShiftModal] = useState(null); 
   const [selectedProfIdForModal, setSelectedProfIdForModal] = useState(''); 
   const [retroactiveReason, setRetroactiveReason] = useState('');
@@ -416,17 +435,18 @@ function EscalasContent() {
     });
   }, [shifts, sectorFilter, selectedMonth, selectedDate, viewMode, currentTime, isShiftPublished]);
 
-  const weeksDataGrid = useMemo(() => getMonthWeeks(selectedMonth), [selectedMonth]);
+  const weeksDataGrid = useMemo(() => {
+    const startDateFilter = scaleModeScope === 'apartir_hoje' ? scaleStartDate : '';
+    return getMonthWeeks(selectedMonth, startDateFilter);
+  }, [selectedMonth, scaleModeScope, scaleStartDate]);
 
-  // Montagem Dinâmica de Linhas
+  // Montagem Dinâmica de Linhas (Respeita Escala Base ou Plantões Já Existentes)
   const displayShiftsForSector = useMemo(() => {
     if (sectorFilter === 'todos') return [];
     
-    // 1. Se houver turnos na Escala Base do localStorage, usa eles
     const base = safeArray(builderShifts);
     if (base.length > 0) return base;
 
-    // 2. Caso contrário, extrai automaticamente dos plantões já existentes no banco para este setor
     const sectorShiftsInMonth = filteredShifts.filter(s => String(s.sector_id) === String(sectorFilter));
     const timeSlots = new Map();
 
@@ -468,6 +488,7 @@ function EscalasContent() {
   const isDateRetroactive = (dateStr) => normalizeDate(dateStr) < getLocalDateString(currentTime);
 
   const handleCellClick = (e, date, shiftObj, sectorIdTarget = null) => {
+    if (date === 'disabled') return;
     const secId = sectorIdTarget || sectorFilter;
     setVacancyMenuModal({ date, shiftObj, sectorId: secId });
   };
@@ -634,6 +655,7 @@ function EscalasContent() {
 
   const handleDrop = (e, date, shiftDef, sectorTarget = null) => {
     e.preventDefault();
+    if (date === 'disabled') return;
     const profId = e.dataTransfer.getData('profId');
     if (!profId) return;
 
@@ -661,8 +683,6 @@ function EscalasContent() {
       alert('Selecione uma seção específica para limpar as vagas abertas.');
       return;
     }
-    
-    // Busca plantões abertos reais cadastrados no banco para este setor
     const vacantShifts = safeArray(shifts).filter(s => 
       String(s.sector_id) === String(sectorFilter) && 
       (!s.professional_id || normalizeStr(s.professional_name).includes('vaga') || getStatusKey(s.status) === 'aberto') &&
@@ -670,7 +690,7 @@ function EscalasContent() {
     );
 
     if (vacantShifts.length === 0) {
-      alert(`Nenhuma vaga aberta encontrada no banco para ${activeSectorName}.`);
+      alert(`Nenhuma vaga aberta encontrada para ${activeSectorName}.`);
       return;
     }
 
@@ -925,80 +945,82 @@ function EscalasContent() {
   }, [shiftsTodayModal]);
 
   /* ============================================================
-     RENDER DO MODO TV
+     RENDER MODO TV (OTIMIZADO PARA MÓVEL COM BOTÃO FLUTUANTE DE SAÍDA)
      ============================================================ */
   if (tvMode) {
     const todayStr = getLocalDateString(currentTime);
     const todayShifts = safeArray(shifts).filter(s => normalizeDate(s.date) === todayStr && getStatusKey(s.status) !== 'cancelado');
 
     return (
-      <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col p-6 font-sans overflow-hidden">
-        <div className="flex justify-between items-center border-b border-slate-800 pb-4 mb-6">
-           <div className="flex items-center gap-4">
-             <div className="w-12 h-12 bg-sky-600 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-600/30">
-               <Activity className="w-7 h-7 text-white" />
+      <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col p-4 sm:p-6 font-sans overflow-hidden">
+        {/* BOTÃO FLUTUANTE DE FECHAR PARA MOBILE / ANDROID / IOS */}
+        <button 
+          onClick={() => setTvMode(false)}
+          className="absolute top-4 right-4 z-50 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 border border-red-500"
+        >
+          <X className="w-5 h-5" /> Sair do Modo TV
+        </button>
+
+        <div className="flex justify-between items-center border-b border-slate-800 pb-4 mb-4 pr-32">
+           <div className="flex items-center gap-3">
+             <div className="w-10 h-10 bg-sky-600 rounded-xl flex items-center justify-center shadow-lg">
+               <Activity className="w-5 h-5 text-white" />
              </div>
              <div>
-               <h1 className="text-3xl font-black tracking-tight text-white">Escala e Plantões TV</h1>
-               <p className="text-sm text-sky-400 font-semibold">{fmtDateLong(todayStr)} • {formatDateBR(todayStr)} (Todos os Setores Ativos)</p>
+               <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">Escala do Dia (Modo TV)</h1>
+               <p className="text-xs text-sky-400 font-semibold">{fmtDateLong(todayStr)} • {formatDateBR(todayStr)}</p>
              </div>
            </div>
-           <div className="flex gap-6 items-center">
-             <div className="text-right">
-                <div className="text-3xl font-mono text-emerald-400 font-black">{currentTime.toLocaleTimeString('pt-BR')}</div>
-                <div className="text-[10px] text-slate-400 uppercase tracking-widest">Horário Operacional</div>
-             </div>
-             <Button onClick={() => setTvMode(false)} className="bg-slate-800 hover:bg-slate-700 p-3 rounded-2xl border border-slate-700"><Minimize2 className="w-5 h-5"/></Button>
+           <div className="text-right hidden sm:block">
+              <div className="text-2xl font-mono text-emerald-400 font-black">{currentTime.toLocaleTimeString('pt-BR')}</div>
            </div>
         </div>
 
-        <div className="flex-1 overflow-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="flex-1 overflow-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pb-10">
            {safeArray(sectors).map(sector => {
              const secShifts = todayShifts.filter(s => String(s.sector_id) === String(sector.id));
              if (secShifts.length === 0) return null;
 
              return (
-               <div key={sector.id} className="p-5 rounded-3xl border bg-slate-900 border-slate-800 flex flex-col shadow-xl">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-                    <h2 className="text-xl font-black text-white flex items-center gap-2">
-                      <Building2 className="w-5 h-5 text-sky-400" /> {sector.name}
+               <div key={sector.id} className="p-4 rounded-2xl border bg-slate-900 border-slate-800 flex flex-col shadow-lg">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+                    <h2 className="text-base font-black text-white flex items-center gap-1.5">
+                      <Building2 className="w-4 h-4 text-sky-400" /> {sector.name}
                     </h2>
-                    <span className="text-xs bg-slate-800 px-3 py-1 rounded-full text-slate-300 font-bold">{secShifts.length} plantões</span>
+                    <span className="text-[10px] bg-slate-800 px-2.5 py-0.5 rounded-full text-slate-300 font-bold">{secShifts.length} plantões</span>
                   </div>
 
-                  <div className="space-y-3 flex-1 overflow-y-auto pr-1">
+                  <div className="space-y-2.5 flex-1 overflow-y-auto pr-1">
                      {secShifts.map(s => {
                        const published = isShiftPublished(s.date, s.sector_id);
                        const rStatus = getRealTimeStatus(s.date, s.start_time, s.end_time, currentTime, s.status, published);
                        const isVacant = !s.professional_id || normalizeStr(s.professional_name).includes('vaga');
 
                        const cardStyles = {
-                         concluido: 'bg-slate-800/60 border-slate-800 opacity-60',
+                         concluido: 'bg-slate-800/40 border-slate-800 opacity-60',
                          andamento: 'bg-emerald-950/40 border-emerald-500/60 ring-1 ring-emerald-500/50',
-                         publicado: 'bg-emerald-950/30 border-emerald-500/40',
+                         publicado: 'bg-emerald-950/20 border-emerald-500/30',
                          programado: 'bg-slate-800 border-slate-700'
                        }[rStatus];
 
                        return (
-                         <div key={s.id} className={`p-4 border rounded-2xl flex items-center justify-between ${isVacant ? 'bg-amber-950/30 border-amber-500/60 animate-pulse' : cardStyles}`}>
-                            <div>
-                              <div className="flex items-center gap-2">
+                         <div key={s.id} className={`p-3 border rounded-xl flex items-center justify-between gap-2 ${isVacant ? 'bg-amber-950/30 border-amber-500/60 animate-pulse' : cardStyles}`}>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 mb-0.5">
                                 {isVacant ? (
-                                  <span className="text-amber-400 text-[11px] font-black tracking-widest uppercase">⚠️ VAGA ABERTA</span>
+                                  <span className="text-amber-400 text-[9px] font-black tracking-widest uppercase">⚠️ VAGA ABERTA</span>
                                 ) : rStatus === 'andamento' ? (
-                                  <span className="text-emerald-400 text-[11px] font-black tracking-widest uppercase flex items-center gap-1">● EM ATENDIMENTO</span>
+                                  <span className="text-emerald-400 text-[9px] font-black tracking-widest uppercase flex items-center gap-1">● EM ATENDIMENTO</span>
                                 ) : rStatus === 'concluido' ? (
-                                  <span className="text-slate-400 text-[11px] font-black tracking-widest uppercase">CONCLUÍDO</span>
-                                ) : rStatus === 'publicado' ? (
-                                  <span className="text-emerald-400 text-[11px] font-black tracking-widest uppercase">PUBLICADO</span>
+                                  <span className="text-slate-400 text-[9px] font-black tracking-widest uppercase">CONCLUÍDO</span>
                                 ) : (
-                                  <span className="text-sky-400 text-[11px] font-black tracking-widest uppercase">PROGRAMADO</span>
+                                  <span className="text-sky-400 text-[9px] font-black tracking-widest uppercase">PROGRAMADO</span>
                                 )}
                               </div>
-                              <b className="text-lg text-white block mt-1 break-words">{isVacant ? 'PLANTÃO DESCOBERTO' : toTitleCase(s.professional_name)}</b>
+                              <b className="text-sm text-white block truncate">{isVacant ? 'PLANTÃO DESCOBERTO' : toTitleCase(s.professional_name)}</b>
                             </div>
-                            <div className="text-right">
-                              <span className="text-sm font-mono font-bold text-slate-300 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">{s.start_time} às {s.end_time}</span>
+                            <div className="text-right shrink-0">
+                              <span className="text-xs font-mono font-bold text-slate-300 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">{s.start_time} - {s.end_time}</span>
                             </div>
                          </div>
                        );
@@ -1100,7 +1122,7 @@ function EscalasContent() {
         </div>
       </header>
 
-      {/* BARRA DE FILTROS */}
+      {/* BARRA DE FILTROS E ESCOPO DE DATA */}
       {viewMode !== 'base_builder' && (
         <div className="bg-slate-200/50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 p-2.5 px-6 lg:px-8 flex flex-wrap items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-4 flex-wrap">
@@ -1117,6 +1139,19 @@ function EscalasContent() {
               </Select>
             </div>
             
+            {/* CONFIGURAÇÃO RÁPIDA DE INÍCIO DA ESCALA (A PARTIR DE HOJE OU MÊS INTEIRO) */}
+            <div className="flex items-center gap-2 bg-white dark:bg-slate-950 px-3 py-1 rounded-xl border border-slate-300 dark:border-slate-800">
+              <span className="text-[10px] font-bold uppercase text-slate-400">Início:</span>
+              <select 
+                value={scaleModeScope} 
+                onChange={e => setScaleModeScope(e.target.value)}
+                className="bg-transparent text-xs font-bold text-sky-600 dark:text-sky-400 outline-none cursor-pointer"
+              >
+                <option value="apartir_hoje">A partir de Hoje ({formatDateBR(getLocalDateString())})</option>
+                <option value="mes_inteiro">Mês Inteiro</option>
+              </select>
+            </div>
+
             {viewMode === 'list' && (
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Dia:</span>
@@ -1275,8 +1310,8 @@ function EscalasContent() {
                       <div className="grid grid-cols-8 bg-slate-50 dark:bg-slate-950/80 border-b border-slate-200 dark:border-slate-800">
                         <div className="p-1 border-r border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950"></div>
                         {week.map((date, dIndex) => (
-                          <div key={dIndex} className={`p-1 border-r border-slate-200 dark:border-slate-800 text-right pr-2 text-[10px] font-black ${date ? 'text-slate-500 dark:text-slate-400' : 'text-transparent'}`}>
-                            {date ? `${date.split('-')[2]}/${date.split('-')[1]}` : '-'}
+                          <div key={dIndex} className={`p-1 border-r border-slate-200 dark:border-slate-800 text-right pr-2 text-[10px] font-black ${date && date !== 'disabled' ? 'text-slate-500 dark:text-slate-400' : 'text-transparent'}`}>
+                            {date && date !== 'disabled' ? `${date.split('-')[2]}/${date.split('-')[1]}` : '-'}
                           </div>
                         ))}
                       </div>
@@ -1290,7 +1325,7 @@ function EscalasContent() {
                           </div>
 
                           {week.map((date, dIndex) => {
-                            if (!date) return <div key={dIndex} className="bg-slate-100/40 dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800"></div>;
+                            if (!date || date === 'disabled') return <div key={dIndex} className="bg-slate-100/40 dark:bg-slate-950/40 border-r border-slate-200 dark:border-slate-800"></div>;
 
                             const slotShifts = filteredShifts.filter(s => 
                               String(s.date || '').startsWith(date) && 
@@ -1598,7 +1633,7 @@ function EscalasContent() {
         </div>
       )}
 
-      {/* MODAL: MENU DE AÇÃO DA VAGA (COM ATIVAR / INATIVAR DINÂMICO) */}
+      {/* MODAL: MENU DE AÇÃO DA VAGA */}
       {vacancyMenuModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
@@ -1875,7 +1910,7 @@ function EscalasContent() {
             </div>
             <h3 className="text-base font-black text-slate-900 dark:text-white mb-1">Escala Base Salva!</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-5">
-              Deseja ir para a grade e começar a alocar os profissionais nas vagas de {activeSectorName}?
+              Deseja ir para o Builder Visual e começar a alocar os profissionais nas vagas de {activeSectorName}?
             </p>
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1 h-9 text-xs" onClick={() => setConfirmGoToAllocation(false)}>Depois</Button>
