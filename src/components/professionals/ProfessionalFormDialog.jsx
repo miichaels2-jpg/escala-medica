@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { 
   DollarSign, 
   Landmark, 
-  CreditCard, 
   User, 
   Building2, 
   Loader2, 
@@ -58,7 +57,7 @@ export default function ProfessionalFormDialog({
   const [phone, setPhone] = useState('');
   const [unitId, setUnitId] = useState('');
 
-  // Remuneração & Contrato
+  // Remuneração
   const [remunerationType, setRemunerationType] = useState('hora');
   const [hourlyRate, setHourlyRate] = useState('120');
   const [dailyRate, setDailyRate] = useState('1500');
@@ -79,12 +78,12 @@ export default function ProfessionalFormDialog({
     if (!open) return;
 
     if (professional) {
-      setName(professional.name || professional.full_name || '');
-      setCpf(professional.cpf || professional.document_cpf || '');
+      setName(professional.name || '');
+      setCpf(professional.cpf || '');
       setBirthDate(professional.birth_date || '');
       setSpecialty(professional.specialty || professional.category || 'Clínica Médica');
       setSection(professional.section || '');
-      setDocument(professional.document || professional.registration_number || '');
+      setDocument(professional.document || '');
       setEmail(professional.email || '');
       setPhone(professional.phone || '');
       setUnitId(String(professional.unit_id || units[0]?.id || 'unit_h1'));
@@ -94,14 +93,13 @@ export default function ProfessionalFormDialog({
       setDailyRate(String(professional.daily_rate || '1500'));
       setMonthlySalary(String(professional.monthly_salary || '18000'));
 
-      setPixType(professional.pix_type || professional.pix_key_type || 'cpf');
+      setPixType(professional.pix_type || 'cpf');
       setPixKey(professional.pix_key || '');
       setBankInfo(professional.bank_info || '');
 
       const userRole = professional.role === 'gestor' || professional.is_manager ? 'gestor' : professional.role === 'coordenador' ? 'coordenador' : 'medico';
       setRole(userRole);
 
-      // Busca credenciais na tabela de usuários de forma assíncrona
       (async () => {
         try {
           const userEmail = (professional.email || '').toLowerCase().trim();
@@ -124,7 +122,6 @@ export default function ProfessionalFormDialog({
       })();
 
     } else {
-      // Novo cadastro
       setName('');
       setCpf('');
       setBirthDate('');
@@ -206,17 +203,15 @@ export default function ProfessionalFormDialog({
       const numDaily = Number(dailyRate) || 0;
       const numMonthly = Number(monthlySalary) || 0;
 
-      // PAYLOAD LIMPO: Apenas colunas nativas do banco de dados (SEM allowed_modules)
+      // PAYLOAD RESTRITO: Sem 'full_name' e sem 'allowed_modules'
       const cleanProfPayload = {
         company_id: companyId,
         unit_id: unitId || units[0]?.id,
         name,
-        full_name: name,
         specialty,
         category: specialty,
         role: role,
         document,
-        registration_number: document,
         email,
         phone,
         status: 'ativo',
@@ -233,14 +228,34 @@ export default function ProfessionalFormDialog({
       if (birthDate) cleanProfPayload.birth_date = birthDate;
       if (section) cleanProfPayload.section = section;
 
-      // Gravação na tabela Professional
-      if (professional?.id) {
-        await base44.entities.Professional.update(professional.id, cleanProfPayload);
-      } else {
-        await base44.entities.Professional.create(cleanProfPayload);
+      // Auto-recuperação resiliente contra colunas ausentes no schema cache da tabela professionals
+      const payloadToSend = { ...cleanProfPayload };
+      let saved = false;
+
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          if (professional?.id) {
+            await base44.entities.Professional.update(professional.id, payloadToSend);
+          } else {
+            await base44.entities.Professional.create(payloadToSend);
+          }
+          saved = true;
+          break;
+        } catch (dbErr) {
+          const colMatch = dbErr.message?.match(/Could not find the '(\w+)' column/i);
+          if (colMatch && colMatch[1]) {
+            delete payloadToSend[colMatch[1]];
+          } else {
+            throw dbErr;
+          }
+        }
       }
 
-      // Sincronização do Usuário (onde allowed_modules é salvo dentro de data)
+      if (!saved) {
+        throw new Error('Falha ao persistir dados do profissional.');
+      }
+
+      // Sincronização do Usuário (onde full_name e allowed_modules pertencem legitimamente)
       const userNick = (username || (email ? email.split('@')[0] : name.toLowerCase().replace(/\s+/g, ''))).trim();
       const finalPass = password || (birthDate ? computeDefaultPassword(birthDate, name) : '123456');
       const userEmail = (email || `${userNick}@scalemedic.local`).toLowerCase().trim();
