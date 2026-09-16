@@ -8,11 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
-  Users, UserPlus, Search, CheckCircle2, XCircle, 
-  Clock, DollarSign, Phone, Mail, CreditCard, Edit3, 
-  KeyRound, Send, RefreshCw, Ban, UserCheck, MessageSquare,
-  Shield, ShieldCheck, UserCog, BadgeCheck, Eye, EyeOff,
-  HeartPulse, Plus, Building2, IdCard, Landmark
+  Users, UserPlus, Search, CheckCircle2, 
+  Clock, DollarSign, Edit3, KeyRound, Send, RefreshCw, Ban, 
+  UserCheck, MessageSquare, Shield, UserCog, BadgeCheck, Eye, EyeOff,
+  HeartPulse, Plus, CreditCard, Landmark
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -55,10 +54,7 @@ async function autoHealingSave(id, initialPayload) {
     } catch (err) {
       const msg = err.message || '';
       const match = msg.match(/Could not find the '([^']+)' column of 'professionals'/i);
-      if (match && match[1]) {
-        delete payload[match[1]];
-        continue;
-      }
+      if (match && match[1]) { delete payload[match[1]]; continue; }
       throw err;
     }
   }
@@ -86,91 +82,47 @@ export default function CorpoClinico() {
   const allCategories = useMemo(() => [...DEFAULT_CATEGORIES, ...customCategories], [customCategories]);
 
   const [formData, setFormData] = useState({
-    name: '',
-    username: '', 
-    category: 'medico',
-    document: '',
-    cbo: '',
-    registration_id: '', 
-    main_sector: '',
-    specialty: '',
-    cpf: '',
-    email: '',
-    phone: '',
-    unit_id: '',
-    status: 'ativo',
-    app_role: 'assistencial',
-    remuneration_type: 'hora',
-    hourly_rate: 120,
-    daily_rate: 1500,
-    monthly_salary: 18000,
-    monthly_work_hours: 220,
-    coop_tax_rate: 0,
-    pix_type: 'CPF',
-    pix_key: '',
-    bank_info: '',
-    password: ''
+    name: '', username: '', category: 'medico', document: '',
+    registration_id: '', main_sector: '', specialty: '', cbo: '',
+    cpf: '', email: '', phone: '', unit_id: '',
+    status: 'ativo', app_role: 'assistencial', remuneration_type: 'hora',
+    hourly_rate: 120, daily_rate: 1500, monthly_salary: 18000,
+    monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
+    pix_key: '', bank_info: '', password: ''
   });
 
   const resetForm = () => {
     const generatedMatricula = `MAT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
     setFormData({
-      name: '',
-      username: '',
-      category: 'medico',
-      document: '',
-      cbo: '',
-      registration_id: generatedMatricula,
-      main_sector: sectors[0]?.name || 'UTI Geral',
-      specialty: '',
-      cpf: '',
-      email: '',
-      phone: '',
+      name: '', username: '', category: 'medico', document: '',
+      registration_id: generatedMatricula, main_sector: sectors[0]?.name || 'UTI Geral',
+      specialty: '', cbo: '', cpf: '', email: '', phone: '',
       unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
-      status: 'ativo',
-      app_role: 'assistencial',
-      remuneration_type: 'hora',
-      hourly_rate: 120,
-      daily_rate: 1500,
-      monthly_salary: 18000,
-      monthly_work_hours: 220,
-      coop_tax_rate: 0,
-      pix_type: 'CPF',
-      pix_key: '',
-      bank_info: '',
-      password: ''
+      status: 'ativo', app_role: 'assistencial', remuneration_type: 'hora',
+      hourly_rate: 120, daily_rate: 1500, monthly_salary: 18000,
+      monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
+      pix_key: '', bank_info: '', password: ''
     });
     setEditingProf(null);
     setShowPassword(false);
   };
 
-  const handleOpenNew = () => {
-    resetForm();
-    setModalOpen(true);
-  };
+  const handleOpenNew = () => { resetForm(); setModalOpen(true); };
 
   const handleOpenEdit = (prof) => {
     setEditingProf(prof);
     const meta = getProfMeta(prof);
-
-    const defaultUsername = (prof.name || '')
-      .toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]/g, '.')
-      .replace(/\.+/g, '.')
-      .replace(/^\.|\.$/g, '');
-
     const generatedMatricula = meta.registration_id || prof.registration_id || `MAT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
     setFormData({
       name: prof.name || prof.full_name || '',
-      username: meta.username || prof.username || defaultUsername,
+      username: meta.username || prof.username || '',
       category: meta.category || prof.category || 'medico',
       document: prof.document || prof.registration_number || '',
-      cbo: meta.cbo || prof.cbo || '',
       registration_id: generatedMatricula,
       main_sector: meta.main_sector || prof.specialty || sectors[0]?.name || 'UTI Geral',
       specialty: prof.specialty || meta.specialty || '',
+      cbo: meta.cbo || prof.cbo || '',
       cpf: prof.cpf || '',
       email: prof.email || '',
       phone: prof.phone || '',
@@ -194,14 +146,11 @@ export default function CorpoClinico() {
   const handleAddCustomCategory = (e) => {
     e.preventDefault();
     if (!newCatData.label.trim()) return;
-
     const newId = newCatData.label.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const newCatObj = { id: newId, label: newCatData.label.trim(), council: newCatData.council || 'Registro' };
-
     const updated = [...customCategories, newCatObj];
     setCustomCategories(updated);
     try { window.localStorage.setItem('scale_custom_cats', JSON.stringify(updated)); } catch {}
-
     setFormData(prev => ({ ...prev, category: newId }));
     setNewCatData({ label: '', council: 'Registro' });
     setNewCatModalOpen(false);
@@ -210,30 +159,15 @@ export default function CorpoClinico() {
   const handleSendWhatsApp = () => {
     const rawPhone = formData.phone;
     const cleanPhone = String(rawPhone || '').replace(/\D/g, '');
-    
-    if (!cleanPhone) {
-      alert('Preencha o campo Telefone / WhatsApp para enviar a notificação.');
-      return;
-    }
+    if (!cleanPhone) { alert('Preencha o campo Telefone / WhatsApp para enviar a notificação.'); return; }
 
     const phoneWithDDI = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
     const loginUser = formData.username || formData.email || '';
     const pass = formData.password ? formData.password : '(sua senha cadastrada)';
     const siteUrl = window.location.origin;
 
-    const message = [
-      `*ScaleMedic - Gestão Hospitalar* 🏥\n`,
-      `Olá, *${formData.name}*!`,
-      `Seu cadastro profissional foi atualizado no sistema.\n`,
-      `Acesse sua escala com as credenciais abaixo:`,
-      `🌐 *Link:* ${siteUrl}/login`,
-      `👤 *Usuário:* ${loginUser}`,
-      `🔑 *Senha:* ${pass}\n`,
-      `_Ao acessar, verifique sua grade e fique atento às notificações do Mural._`
-    ].join('\n');
-
-    const waUrl = `https://api.whatsapp.com/send?phone=${phoneWithDDI}&text=${encodeURIComponent(message)}`;
-    window.open(waUrl, '_blank');
+    const message = `*ScaleMedic - Gestão Hospitalar* 🏥\n\nOlá, *${formData.name}*!\nSeu cadastro profissional foi atualizado.\n\nAcesse sua escala com as credenciais abaixo:\n🌐 *Link:* ${siteUrl}/login\n👤 *Usuário:* ${loginUser}\n🔑 *Senha:* ${pass}\n\n_Ao acessar, verifique sua grade e fique atento às notificações do Mural._`;
+    window.open(`https://api.whatsapp.com/send?phone=${phoneWithDDI}&text=${encodeURIComponent(message)}`, '_blank');
   };
 
   const handleSaveProfessional = async (e) => {
@@ -245,36 +179,20 @@ export default function CorpoClinico() {
       const cleanUsername = (formData.username || formData.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
 
       const richMeta = {
-        username: cleanUsername,
-        category: formData.category,
-        app_role: formData.app_role,
-        main_sector: formData.main_sector,
-        specialty: formData.specialty,
-        cbo: formData.cbo,
-        registration_id: formData.registration_id,
-        coop_tax_rate: safeNumber(formData.coop_tax_rate),
-        daily_rate: safeNumber(formData.daily_rate),
-        monthly_salary: safeNumber(formData.monthly_salary),
-        monthly_work_hours: safeNumber(formData.monthly_work_hours),
-        pix_type: formData.pix_type,
-        pix_key: formData.pix_key.trim(),
-        bank_info: formData.bank_info.trim(),
-        remuneration_type: formData.remuneration_type,
-        hourly_rate: safeNumber(formData.hourly_rate)
+        username: cleanUsername, category: formData.category, app_role: formData.app_role,
+        main_sector: formData.main_sector, specialty: formData.specialty, cbo: formData.cbo,
+        registration_id: formData.registration_id, coop_tax_rate: safeNumber(formData.coop_tax_rate),
+        daily_rate: safeNumber(formData.daily_rate), monthly_salary: safeNumber(formData.monthly_salary),
+        monthly_work_hours: safeNumber(formData.monthly_work_hours), pix_type: formData.pix_type,
+        pix_key: formData.pix_key.trim(), bank_info: formData.bank_info.trim(),
+        remuneration_type: formData.remuneration_type, hourly_rate: safeNumber(formData.hourly_rate)
       };
 
       const profPayload = {
-        company_id: company?.id || 'cmp_principal',
-        unit_id: formData.unit_id || selectedUnitId || 'unit_h1',
-        name: formData.name.trim(),
-        document: formData.document.trim(),
-        specialty: formData.specialty.trim() || formData.main_sector,
-        cbo: formData.cbo.trim(),
-        cpf: formData.cpf.trim(),
-        email: formData.email.trim().toLowerCase(),
-        phone: formData.phone.trim(),
-        status: formData.status,
-        remuneration_type: formData.remuneration_type,
+        company_id: company?.id || 'cmp_principal', unit_id: formData.unit_id || selectedUnitId || 'unit_h1',
+        name: formData.name.trim(), document: formData.document.trim(), specialty: formData.specialty.trim() || formData.main_sector,
+        cbo: formData.cbo.trim(), cpf: formData.cpf.trim(), email: formData.email.trim().toLowerCase(),
+        phone: formData.phone.trim(), status: formData.status, remuneration_type: formData.remuneration_type,
         hourly_rate: safeNumber(formData.hourly_rate)
       };
 
@@ -285,23 +203,13 @@ export default function CorpoClinico() {
         try { window.localStorage.setItem(`prof_meta_${savedProfId}`, JSON.stringify(richMeta)); } catch {}
       }
 
-      setModalOpen(false);
-      resetForm();
-      await syncGlobalData();
-      alert('Profissional salvo com sucesso!');
-    } catch (err) {
-      alert('Erro ao salvar: ' + err.message);
-    } finally {
-      setSubmitting(false);
-    }
+      setModalOpen(false); resetForm(); await syncGlobalData(); alert('Profissional salvo com sucesso!');
+    } catch (err) { alert('Erro ao salvar: ' + err.message); } finally { setSubmitting(false); }
   };
 
   function getProfMeta(prof) {
     if (!prof) return {};
-    try {
-      const stored = window.localStorage.getItem(`prof_meta_${prof.id}`);
-      if (stored) return JSON.parse(stored);
-    } catch {}
+    try { const stored = window.localStorage.getItem(`prof_meta_${prof.id}`); if (stored) return JSON.parse(stored); } catch {}
     if (prof.data && typeof prof.data === 'object') return prof.data;
     return {};
   }
@@ -342,9 +250,9 @@ export default function CorpoClinico() {
     <div className="p-4 md:p-8 space-y-6 font-sans">
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-400"><Users className="w-4 h-4" /> Gestão de Pessoal & Matrícula ID</div>
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-400"><Users className="w-4 h-4" /> Gestão de Pessoal & Matrícula</div>
           <h2 className="mt-1 text-2xl sm:text-3xl font-black">Corpo Clínico & Matrículas</h2>
-          <p className="text-xs text-slate-300">Cadastro com ID gerado automaticamente, dados de repasse, PIX e conta bancária.</p>
+          <p className="text-xs text-slate-300">Cadastro de profissionais, repasse PIX e geração automática de Matrícula ID.</p>
         </div>
         {isManager && (<Button onClick={handleOpenNew} className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-10 px-5 rounded-xl shadow-lg gap-1.5 shrink-0"><UserPlus className="w-4 h-4" /> Novo Profissional</Button>)}
       </div>
@@ -366,42 +274,56 @@ export default function CorpoClinico() {
           const meta = getProfMeta(prof);
           const catId = meta.category || prof.category || 'medico';
           const catObj = allCategories.find(c => c.id === catId) || allCategories[0];
-          const matricula = meta.registration_id || prof.registration_id || 'MAT-XXXX';
+          
+          const remunType = prof.remuneration_type || meta.remuneration_type || 'hora';
+          const remunValue = remunType === 'hora' ? (prof.hourly_rate || meta.hourly_rate || 120) : remunType === 'diaria' ? (prof.daily_rate || meta.daily_rate || 1500) : (prof.monthly_salary || meta.monthly_salary || 18000);
+          const remunLabel = remunType === 'hora' ? '/ Hora' : remunType === 'diaria' ? '/ Plantão' : '/ Mês Fixo';
 
           return (
-            <Card key={prof.id} className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4">
+            <Card key={prof.id} className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4">
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
                   <div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-black uppercase border bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/30">{catObj?.label}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-black uppercase border bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-500/30">{catObj?.label}</span>
                     <h3 className="font-black text-sm text-slate-900 dark:text-white mt-1.5">{prof.name}</h3>
-                    <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400">ID: {matricula}</span>
+                    <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400">ID: {meta.registration_id || prof.registration_id || 'MAT-XXXX'}</span>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border bg-emerald-500/10 text-emerald-700 border-emerald-500/30">{prof.status || 'Ativo'}</span>
                 </div>
-                <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                
+                <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
                   <div className="flex justify-between"><span>Conselho:</span><strong>{prof.document || '—'}</strong></div>
                   <div className="flex justify-between"><span>Especialidade:</span><strong className="text-slate-900 dark:text-white truncate max-w-[140px]">{prof.specialty || meta.specialty || 'Geral'}</strong></div>
                   <div className="flex justify-between"><span>Chave PIX:</span><strong className="text-sky-600 font-mono truncate max-w-[140px]">{meta.pix_key || 'Não cadastrado'}</strong></div>
                 </div>
+
+                {/* BLOCO DE SALÁRIO EM DESTAQUE REQUERIDO */}
+                <div className="mt-2 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                    <DollarSign className="w-3.5 h-3.5" /> Remuneração
+                  </span>
+                  <span className="font-black text-sm text-emerald-600 dark:text-emerald-300">
+                    {formatCurrency(remunValue)} <span className="text-[9px] font-bold opacity-70">{remunLabel}</span>
+                  </span>
+                </div>
               </div>
+
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => handleOpenEdit(prof)} className="flex-1 text-xs h-8 font-bold gap-1"><Edit3 className="w-3.5 h-3.5 text-sky-600" /> Editar Perfil</Button>
-                {prof.phone && (<Button size="sm" variant="outline" onClick={() => { setFormData(prev => ({...prev, ...prof, password: meta.password || ''})); handleSendWhatsApp(); }} className="h-8 px-2.5 border-emerald-300 text-emerald-600 hover:bg-emerald-50"><MessageSquare className="w-4 h-4" /></Button>)}
+                <Button size="sm" variant="outline" onClick={() => handleOpenEdit(prof)} className="flex-1 text-xs h-9 font-bold gap-1 rounded-xl"><Edit3 className="w-3.5 h-3.5 text-sky-600" /> Editar Perfil</Button>
+                {prof.phone && (<Button size="sm" variant="outline" onClick={() => window.open(`https://wa.me/55${prof.phone.replace(/\D/g, '')}`, '_blank')} className="h-9 px-3 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50"><MessageSquare className="w-4 h-4" /></Button>)}
               </div>
             </Card>
           );
         })}
       </div>
 
-      {/* MODAL DE CADASTRO/EDIÇÃO */}
+      {/* MODAL DE CADASTRO/EDIÇÃO (RESTAURADO COMPLETO) */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
-          <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2"><UserCog className="w-5 h-5 text-sky-600" /> {editingProf ? 'Editar Perfil Profissional & Acesso' : 'Cadastrar Novo Profissional'}</DialogTitle></DialogHeader>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+          <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2 text-slate-900 dark:text-white"><UserCog className="w-5 h-5 text-sky-600" /> {editingProf ? 'Editar Perfil Profissional & Acesso' : 'Cadastrar Novo Profissional'}</DialogTitle></DialogHeader>
 
           <form onSubmit={handleSaveProfessional} className="space-y-5 py-2 text-xs">
             
-            {/* 1. CATEGORIA */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <HeartPulse className="w-4 h-4 text-slate-400" />
@@ -420,7 +342,6 @@ export default function CorpoClinico() {
               </div>
             </div>
 
-            {/* 2. PERFIL DE PERMISSÃO */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Shield className="w-4 h-4 text-slate-400" />
@@ -439,7 +360,6 @@ export default function CorpoClinico() {
               </div>
             </div>
 
-            {/* 3. DADOS PRINCIPAIS */}
             <div className="space-y-3 pt-2">
               <div className="space-y-1">
                 <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">Nome Completo Oficial *</Label>
@@ -449,10 +369,10 @@ export default function CorpoClinico() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">Especialidade / Atuação *</Label>
-                  <Input value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})} placeholder="Ex: Ginecologista" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                  <Input value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})} placeholder="Ex: Cirurgião Geral" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">Matrícula (Gerada Auto) *</Label>
+                  <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">Matrícula ID (Gerada Auto) *</Label>
                   <Input value={formData.registration_id} onChange={e => setFormData({...formData, registration_id: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono font-bold text-sky-600" />
                 </div>
               </div>
@@ -485,21 +405,14 @@ export default function CorpoClinico() {
               </div>
             </div>
 
-            {/* 4. CREDENCIAIS & NOTIFICAÇÃO WHATSAPP */}
             <div className="p-4 rounded-2xl bg-sky-50/60 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/60 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2 font-black text-xs text-sky-900 dark:text-sky-200 uppercase tracking-wider">
-                  <KeyRound className="w-4 h-4 text-sky-600" />
-                  Credenciais de Login & Acesso
+                  <KeyRound className="w-4 h-4 text-sky-600" /> Credenciais de Login & Acesso
                 </div>
-
                 <div className="flex items-center gap-1.5">
-                  <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'Mudar@123'}))} className="h-7 text-[10px] font-bold border-amber-300 text-amber-700 hover:bg-amber-50">
-                    Resetar Senha
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'S@ude'+Math.floor(1000+Math.random()*9000)}))} className="h-7 text-[10px] font-bold border-sky-300 text-sky-600 hover:bg-sky-50">
-                    <RefreshCw className="w-3 h-3 mr-1" /> Gerar Aleatória
-                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'Mudar@123'}))} className="h-7 text-[10px] font-bold border-amber-300 text-amber-700 hover:bg-amber-50">Resetar Senha</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'S@ude'+Math.floor(1000+Math.random()*9000)}))} className="h-7 text-[10px] font-bold border-sky-300 text-sky-600 hover:bg-sky-50"><RefreshCw className="w-3 h-3 mr-1" /> Gerar Aleatória</Button>
                 </div>
               </div>
 
@@ -508,25 +421,19 @@ export default function CorpoClinico() {
                   <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Usuário (Login por Nome) *</Label>
                   <Input type="text" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} placeholder="Ex: dr.carlos" className="h-10 bg-white dark:bg-slate-900 font-mono font-bold text-sky-600 border-slate-200 dark:border-slate-800" />
                 </div>
-
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">{editingProf ? 'Nova Senha (deixe vazio para manter)' : 'Senha de Acesso *'}</Label>
                   <div className="relative">
                     <Input type={showPassword ? "text" : "password"} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder={editingProf ? '••••••••' : 'Senha'} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono pr-8" />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
                   </div>
                 </div>
               </div>
-
-              {/* BOTÃO WHATSAPP EM DESTAQUE */}
               <Button type="button" onClick={handleSendWhatsApp} className="w-full h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md gap-2 rounded-xl mt-2">
                 <Send className="w-4 h-4" /> Enviar Credenciais via WhatsApp
               </Button>
             </div>
 
-            {/* 5. DADOS FINANCEIROS / PIX E CONTA BANCÁRIA */}
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-3">
               <div className="flex items-center gap-2 font-black text-xs uppercase text-emerald-700 dark:text-emerald-400">
                 <DollarSign className="w-4 h-4" /> Faturamento, PIX & Conta Bancária
@@ -538,17 +445,16 @@ export default function CorpoClinico() {
                   <Select value={formData.remuneration_type} onValueChange={v => setFormData({...formData, remuneration_type: v})}>
                     <SelectTrigger className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="hora">Fixo Mensal</SelectItem>
+                      <SelectItem value="hora">Horista (R$ / Hora)</SelectItem>
                       <SelectItem value="diaria">Plantonista (R$ / Diária)</SelectItem>
-                      <SelectItem value="mensal">Horista (R$ / Hora)</SelectItem>
+                      <SelectItem value="mensal">Fixo Mensal</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-bold">Valor (R$)</Label>
-                  <Input type="number" step="0.01" value={formData.hourly_rate} onChange={e => setFormData({...formData, hourly_rate: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-                </div>
+                {formData.remuneration_type === 'hora' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Valor da Hora (R$)</Label><Input type="number" step="0.01" value={formData.hourly_rate} onChange={e => setFormData({...formData, hourly_rate: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
+                {formData.remuneration_type === 'diaria' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Valor do Plantão (R$)</Label><Input type="number" step="0.01" value={formData.daily_rate} onChange={e => setFormData({...formData, daily_rate: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
+                {formData.remuneration_type === 'mensal' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Salário (R$)</Label><Input type="number" step="0.01" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
 
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold">Retenção PJ/Coop (%)</Label>
@@ -572,7 +478,7 @@ export default function CorpoClinico() {
                 </div>
                 <div className="space-y-1 sm:col-span-2">
                   <Label className="text-[11px] font-bold">Chave PIX para Repasse</Label>
-                  <Input value={formData.pix_key} onChange={e => setFormData({...formData, pix_key: e.target.value})} placeholder="Insira a chave PIX..." className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono" />
+                  <Input value={formData.pix_key} onChange={e => setFormData({...formData, pix_key: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono" />
                 </div>
               </div>
 
@@ -584,10 +490,20 @@ export default function CorpoClinico() {
 
             <DialogFooter className="pt-4 gap-2">
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-10 border-slate-200 dark:border-slate-700">Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="bg-sky-600 hover:bg-sky-500 text-white font-black text-xs h-10 px-8 rounded-xl shadow-md">
-                Salvar Perfil Profissional
-              </Button>
+              <Button type="submit" disabled={submitting} className="bg-sky-600 text-white font-black text-xs h-10 px-8 rounded-xl shadow-md">Salvar Perfil Profissional</Button>
             </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: ADICIONAR NOVA CATEGORIA COM BOTÃO + */}
+      <Dialog open={newCatModalOpen} onOpenChange={setNewCatModalOpen}>
+        <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+          <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2"><Plus className="w-5 h-5 text-sky-600" /> Nova Categoria Profissional</DialogTitle></DialogHeader>
+          <form onSubmit={handleAddCustomCategory} className="space-y-3 py-2 text-xs">
+            <div className="space-y-1"><Label className="text-xs font-bold">Nome da Categoria *</Label><Input value={newCatData.label} onChange={e => setNewCatData({ ...newCatData, label: e.target.value })} placeholder="Ex: Perfusionista" className="h-9" required /></div>
+            <div className="space-y-1"><Label className="text-xs font-bold">Conselho Profissional</Label><Input value={newCatData.council} onChange={e => setNewCatData({ ...newCatData, council: e.target.value })} placeholder="Ex: CRVM" className="h-9 font-mono uppercase" /></div>
+            <DialogFooter className="pt-3 gap-2"><Button type="button" variant="outline" onClick={() => setNewCatModalOpen(false)} className="h-9 text-xs">Cancelar</Button><Button type="submit" className="bg-sky-600 text-white font-bold text-xs h-9 px-5">Adicionar</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
