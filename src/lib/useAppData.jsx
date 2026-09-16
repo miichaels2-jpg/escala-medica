@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { calculateShiftRemuneration } from './financeUtils'; // Assumindo que criaremos este helper na Fase 4
 
 const AppDataContext = createContext(null);
 
@@ -22,12 +21,12 @@ export function AppDataProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [globalLoading, setGlobalLoading] = useState(false);
 
-  // 1. Inicialização e Autenticação (Simulando ou integrando com seu Base44 Auth)
+  // Inicialização e Autenticação
   useEffect(() => {
     const initAuth = async () => {
       setAuthLoading(true);
       try {
-        const currentUser = await base44.auth.getUser(); // Ajuste para sua chamada real de auth
+        const currentUser = await base44.auth.getUser(); 
         if (currentUser) {
           setUser(currentUser);
           const compId = currentUser.data?.company_id || 'cmp_principal';
@@ -51,7 +50,7 @@ export function AppDataProvider({ children }) {
     initAuth();
   }, []);
 
-  // 2. Sincronizador Global (O Motor que faz tudo se cruzar)
+  // Sincronizador Global
   const syncGlobalData = useCallback(async () => {
     const companyId = user?.data?.company_id || company?.id;
     if (!companyId || !selectedUnitId) return;
@@ -61,7 +60,7 @@ export function AppDataProvider({ children }) {
       const query = { company_id: companyId, unit_id: selectedUnitId };
 
       const [pRes, secRes, sRes, swRes, notifRes] = await Promise.all([
-        base44.entities.Professional.filter({ company_id: companyId }, '-created_date', 1000).catch(() => []), // Profissionais são da empresa toda
+        base44.entities.Professional.filter({ company_id: companyId }, '-created_date', 1000).catch(() => []),
         base44.entities.Sector.filter(query, 'name', 300).catch(() => []),
         base44.entities.Shift.filter(query, '-date', 5000).catch(() => []),
         base44.entities.ShiftSwap.filter(query, '-created_date', 1000).catch(() => []),
@@ -80,14 +79,13 @@ export function AppDataProvider({ children }) {
     }
   }, [user, company, selectedUnitId]);
 
-  // Sincroniza sempre que o usuário loga ou troca de unidade
   useEffect(() => {
     if (!authLoading && user) {
       syncGlobalData();
     }
   }, [authLoading, user, selectedUnitId, syncGlobalData]);
 
-  // 3. Permissões e Perfis
+  // Permissões e Perfis
   const isAdmin = user?.role === 'admin';
   const isManager = isAdmin || user?.data?.app_role === 'manager' || user?.data?.app_role === 'gestor';
   const isApproved = user?.data?.status === 'aprovado' || isAdmin;
@@ -122,7 +120,8 @@ export function AppDataProvider({ children }) {
 export function useAppData() {
   const context = useContext(AppDataContext);
   if (!context) {
-    throw new Error('useAppData deve ser usado dentro de um AppDataProvider');
+    // Fallback de segurança para não dar crash caso esqueça o Provider
+    return { loading: false, user: null, professionals: [], shifts: [] };
   }
   return context;
 }
