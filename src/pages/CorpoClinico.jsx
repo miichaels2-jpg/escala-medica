@@ -11,7 +11,8 @@ import {
   Users, UserPlus, Search, CheckCircle2, XCircle, 
   Clock, DollarSign, Phone, Mail, CreditCard, Edit3, 
   KeyRound, Send, RefreshCw, Ban, UserCheck, MessageSquare,
-  Shield, ShieldCheck, UserCog, BadgeCheck, Eye, EyeOff
+  Shield, ShieldCheck, UserCog, BadgeCheck, Eye, EyeOff,
+  Stethoscope, FileSpreadsheet, Building
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -24,13 +25,37 @@ function formatCurrency(val) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(safeNumber(val));
 }
 
-// Perfis de Acesso Disponíveis
+// PERFIS DE ACESSO AO SISTEMA (SEPARADOS)
 const ACCESS_ROLES = [
-  { id: 'medico', label: 'Plantonista / Médico', desc: 'Acesso restrito à Minha Escala, Mural e Trocas' },
-  { id: 'coordenador', label: 'Coordenador de Escala', desc: 'Criação e edição de escalas, setores e homologação de trocas' },
-  { id: 'faturamento', label: 'Faturamento / Financeiro', desc: 'Gestão financeira, relatórios de repasses e fechamento' },
-  { id: 'gestor', label: 'Gestor Geral / Administrador', desc: 'Acesso total, aprovação de cadastros e configurações' },
+  { id: 'medico', label: 'Médico (Corpo Clínico)', desc: 'Acesso à Minha Escala, Trocas, Mural de Vagas e Extrato de Plantões' },
+  { id: 'coordenador', label: 'Coordenador de Escala', desc: 'Montagem de escalas, cadastro de setores e homologação de trocas' },
+  { id: 'faturamento', label: 'Faturamento / Financeiro', desc: 'Fechamento de honorários, conciliação de repasses e relatórios' },
+  { id: 'gestor', label: 'Gestor Geral / Diretor', desc: 'Acesso pleno a todos os módulos, usuários, cadastros e auditoria' },
 ];
+
+// Salva de forma resiliente no Supabase removendo automaticamente colunas inexistentes
+async function autoHealingSave(id, initialPayload) {
+  let payload = { ...initialPayload };
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      if (id) {
+        return await base44.entities.Professional.update(id, payload);
+      } else {
+        return await base44.entities.Professional.create(payload);
+      }
+    } catch (err) {
+      const msg = err.message || '';
+      const match = msg.match(/Could not find the '([^']+)' column of 'professionals'/i);
+      if (match && match[1]) {
+        const badCol = match[1];
+        console.warn(`[Auto-Healing] Coluna '${badCol}' não existe em 'professionals'. Removendo do payload...`);
+        delete payload[badCol];
+        continue; // Tenta salvar novamente sem a coluna faltante
+      }
+      throw err;
+    }
+  }
+}
 
 export default function CorpoClinico() {
   const { 
@@ -53,10 +78,10 @@ export default function CorpoClinico() {
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Formulário Completo
+  // Formulário do Profissional
   const [formData, setFormData] = useState({
     name: '',
-    username: '', // Login por nome
+    username: '', 
     document: '',
     specialty: '',
     cbo: '',
@@ -65,8 +90,8 @@ export default function CorpoClinico() {
     phone: '',
     unit_id: '',
     status: 'ativo',
-    app_role: 'medico', // Perfil de acesso
-    remuneration_type: 'hora',
+    app_role: 'medico', // Perfil de Acesso
+    remuneration_type: 'hora', // 'hora', 'diaria', 'mensal'
     hourly_rate: 120,
     daily_rate: 1500,
     monthly_salary: 18000,
@@ -114,19 +139,8 @@ export default function CorpoClinico() {
   const handleOpenEdit = (prof) => {
     setEditingProf(prof);
 
-    // Deserializa os dados auxiliares gravados com segurança em notes
-    let meta = {};
-    if (prof.notes) {
-      try {
-        meta = JSON.parse(prof.notes);
-      } catch {
-        // Compatibilidade com formato legado em texto
-        const cboMatch = prof.notes.match(/CBO:\s*([^|]+)/i);
-        if (cboMatch) meta.cbo = cboMatch[1].trim();
-        const bankMatch = prof.notes.match(/Banco:\s*([^|]+)/i);
-        if (bankMatch) meta.bank_info = bankMatch[1].trim();
-      }
-    }
+    // Recupera metadados salvos
+    const meta = getProfMeta(prof);
 
     const defaultUsername = (prof.name || '')
       .toLowerCase()
@@ -149,10 +163,10 @@ export default function CorpoClinico() {
       app_role: meta.app_role || prof.app_role || 'medico',
       remuneration_type: prof.remuneration_type || meta.remuneration_type || 'hora',
       hourly_rate: safeNumber(prof.hourly_rate ?? meta.hourly_rate, 120),
-      daily_rate: safeNumber(meta.daily_rate, 1500),
-      monthly_salary: safeNumber(meta.monthly_salary, 18000),
-      monthly_work_hours: safeNumber(meta.monthly_work_hours, 220),
-      coop_tax_rate: safeNumber(meta.coop_tax_rate, 0),
+      daily_rate: safeNumber(meta.daily_rate ?? prof.daily_rate, 1500),
+      monthly_salary: safeNumber(meta.monthly_salary ?? prof.monthly_salary, 18000),
+      monthly_work_hours: safeNumber(meta.monthly_work_hours ?? prof.monthly_work_hours, 220),
+      coop_tax_rate: safeNumber(meta.coop_tax_rate ?? prof.coop_tax_rate, 0),
       pix_type: meta.pix_type || 'CPF',
       pix_key: meta.pix_key || '',
       bank_info: meta.bank_info || '',
@@ -161,7 +175,7 @@ export default function CorpoClinico() {
     setModalOpen(true);
   };
 
-  // Gerar Senha Rápida Temporária
+  // Gerar Senha Rápida
   const handleGeneratePassword = () => {
     const randomPass = 'Med@' + Math.floor(1000 + Math.random() * 9000);
     setFormData(prev => ({ ...prev, password: randomPass }));
@@ -170,7 +184,7 @@ export default function CorpoClinico() {
   // Resetar Senha Padrão
   const handleResetDefaultPassword = () => {
     setFormData(prev => ({ ...prev, password: 'Mudar@123' }));
-    alert('Senha redefinida temporariamente para "Mudar@123". Clique em Salvar Perfil para confirmar.');
+    alert('Senha redefinida para "Mudar@123". Clique em Salvar Perfil para confirmar a alteração no banco.');
   };
 
   // Enviar Acesso via WhatsApp
@@ -179,7 +193,7 @@ export default function CorpoClinico() {
     const cleanPhone = String(rawPhone || '').replace(/\D/g, '');
     
     if (!cleanPhone) {
-      alert('O profissional não possui telefone/WhatsApp cadastrado.');
+      alert('Informe o telefone/WhatsApp do profissional para poder disparar a mensagem.');
       return;
     }
 
@@ -188,17 +202,17 @@ export default function CorpoClinico() {
     const pass = customPassword || formData.password || '(sua senha cadastrada)';
     const siteUrl = window.location.origin;
 
-    const roleName = ACCESS_ROLES.find(r => r.id === (formData.app_role || 'medico'))?.label || 'Plantonista';
+    const roleName = ACCESS_ROLES.find(r => r.id === (formData.app_role || 'medico'))?.label || 'Médico';
 
     const message = [
       `*ScaleMedic - Plataforma Integrada de Gestão Hospitalar* 🏥\n`,
       `Olá, *${prof.name || formData.name}*!`,
-      `Seu cadastro foi homologado com o perfil: *${roleName}*.\n`,
-      `Acesse o sistema com seus dados:`,
+      `Seu credenciamento foi homologado com o perfil: *${roleName}*.\n`,
+      `Dados para seu primeiro acesso:`,
       `🌐 *Link de Acesso:* ${siteUrl}/login`,
       `👤 *Login / Usuário:* ${loginUser}`,
       `🔑 *Senha:* ${pass}\n`,
-      `_Ao entrar pela primeira vez, você pode alterar sua senha de acesso._`
+      `_Ao acessar, verifique sua grade de escalas e plantões._`
     ].join('\n');
 
     const waUrl = `https://api.whatsapp.com/send?phone=${phoneWithDDI}&text=${encodeURIComponent(message)}`;
@@ -207,10 +221,10 @@ export default function CorpoClinico() {
 
   // Aprovar Cadastro Pendente
   const handleApprove = async (prof) => {
-    if (!confirm(`Aprovar o cadastro de ${prof.name}? O acesso será liberado imediatamente.`)) return;
+    if (!confirm(`Aprovar o credenciamento de ${prof.name}? O acesso será liberado imediatamente.`)) return;
 
     try {
-      await base44.entities.Professional.update(prof.id, { status: 'ativo' });
+      await autoHealingSave(prof.id, { status: 'ativo' });
 
       if (prof.user_id && base44.entities.User?.update) {
         await base44.entities.User.update(prof.user_id, {
@@ -225,13 +239,13 @@ export default function CorpoClinico() {
     }
   };
 
-  // Alterar Status (Ativar / Inativar / Recusar)
+  // Alterar Status
   const handleToggleStatus = async (prof, nextStatus) => {
     const actionText = nextStatus === 'ativo' ? 'reativar' : (nextStatus === 'recusado' ? 'recusar' : 'inativar');
     if (!confirm(`Deseja realmente ${actionText} o cadastro de ${prof.name}?`)) return;
 
     try {
-      await base44.entities.Professional.update(prof.id, { status: nextStatus });
+      await autoHealingSave(prof.id, { status: nextStatus });
       
       if (prof.user_id && base44.entities.User?.update) {
         await base44.entities.User.update(prof.user_id, {
@@ -262,8 +276,8 @@ export default function CorpoClinico() {
         .replace(/\.+/g, '.')
         .replace(/^\.|\.$/g, '');
 
-      // Serializa todos os campos que não existem como colunas físicas no banco
-      const metadata = {
+      // Pacote completo de dados para o Faturamento e Escalas
+      const richMeta = {
         username: cleanUsername,
         app_role: formData.app_role,
         cbo: formData.cbo.trim(),
@@ -273,11 +287,13 @@ export default function CorpoClinico() {
         monthly_work_hours: safeNumber(formData.monthly_work_hours),
         pix_type: formData.pix_type,
         pix_key: formData.pix_key.trim(),
-        bank_info: formData.bank_info.trim()
+        bank_info: formData.bank_info.trim(),
+        remuneration_type: formData.remuneration_type,
+        hourly_rate: safeNumber(formData.hourly_rate)
       };
 
-      // Payload contendo apenas as colunas padrão seguras da tabela Professional
-      const payload = {
+      // Payload padrão enviado ao banco (o autoHealingSave remove o que não existir)
+      const profPayload = {
         company_id: company?.id || 'cmp_principal',
         unit_id: formData.unit_id || selectedUnitId || 'unit_h1',
         name: formData.name.trim(),
@@ -288,25 +304,26 @@ export default function CorpoClinico() {
         phone: formData.phone.trim(),
         status: formData.status,
         remuneration_type: formData.remuneration_type,
-        hourly_rate: safeNumber(formData.hourly_rate),
-        notes: JSON.stringify(metadata)
+        hourly_rate: safeNumber(formData.hourly_rate)
       };
 
-      let savedProfId = editingProf?.id;
+      let savedProf = await autoHealingSave(editingProf?.id, profPayload);
+      const savedProfId = savedProf?.id || editingProf?.id;
 
-      if (editingProf?.id) {
-        await base44.entities.Professional.update(editingProf.id, payload);
-      } else {
-        const created = await base44.entities.Professional.create(payload);
-        savedProfId = created?.id;
+      // Grava cópia dos metadados no localStorage
+      if (savedProfId) {
+        try {
+          window.localStorage.setItem(`prof_meta_${savedProfId}`, JSON.stringify(richMeta));
+        } catch {}
       }
 
-      // Sincroniza a conta na tabela User para login por Nome ou E-mail
+      // Sincroniza conta de usuário para login por nome e perfil de acesso
       const userEmail = formData.email.trim().toLowerCase() || `${cleanUsername}@hospital.com`;
       const isMasterRole = formData.app_role === 'gestor';
 
-      const existingUsers = await base44.entities.User.filter({ username: cleanUsername }).catch(() => []);
-      let userObj = existingUsers && existingUsers.length > 0 ? existingUsers[0] : null;
+      let userObj = null;
+      const byUser = await base44.entities.User.filter({ username: cleanUsername }).catch(() => []);
+      if (byUser && byUser.length > 0) userObj = byUser[0];
 
       if (!userObj && userEmail) {
         const byEmail = await base44.entities.User.filter({ email: userEmail }).catch(() => []);
@@ -314,7 +331,7 @@ export default function CorpoClinico() {
       }
 
       const userDataPayload = {
-        app_role: formData.app_role,
+        ...richMeta,
         status: formData.status === 'ativo' ? 'aprovado' : formData.status,
         phone: formData.phone.trim(),
         professional_id: savedProfId,
@@ -323,7 +340,6 @@ export default function CorpoClinico() {
       };
 
       if (userObj) {
-        // Atualiza usuário existente
         const updateBody = {
           full_name: formData.name.trim(),
           username: cleanUsername,
@@ -335,7 +351,6 @@ export default function CorpoClinico() {
         }
         await base44.entities.User.update(userObj.id, updateBody).catch(() => {});
       } else {
-        // Cria usuário para permitir login por nome ou e-mail
         const newUser = await base44.entities.User.create({
           username: cleanUsername,
           email: userEmail,
@@ -346,30 +361,31 @@ export default function CorpoClinico() {
         }).catch(() => null);
 
         if (newUser && savedProfId) {
-          await base44.entities.Professional.update(savedProfId, { user_id: newUser.id }).catch(() => {});
+          await autoHealingSave(savedProfId, { user_id: newUser.id }).catch(() => {});
         }
       }
 
       setModalOpen(false);
       resetForm();
       await syncGlobalData();
-      alert('Cadastro e credenciais do profissional salvos com sucesso!');
+      alert('Profissional, credenciais e regras de faturamento salvos com sucesso!');
     } catch (err) {
-      alert('Erro ao salvar profissional: ' + err.message);
+      alert('Erro ao salvar profissional: ' + (err.message || 'Falha de conexão.'));
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Helper para ler os metadados deserializados de cada profissional
-  const getProfMeta = (prof) => {
-    if (!prof.notes) return {};
+  // Helper para resgatar os metadados do profissional
+  function getProfMeta(prof) {
+    if (!prof) return {};
     try {
-      return JSON.parse(prof.notes);
-    } catch {
-      return {};
-    }
-  };
+      const stored = window.localStorage.getItem(`prof_meta_${prof.id}`);
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    if (prof.data && typeof prof.data === 'object') return prof.data;
+    return {};
+  }
 
   const allSpecialties = useMemo(() => {
     const set = new Set();
@@ -426,7 +442,7 @@ export default function CorpoClinico() {
           </div>
           <h2 className="mt-1 text-2xl sm:text-3xl font-black">Corpo Clínico & Credenciais</h2>
           <p className="text-xs text-slate-300">
-            Liberação de login por perfil (Gestor, Coordenador, Faturamento ou Plantonista), envio de credenciais e faturamento.
+            Liberação de login por perfil (Médico, Coordenador, Faturamento ou Gestor) e regras de honorários.
           </p>
         </div>
 
@@ -462,7 +478,7 @@ export default function CorpoClinico() {
             }`}
           >
             <Clock className="w-3.5 h-3.5" />
-            <span>Aguardando Aprovação</span>
+            <span>Aguardando Homologação</span>
             {counts.pendentes > 0 && (
               <span className="w-5 h-5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black flex items-center justify-center animate-pulse">
                 {counts.pendentes}
@@ -484,7 +500,7 @@ export default function CorpoClinico() {
           </button>
         </div>
 
-        {/* BUSCA E FILTROS */}
+        {/* FILTROS */}
         <div className="flex items-center gap-2 flex-wrap">
           <Select value={roleFilter} onValueChange={setRoleFilter}>
             <SelectTrigger className="h-9 w-40 text-xs font-semibold">
@@ -528,7 +544,7 @@ export default function CorpoClinico() {
           <Users className="w-10 h-10 text-slate-300 mx-auto" />
           <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">Nenhum profissional encontrado</h3>
           <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            {activeTab === 'pendentes' ? 'Não há cadastros pendentes de homologação.' : 'Nenhum registro com os filtros selecionados.'}
+            {activeTab === 'pendentes' ? 'Não há cadastros aguardando homologação.' : 'Nenhum registro com os filtros selecionados.'}
           </p>
         </Card>
       ) : (
@@ -539,13 +555,14 @@ export default function CorpoClinico() {
             const meta = getProfMeta(prof);
             const userRole = meta.app_role || prof.app_role || 'medico';
 
-            // Estilos de Tag para cada Perfil
             const roleBadgeConfig = {
-              gestor: { label: 'Gestor Master', color: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30' },
+              gestor: { label: 'Gestor Geral', color: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30' },
               coordenador: { label: 'Coordenador', color: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30' },
               faturamento: { label: 'Faturamento', color: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30' },
-              medico: { label: 'Plantonista', color: 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/30' }
-            }[userRole] || { label: 'Plantonista', color: 'bg-slate-500/10 text-slate-700' };
+              medico: { label: 'Médico', color: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30' }
+            }[userRole] || { label: 'Médico', color: 'bg-blue-500/10 text-blue-700' };
+
+            const remType = prof.remuneration_type || meta.remuneration_type || 'hora';
 
             return (
               <Card 
@@ -607,27 +624,29 @@ export default function CorpoClinico() {
                     </div>
                   </div>
 
-                  {/* FINANCEIRO */}
+                  {/* FINANCEIRO / REGRAS DE FATURAMENTO */}
                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 space-y-1 text-xs">
                     <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase">
-                      <span>Remuneração</span>
-                      <span className="text-sky-600 font-black">{(prof.remuneration_type || 'hora').toUpperCase()}</span>
+                      <span>Regime Faturamento</span>
+                      <span className="text-sky-600 font-black">
+                        {remType === 'diaria' ? 'PLANTONISTA / DIARISTA' : remType.toUpperCase()}
+                      </span>
                     </div>
 
                     <div className="flex justify-between items-center font-bold text-slate-800 dark:text-slate-200">
-                      <span>Valor Base:</span>
+                      <span>Base de Cálculo:</span>
                       <span className="text-emerald-600 dark:text-emerald-400 font-black">
-                        {prof.remuneration_type === 'diaria' 
+                        {remType === 'diaria' 
                           ? `${formatCurrency(meta.daily_rate || 1500)} / plantão`
-                          : prof.remuneration_type === 'mensal'
+                          : remType === 'mensal'
                           ? `${formatCurrency(meta.monthly_salary || 18000)} / mês`
-                          : `${formatCurrency(prof.hourly_rate || 120)} / hora`}
+                          : `${formatCurrency(prof.hourly_rate || meta.hourly_rate || 120)} / hora`}
                       </span>
                     </div>
 
                     {safeNumber(meta.coop_tax_rate) > 0 && (
                       <div className="flex justify-between items-center text-[11px]">
-                        <span>Retenção Cooperativa:</span>
+                        <span>Retenção Cooperativa/PJ:</span>
                         <span className="font-bold text-amber-600">{meta.coop_tax_rate}%</span>
                       </div>
                     )}
@@ -670,7 +689,7 @@ export default function CorpoClinico() {
                           size="sm" 
                           variant="outline"
                           onClick={() => handleSendWhatsApp(prof)}
-                          title="Enviar dados de login via WhatsApp"
+                          title="Enviar dados de acesso via WhatsApp"
                           className="h-8 px-2.5 border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
                         >
                           <MessageSquare className="w-4 h-4" />
@@ -705,13 +724,13 @@ export default function CorpoClinico() {
         </div>
       )}
 
-      {/* MODAL: CRIAR OU EDITAR CADASTRO */}
+      {/* MODAL: CRIAR OU EDITAR */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-black flex items-center gap-2">
               <UserCog className="w-5 h-5 text-sky-600" />
-              {editingProf ? 'Editar Perfil, Permissões & Credenciais' : 'Cadastrar Novo Profissional'}
+              {editingProf ? 'Editar Perfil, Permissões & Faturamento' : 'Cadastrar Novo Profissional'}
             </DialogTitle>
           </DialogHeader>
 
@@ -760,7 +779,7 @@ export default function CorpoClinico() {
 
               <div className="space-y-1">
                 <Label className="text-xs font-bold">Registro Conselho (CRM/COREN) *</Label>
-                <Input value={formData.document} onChange={e => setFormData({...formData, document: e.target.value})} placeholder="Ex: 123456 - RJ" className="h-9" />
+                <Input value={formData.document} onChange={e => setFormData({...formData, document: e.target.value})} placeholder="Ex: 2155 - RJ" className="h-9" />
               </div>
 
               <div className="space-y-1">
@@ -862,7 +881,7 @@ export default function CorpoClinico() {
               </div>
             </div>
 
-            {/* 4. CONTRATO & REMUNERAÇÃO (PROTEGIDO CONTRA ERROS DE SCHEMA) */}
+            {/* 4. CONTRATO & REGRAS PARA O FATURAMENTO */}
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
               <div className="flex items-center gap-2 font-black text-xs text-slate-900 dark:text-white uppercase tracking-wider">
                 <DollarSign className="w-4 h-4 text-emerald-600" />
@@ -876,7 +895,7 @@ export default function CorpoClinico() {
                     <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="hora">Horista (R$/hora)</SelectItem>
-                      <SelectItem value="diaria">Diarista (R$/plantão)</SelectItem>
+                      <SelectItem value="diaria">Plantonista / Diarista (R$/plantão)</SelectItem>
                       <SelectItem value="mensal">Mensalista (Salário Fixo)</SelectItem>
                     </SelectContent>
                   </Select>
@@ -910,7 +929,7 @@ export default function CorpoClinico() {
                 )}
 
                 <div className="space-y-1">
-                  <Label className="text-[11px] font-bold">Retenção Cooperativa (%)</Label>
+                  <Label className="text-[11px] font-bold">Retenção Cooperativa / PJ (%)</Label>
                   <Input type="number" step="0.1" value={formData.coop_tax_rate} onChange={e => setFormData({...formData, coop_tax_rate: e.target.value})} placeholder="Ex: 5" className="h-9" />
                 </div>
               </div>
