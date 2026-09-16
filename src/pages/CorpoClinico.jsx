@@ -9,9 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
   Users, UserPlus, Search, CheckCircle2, 
-  DollarSign, Edit3, KeyRound, Send, RefreshCw, Ban, 
-  MessageSquare, Shield, UserCog, Eye, EyeOff,
-  HeartPulse, Plus, CreditCard, Landmark
+  DollarSign, Edit3, KeyRound, RefreshCw, Ban, 
+  UserCheck, MessageSquare, Shield, UserCog, Eye, EyeOff,
+  HeartPulse, Plus, CreditCard, Landmark, Check
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -60,7 +60,7 @@ async function autoHealingSave(id, initialPayload) {
 export default function CorpoClinico() {
   const { professionals, sectors, units, selectedUnitId, company, isManager, syncGlobalData } = useAppData();
 
-  const [activeTab, setActiveTab] = useState('ativos'); 
+  const [activeTab, setActiveTab] = useState('ativos'); // 'ativos' | 'pendentes' | 'inativos'
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('todas');
   
@@ -116,11 +116,10 @@ export default function CorpoClinico() {
     setEditingProf(prof);
     const meta = getProfMeta(prof);
 
-    // Prioridade total para o que está salvo no objeto, sem forçar 18000
-    const remunType = prof.remuneration_type || meta.remuneration_type || 'mensal';
-    const sal = prof.monthly_salary !== undefined && prof.monthly_salary !== null ? prof.monthly_salary : (meta.monthly_salary !== undefined ? meta.monthly_salary : 5000);
-    const hourly = prof.hourly_rate !== undefined && prof.hourly_rate !== null ? prof.hourly_rate : (meta.hourly_rate !== undefined ? meta.hourly_rate : 120);
-    const daily = prof.daily_rate !== undefined && prof.daily_rate !== null ? prof.daily_rate : (meta.daily_rate !== undefined ? meta.daily_rate : 1500);
+    const remunType = meta.remuneration_type || prof.remuneration_type || 'mensal';
+    const sal = meta.monthly_salary !== undefined ? meta.monthly_salary : (prof.monthly_salary !== undefined ? prof.monthly_salary : 5000);
+    const hourly = meta.hourly_rate !== undefined ? meta.hourly_rate : (prof.hourly_rate !== undefined ? prof.hourly_rate : 120);
+    const daily = meta.daily_rate !== undefined ? meta.daily_rate : (prof.daily_rate !== undefined ? prof.daily_rate : 1500);
 
     const defaultUsername = (prof.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
     const generatedMatricula = prof.registration_id || meta.registration_id || `MAT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -150,6 +149,21 @@ export default function CorpoClinico() {
       password: ''
     });
     setModalOpen(true);
+  };
+
+  const handleToggleStatus = async (prof, nextStatus) => {
+    const actionDesc = nextStatus === 'ativo' ? 'reativar' : 'inativar';
+    if (!confirm(`Deseja realmente ${actionDesc} o profissional ${prof.name}?`)) return;
+
+    try {
+      await autoHealingSave(prof.id, { status: nextStatus });
+      const meta = getProfMeta(prof);
+      window.localStorage.setItem(`prof_meta_${prof.id}`, JSON.stringify({ ...meta, status: nextStatus }));
+      await syncGlobalData();
+      alert(`Profissional ${nextStatus === 'ativo' ? 'reativado' : 'inativado'} com sucesso!`);
+    } catch (err) {
+      alert('Erro ao alterar status: ' + err.message);
+    }
   };
 
   const handleAddCustomCategory = (e) => {
@@ -185,7 +199,7 @@ export default function CorpoClinico() {
 
     setSubmitting(true);
     try {
-      const cleanUsername = (formData.username || formData.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
+      const cleanUsername = (formData.username || formData.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.');
 
       const parsedSalary = safeNumber(formData.monthly_salary);
       const parsedHourly = safeNumber(formData.hourly_rate);
@@ -206,7 +220,8 @@ export default function CorpoClinico() {
         remuneration_type: formData.remuneration_type,
         pix_type: formData.pix_type,
         pix_key: formData.pix_key.trim(),
-        bank_info: formData.bank_info.trim()
+        bank_info: formData.bank_info.trim(),
+        status: formData.status
       };
 
       const profPayload = {
@@ -237,7 +252,6 @@ export default function CorpoClinico() {
 
       if (savedProfId) {
         try { 
-          // Atualiza o cache com os novos valores reais
           window.localStorage.setItem(`prof_meta_${savedProfId}`, JSON.stringify(richMeta)); 
         } catch {}
       }
@@ -245,7 +259,7 @@ export default function CorpoClinico() {
       setModalOpen(false); 
       resetForm(); 
       await syncGlobalData(); 
-      alert('Cadastro e dados de faturamento atualizados com sucesso!');
+      alert('Cadastro e dados de remuneração atualizados com sucesso!');
     } catch (err) { 
       alert('Erro ao salvar: ' + err.message); 
     } finally { 
@@ -256,7 +270,8 @@ export default function CorpoClinico() {
   const counts = useMemo(() => {
     let ativos = 0, pendentes = 0, inativos = 0;
     (professionals || []).forEach(p => {
-      const st = String(p.status || 'ativo').toLowerCase();
+      const meta = getProfMeta(p);
+      const st = String(p.status || meta.status || 'ativo').toLowerCase();
       if (st === 'pendente' || st === 'em_analise') pendentes++;
       else if (st === 'inativo' || st === 'recusado') inativos++;
       else ativos++;
@@ -267,13 +282,13 @@ export default function CorpoClinico() {
   const filteredList = useMemo(() => {
     const term = searchQuery.toLowerCase().trim();
     return (professionals || []).filter(p => {
-      const st = String(p.status || 'ativo').toLowerCase();
       const meta = getProfMeta(p);
+      const st = String(p.status || meta.status || 'ativo').toLowerCase();
       const cat = p.category || meta.category || 'medico';
       
       if (activeTab === 'pendentes' && st !== 'pendente' && st !== 'em_analise') return false;
       if (activeTab === 'inativos' && st !== 'inativo' && st !== 'recusado') return false;
-      if (activeTab === 'ativos' && (st === 'pendente' || st === 'em_analise' || st === 'inativo' || st === 'recusado')) return false;
+      if (activeTab === 'ativos' && st !== 'ativo' && st !== 'aprovado') return false;
       if (categoryFilter !== 'todas' && cat !== categoryFilter) return false;
 
       if (term) {
@@ -297,11 +312,18 @@ export default function CorpoClinico() {
         {isManager && (<Button onClick={handleOpenNew} className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-10 px-5 rounded-xl shadow-lg gap-1.5 shrink-0"><UserPlus className="w-4 h-4" /> Novo Profissional</Button>)}
       </div>
 
+      {/* ABAS COM ATIVOS, PENDENTES E INATIVOS RESTAURADAS */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-3">
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
-          <button onClick={() => setActiveTab('ativos')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'ativos' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600'}`}>Ativos ({counts.ativos})</button>
-          <button onClick={() => setActiveTab('pendentes')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'pendentes' ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600'}`}>Pendentes ({counts.pendentes})</button>
-          <button onClick={() => setActiveTab('inativos')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'inativos' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600'}`}>Inativos ({counts.inativos})</button>
+          <button onClick={() => setActiveTab('ativos')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'ativos' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
+            Ativos ({counts.ativos})
+          </button>
+          <button onClick={() => setActiveTab('pendentes')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'pendentes' ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
+            Pendentes ({counts.pendentes})
+          </button>
+          <button onClick={() => setActiveTab('inativos')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'inativos' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
+            Inativos ({counts.inativos})
+          </button>
         </div>
         <div className="flex items-center gap-2">
           <Select value={categoryFilter} onValueChange={setCategoryFilter}><SelectTrigger className="h-9 w-44 text-xs font-semibold"><SelectValue placeholder="Categoria" /></SelectTrigger><SelectContent><SelectItem value="todas">Todas Categorias</SelectItem>{allCategories.map(c => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}</SelectContent></Select>
@@ -315,27 +337,27 @@ export default function CorpoClinico() {
           const catId = prof.category || meta.category || 'medico';
           const catObj = allCategories.find(c => c.id === catId) || allCategories[0];
           
-          const remunType = prof.remuneration_type || meta.remuneration_type || 'mensal';
+          const remunType = meta.remuneration_type || prof.remuneration_type || 'mensal';
           
-          // Cálculo direto e prioritário do valor real salvo
           let remunValue = 0;
           let remunLabel = '';
           if (remunType === 'hora') {
-            remunValue = prof.hourly_rate !== undefined && prof.hourly_rate !== null ? prof.hourly_rate : (meta.hourly_rate ?? 120);
+            remunValue = meta.hourly_rate !== undefined ? meta.hourly_rate : (prof.hourly_rate ?? 120);
             remunLabel = '/ Hora';
           } else if (remunType === 'diaria') {
-            remunValue = prof.daily_rate !== undefined && prof.daily_rate !== null ? prof.daily_rate : (meta.daily_rate ?? 1500);
+            remunValue = meta.daily_rate !== undefined ? meta.daily_rate : (prof.daily_rate ?? 1500);
             remunLabel = '/ Plantão';
           } else {
-            remunValue = prof.monthly_salary !== undefined && prof.monthly_salary !== null ? prof.monthly_salary : (meta.monthly_salary ?? 5000);
+            remunValue = meta.monthly_salary !== undefined ? meta.monthly_salary : (prof.monthly_salary ?? 5000);
             remunLabel = '/ Mês Fixo';
           }
 
           const matriculaId = prof.registration_id || meta.registration_id || 'MAT-XXXX';
-          const chavePix = prof.pix_key || meta.pix_key || 'Não cadastrado';
+          const chavePix = meta.pix_key || prof.pix_key || 'Não cadastrado';
+          const isInactive = (prof.status || meta.status) === 'inativo' || (prof.status || meta.status) === 'recusado';
 
           return (
-            <Card key={prof.id} className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4 hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
+            <Card key={prof.id} className={`p-5 rounded-3xl border bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4 transition-colors ${isInactive ? 'border-slate-200 dark:border-slate-800 opacity-60' : 'border-slate-200 dark:border-slate-800'}`}>
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
                   <div>
@@ -343,7 +365,9 @@ export default function CorpoClinico() {
                     <h3 className="font-black text-sm text-slate-900 dark:text-white mt-1.5">{prof.name}</h3>
                     <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400">ID: {matriculaId}</span>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border bg-emerald-500/10 text-emerald-700 border-emerald-500/30">{prof.status || 'Ativo'}</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${isInactive ? 'bg-rose-500/10 text-rose-600 border-rose-500/30' : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30'}`}>
+                    {isInactive ? 'Inativo' : (prof.status || 'Ativo')}
+                  </span>
                 </div>
                 
                 <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
@@ -364,8 +388,26 @@ export default function CorpoClinico() {
               </div>
 
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => handleOpenEdit(prof)} className="flex-1 text-xs h-9 font-bold gap-1 rounded-xl border-slate-200 dark:border-slate-700"><Edit3 className="w-3.5 h-3.5 text-sky-600" /> Editar Perfil</Button>
-                {prof.phone && (<Button size="sm" variant="outline" onClick={() => { setFormData(prev => ({...prev, ...prof, password: meta.password || ''})); handleSendWhatsApp(); }} className="h-9 px-3 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"><MessageSquare className="w-4 h-4" /></Button>)}
+                <Button size="sm" variant="outline" onClick={() => handleOpenEdit(prof)} className="flex-1 text-xs h-9 font-bold gap-1 rounded-xl border-slate-200 dark:border-slate-700">
+                  <Edit3 className="w-3.5 h-3.5 text-sky-600" /> Editar Perfil
+                </Button>
+                
+                {/* BOTÃO DE INATIVAR / REATIVAR RESTAURADO */}
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  onClick={() => handleToggleStatus(prof, isInactive ? 'ativo' : 'inativo')} 
+                  title={isInactive ? 'Reativar profissional' : 'Inativar profissional'}
+                  className={`h-9 px-3 rounded-xl ${isInactive ? 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30' : 'text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30'}`}
+                >
+                  {isInactive ? <Check className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
+                </Button>
+
+                {prof.phone && (
+                  <Button size="sm" variant="outline" onClick={() => { setFormData(prev => ({...prev, ...prof, password: meta.password || ''})); handleSendWhatsApp(); }} className="h-9 px-3 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30">
+                    <MessageSquare className="w-4 h-4" />
+                  </Button>
+                )}
               </div>
             </Card>
           );
@@ -377,7 +419,6 @@ export default function CorpoClinico() {
           <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2 text-slate-900 dark:text-white"><UserCog className="w-5 h-5 text-sky-600" /> {editingProf ? 'Editar Perfil Profissional & Faturamento' : 'Cadastrar Novo Profissional'}</DialogTitle></DialogHeader>
 
           <form onSubmit={handleSaveProfessional} className="space-y-5 py-2 text-xs">
-            
             <div className="space-y-2">
               <div className="flex items-center gap-2"><HeartPulse className="w-4 h-4 text-slate-400" /><Label className="text-xs font-black uppercase text-slate-500">Categoria Profissional *</Label></div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -481,41 +522,23 @@ export default function CorpoClinico() {
             </div>
 
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-3">
-              <div className="flex items-center gap-2 font-black text-xs uppercase text-emerald-700 dark:text-emerald-400">
-                <Landmark className="w-4 h-4" /> Faturamento, PIX & Dados Bancários
-              </div>
-
+              <div className="flex items-center gap-2 font-black text-xs uppercase text-emerald-700 dark:text-emerald-400"><DollarSign className="w-4 h-4" /> Faturamento, PIX & Dados Bancários</div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold">Regime Contratual</Label>
                   <Select value={formData.remuneration_type} onValueChange={v => setFormData({...formData, remuneration_type: v})}>
                     <SelectTrigger className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="mensal">Fixo Mensal (Salário)</SelectItem>
+                      <SelectItem value="mensal">Fixo Mensal</SelectItem>
                       <SelectItem value="diaria">Plantonista (R$ / Diária)</SelectItem>
                       <SelectItem value="hora">Horista (R$ / Hora)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 
-                {formData.remuneration_type === 'hora' && (
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold">Valor da Hora (R$)</Label>
-                    <Input type="number" step="0.01" value={formData.hourly_rate} onChange={e => setFormData({...formData, hourly_rate: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-                  </div>
-                )}
-                {formData.remuneration_type === 'diaria' && (
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold">Valor do Plantão (R$)</Label>
-                    <Input type="number" step="0.01" value={formData.daily_rate} onChange={e => setFormData({...formData, daily_rate: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-                  </div>
-                )}
-                {formData.remuneration_type === 'mensal' && (
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold">Salário Fixo Mensal (R$)</Label>
-                    <Input type="number" step="0.01" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-                  </div>
-                )}
+                {formData.remuneration_type === 'hora' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Valor da Hora (R$)</Label><Input type="number" step="0.01" value={formData.hourly_rate} onChange={e => setFormData({...formData, hourly_rate: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
+                {formData.remuneration_type === 'diaria' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Valor do Plantão (R$)</Label><Input type="number" step="0.01" value={formData.daily_rate} onChange={e => setFormData({...formData, daily_rate: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
+                {formData.remuneration_type === 'mensal' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Salário Base (R$)</Label><Input type="number" step="0.01" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
 
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold">Retenção PJ/Coop (%)</Label>
@@ -544,7 +567,7 @@ export default function CorpoClinico() {
               </div>
 
               <div className="space-y-1 pt-1">
-                <Label className="text-[11px] font-bold flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5 text-slate-500" /> Dados Bancários (Para TED/DOC caso não use PIX)</Label>
+                <Label className="text-[11px] font-bold flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5 text-slate-500" /> Dados Bancários Físicos (Para TED/DOC)</Label>
                 <Input value={formData.bank_info} onChange={e => setFormData({...formData, bank_info: e.target.value})} placeholder="Ex: Banco Itaú, Ag: 0000, CC: 00000-0" className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
               </div>
             </div>

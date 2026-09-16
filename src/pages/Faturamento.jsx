@@ -3,11 +3,9 @@ import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
-  DollarSign, Calendar, Search, Download, Printer, CheckCircle2, 
-  Building2, Users, Receipt, Send, CreditCard, ChevronLeft, ChevronRight, FileText
+  DollarSign, Search, Receipt, Send, ChevronLeft, ChevronRight, FileText
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -20,8 +18,13 @@ function formatCurrency(val) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(safeNumber(val));
 }
 
+const MONTH_NAMES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+];
+
 export default function Faturamento() {
-  const { shifts, professionals, sectors, company, isManager } = useAppData();
+  const { shifts, professionals, sectors } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [searchQuery, setSearchQuery] = useState('');
@@ -29,14 +32,7 @@ export default function Faturamento() {
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
-
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
-
-  const professionalMap = useMemo(() => {
-    const m = {};
-    (professionals || []).forEach(p => { if (p) m[String(p.id)] = p; });
-    return m;
-  }, [professionals]);
 
   const sectorMap = useMemo(() => {
     const m = {};
@@ -54,25 +50,33 @@ export default function Faturamento() {
     return {};
   }
 
-  // CÁLCULO DIRETO DA ESCALA PARA O FATURAMENTO
+  // CÁLCULO DIRETO PARA TODOS OS PROFISSIONAIS DO CORPO CLÍNICO
   const reportData = useMemo(() => {
     const profsSummary = {};
 
-    // 1. Inicializa cada profissional com suas regras contratuais
+    // 1. Mapeia TODOS os profissionais ativos cadastrados
     (professionals || []).forEach(p => {
+      if (!p) return;
       const meta = getProfMeta(p);
-      const remunType = p.remuneration_type || meta.remuneration_type || 'mensal';
+      const st = String(p.status || meta.status || 'ativo').toLowerCase();
+      if (st === 'inativo' || st === 'recusado') return;
+
+      const remunType = meta.remuneration_type || p.remuneration_type || 'mensal';
       
       let baseVal = 0;
-      if (remunType === 'hora') baseVal = p.hourly_rate ?? meta.hourly_rate ?? 120;
-      else if (remunType === 'diaria') baseVal = p.daily_rate ?? meta.daily_rate ?? 1500;
-      else baseVal = p.monthly_salary ?? meta.monthly_salary ?? 5000;
+      if (remunType === 'hora') {
+        baseVal = meta.hourly_rate !== undefined ? meta.hourly_rate : (p.hourly_rate ?? 120);
+      } else if (remunType === 'diaria') {
+        baseVal = meta.daily_rate !== undefined ? meta.daily_rate : (p.daily_rate ?? 1500);
+      } else {
+        baseVal = meta.monthly_salary !== undefined ? meta.monthly_salary : (p.monthly_salary ?? 5000);
+      }
 
       const taxRate = p.coop_tax_rate ?? meta.coop_tax_rate ?? 0;
       const matricula = p.registration_id || meta.registration_id || 'MAT-XXXX';
-      const chavePix = p.pix_key || meta.pix_key || 'Não cadastrado';
-      const pixTipo = p.pix_type || meta.pix_type || 'CPF';
-      const banco = p.bank_info || meta.bank_info || 'Não cadastrado';
+      const chavePix = meta.pix_key || p.pix_key || 'Não cadastrado';
+      const pixTipo = meta.pix_type || p.pix_type || 'CPF';
+      const banco = meta.bank_info || p.bank_info || 'Não cadastrado';
 
       profsSummary[String(p.id)] = {
         prof: p,
@@ -89,28 +93,33 @@ export default function Faturamento() {
       };
     });
 
-    // 2. Vasculha os plantões do mês na Escala
+    // 2. Processa plantões do mês na Escala de forma segura
     (shifts || []).forEach(shift => {
-      if (!shift.date || !shift.date.startsWith(monthPrefix)) return;
+      if (!shift || !shift.date || !shift.date.startsWith(monthPrefix)) return;
       if (!shift.professional_id || shift.status === 'vago') return;
 
       const pId = String(shift.professional_id);
       if (profsSummary[pId]) {
-        const [startH, startM] = (shift.start_time || '07:00').split(':').map(Number);
-        const [endH, endM] = (shift.end_time || '19:00').split(':').map(Number);
+        const startParts = (shift.start_time || '07:00').split(':');
+        const endParts = (shift.end_time || '19:00').split(':');
+        const startH = parseInt(startParts[0], 10) || 7;
+        const startM = parseInt(startParts[1], 10) || 0;
+        const endH = parseInt(endParts[0], 10) || 19;
+        const endM = parseInt(endParts[1], 10) || 0;
+
         let duration = endH - startH + (endM - startM) / 60;
         if (duration <= 0) duration += 24;
 
         profsSummary[pId].totalPlantões += 1;
-        profsSummary[pId].totalHoras += duration;
+        profsSummary[pId].totalHoras += Math.round(duration * 10) / 10;
         profsSummary[pId].plantõesList.push({
           ...shift,
-          duration
+          duration: Math.round(duration * 10) / 10
         });
       }
     });
 
-    // 3. Calcula o Valor Bruto, Descontos e Valor Líquido
+    // 3. Calcula Valores Brutos e Líquidos
     return Object.values(profsSummary).map(item => {
       let valorBruto = 0;
 
@@ -119,8 +128,8 @@ export default function Faturamento() {
       } else if (item.remunType === 'diaria') {
         valorBruto = item.totalPlantões * item.baseVal;
       } else {
-        // Mensalista fixo
-        valorBruto = item.totalPlantões > 0 ? item.baseVal : item.baseVal;
+        // Mensalista: valor fixo contratual
+        valorBruto = item.baseVal;
       }
 
       const valorDesconto = (valorBruto * item.taxRate) / 100;
@@ -146,7 +155,6 @@ export default function Faturamento() {
     });
   }, [reportData, searchQuery]);
 
-  // Totais Executivos
   const totals = useMemo(() => {
     let bruto = 0, liquido = 0, plantões = 0, horas = 0;
     reportData.forEach(i => {
@@ -158,7 +166,6 @@ export default function Faturamento() {
     return { bruto, liquido, plantões, horas };
   }, [reportData]);
 
-  // Disparar Extrato via WhatsApp
   const handleSendStatementWhatsApp = (item) => {
     const cleanPhone = String(item.prof.phone || '').replace(/\D/g, '');
     if (!cleanPhone) { alert('Profissional não possui telefone cadastrado.'); return; }
@@ -169,14 +176,14 @@ export default function Faturamento() {
       `Competência: *${MONTH_NAMES[currentMonth]} / ${currentYear}*`,
       `Profissional: *${item.prof.name}* (ID: ${item.matricula})\n`,
       `📊 *Resumo dos Plantões:*`,
-      `• Total de Plantões Realizados: ${item.totalPlantões}`,
-      `• Total de Horas Computadas: ${item.totalHoras}h`,
+      `• Total de Plantões: ${item.totalPlantões}`,
+      `• Total de Horas: ${item.totalHoras}h`,
       `• Regime: ${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Mensalista'}\n`,
       `💰 *Valores para Repasse:*`,
       `• Valor Bruto: ${formatCurrency(item.valorBruto)}`,
-      `• Retenções / Impostos: ${formatCurrency(item.valorDesconto)}`,
+      `• Retenções: ${formatCurrency(item.valorDesconto)}`,
       `• *VALOR LÍQUIDO A RECEBER:* ${formatCurrency(item.valorLiquido)}\n`,
-      `💳 *Dados Bancários / PIX Cadastrados:*`,
+      `💳 *Dados Bancários / PIX:*`,
       `• Chave PIX: ${item.chavePix} (${item.pixTipo})`,
       `• Conta: ${item.banco}\n`,
       `_Por favor, confira os dados. Havendo divergência, contate a coordenação médica._`
@@ -200,7 +207,6 @@ export default function Faturamento() {
           </p>
         </div>
 
-        {/* CONTROLE DE COMPETÊNCIA (MÊS/ANO) */}
         <div className="flex items-center bg-slate-900/90 border border-slate-800 p-1.5 rounded-2xl gap-2">
           <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white">
             <ChevronLeft className="w-4 h-4" />
@@ -214,7 +220,7 @@ export default function Faturamento() {
         </div>
       </div>
 
-      {/* CARDS EXECUTIVOS DE KPI */}
+      {/* CARDS EXECUTIVOS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <span className="text-[10px] font-black uppercase text-slate-400">Total Bruto dos Honorários</span>
@@ -237,16 +243,16 @@ export default function Faturamento() {
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400">Profissionais na Folha</span>
           <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">{reportData.length}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">Equipe credenciada ativa</span>
+          <span className="text-[10px] text-slate-500 font-semibold">Equipe ativa para repasse</span>
         </Card>
       </div>
 
-      {/* TABELA DE REPASSE & BUSCA */}
+      {/* TABELA DE REPASSE */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
             <h3 className="text-base font-black text-slate-900 dark:text-white">Espelho de Conciliação e Fechamento</h3>
-            <p className="text-xs text-slate-500">Valores computados conforme os plantões executados na escala.</p>
+            <p className="text-xs text-slate-500">Listagem de todos os profissionais ativos e seus respectivos valores de repasse.</p>
           </div>
 
           <div className="relative w-full sm:w-72">
@@ -277,7 +283,7 @@ export default function Faturamento() {
               {filteredReport.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="py-8 text-center text-slate-400">
-                    Nenhum registro encontrado para esta competência.
+                    Nenhum profissional localizado para esta competência.
                   </td>
                 </tr>
               ) : (
@@ -348,7 +354,7 @@ export default function Faturamento() {
         </div>
       </div>
 
-      {/* MODAL DE DETALHAMENTO DE PLANTÕES DO PROFISSIONAL */}
+      {/* MODAL DE DETALHAMENTO */}
       <Dialog open={!!selectedProfModal} onOpenChange={() => setSelectedProfModal(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-slate-200 dark:border-slate-800">
           <DialogHeader>
@@ -383,7 +389,7 @@ export default function Faturamento() {
                 <span className="font-black uppercase text-slate-500 text-[11px] block">Relação de Plantões na Escala</span>
                 <div className="max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800">
                   {selectedProfModal.plantõesList.length === 0 ? (
-                    <div className="p-4 text-center text-slate-400">Nenhum plantão localizado na escala deste mês.</div>
+                    <div className="p-4 text-center text-slate-400">Nenhum plantão individual registrado na grade deste mês (Regime de Salário Fixo).</div>
                   ) : (
                     selectedProfModal.plantõesList.map(p => (
                       <div key={p.id} className="p-2.5 flex items-center justify-between text-xs hover:bg-slate-50 dark:hover:bg-slate-900/50">
