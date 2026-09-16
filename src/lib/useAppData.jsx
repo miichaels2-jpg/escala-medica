@@ -1,11 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 
-// Estado compartilhado em memória para que todas as telas conversem instantaneamente
 let globalState = {
   user: {
     id: 'usr_admin',
-    full_name: 'Administrador',
+    full_name: 'Administrador Master',
     email: 'admin@admin.com',
     role: 'admin',
     data: { status: 'aprovado', app_role: 'manager', company_id: 'cmp_principal' }
@@ -18,7 +17,7 @@ let globalState = {
   shifts: [],
   swaps: [],
   notifications: [],
-  loading: true,
+  loading: false,
 };
 
 const listeners = new Set();
@@ -35,14 +34,21 @@ async function fetchAllData() {
 
   try {
     let currentUser = null;
-    if (base44?.auth?.me) {
+    const storedUserId = window.localStorage.getItem('scale_logged_user');
+
+    // Tenta recuperar o usuário logado salvo pelo login
+    if (storedUserId && base44?.entities?.User?.get) {
+      currentUser = await base44.entities.User.get(storedUserId).catch(() => null);
+    }
+
+    if (!currentUser && base44?.auth?.me) {
       currentUser = await base44.auth.me().catch(() => null);
     }
 
     const compId = currentUser?.data?.company_id || 'cmp_principal';
     let compData = null;
     try {
-      compData = await base44.entities?.Company?.get(compId).catch(() => null);
+      compData = await base44?.entities?.Company?.get(compId).catch(() => null);
     } catch (e) {}
 
     const company = compData || { id: compId, name: 'Hospital Principal', units: [{ id: 'unit_h1', name: 'Unidade Matriz' }] };
@@ -52,7 +58,7 @@ async function fetchAllData() {
 
     const selectedUnitId = currentUser?.data?.selected_unit_id || units[0].id;
 
-    // Busca todas as entidades principais em paralelo
+    // Busca todas as entidades principais
     const [pRes, secRes, sRes, swRes] = await Promise.all([
       base44?.entities?.Professional?.filter({ company_id: compId }, '-created_date', 1000).catch(() => []),
       base44?.entities?.Sector?.filter({ company_id: compId }, 'name', 300).catch(() => []),
@@ -79,7 +85,6 @@ async function fetchAllData() {
   }
 }
 
-// Hook principal utilizado em todas as páginas
 export function useAppData() {
   const [, setTick] = useState(0);
 
@@ -102,6 +107,18 @@ export function useAppData() {
   const isAdmin = user?.role === 'admin' || user?.data?.app_role === 'admin' || user?.email === 'admin@admin.com';
   const isManager = isAdmin || user?.data?.app_role === 'manager' || user?.data?.app_role === 'gestor';
 
+  const professionalMap = useMemo(() => {
+    const m = {};
+    globalState.professionals.forEach(p => { if (p?.id) m[p.id] = p; });
+    return m;
+  }, []);
+
+  const sectorMap = useMemo(() => {
+    const m = {};
+    globalState.sectors.forEach(s => { if (s?.id) m[String(s.id)] = s; });
+    return m;
+  }, []);
+
   const currentProfessional = useMemo(() => {
     if (!globalState.professionals.length || !user) return null;
     return globalState.professionals.find(p => 
@@ -109,10 +126,12 @@ export function useAppData() {
       String(p.id) === String(user.data?.professional_id) ||
       (p.email && user.email && p.email.toLowerCase() === user.email.toLowerCase())
     ) || null;
-  }, [globalState.professionals, user]);
+  }, [user]);
 
   return {
     ...globalState,
+    professionalMap,
+    sectorMap,
     isAdmin,
     isManager,
     isApproved: true,
@@ -123,7 +142,6 @@ export function useAppData() {
   };
 }
 
-// Componente seguro para não quebrar quem ainda tiver a tag AppDataProvider no JSX
 export function AppDataProvider({ children }) {
   return <>{children}</>;
 }

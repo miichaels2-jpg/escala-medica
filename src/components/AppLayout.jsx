@@ -1,15 +1,15 @@
 import React, { Component, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAppData } from '@/lib/useAppData';
-import { base44 } from '@/api/apiClient';
+import { base44 } from '@/api/base44Client';
 import { 
   Activity, LayoutDashboard, CalendarDays, Repeat, 
   DollarSign, Users, Building2, LogOut, Menu, X, 
-  AlertTriangle, ShieldCheck, ChevronRight
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-// Blindagem contra tela branca em qualquer tela do sistema
+// Proteção contra tela branca no Dashboard e em outros módulos
 class LayoutErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -19,7 +19,7 @@ class LayoutErrorBoundary extends Component {
     return { hasError: true, error };
   }
   componentDidCatch(error, errorInfo) {
-    console.error('Erro na renderização:', error, errorInfo);
+    console.error('Erro na renderização do módulo:', error, errorInfo);
   }
   render() {
     if (this.state.hasError) {
@@ -39,9 +39,8 @@ class LayoutErrorBoundary extends Component {
 }
 
 export default function AppLayout({ children }) {
-  const { user, company, units, selectedUnitId, setSelectedUnitId, isManager } = useAppData();
+  const { user, company, isManager } = useAppData();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const navigate = useNavigate();
 
   const handleLogout = async () => {
     try {
@@ -105,7 +104,7 @@ export default function AppLayout({ children }) {
           <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
             <div className="min-w-0 flex-1">
               <span className="text-[11px] font-bold text-slate-900 dark:text-white block truncate">
-                {user?.full_name || 'Usuário'}
+                {user?.full_name || 'Administrador'}
               </span>
               <span className="text-[9px] text-slate-400 uppercase font-black block">
                 {isManager ? 'Gestor Master' : 'Profissional'}
@@ -157,7 +156,7 @@ export default function AppLayout({ children }) {
           </div>
         )}
 
-        {/* CONTEÚDO DA PÁGINA COM ERROR BOUNDARY */}
+        {/* CONTEÚDO COM ERROR BOUNDARY */}
         <main className="flex-1 overflow-y-auto">
           <LayoutErrorBoundary>
             {children || <Outlet />}
