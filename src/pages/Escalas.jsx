@@ -81,21 +81,16 @@ export default function Escalas() {
   const [selectedSectorId, setSelectedSectorId] = useState('todos');
   const [filterTurno, setFilterTurno] = useState('todos'); // 'todos' | 'diurno' | 'noturno'
 
-  // Multi-seleção de dias via CTRL
   const [selectedDays, setSelectedDays] = useState([]);
-
-  // Roll lateral de profissionais (Drag & Drop)
   const [traySearch, setTraySearch] = useState('');
   const [draggingProfId, setDraggingProfId] = useState(null);
 
-  // Relógio ao vivo
   const [liveNow, setLiveNow] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setLiveNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // Modais
   const [modalOpen, setModalOpen] = useState(false);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
@@ -151,14 +146,12 @@ export default function Escalas() {
     return days;
   }, [currentYear, currentMonth]);
 
-  // Filtro preciso de turno (diurno vs noturno)
   const isShiftMatchingTurno = (shift, filter) => {
     if (filter === 'todos') return true;
     const sType = shift.shift_type || (shift.start_time >= '19:00' || shift.start_time < '07:00' ? 'noturno' : 'diurno');
     return sType === filter;
   };
 
-  // Plantões do mês filtrados
   const monthlyShifts = useMemo(() => {
     const monthStr = String(currentMonth + 1).padStart(2, '0');
     const prefix = `${currentYear}-${monthStr}`;
@@ -180,7 +173,6 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // Lógica da Escala do Dia & Modo TV CCO
   const todayStr = `${liveNow.getFullYear()}-${String(liveNow.getMonth() + 1).padStart(2, '0')}-${String(liveNow.getDate()).padStart(2, '0')}`;
 
   const todayShiftsDetailed = useMemo(() => {
@@ -209,7 +201,7 @@ export default function Escalas() {
       
       const startTotalMin = startH * 60 + startM;
       let endTotalMin = endH * 60 + endM;
-      if (endTotalMin <= startTotalMin) endTotalMin += 24 * 60; // virada da noite
+      if (endTotalMin <= startTotalMin) endTotalMin += 24 * 60;
 
       let effectiveNowMin = nowTotalMin;
       if (endTotalMin > 24 * 60 && nowTotalMin < startTotalMin) {
@@ -221,18 +213,15 @@ export default function Escalas() {
         return;
       }
 
-      // 1. Em andamento agora
       if (effectiveNowMin >= startTotalMin && effectiveNowMin < endTotalMin) {
         emAndamento.push(shift);
         if ((endTotalMin - effectiveNowMin) <= 120) {
           proximoRendimento.push({ shift, minutesLeft: endTotalMin - effectiveNowMin });
         }
       }
-      // 2. Concluído recentemente (Regra dos 60 minutos)
       else if (effectiveNowMin >= endTotalMin && (effectiveNowMin - endTotalMin) <= 60) {
         concluidosRecentes.push({ shift, minutesAgo: effectiveNowMin - endTotalMin });
       }
-      // 3. Próximo a iniciar em 2 horas
       else if (startTotalMin > effectiveNowMin && (startTotalMin - effectiveNowMin) <= 120) {
         proximoRendimento.push({ shift, startsIn: startTotalMin - effectiveNowMin });
       }
@@ -241,7 +230,6 @@ export default function Escalas() {
     return { emAndamento, proximoRendimento, concluidosRecentes, vagasAbertasHoje, totalHoje: todayRaw.length };
   }, [shifts, todayStr, selectedSectorId, filterTurno, liveNow, professionalMap]);
 
-  // Multi-seleção CTRL
   const handleDayClick = (dateStr, e) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
@@ -253,7 +241,6 @@ export default function Escalas() {
     }
   };
 
-  // Drag & Drop
   const handleDragStart = (e, profId) => {
     setDraggingProfId(profId);
     e.dataTransfer.setData('text/plain', profId);
@@ -306,7 +293,6 @@ export default function Escalas() {
     }
   };
 
-  // Preenchimento em lote (CTRL)
   const handleSaveBatch = async (e) => {
     e.preventDefault();
     if (!batchData.sector_id || !batchData.professional_id) {
@@ -342,7 +328,6 @@ export default function Escalas() {
     }
   };
 
-  // Salvar plantão individual
   const handleSaveShift = async (e) => {
     e.preventDefault();
     if (!formData.sector_id || !formData.date) {
@@ -405,22 +390,22 @@ export default function Escalas() {
       await base44.entities.Shift.delete(shiftId);
       await syncGlobalData();
     } catch (err) {
-      alert('Erro ao excluir: ' + err.message);
+      alert('Erro ao excluir plantão: ' + err.message);
     }
   };
 
   const getStatusBadge = (shift) => {
     const isVago = shift.status === 'vago' || !shift.professional_id;
     if (isVago) {
-      return { dot: 'bg-rose-500 shadow-md shadow-rose-500/50 animate-pulse', label: 'Vaga no Mural', text: 'text-rose-400 font-black' };
+      return { dot: 'bg-rose-500 shadow-md shadow-rose-500/50 animate-pulse', label: 'Vaga no Mural', text: 'text-rose-600 dark:text-rose-400 font-black' };
     }
     if (shift.date < todayStr) {
-      return { dot: 'bg-slate-500', label: 'Concluído', text: 'text-slate-400 font-bold' };
+      return { dot: 'bg-slate-400 dark:bg-slate-500', label: 'Concluído', text: 'text-slate-500 dark:text-slate-400 font-bold' };
     }
     if (shift.date === todayStr) {
-      return { dot: 'bg-emerald-400 shadow-md shadow-emerald-500/50 animate-ping', label: 'Ao Vivo Hoje', text: 'text-emerald-400 font-black' };
+      return { dot: 'bg-emerald-500 shadow-md shadow-emerald-500/50 animate-ping', label: 'Ao Vivo Hoje', text: 'text-emerald-600 dark:text-emerald-400 font-black' };
     }
-    return { dot: 'bg-sky-400', label: 'Programado', text: 'text-sky-400 font-bold' };
+    return { dot: 'bg-sky-500', label: 'Programado', text: 'text-sky-600 dark:text-sky-400 font-bold' };
   };
 
   const filteredTrayProfs = useMemo(() => {
@@ -433,22 +418,22 @@ export default function Escalas() {
   }, [professionals, traySearch]);
 
   return (
-    <div className={`p-3 md:p-6 space-y-4 font-sans bg-slate-950 text-slate-100 ${activeTab === 'tv' ? 'fixed inset-0 z-50 bg-slate-950 overflow-y-auto p-6 md:p-8' : ''}`}>
+    <div className={`p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200 ${activeTab === 'tv' ? 'fixed inset-0 z-50 bg-slate-950 text-white overflow-y-auto p-6 md:p-8' : ''}`}>
       
-      {/* 1. SELETOR INTELIGENTE DE SEÇÕES (COMPACTO, SUPORTA 100+ SETORES SEM POLUIÇÃO) */}
-      <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-3xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-3 print:hidden">
+      {/* 1. SELETOR INTELIGENTE DE SEÇÕES (COMPACTO) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 print:hidden transition-colors">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 shrink-0">
-            <Building2 className="w-4 h-4 text-sky-400" /> Seção / Setor:
+            <Building2 className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Seção / Setor:
           </div>
 
           <div className="w-full max-w-xs">
             <Select value={selectedSectorId} onValueChange={setSelectedSectorId}>
-              <SelectTrigger className="h-9 text-xs font-black bg-slate-950 border-slate-800 text-white rounded-2xl focus:ring-sky-500">
+              <SelectTrigger className="h-9 text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl">
                 <SelectValue placeholder="Selecione o setor..." />
               </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-slate-800 text-white max-h-72">
-                <SelectItem value="todos" className="font-bold text-sky-400">
+              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 max-h-72">
+                <SelectItem value="todos" className="font-bold text-sky-600 dark:text-sky-400">
                   🏥 Todas as Seções do Hospital ({sectors.length})
                 </SelectItem>
                 {sectors.map(sec => (
@@ -461,19 +446,21 @@ export default function Escalas() {
           </div>
 
           {selectedSectorId !== 'todos' && (
-            <span className="hidden lg:inline-block px-3 py-1 rounded-xl text-xs font-black bg-sky-500/10 text-sky-400 border border-sky-500/20 truncate">
-              Setor Ativo: {sectorMap[selectedSectorId]?.name}
+            <span className="hidden lg:inline-block px-3 py-1 rounded-xl text-xs font-black bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20 truncate">
+              Setor: {sectorMap[selectedSectorId]?.name}
             </span>
           )}
         </div>
 
-        {/* FILTRO DE DIURNO / NOTURNO (COM CLIQUE 100% FUNCIONAL) */}
-        <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-2xl border border-slate-800 shrink-0">
+        {/* FILTRO DE DIURNO / NOTURNO */}
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shrink-0">
           <button
             type="button"
             onClick={() => setFilterTurno('todos')}
             className={`px-3 py-1 rounded-xl text-xs font-black transition-all ${
-              filterTurno === 'todos' ? 'bg-slate-800 text-white shadow' : 'text-slate-500 hover:text-white'
+              filterTurno === 'todos' 
+                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' 
+                : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             Todos
@@ -482,42 +469,46 @@ export default function Escalas() {
             type="button"
             onClick={() => setFilterTurno('diurno')}
             className={`px-3 py-1 rounded-xl text-xs font-black transition-all flex items-center gap-1 ${
-              filterTurno === 'diurno' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'text-slate-500 hover:text-white'
+              filterTurno === 'diurno' 
+                ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 shadow-sm' 
+                : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <Sun className="w-3 h-3 text-amber-400" /> Diurno (07-19h)
+            <Sun className="w-3 h-3 text-amber-500" /> Diurno (07-19h)
           </button>
           <button
             type="button"
             onClick={() => setFilterTurno('noturno')}
             className={`px-3 py-1 rounded-xl text-xs font-black transition-all flex items-center gap-1 ${
-              filterTurno === 'noturno' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' : 'text-slate-500 hover:text-white'
+              filterTurno === 'noturno' 
+                ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-500/30 shadow-sm' 
+                : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <Moon className="w-3 h-3 text-indigo-400" /> Noturno (19-07h)
+            <Moon className="w-3 h-3 text-indigo-500" /> Noturno (19-07h)
           </button>
         </div>
       </div>
 
-      {/* 2. BARRA DE COMANDO: ABAS (MENSAL, ESCALA DO DIA, TV CCO) E BOTÕES */}
-      <div className="bg-slate-900 border border-slate-800 p-4 rounded-3xl shadow-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:hidden">
+      {/* 2. BARRA DE COMANDO: ABAS E BOTÕES */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:hidden transition-colors">
         
         <div className="flex items-center gap-3">
-          <div className="flex items-center bg-slate-950 rounded-2xl p-1 border border-slate-800">
-            <button onClick={handlePrevMonth} className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-300">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-950 rounded-2xl p-1 border border-slate-200 dark:border-slate-800">
+            <button onClick={handlePrevMonth} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-700 dark:text-slate-300">
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <button onClick={handleToday} className="px-3 py-1 text-xs font-black text-white">
+            <button onClick={handleToday} className="px-3 py-1 text-xs font-black text-slate-900 dark:text-white">
               Hoje
             </button>
-            <button onClick={handleNextMonth} className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-300">
+            <button onClick={handleNextMonth} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-700 dark:text-slate-300">
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
 
           <div>
-            <h2 className="text-xl font-black text-white flex items-center gap-2">
-              <CalendarDays className="w-5 h-5 text-sky-400" />
+            <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <CalendarDays className="w-5 h-5 text-sky-600 dark:text-sky-400" />
               {MONTH_NAMES[currentMonth]} {currentYear}
             </h2>
             <p className="text-xs text-slate-400 font-semibold">
@@ -526,13 +517,13 @@ export default function Escalas() {
           </div>
         </div>
 
-        {/* NAVEGAÇÃO ENTRE TELAS: MENSAL | ESCALA DO DIA | MODO TV */}
+        {/* NAVEGAÇÃO DE TELAS */}
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center bg-slate-950 p-1 rounded-2xl border border-slate-800">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
             <button
               onClick={() => setActiveTab('mensal')}
               className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
-                activeTab === 'mensal' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+                activeTab === 'mensal' ? 'bg-white dark:bg-sky-600 text-sky-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               Grade Mensal
@@ -540,32 +531,32 @@ export default function Escalas() {
             <button
               onClick={() => setActiveTab('dia')}
               className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
-                activeTab === 'dia' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+                activeTab === 'dia' ? 'bg-white dark:bg-sky-600 text-sky-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Clock className="w-3.5 h-3.5" /> Escala do Dia
             </button>
           </div>
 
-          {/* MODO TV CCO */}
           <Button
             variant="outline"
             onClick={() => setActiveTab(activeTab === 'tv' ? 'mensal' : 'tv')}
-            className={`h-9 px-4 text-xs font-black rounded-2xl gap-2 border-slate-700 shadow-md ${
-              activeTab === 'tv' ? 'bg-rose-600 text-white border-rose-500' : 'bg-slate-950 text-amber-400 hover:bg-slate-800'
+            className={`h-9 px-4 text-xs font-black rounded-2xl gap-2 shadow-sm ${
+              activeTab === 'tv' 
+                ? 'bg-rose-600 text-white border-rose-500' 
+                : 'bg-slate-50 dark:bg-slate-950 text-amber-600 dark:text-amber-400 border-slate-200 dark:border-slate-800 hover:bg-slate-100'
             }`}
           >
             {activeTab === 'tv' ? <Minimize2 className="w-4 h-4" /> : <MonitorPlay className="w-4 h-4" />}
             <span>{activeTab === 'tv' ? 'Sair da TV' : 'Modo TV CCO'}</span>
           </Button>
 
-          {/* IMPRIMIR PARA MURAL DO HOSPITAL */}
           <Button
             onClick={() => setPrintPreviewOpen(true)}
-            className="h-9 px-4 text-xs font-black rounded-2xl gap-2 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 shadow-md"
+            className="h-9 px-4 text-xs font-black rounded-2xl gap-2 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 shadow-sm"
             title="Gerar folha impressa para afixar no mural"
           >
-            <Printer className="w-4 h-4 text-sky-400" />
+            <Printer className="w-4 h-4 text-sky-600 dark:text-sky-400" />
             <span>Imprimir Mural</span>
           </Button>
 
@@ -586,7 +577,7 @@ export default function Escalas() {
                 });
                 setModalOpen(true);
               }} 
-              className="h-9 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 text-white text-xs font-black px-5 rounded-2xl shadow-lg shadow-sky-600/30 gap-1.5"
+              className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-5 rounded-2xl shadow-md gap-1.5"
             >
               <Plus className="w-4 h-4" /> Lançar Plantão
             </Button>
@@ -596,7 +587,7 @@ export default function Escalas() {
 
       {/* 3. DOCA FLUTUANTE DE DIAS SELECIONADOS (CTRL) */}
       {selectedDays.length > 0 && (
-        <div className="p-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-3xl shadow-2xl flex items-center justify-between gap-4 animate-in fade-in border border-white/20 print:hidden">
+        <div className="p-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-3xl shadow-xl flex items-center justify-between gap-4 animate-in fade-in print:hidden">
           <div className="flex items-center gap-2.5 text-xs font-black">
             <MousePointerClick className="w-5 h-5 animate-pulse" />
             <span>{selectedDays.length} dias selecionados com o atalho CTRL</span>
@@ -627,31 +618,30 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 4. VISÃO A: ESCALA DO DIA (PRÉVIA COMPLETA & ORGANIZADA)                  */}
+      {/* 4. VISÃO A: ESCALA DO DIA (TABELA ORGANIZADA)                             */}
       {/* ========================================================================= */}
       {activeTab === 'dia' && (
         <div className="space-y-5">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-2xl space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
-                <span className="text-[10px] font-black uppercase text-sky-400 tracking-wider block">Escala Operacional Diária</span>
-                <h3 className="text-xl font-black text-white mt-0.5">
+                <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400 tracking-wider block">Escala Operacional Diária</span>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
                   Plantões de Hoje ({liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })})
                 </h3>
               </div>
 
               <Button
                 onClick={() => setPrintPreviewOpen(true)}
-                className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-4 rounded-xl gap-2 shadow-md"
+                className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-4 rounded-xl gap-2 shadow-sm"
               >
                 <Printer className="w-4 h-4" /> Imprimir Folha do Mural
               </Button>
             </div>
 
-            {/* TABELA DA ESCALA DO DIA */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] font-black border-b border-slate-800">
+                <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 uppercase text-[10px] font-black border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="py-3 px-4">Seção / Setor</th>
                     <th className="py-3 px-4">Horário & Turno</th>
@@ -661,7 +651,7 @@ export default function Escalas() {
                     <th className="py-3 px-4 text-right">Ação</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800 font-medium">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                   {todayShiftsDetailed.totalHoje === 0 ? (
                     <tr>
                       <td colSpan="6" className="py-8 text-center text-slate-400">
@@ -676,21 +666,21 @@ export default function Escalas() {
                       const status = getStatusBadge(shift);
 
                       return (
-                        <tr key={shift.id} className="hover:bg-slate-850/60 transition-colors">
-                          <td className="py-3 px-4 font-black text-white">
+                        <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
+                          <td className="py-3 px-4 font-black text-slate-900 dark:text-white">
                             {sector?.name || 'Setor'}
                           </td>
-                          <td className="py-3 px-4 font-mono font-bold text-sky-400">
+                          <td className="py-3 px-4 font-mono font-bold text-sky-600 dark:text-sky-400">
                             {shift.start_time} às {shift.end_time}
                           </td>
-                          <td className="py-3 px-4 font-black text-slate-100">
+                          <td className="py-3 px-4 font-black text-slate-900 dark:text-slate-100">
                             {isVago ? (
-                              <span className="text-rose-400 animate-pulse font-black">⚠️ Vaga no Mural (Sem profissional)</span>
+                              <span className="text-rose-600 dark:text-rose-400 animate-pulse font-black">⚠️ Vaga no Mural (Sem profissional)</span>
                             ) : (
                               formatFullName(prof?.name)
                             )}
                           </td>
-                          <td className="py-3 px-4 font-mono text-slate-400">
+                          <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400">
                             {prof?.document || '—'}
                           </td>
                           <td className="py-3 px-4 text-center">
@@ -705,7 +695,7 @@ export default function Escalas() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleSendToMural(shift)}
-                                className="h-7 text-[10px] font-black border-rose-500/40 text-rose-400 hover:bg-rose-500/10 px-2 rounded-lg"
+                                className="h-7 text-[10px] font-black border-rose-200 dark:border-rose-500/40 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 px-2 rounded-lg"
                               >
                                 Mandar p/ Mural
                               </Button>
@@ -723,7 +713,7 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 5. VISÃO B: MODO TV CCO (CENTRO DE COMANDO COM REGRA DOS 60 MINUTOS)     */}
+      {/* 5. VISÃO B: MODO TV CCO (COM CONTRASTE NOTURNO PERMANENTE)                 */}
       {/* ========================================================================= */}
       {activeTab === 'tv' && (
         <div className="space-y-6">
@@ -737,7 +727,7 @@ export default function Escalas() {
             </div>
           </div>
 
-          {/* PLANTÕES EM ANDAMENTO */}
+          {/* EM ANDAMENTO */}
           <div className="space-y-2">
             <h3 className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -769,7 +759,7 @@ export default function Escalas() {
             </div>
           </div>
 
-          {/* PRÓXIMA RENDIÇÃO (A SEGUIR) */}
+          {/* PRÓXIMA RENDIÇÃO */}
           <div className="space-y-2">
             <h3 className="text-xs font-black uppercase text-sky-400 tracking-wider flex items-center gap-2">
               <ArrowRight className="w-3.5 h-3.5" /> Próxima Rendição (Rendimento a Seguir)
@@ -802,10 +792,10 @@ export default function Escalas() {
             </div>
           </div>
 
-          {/* LACUNA INFERIOR: PLANTÕES CONCLUÍDOS RECENTEMENTE (ÚLTIMOS 60 MINUTOS) */}
+          {/* HISTÓRICO RECENTE 60 MINUTOS */}
           <div className="pt-4 border-t border-slate-800 space-y-2">
             <div className="flex justify-between items-center text-slate-400 text-xs font-black uppercase">
-              <span>Plantões Concluídos Recentemente (Ficam visíveis por até 60 minutos)</span>
+              <span>Plantões Concluídos Recentemente (Histórico dos últimos 60 minutos)</span>
               <span>{todayShiftsDetailed.concluidosRecentes.length} no histórico</span>
             </div>
 
@@ -839,24 +829,24 @@ export default function Escalas() {
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
           
-          {/* ROLL DE PROFISSIONAIS COM DRAG & DROP */}
+          {/* ROLL DE PROFISSIONAIS */}
           {isManager && (
-            <aside className="w-full lg:w-72 bg-slate-900 border border-slate-800 rounded-3xl p-4 shadow-2xl shrink-0 space-y-3">
+            <aside className="w-full lg:w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3 transition-colors">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
-                  <HeartPulse className="w-4 h-4 text-sky-400" />
+                <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <HeartPulse className="w-4 h-4 text-sky-600 dark:text-sky-400" />
                   Roll de Profissionais
                 </span>
                 <span className="text-[10px] font-bold text-slate-400">Arraste p/ o dia</span>
               </div>
 
               <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <Input
-                  placeholder="Filtrar médico/enfermeiro..."
+                  placeholder="Buscar profissional..."
                   value={traySearch}
                   onChange={e => setTraySearch(e.target.value)}
-                  className="pl-8 h-8 text-xs bg-slate-950 border-slate-800 text-white rounded-xl"
+                  className="pl-8 h-8 text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl"
                 />
               </div>
 
@@ -866,15 +856,15 @@ export default function Escalas() {
                     key={prof.id}
                     draggable
                     onDragStart={(e) => handleDragStart(e, prof.id)}
-                    className="p-2.5 rounded-2xl border border-slate-800 bg-slate-950 hover:border-sky-500 hover:bg-slate-900 transition-all cursor-grab active:cursor-grabbing select-none shadow-sm flex items-center gap-2.5"
+                    className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:border-sky-500 hover:bg-white dark:hover:bg-slate-900 transition-all cursor-grab active:cursor-grabbing select-none shadow-sm flex items-center gap-2.5"
                   >
-                    <GripVertical className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                    <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-mono font-black text-[10px] text-sky-400 shrink-0">
+                    <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-mono font-black text-[10px] text-sky-600 dark:text-sky-400 shrink-0">
                       {getInitials(prof.name)}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="font-black text-xs text-white truncate">{formatFullName(prof.name)}</div>
-                      <div className="text-[10px] text-slate-400 font-semibold truncate">{prof.specialty || 'Clínica Geral'}</div>
+                      <div className="font-black text-xs text-slate-900 dark:text-white truncate">{formatFullName(prof.name)}</div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate">{prof.specialty || 'Clínica Geral'}</div>
                     </div>
                   </div>
                 ))}
@@ -882,23 +872,23 @@ export default function Escalas() {
             </aside>
           )}
 
-          {/* GRADE DO CALENDÁRIO COM CABEÇALHO COLORIDO NAS DATAS */}
-          <div className="flex-1 w-full min-w-0 bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
+          {/* GRADE CALENDÁRIO COM CABEÇALHOS COLORIDOS */}
+          <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm transition-colors">
             
             {/* CABEÇALHO DOS DIAS DA SEMANA */}
-            <div className="grid grid-cols-7 border-b border-slate-800 bg-slate-950 text-center py-2.5">
+            <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-center py-2.5">
               {WEEKDAYS.map(day => (
-                <div key={day.short} className="text-xs font-black uppercase tracking-wider text-slate-400">
-                  <span className={day.weekend ? 'text-indigo-400 font-black' : ''}>{day.short}</span>
+                <div key={day.short} className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                  <span className={day.weekend ? 'text-indigo-600 dark:text-indigo-400 font-black' : ''}>{day.short}</span>
                 </div>
               ))}
             </div>
 
-            {/* CÉLULAS DOS DIAS COM BARRA DE COR DE ALTO CONTRASTE */}
-            <div className="grid grid-cols-7 divide-x divide-y divide-slate-800">
+            {/* CÉLULAS DOS DIAS */}
+            <div className="grid grid-cols-7 divide-x divide-y divide-slate-200 dark:divide-slate-800">
               
               {Array.from({ length: daysInMonth[0].getDay() }).map((_, idx) => (
-                <div key={`empty-${idx}`} className="min-h-[170px] bg-slate-950/40"></div>
+                <div key={`empty-${idx}`} className="min-h-[170px] bg-slate-50/60 dark:bg-slate-950/40"></div>
               ))}
 
               {daysInMonth.map(dateObj => {
@@ -916,10 +906,10 @@ export default function Escalas() {
                     onDrop={(e) => handleDropOnDay(e, dateStr)}
                     className={`min-h-[180px] p-2 transition-all flex flex-col justify-between select-none ${
                       isSelected
-                        ? 'bg-indigo-950/50 ring-2 ring-indigo-500 z-10'
+                        ? 'bg-indigo-50 dark:bg-indigo-950/50 ring-2 ring-indigo-500 z-10'
                         : isToday
-                        ? 'bg-sky-950/20'
-                        : 'hover:bg-slate-850/50'
+                        ? 'bg-sky-50/60 dark:bg-sky-950/20'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-850/50'
                     }`}
                   >
                     {/* BARRA DE ALTO CONTRASTE NA DATA */}
@@ -927,8 +917,8 @@ export default function Escalas() {
                       isToday
                         ? 'bg-gradient-to-r from-sky-600 to-cyan-600 border-sky-400 text-white font-black'
                         : isWeekend
-                        ? 'bg-indigo-950/80 border-indigo-800/60 text-indigo-300 font-bold'
-                        : 'bg-slate-800 border-slate-700 text-slate-200 font-bold'
+                        ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-200 dark:border-indigo-800/60 text-indigo-800 dark:text-indigo-300 font-bold'
+                        : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-bold'
                     }`}>
                       <span className="text-xs font-black">{dateObj.getDate()}</span>
                       
@@ -951,7 +941,7 @@ export default function Escalas() {
                             setModalOpen(true);
                           }}
                           title="Lançar plantão"
-                          className="p-0.5 hover:bg-white/20 rounded text-inherit"
+                          className="p-0.5 hover:bg-black/10 dark:hover:bg-white/20 rounded text-inherit"
                         >
                           <Plus className="w-3.5 h-3.5" />
                         </button>
@@ -987,25 +977,23 @@ export default function Escalas() {
                                 setModalOpen(true);
                               }
                             }}
-                            className={`p-2 rounded-2xl border transition-all cursor-pointer shadow-md ${
+                            className={`p-2 rounded-2xl border transition-all cursor-pointer shadow-sm ${
                               isVago 
-                                ? 'bg-rose-950/30 border-rose-500/50 hover:border-rose-400' 
-                                : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                                ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-500/50 hover:border-rose-400' 
+                                : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                             }`}
                           >
                             <div className="flex items-center justify-between text-[10px] font-black uppercase text-slate-400 mb-1">
-                              <span className="truncate max-w-[85px] text-sky-400 font-bold">{sector?.name || 'Setor'}</span>
-                              <span className="font-mono text-slate-400">{shift.start_time}-{shift.end_time}</span>
+                              <span className="truncate max-w-[85px] text-sky-600 dark:text-sky-400 font-bold">{sector?.name || 'Setor'}</span>
+                              <span className="font-mono text-slate-500">{shift.start_time}-{shift.end_time}</span>
                             </div>
 
-                            {/* BOLINHA COM O STATUS LOGO ABAIXO */}
                             <div className="flex items-center gap-1.5 mb-1">
                               <span className={`w-2 h-2 rounded-full shrink-0 ${badge.dot}`}></span>
                               <span className={`text-[10px] ${badge.text}`}>{badge.label}</span>
                             </div>
 
-                            {/* NOME E SOBRENOME EM DESTAQUE */}
-                            <div className="font-black text-xs text-white truncate">
+                            <div className="font-black text-xs text-slate-900 dark:text-white truncate">
                               {isVago ? '⚠️ Vaga no Mural' : formatFullName(prof?.name)}
                             </div>
 
@@ -1016,7 +1004,7 @@ export default function Escalas() {
                                   e.stopPropagation();
                                   handleSendToMural(shift);
                                 }}
-                                className="mt-1.5 w-full py-0.5 text-[9px] font-black uppercase rounded bg-slate-900 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-800 transition-all flex items-center justify-center gap-1"
+                                className="mt-1.5 w-full py-0.5 text-[9px] font-black uppercase rounded bg-slate-100 dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-500/20 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-800 transition-all flex items-center justify-center gap-1"
                               >
                                 <Flame className="w-3 h-3 text-rose-500" /> Mandar p/ Mural
                               </button>
@@ -1039,7 +1027,6 @@ export default function Escalas() {
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white text-slate-900 border-none p-8">
           <div className="space-y-6">
-            {/* CABEÇALHO OFICIAL DE IMPRESSÃO */}
             <div className="flex items-center justify-between border-b-2 border-slate-900 pb-4">
               <div>
                 <h1 className="text-xl font-black uppercase tracking-wider">{company?.name || 'HOSPITAL PRINCIPAL'}</h1>
@@ -1054,7 +1041,6 @@ export default function Escalas() {
               </div>
             </div>
 
-            {/* TABELA FORMAL PARA MURAL */}
             <div className="space-y-2">
               <h4 className="text-xs font-black uppercase tracking-wider text-slate-700">Equipe Escalada por Setor & Turno</h4>
               
@@ -1103,22 +1089,22 @@ export default function Escalas() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL: PREENCHIMENTO EM LOTE (CTRL) */}
+      {/* MODAL LOTE (CTRL) */}
       <Dialog open={batchModalOpen} onOpenChange={setBatchModalOpen}>
-        <DialogContent className="sm:max-w-md bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
           <DialogHeader>
             <DialogTitle className="text-base font-black flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-indigo-400" />
+              <Sparkles className="w-5 h-5 text-indigo-600" />
               Preenchimento em Lote ({selectedDays.length} Dias)
             </DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleSaveBatch} className="space-y-3 py-2 text-xs">
             <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-300">Profissional a Escalar *</Label>
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Profissional a Escalar *</Label>
               <Select value={batchData.professional_id} onValueChange={v => setBatchData({ ...batchData, professional_id: v })}>
-                <SelectTrigger className="h-9 bg-slate-950 border-slate-800"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                <SelectTrigger className="h-9 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent className="bg-white dark:bg-slate-900">
                   {professionals.filter(p => p.status === 'ativo').map(p => (
                     <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                   ))}
@@ -1127,10 +1113,10 @@ export default function Escalas() {
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-300">Seção / Setor *</Label>
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Seção / Setor *</Label>
               <Select value={batchData.sector_id} onValueChange={v => setBatchData({ ...batchData, sector_id: v })}>
-                <SelectTrigger className="h-9 bg-slate-950 border-slate-800"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                <SelectTrigger className="h-9 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent className="bg-white dark:bg-slate-900">
                   {sectors.map(s => (
                     <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
                   ))}
@@ -1140,17 +1126,17 @@ export default function Escalas() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-300">Início</Label>
-                <Input type="time" value={batchData.start_time} onChange={e => setBatchData({ ...batchData, start_time: e.target.value })} className="h-9 bg-slate-950 border-slate-800" />
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Início</Label>
+                <Input type="time" value={batchData.start_time} onChange={e => setBatchData({ ...batchData, start_time: e.target.value })} className="h-9 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-300">Término</Label>
-                <Input type="time" value={batchData.end_time} onChange={e => setBatchData({ ...batchData, end_time: e.target.value })} className="h-9 bg-slate-950 border-slate-800" />
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Término</Label>
+                <Input type="time" value={batchData.end_time} onChange={e => setBatchData({ ...batchData, end_time: e.target.value })} className="h-9 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800" />
               </div>
             </div>
 
             <DialogFooter className="pt-3 gap-2">
-              <Button type="button" variant="outline" onClick={() => setBatchModalOpen(false)} className="h-9 text-xs border-slate-800">Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => setBatchModalOpen(false)} className="h-9 text-xs">Cancelar</Button>
               <Button type="submit" disabled={submitting} className="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-5 rounded-xl">
                 Confirmar p/ {selectedDays.length} Dias
               </Button>
@@ -1159,28 +1145,28 @@ export default function Escalas() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL: LANÇAR OU EDITAR PLANTÃO INDIVIDUAL */}
+      {/* MODAL INDIVIDUAL */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-md bg-slate-900 border-slate-800 text-white">
+        <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
           <DialogHeader>
             <DialogTitle className="text-base font-black flex items-center gap-2">
-              <CalendarDays className="w-5 h-5 text-sky-400" />
-              {editingShiftId ? 'Editar Plantão' : 'Lançar Plantão'}
+              <CalendarDays className="w-5 h-5 text-sky-600" />
+              {editingShiftId ? 'Editar Plantão da Escala' : 'Lançar Novo Plantão'}
             </DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleSaveShift} className="space-y-3.5 py-2 text-xs">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-300">Data *</Label>
-                <Input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} className="h-9 bg-slate-950 border-slate-800" />
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Data *</Label>
+                <Input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} className="h-9 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800" />
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-300">Seção / Setor *</Label>
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Seção / Setor *</Label>
                 <Select value={formData.sector_id} onValueChange={v => setFormData({ ...formData, sector_id: v })}>
-                  <SelectTrigger className="h-9 bg-slate-950 border-slate-800"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                  <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                  <SelectTrigger className="h-9 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent className="bg-white dark:bg-slate-900">
                     {sectors.map(s => (
                       <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
                     ))}
@@ -1191,18 +1177,17 @@ export default function Escalas() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-300">Hora Início</Label>
-                <Input type="time" value={formData.start_time} onChange={e => setFormData({ ...formData, start_time: e.target.value })} className="h-9 bg-slate-950 border-slate-800" />
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Hora Início</Label>
+                <Input type="time" value={formData.start_time} onChange={e => setFormData({ ...formData, start_time: e.target.value })} className="h-9 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-300">Hora Término</Label>
-                <Input type="time" value={formData.end_time} onChange={e => setFormData({ ...formData, end_time: e.target.value })} className="h-9 bg-slate-950 border-slate-800" />
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Hora Término</Label>
+                <Input type="time" value={formData.end_time} onChange={e => setFormData({ ...formData, end_time: e.target.value })} className="h-9 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800" />
               </div>
             </div>
 
-            {/* ESCOLHA: ALOCAR OU MANDAR P/ MURAL */}
-            <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2.5">
-              <Label className="text-xs font-black uppercase text-slate-400">Destino do Plantão</Label>
+            <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5">
+              <Label className="text-xs font-black uppercase text-slate-500">Destino do Plantão</Label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -1210,7 +1195,7 @@ export default function Escalas() {
                   className={`p-2.5 rounded-xl border text-xs font-black text-center transition-all ${
                     formData.action_type === 'alocar'
                       ? 'bg-sky-600 text-white shadow-md'
-                      : 'bg-slate-900 border-slate-800 text-slate-400'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
                   }`}
                 >
                   Alocar Profissional
@@ -1222,7 +1207,7 @@ export default function Escalas() {
                   className={`p-2.5 rounded-xl border text-xs font-black text-center transition-all flex items-center justify-center gap-1.5 ${
                     formData.action_type === 'mural'
                       ? 'bg-rose-600 text-white shadow-md'
-                      : 'bg-slate-900 border-slate-800 text-slate-400'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
                   }`}
                 >
                   <Flame className="w-3.5 h-3.5" /> Mandar p/ Mural
@@ -1231,10 +1216,10 @@ export default function Escalas() {
 
               {formData.action_type === 'alocar' ? (
                 <div className="space-y-1 pt-1">
-                  <Label className="text-xs font-bold text-slate-300">Profissional Escalado</Label>
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Profissional Escalado</Label>
                   <Select value={formData.professional_id} onValueChange={v => setFormData({ ...formData, professional_id: v })}>
-                    <SelectTrigger className="h-9 bg-slate-900 border-slate-800"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                    <SelectTrigger className="h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent className="bg-white dark:bg-slate-900">
                       {professionals.filter(p => p.status === 'ativo').map(p => (
                         <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                       ))}
@@ -1242,7 +1227,7 @@ export default function Escalas() {
                   </Select>
                 </div>
               ) : (
-                <p className="text-[11px] text-rose-400 bg-rose-500/10 p-2 rounded-xl border border-rose-500/20">
+                <p className="text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 p-2 rounded-xl border border-rose-200 dark:border-rose-500/20">
                   📢 O plantão será publicado no Mural para profissionais da mesma categoria se candidatarem.
                 </p>
               )}
@@ -1250,11 +1235,11 @@ export default function Escalas() {
 
             <DialogFooter className="pt-2 flex-col sm:flex-row gap-2">
               {editingShiftId && (
-                <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-9 text-xs text-rose-400 hover:bg-rose-500/20 mr-auto">
+                <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-9 text-xs text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/20 mr-auto">
                   <Trash2 className="w-4 h-4 mr-1" /> Excluir
                 </Button>
               )}
-              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="h-9 text-xs border-slate-800">Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="h-9 text-xs">Cancelar</Button>
               <Button type="submit" disabled={submitting} className="h-9 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-xl">
                 {submitting ? 'Salvando...' : 'Confirmar'}
               </Button>

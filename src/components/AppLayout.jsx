@@ -27,10 +27,10 @@ class LayoutErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-8 max-w-xl mx-auto my-12 bg-slate-900 border border-slate-800 rounded-3xl text-center shadow-2xl text-white">
+        <div className="p-8 max-w-xl mx-auto my-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl text-center shadow-2xl text-slate-900 dark:text-white">
           <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
           <h2 className="text-lg font-black">Instabilidade no Módulo</h2>
-          <p className="text-xs text-slate-400 my-3">{this.state.error?.message || 'Erro inesperado na visualização.'}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 my-3">{this.state.error?.message || 'Erro inesperado na visualização.'}</p>
           <Button onClick={() => window.location.reload()} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-10 px-6">
             Recarregar Página
           </Button>
@@ -66,7 +66,7 @@ export default function AppLayout({ children }) {
     }
   });
 
-  const [theme, setTheme] = useState('dark');
+  const [theme, setTheme] = useState('light');
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
   useEffect(() => {
@@ -74,21 +74,30 @@ export default function AppLayout({ children }) {
     return () => clearInterval(timer);
   }, []);
 
+  // Inicialização rigorosa do Tema Diurno / Noturno
   useEffect(() => {
     try {
-      const savedTheme = window.localStorage.getItem('hospital-intelligence-theme') || 'dark';
+      const savedTheme = window.localStorage.getItem('hospital-intelligence-theme') || 'light';
       setTheme(savedTheme);
-      document.documentElement.classList.toggle('dark', savedTheme === 'dark');
+      if (savedTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
     } catch {
-      setTheme('dark');
-      document.documentElement.classList.add('dark');
+      setTheme('light');
+      document.documentElement.classList.remove('dark');
     }
   }, []);
 
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
     setTheme(nextTheme);
-    document.documentElement.classList.toggle('dark', nextTheme === 'dark');
+    if (nextTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
     try {
       window.localStorage.setItem('hospital-intelligence-theme', nextTheme);
     } catch {}
@@ -102,7 +111,6 @@ export default function AppLayout({ children }) {
     window.location.href = '/login';
   };
 
-  // Notificações reais: Vagas ativas no mural que ainda não foram marcadas como lidas
   const userCategory = currentProfessional?.category || (currentProfessional?.specialty?.toLowerCase().includes('enferm') ? 'enfermeiro' : 'medico');
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -119,7 +127,6 @@ export default function AppLayout({ children }) {
     return true;
   });
 
-  // Lista de notificações pendentes (não lidas)
   const unreadMuralShifts = rawMuralShifts.filter(s => !readNotifIds.includes(s.id));
 
   const handleMarkAsRead = (shiftId) => {
@@ -166,17 +173,17 @@ export default function AppLayout({ children }) {
   }[userAppRole] || 'Profissional';
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-950 font-sans text-slate-100">
+    <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
-      {/* SIDEBAR DESKTOP */}
-      <aside className="hidden md:flex w-64 flex-col bg-slate-900 border-r border-slate-800 shrink-0 select-none shadow-2xl print:hidden">
-        <div className="p-4 flex items-center gap-3 border-b border-slate-800 bg-slate-950/40">
+      {/* SIDEBAR DESKTOP RESPONSIVA AO TEMA */}
+      <aside className="hidden md:flex w-64 flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 select-none shadow-xl print:hidden transition-colors">
+        <div className="p-4 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-sky-500/20 shrink-0 ring-1 ring-white/20">
             <Activity className="w-5 h-5" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-base font-black tracking-tight text-white flex items-center gap-1">
-              ScaleMedic <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-400 font-mono">PRO</span>
+            <h1 className="text-base font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-1">
+              ScaleMedic <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-600 dark:text-sky-400 font-mono">PRO</span>
             </h1>
             <p className="text-[10px] text-slate-400 font-bold truncate">{company?.name || 'Hospital Principal'}</p>
           </div>
@@ -194,7 +201,7 @@ export default function AppLayout({ children }) {
                   `flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all ${
                     isActive 
                       ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-lg shadow-sky-600/30' 
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
                   }`
                 }
               >
@@ -212,20 +219,21 @@ export default function AppLayout({ children }) {
           })}
         </nav>
 
-        <div className="p-3 border-t border-slate-800 bg-slate-950/50">
-          <div className="p-2.5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-2 shadow-inner">
+        {/* PERFIL E LOGOUT */}
+        <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50">
+          <div className="p-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 shadow-sm">
             <div className="min-w-0 flex-1">
-              <span className="text-xs font-black text-white block truncate">
+              <span className="text-xs font-black text-slate-900 dark:text-white block truncate">
                 {user?.full_name || 'Usuário'}
               </span>
-              <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider block truncate">
+              <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider block truncate">
                 {roleBadgeLabel}
               </span>
             </div>
             <button 
               onClick={handleLogout} 
               title="Sair do sistema" 
-              className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors"
+              className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-colors"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -234,28 +242,28 @@ export default function AppLayout({ children }) {
       </aside>
 
       {/* ÁREA PRINCIPAL */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-950">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-100 dark:bg-slate-950 transition-colors">
         
         {/* HEADER SUPERIOR */}
-        <header className="bg-slate-900/90 backdrop-blur-xl border-b border-slate-800 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4 shrink-0 shadow-xl z-30 print:hidden">
+        <header className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4 shrink-0 shadow-sm z-30 print:hidden transition-colors">
           
           <div className="flex items-center gap-3">
             <div className="md:hidden flex items-center gap-2">
               <div className="w-8 h-8 rounded-xl bg-sky-600 flex items-center justify-center text-white">
                 <Activity className="w-4 h-4" />
               </div>
-              <span className="font-black text-sm text-white">ScaleMedic</span>
+              <span className="font-black text-sm text-slate-900 dark:text-white">ScaleMedic</span>
             </div>
 
             <div className="hidden sm:flex items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                <Hospital className="w-3.5 h-3.5 text-sky-500" /> Unidade:
+                <Hospital className="w-3.5 h-3.5 text-sky-600 dark:text-sky-500" /> Unidade:
               </span>
               <Select value={selectedUnitId} onValueChange={setSelectedUnitId}>
-                <SelectTrigger className="h-8 w-52 text-xs font-black bg-slate-950 border-slate-800 text-sky-400 rounded-xl">
+                <SelectTrigger className="h-8 w-52 text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl">
                   <SelectValue placeholder="Unidade..." />
                 </SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-800 text-slate-100">
+                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
                   {units.map(u => (
                     <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold">
                       {u.name}
@@ -268,23 +276,24 @@ export default function AppLayout({ children }) {
 
           <div className="flex items-center gap-3">
             
-            <div className="hidden lg:flex items-center gap-2.5 px-3.5 py-1.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs shadow-inner">
-              <span className="text-slate-400 font-bold">
+            {/* RELÓGIO AO VIVO */}
+            <div className="hidden lg:flex items-center gap-2.5 px-3.5 py-1.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs shadow-inner">
+              <span className="text-slate-600 dark:text-slate-400 font-bold">
                 {dayName}, {formattedDate}
               </span>
-              <span className="text-slate-700">•</span>
-              <span className="font-mono font-black text-cyan-400 flex items-center gap-1.5 tracking-wider">
-                <Clock className="w-3.5 h-3.5 text-cyan-500 animate-pulse" />
+              <span className="text-slate-300 dark:text-slate-700">•</span>
+              <span className="font-mono font-black text-sky-600 dark:text-cyan-400 flex items-center gap-1.5 tracking-wider">
+                <Clock className="w-3.5 h-3.5 animate-pulse" />
                 {formattedTime}
               </span>
             </div>
 
-            {/* SINO DE NOTIFICAÇÕES INTELIGENTE */}
+            {/* SINO DE NOTIFICAÇÕES */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setNotifOpen(!notifOpen)}
-                className="p-2.5 rounded-2xl border border-slate-800 bg-slate-950 hover:bg-slate-800/80 text-slate-300 hover:text-white transition-all relative shadow-sm"
+                className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300 transition-all relative shadow-sm"
                 title="Notificações"
               >
                 <Bell className="w-4 h-4" />
@@ -296,16 +305,16 @@ export default function AppLayout({ children }) {
               </button>
 
               {notifOpen && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
                     <div className="flex items-center gap-2">
-                      <Bell className="w-4 h-4 text-sky-400" />
-                      <span className="text-xs font-black uppercase text-white">Central de Vagas</span>
+                      <Bell className="w-4 h-4 text-sky-600" />
+                      <span className="text-xs font-black uppercase text-slate-900 dark:text-white">Central de Vagas</span>
                     </div>
                     {unreadMuralShifts.length > 0 && (
                       <button 
                         onClick={handleMarkAllAsRead} 
-                        className="text-[10px] font-bold text-sky-400 hover:text-sky-300 hover:underline flex items-center gap-1"
+                        className="text-[10px] font-bold text-sky-600 hover:underline flex items-center gap-1"
                       >
                         <CheckCheck className="w-3 h-3" /> Limpar todas
                       </button>
@@ -316,26 +325,26 @@ export default function AppLayout({ children }) {
                     {unreadMuralShifts.length === 0 ? (
                       <div className="text-center py-6 space-y-1">
                         <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto opacity-80" />
-                        <p className="text-xs font-bold text-white">Nenhuma notificação pendente</p>
-                        <p className="text-[11px] text-slate-400">Você já visualizou todas as vagas abertas.</p>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">Nenhuma notificação pendente</p>
+                        <p className="text-[11px] text-slate-500">Você já visualizou todas as vagas abertas.</p>
                       </div>
                     ) : (
                       unreadMuralShifts.map(shift => (
                         <div 
                           key={shift.id} 
                           onClick={() => handleMarkAsRead(shift.id)}
-                          className="p-3 rounded-2xl bg-slate-950 border border-slate-800 hover:border-amber-500/50 transition-all cursor-pointer space-y-1 group"
+                          className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-amber-500 transition-all cursor-pointer space-y-1 group"
                         >
                           <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-black uppercase text-amber-400 flex items-center gap-1">
+                            <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 flex items-center gap-1">
                               <Flame className="w-3 h-3" /> Vaga Disponível
                             </span>
                             <span className="text-[10px] font-mono text-slate-400">{shift.date}</span>
                           </div>
-                          <p className="text-xs font-black text-white group-hover:text-sky-400 transition-colors">
+                          <p className="text-xs font-black text-slate-900 dark:text-white group-hover:text-sky-600 transition-colors">
                             Plantão {shift.shift_type === 'diurno' ? '07h às 19h' : '19h às 07h'}
                           </p>
-                          <span className="text-[10px] text-slate-400 block">Clique para assumir este plantão no Mural.</span>
+                          <span className="text-[10px] text-slate-500 block">Clique para assumir este plantão no Mural.</span>
                         </div>
                       ))
                     )}
@@ -352,36 +361,38 @@ export default function AppLayout({ children }) {
               )}
             </div>
 
+            {/* BOTÃO MODO CLARO / ESCURO (SOL / LUA) */}
             <button
               type="button"
               onClick={toggleTheme}
-              className="p-2.5 rounded-2xl border border-slate-800 bg-slate-950 hover:bg-slate-800 text-slate-300 transition-all shadow-sm"
-              title="Alternar Tema"
+              className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-all shadow-sm"
+              title={theme === 'dark' ? 'Alternar para Modo Diurno (Claro)' : 'Alternar para Modo Noturno (Escuro)'}
             >
-              {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-300" />}
+              {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
             </button>
 
+            {/* BOTÃO MOBILE */}
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
-              className="md:hidden p-2 text-slate-400 hover:text-white rounded-xl"
+              className="md:hidden p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </header>
 
-        {/* MENU MOBILE */}
+        {/* MENU MOBILE EXPANDIDO */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-slate-900 border-b border-slate-800 p-4 space-y-2 z-50 shadow-2xl print:hidden">
+          <div className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 space-y-2 z-50 shadow-2xl print:hidden">
             {navItems.map(item => (
               <NavLink
                 key={item.path}
                 to={item.path}
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-between p-2.5 rounded-2xl text-xs font-bold text-slate-300 hover:bg-slate-800"
+                className="flex items-center justify-between p-2.5 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <div className="flex items-center gap-3">
-                  <item.icon className="w-4 h-4 text-sky-400" />
+                  <item.icon className="w-4 h-4 text-sky-600" />
                   <span>{item.label}</span>
                 </div>
                 {item.badge > 0 && (
