@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
-  DollarSign, Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer
+  DollarSign, Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer, Building2
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -15,13 +15,20 @@ function safeNumber(val, fb = 0) {
 }
 
 function formatCurrency(val) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(safeNumber(val));
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(safeNumber(val));
 }
 
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
+
+function getLocalDateString(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 export default function Faturamento() {
   const { shifts = [], professionals = [], sectors = [], company } = useAppData();
@@ -33,6 +40,7 @@ export default function Faturamento() {
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+  const todayStr = getLocalDateString(new Date());
 
   const sectorMap = useMemo(() => {
     const m = {};
@@ -50,7 +58,7 @@ export default function Faturamento() {
     return {};
   }
 
-  // CÁLCULO DIRETO PARA TODOS OS PROFISSIONAIS DO CORPO CLÍNICO
+  // CÁLCULO DINÂMICO CONFORME PLANTÕES EFETIVAMENTE REALIZADOS
   const reportData = useMemo(() => {
     const profsSummary = {};
 
@@ -73,9 +81,9 @@ export default function Faturamento() {
 
       const taxRate = p.coop_tax_rate ?? meta.coop_tax_rate ?? 0;
       const matricula = p.registration_id || meta.registration_id || 'MAT-XXXX';
-      const chavePix = meta.pix_key || p.pix_key || 'Não cadastrado';
+      const chavePix = (meta.pix_key || p.pix_key || '').trim();
       const pixTipo = meta.pix_type || p.pix_type || 'CPF';
-      const banco = meta.bank_info || p.bank_info || 'Não cadastrado';
+      const banco = (meta.bank_info || p.bank_info || '').trim();
 
       profsSummary[String(p.id)] = {
         prof: p,
@@ -86,12 +94,14 @@ export default function Faturamento() {
         remunType,
         baseVal: safeNumber(baseVal),
         taxRate: safeNumber(taxRate),
-        totalPlantões: 0,
-        totalHoras: 0,
+        plantõesRealizados: 0,
+        horasRealizadas: 0,
+        plantõesFuturos: 0,
         plantõesList: []
       };
     });
 
+    // Processamento da grade de plantões do mês
     (shifts || []).forEach(shift => {
       if (!shift || !shift.date || !shift.date.startsWith(monthPrefix)) return;
       if (!shift.professional_id || shift.status === 'vago') return;
@@ -108,24 +118,42 @@ export default function Faturamento() {
         let duration = endH - startH + (endM - startM) / 60;
         if (duration <= 0) duration += 24;
 
-        profsSummary[pId].totalPlantões += 1;
-        profsSummary[pId].totalHoras += Math.round(duration * 10) / 10;
+        const isRealizado = shift.date <= todayStr;
+
+        if (isRealizado) {
+          profsSummary[pId].plantõesRealizados += 1;
+          profsSummary[pId].horasRealizadas += Math.round(duration * 10) / 10;
+        } else {
+          profsSummary[pId].plantõesFuturos += 1;
+        }
+
         profsSummary[pId].plantõesList.push({
           ...shift,
-          duration: Math.round(duration * 10) / 10
+          duration: Math.round(duration * 10) / 10,
+          isRealizado
         });
       }
     });
 
+    // Apuração do Faturamento Realizado vs Futuro
     return Object.values(profsSummary).map(item => {
       let valorBruto = 0;
 
       if (item.remunType === 'hora') {
-        valorBruto = item.totalHoras * item.baseVal;
+        // Horista: soma somente horas dos plantões já cumpridos
+        valorBruto = item.horasRealizadas * item.baseVal;
       } else if (item.remunType === 'diaria') {
-        valorBruto = item.totalPlantões * item.baseVal;
+        // Plantonista/Diarista: soma somente os plantões já executados
+        valorBruto = item.plantõesRealizados * item.baseVal;
       } else {
-        valorBruto = item.baseVal;
+        // Mensalista / Salário Fixo:
+        // No mês atual, se ele tem plantões programados ou executados, apura proporcional ou o piso mensal ativo
+        if (monthPrefix > todayStr.substring(0, 7)) {
+          // Mês futuro: vem zerado para ir alimentando
+          valorBruto = 0;
+        } else {
+          valorBruto = item.plantõesRealizados > 0 ? item.baseVal : (item.plantõesFuturos > 0 ? item.baseVal : 0);
+        }
       }
 
       const valorDesconto = (valorBruto * item.taxRate) / 100;
@@ -138,7 +166,7 @@ export default function Faturamento() {
         valorLiquido
       };
     });
-  }, [professionals, shifts, monthPrefix]);
+  }, [professionals, shifts, monthPrefix, todayStr]);
 
   const filteredReport = useMemo(() => {
     const term = searchQuery.toLowerCase().trim();
@@ -156,8 +184,8 @@ export default function Faturamento() {
     reportData.forEach(i => {
       bruto += i.valorBruto;
       liquido += i.valorLiquido;
-      plantões += i.totalPlantões;
-      horas += i.totalHoras;
+      plantões += i.plantõesRealizados;
+      horas += i.horasRealizadas;
     });
     return { bruto, liquido, plantões, horas };
   }, [reportData]);
@@ -174,18 +202,21 @@ export default function Faturamento() {
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR');
 
-    const rowsHtml = filteredReport.map((item, idx) => `
-      <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9fafb'};">
-        <td style="border: 1px solid #111; padding: 6px 8px; font-weight: bold;">${item.prof.name}</td>
-        <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace;">${item.matricula}</td>
-        <td style="border: 1px solid #111; padding: 6px 8px;">${item.prof.specialty || 'Geral'}</td>
-        <td style="border: 1px solid #111; padding: 6px 8px; text-transform: uppercase;">${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Mensalista'}</td>
-        <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.totalPlantões} pl (${item.totalHoras}h)</td>
-        <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace;">${item.chavePix}</td>
-        <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${formatCurrency(item.valorBruto)}</td>
-        <td style="border: 1px solid #111; padding: 6px 8px; text-align: right; font-weight: bold;">${formatCurrency(item.valorLiquido)}</td>
-      </tr>
-    `).join('');
+    const rowsHtml = filteredReport.map((item, idx) => {
+      const formaPagto = item.chavePix ? `PIX: ${item.chavePix}` : (item.banco ? `Banco: ${item.banco}` : 'Pendente');
+      return `
+        <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9fafb'};">
+          <td style="border: 1px solid #111; padding: 6px 8px; font-weight: bold;">${item.prof.name}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace;">${item.matricula}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px;">${item.prof.specialty || 'Geral'}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-transform: uppercase;">${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Mensalista'}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.plantõesRealizados} pl (${item.horasRealizadas}h)</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-size: 9.5px;">${formaPagto}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${formatCurrency(item.valorBruto)}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: right; font-weight: bold;">${formatCurrency(item.valorLiquido)}</td>
+        </tr>
+      `;
+    }).join('');
 
     const html = `
       <!DOCTYPE html>
@@ -208,11 +239,11 @@ export default function Faturamento() {
         <div class="header">
           <div>
             <h1>${hospitalName}</h1>
-            <p>FECHAMENTO DE HONORÁRIOS E REPASSE MÉDICO/ASSISTENCIAL</p>
+            <p>FECHAMENTO DE HONORÁRIOS E REPASSE DE PLANTÕES REALIZADOS</p>
             <p>Competência: <b>${competencia}</b></p>
           </div>
           <div style="text-align: right; font-size: 9px;">
-            <p>DOCUMENTO AUDITÁVEL</p>
+            <p>DOCUMENTO OFICIAL AUDITÁVEL</p>
             <p>Emissão: ${emissao}</p>
           </div>
         </div>
@@ -224,9 +255,9 @@ export default function Faturamento() {
               <th>Matrícula</th>
               <th>Especialidade</th>
               <th>Regime</th>
-              <th style="text-align: center;">Plantões / Horas</th>
-              <th>Chave PIX</th>
-              <th style="text-align: right;">Bruto</th>
+              <th style="text-align: center;">Realizados</th>
+              <th>Dados p/ Pagamento</th>
+              <th style="text-align: right;">Bruto Realizado</th>
               <th style="text-align: right;">Líquido a Pagar</th>
             </tr>
           </thead>
@@ -234,7 +265,7 @@ export default function Faturamento() {
         </table>
 
         <div class="totals">
-          <span>Total de Plantões: ${totals.plantões}</span>
+          <span>Plantões Cumpridos: ${totals.plantões}</span>
           <span>Total Bruto: ${formatCurrency(totals.bruto)}</span>
           <span style="color: #000;">TOTAL LÍQUIDO A REPASSAR: ${formatCurrency(totals.liquido)}</span>
         </div>
@@ -249,9 +280,9 @@ export default function Faturamento() {
     printWindow.document.close();
   };
 
-  // IMPRESSÃO INDIVIDUAL DO RECIBO DE PAGAMENTO (100% BRANCO)
+  // RECIBO OFICIAL EM 2 VIAS (1ª VIA INSTITUIÇÃO / 2ª VIA PROFISSIONAL) - 100% BRANCO
   const handlePrintIndividualReceipt = (item) => {
-    const printWindow = window.open('', '_blank', 'width=900,height=800');
+    const printWindow = window.open('', '_blank', 'width=900,height=850');
     if (!printWindow) {
       alert('Permita os pop-ups para abrir o recibo.');
       return;
@@ -261,83 +292,108 @@ export default function Faturamento() {
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = new Date().toLocaleDateString('pt-BR');
 
+    // Bloco Inteligente de Dados Bancários / PIX
+    let dadosPagamentoHtml = '';
+    if (item.chavePix && item.banco) {
+      dadosPagamentoHtml = `
+        <div class="grid"><span>Chave PIX (${item.pixTipo}):</span> <span>${item.chavePix}</span></div>
+        <div class="grid"><span>Dados Bancários:</span> <span>${item.banco}</span></div>
+      `;
+    } else if (item.chavePix) {
+      dadosPagamentoHtml = `<div class="grid"><span>Chave PIX (${item.pixTipo}):</span> <span>${item.chavePix}</span></div>`;
+    } else if (item.banco) {
+      dadosPagamentoHtml = `<div class="grid"><span>Dados Bancários:</span> <span>${item.banco}</span></div>`;
+    } else {
+      dadosPagamentoHtml = `<div class="grid"><span style="color: #b91c1c; font-weight: bold;">Forma de Pagamento:</span> <span style="color: #b91c1c;">Nenhum dado bancário ou PIX cadastrado</span></div>`;
+    }
+
+    const templateVia = (tituloVia) => `
+      <div class="via-box">
+        <div class="header">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <h1>${hospitalName}</h1>
+              <p>RECIBO DE HONORÁRIOS & REPASSE MÉDICO</p>
+              <p style="font-size: 9.5px; margin-top: 2px;">Competência: <b>${competencia}</b></p>
+            </div>
+            <div style="text-align: right;">
+              <span class="via-tag">${tituloVia}</span>
+              <div style="font-size: 8.5px; color: #555; margin-top: 3px;">Data: ${emissao}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="grid"><span>Profissional:</span> <span>${item.prof.name} (ID: ${item.matricula})</span></div>
+          <div class="grid"><span>Documento / Especialidade:</span> <span>${item.prof.document || 'CRM'} • ${item.prof.specialty || 'Geral'}</span></div>
+          <div class="grid"><span>Regime / Base Contratual:</span> <span>${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Mensalista'} (${formatCurrency(item.baseVal)})</span></div>
+          <div class="grid"><span>Produção Efetiva Realizada:</span> <span>${item.totalPlantões} plantões cumpridos (${item.totalHoras} horas computadas)</span></div>
+        </div>
+
+        <div class="val-box">
+          <div style="display: flex; justify-content: space-between;">
+            <span>Valor Bruto Apurado: <b>${formatCurrency(item.valorBruto)}</b></span>
+            <span>Retenção/Taxa: <b>- ${formatCurrency(item.valorDesconto)}</b></span>
+            <span style="color: #000; font-size: 13px;">LÍQUIDO A RECEBER: <b>${formatCurrency(item.valorLiquido)}</b></span>
+          </div>
+        </div>
+
+        <div class="section" style="margin-top: 6px;">
+          ${dadosPagamentoHtml}
+        </div>
+
+        <p class="termo">
+          Declaro ter recebido da instituição ${hospitalName} a quantia líquida acima discriminada, referente à quitação dos serviços profissionais prestados no período de ${competencia}, dando plena e geral quitação.
+        </p>
+
+        <div class="signatures">
+          <div class="sig-col">
+            <div class="sig-line"></div>
+            <span>${hospitalName}</span>
+          </div>
+          <div class="sig-col">
+            <div class="sig-line"></div>
+            <span>${item.prof.name}</span>
+          </div>
+        </div>
+      </div>
+    `;
+
     const html = `
       <!DOCTYPE html>
       <html lang="pt-BR">
       <head>
         <meta charset="utf-8">
-        <title>Recibo de Pagamento - ${item.prof.name}</title>
+        <title>Recibo Oficial 2 Vias - ${item.prof.name}</title>
         <style>
-          @page { size: A4 portrait; margin: 12mm; }
+          @page { size: A4 portrait; margin: 8mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000 !important; padding: 20px; font-size: 12px; line-height: 1.5; }
-          .recibo-box { border: 2px solid #000; padding: 25px; border-radius: 4px; }
-          .header { border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 20px; text-align: center; }
-          .header h1 { font-size: 20px; text-transform: uppercase; font-weight: 900; }
-          .header p { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-          .section { margin-bottom: 20px; }
-          .section-title { font-weight: 900; text-transform: uppercase; font-size: 11px; border-bottom: 1px solid #333; margin-bottom: 8px; padding-bottom: 3px; }
-          .grid { display: flex; justify-content: space-between; margin-bottom: 6px; }
+          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000 !important; padding: 5px; font-size: 10px; line-height: 1.35; }
+          .via-box { border: 1.5px solid #000; padding: 14px 18px; border-radius: 4px; height: 47%; display: flex; flex-col; justify-content: space-between; }
+          .header { border-bottom: 1.5px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+          .header h1 { font-size: 15px; text-transform: uppercase; font-weight: 900; }
+          .header p { font-size: 9px; font-weight: bold; }
+          .via-tag { border: 1px solid #000; padding: 2px 6px; font-weight: 900; font-size: 8.5px; text-transform: uppercase; background: #eee; }
+          .section { margin-bottom: 6px; }
+          .grid { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 9.5px; }
           .grid span:last-child { font-weight: bold; }
-          .destaque { background: #f3f4f6; border: 1px solid #111; padding: 12px; font-size: 14px; font-weight: 900; text-align: center; margin: 20px 0; }
-          .termo { font-size: 10px; color: #333; text-align: justify; margin: 20px 0; line-height: 1.4; }
-          .signatures { display: flex; justify-content: space-between; margin-top: 50px; text-align: center; font-size: 11px; }
-          .sig-line { width: 230px; border-top: 1px solid #000; padding-top: 5px; }
+          .val-box { background: #f3f4f6; border: 1px solid #000; padding: 7px 10px; font-size: 11px; margin: 8px 0; }
+          .termo { font-size: 8px; color: #333; text-align: justify; margin: 8px 0; line-height: 1.25; }
+          .signatures { display: flex; justify-content: space-around; margin-top: 24px; text-align: center; }
+          .sig-col { width: 220px; }
+          .sig-line { border-top: 1px solid #000; margin-bottom: 3px; }
+          .cut-divider { border-top: 1.5px dashed #666; margin: 16px 0; text-align: center; position: relative; height: 12px; }
+          .cut-divider span { position: relative; top: -8px; background: #fff; padding: 0 10px; font-size: 8px; color: #666; text-transform: uppercase; font-weight: bold; }
         </style>
       </head>
       <body>
-        <div class="recibo-box">
-          <div class="header">
-            <h1>${hospitalName}</h1>
-            <p>RECIBO DE PAGAMENTO DE HONORÁRIOS MÉDICOS / ASSISTENCIAIS</p>
-            <p style="font-size: 10px; margin-top: 4px;">Competência: <b>${competencia}</b></p>
-          </div>
-
-          <div class="section">
-            <div class="section-title">1. Dados do Profissional</div>
-            <div class="grid"><span>Nome:</span> <span>${item.prof.name}</span></div>
-            <div class="grid"><span>Matrícula ID:</span> <span>${item.matricula}</span></div>
-            <div class="grid"><span>Documento / Conselho:</span> <span>${item.prof.document || '—'}</span></div>
-            <div class="grid"><span>CPF:</span> <span>${item.prof.cpf || '—'}</span></div>
-            <div class="grid"><span>Especialidade / Atuação:</span> <span>${item.prof.specialty || 'Geral'}</span></div>
-          </div>
-
-          <div class="section">
-            <div class="section-title">2. Demonstração dos Serviços Prestados</div>
-            <div class="grid"><span>Regime de Trabalho:</span> <span>${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Mensalista (Fixo)'}</span></div>
-            <div class="grid"><span>Total de Plantões Computados:</span> <span>${item.totalPlantões} plantões</span></div>
-            <div class="grid"><span>Total de Horas Trabalhadas:</span> <span>${item.totalHoras} horas</span></div>
-            <div class="grid"><span>Valor Bruto Apurado:</span> <span>${formatCurrency(item.valorBruto)}</span></div>
-            <div class="grid"><span>Retenções / Descontos (${item.taxRate}%):</span> <span>- ${formatCurrency(item.valorDesconto)}</span></div>
-          </div>
-
-          <div class="destaque">
-            VALOR LÍQUIDO A REPASSAR: ${formatCurrency(item.valorLiquido)}
-          </div>
-
-          <div class="section">
-            <div class="section-title">3. Forma de Pagamento / Destino do Repasse</div>
-            <div class="grid"><span>Chave PIX (${item.pixTipo}):</span> <span>${item.chavePix}</span></div>
-            <div class="grid"><span>Dados Bancários Físicos:</span> <span>${item.banco}</span></div>
-          </div>
-
-          <p class="termo">
-            Declaro ter recebido da instituição ${hospitalName} a quantia discriminada acima, correspondente à quitação integral dos serviços profissionais prestados no período de vigência acima especificado, não havendo nada mais a reclamar a qualquer título.
-          </p>
-
-          <div class="signatures">
-            <div>
-              <div class="sig-line">Diretoria Financeira / Faturamento</div>
-            </div>
-            <div>
-              <div class="sig-line">Assinatura do Profissional</div>
-            </div>
-          </div>
-
-          <div style="text-align: right; font-size: 9px; color: #777; margin-top: 30px;">
-            Emissão em: ${emissao} • ScaleMedic Hospital Intelligence
-          </div>
+        ${templateVia('1ª VIA - INSTITUIÇÃO')}
+        
+        <div class="cut-divider">
+          <span>✂ CORTE AQUI ✂</span>
         </div>
+
+        ${templateVia('2ª VIA - PROFISSIONAL')}
 
         <script>window.onload = function() { window.print(); };</script>
       </body>
@@ -354,22 +410,23 @@ export default function Faturamento() {
     if (!cleanPhone) { alert('Profissional não possui telefone cadastrado.'); return; }
     const phoneWithDDI = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
 
+    const dadosPgto = item.chavePix ? `• Chave PIX: ${item.chavePix} (${item.pixTipo})` : (item.banco ? `• Conta: ${item.banco}` : `• Dados de Pagamento: Pendente`);
+
     const msg = [
       `*ScaleMedic - Extrato de Honorários & Repasse* 🏥`,
       `Competência: *${MONTH_NAMES[currentMonth]} / ${currentYear}*`,
       `Profissional: *${item.prof.name}* (ID: ${item.matricula})\n`,
-      `📊 *Resumo dos Plantões:*`,
-      `• Total de Plantões: ${item.totalPlantões}`,
-      `• Total de Horas: ${item.totalHoras}h`,
+      `📊 *Produção Realizada:*`,
+      `• Plantões Efetivamente Cumpridos: ${item.plantõesRealizados}`,
+      `• Horas Computadas: ${item.horasRealizadas}h`,
       `• Regime: ${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Mensalista'}\n`,
-      `💰 *Valores para Repasse:*`,
+      `💰 *Valores Apurados:*`,
       `• Valor Bruto: ${formatCurrency(item.valorBruto)}`,
-      `• Retenções: ${formatCurrency(item.valorDesconto)}`,
+      `• Retenção/Impostos: ${formatCurrency(item.valorDesconto)}`,
       `• *VALOR LÍQUIDO A RECEBER:* ${formatCurrency(item.valorLiquido)}\n`,
-      `💳 *Dados Bancários / PIX:*`,
-      `• Chave PIX: ${item.chavePix} (${item.pixTipo})`,
-      `• Conta: ${item.banco}\n`,
-      `_Por favor, confira os dados. Havendo divergência, contate a coordenação médica._`
+      `💳 *Forma de Repasse:*`,
+      `${dadosPgto}\n`,
+      `_Por favor, confira seu demonstrativo. Havendo divergência, contate a coordenação médica._`
     ].join('\n');
 
     window.open(`https://api.whatsapp.com/send?phone=${phoneWithDDI}&text=${encodeURIComponent(msg)}`, '_blank');
@@ -386,7 +443,7 @@ export default function Faturamento() {
           </div>
           <h2 className="mt-1 text-2xl sm:text-3xl font-black">Faturamento & Repasse Médico</h2>
           <p className="text-xs text-slate-300">
-            Cálculo automatizado cruzando escalas realizadas com os valores contratuais de cada profissional.
+            Cálculo progressivo baseado estritamente na execução real dos plantões da escala.
           </p>
         </div>
 
@@ -415,36 +472,36 @@ export default function Faturamento() {
       {/* CARDS EXECUTIVOS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[10px] font-black uppercase text-slate-400">Total Bruto dos Honorários</span>
+          <span className="text-[10px] font-black uppercase text-slate-400">Total Bruto Realizado</span>
           <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">{formatCurrency(totals.bruto)}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">{totals.plantões} plantões contabilizados</span>
+          <span className="text-[10px] text-slate-500 font-semibold">{totals.plantões} plantões cumpridos</span>
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <span className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400">Total Líquido p/ Repasse</span>
           <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(totals.liquido)}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">Após retenções contratuais</span>
+          <span className="text-[10px] text-slate-500 font-semibold">Valor atual acumulado</span>
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400">Plantões Realizados</span>
+          <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400">Plantões Cumpridos</span>
           <div className="text-2xl font-black text-sky-600 dark:text-sky-400 mt-1">{totals.plantões}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">{totals.horas} horas no mês</span>
+          <span className="text-[10px] text-slate-500 font-semibold">{totals.horas} horas realizadas</span>
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400">Profissionais na Folha</span>
+          <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400">Equipe na Folha</span>
           <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">{reportData.length}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">Equipe ativa para repasse</span>
+          <span className="text-[10px] text-slate-500 font-semibold">Profissionais credenciados</span>
         </Card>
       </div>
 
-      {/* TABELA DE REPASSE COM OS 3 BOTÕES: RECIBO BRANCO, DETALHAR E WHATSAPP */}
+      {/* TABELA DE CONCILIAÇÃO FINANCEIRA */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
-            <h3 className="text-base font-black text-slate-900 dark:text-white">Espelho de Conciliação e Fechamento</h3>
-            <p className="text-xs text-slate-500">Listagem de todos os profissionais ativos e seus respectivos valores de repasse.</p>
+            <h3 className="text-base font-black text-slate-900 dark:text-white">Espelho de Conciliação e Fechamento Atual</h3>
+            <p className="text-xs text-slate-500">Valores somados conforme a execução diária dos plantões.</p>
           </div>
 
           <div className="relative w-full sm:w-72">
@@ -464,9 +521,9 @@ export default function Faturamento() {
               <tr>
                 <th className="py-3 px-4">Profissional / Matrícula</th>
                 <th className="py-3 px-4">Regime Contratual</th>
-                <th className="py-3 px-4 text-center">Plantões / Horas</th>
-                <th className="py-3 px-4">Chave PIX para Repasse</th>
-                <th className="py-3 px-4 text-right">Valor Bruto</th>
+                <th className="py-3 px-4 text-center">Realizados (Plantões/h)</th>
+                <th className="py-3 px-4">Dados p/ Repasse</th>
+                <th className="py-3 px-4 text-right">Bruto Realizado</th>
                 <th className="py-3 px-4 text-right">Líquido a Pagar</th>
                 <th className="py-3 px-4 text-center">Ações</th>
               </tr>
@@ -479,93 +536,102 @@ export default function Faturamento() {
                   </td>
                 </tr>
               ) : (
-                filteredReport.map(item => (
-                  <tr key={item.prof.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="font-black text-slate-900 dark:text-white">{item.prof.name}</div>
-                      <div className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-bold">{item.matricula} • {item.prof.document || 'CRM'}</div>
-                    </td>
+                filteredReport.map(item => {
+                  const formaPagto = item.chavePix ? (
+                    <div><span className="text-sky-600 font-bold">{item.chavePix}</span><div className="text-[9px] text-slate-400">PIX ({item.pixTipo})</div></div>
+                  ) : item.banco ? (
+                    <div><span className="text-slate-800 dark:text-slate-200 font-bold">{item.banco}</span><div className="text-[9px] text-slate-400">Dados Bancários</div></div>
+                  ) : (
+                    <span className="text-[10px] text-rose-500 italic">Pendente de cadastro</span>
+                  );
 
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                        {item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Fixo Mensal'}
-                      </span>
-                      <div className="text-[10px] text-slate-400 mt-0.5">{formatCurrency(item.baseVal)} base</div>
-                    </td>
+                  return (
+                    <tr key={item.prof.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="font-black text-slate-900 dark:text-white">{item.prof.name}</div>
+                        <div className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-bold">{item.matricula} • {item.prof.document || 'CRM'}</div>
+                      </td>
 
-                    <td className="py-3 px-4 text-center">
-                      <span className="font-bold text-slate-900 dark:text-white">{item.totalPlantões} plantões</span>
-                      <div className="text-[10px] font-mono text-slate-400">{item.totalHoras}h totais</div>
-                    </td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                          {item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Fixo Mensal'}
+                        </span>
+                        <div className="text-[10px] text-slate-400 mt-0.5">{formatCurrency(item.baseVal)} base</div>
+                      </td>
 
-                    <td className="py-3 px-4 font-mono">
-                      <span className="text-sky-600 font-bold">{item.chavePix}</span>
-                      <div className="text-[10px] text-slate-400">{item.pixTipo}</div>
-                    </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="font-bold text-slate-900 dark:text-white">{item.plantõesRealizados} plantões</span>
+                        <div className="text-[10px] font-mono text-slate-400">{item.horasRealizadas}h totais</div>
+                      </td>
 
-                    <td className="py-3 px-4 text-right font-bold text-slate-700 dark:text-slate-300">
-                      {formatCurrency(item.valorBruto)}
-                    </td>
+                      <td className="py-3 px-4 font-mono">
+                        {formaPagto}
+                      </td>
 
-                    <td className="py-3 px-4 text-right">
-                      <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">
-                        {formatCurrency(item.valorLiquido)}
-                      </span>
-                      {item.taxRate > 0 && <div className="text-[9px] text-rose-500">-{item.taxRate}% retenção</div>}
-                    </td>
+                      <td className="py-3 px-4 text-right font-bold text-slate-700 dark:text-slate-300">
+                        {formatCurrency(item.valorBruto)}
+                      </td>
 
-                    <td className="py-3 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {/* 1. BOTÃO DE RECIBO INDIVIDUAL EM PAPEL BRANCO */}
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => handlePrintIndividualReceipt(item)}
-                          title="Imprimir Recibo Individual de Pagamento"
-                          className="h-8 text-xs font-bold gap-1 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-white"
-                        >
-                          <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Recibo
-                        </Button>
+                      <td className="py-3 px-4 text-right">
+                        <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">
+                          {formatCurrency(item.valorLiquido)}
+                        </span>
+                        {item.taxRate > 0 && <div className="text-[9px] text-rose-500">-{item.taxRate}% retenção</div>}
+                      </td>
 
-                        {/* 2. BOTÃO DETALHAR */}
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => setSelectedProfModal(item)}
-                          className="h-8 text-xs font-bold gap-1 rounded-xl"
-                        >
-                          <FileText className="w-3.5 h-3.5 text-sky-600" /> Detalhar
-                        </Button>
-
-                        {/* 3. BOTÃO WHATSAPP */}
-                        {item.prof.phone && (
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {/* 1. BOTÃO DE RECIBO EM 2 VIAS */}
                           <Button 
                             size="sm" 
                             variant="outline" 
-                            onClick={() => handleSendStatementWhatsApp(item)}
-                            title="Enviar Extrato no WhatsApp"
-                            className="h-8 px-2.5 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                            onClick={() => handlePrintIndividualReceipt(item)}
+                            title="Imprimir Recibo em 2 Vias"
+                            className="h-8 text-xs font-bold gap-1 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-white"
                           >
-                            <Send className="w-3.5 h-3.5" />
+                            <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Recibo
                           </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+
+                          {/* 2. BOTÃO DETALHAR */}
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => setSelectedProfModal(item)}
+                            className="h-8 text-xs font-bold gap-1 rounded-xl"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-sky-600" /> Detalhar
+                          </Button>
+
+                          {/* 3. BOTÃO WHATSAPP */}
+                          {item.prof.phone && (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleSendStatementWhatsApp(item)}
+                              title="Enviar Extrato no WhatsApp"
+                              className="h-8 px-2.5 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* MODAL DE DETALHAMENTO COM ATALHO DE RECIBO E WHATSAPP */}
+      {/* MODAL DE DETALHAMENTO */}
       <Dialog open={!!selectedProfModal} onOpenChange={() => setSelectedProfModal(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-slate-200 dark:border-slate-800">
           <DialogHeader>
             <DialogTitle className="text-base font-black flex items-center gap-2 text-slate-900 dark:text-white">
               <Receipt className="w-5 h-5 text-emerald-600" />
-              Espelho de Plantões • {selectedProfModal?.prof.name}
+              Espelho de Produção • {selectedProfModal?.prof.name}
             </DialogTitle>
           </DialogHeader>
 
@@ -577,35 +643,42 @@ export default function Faturamento() {
                   <strong className="font-mono text-sm text-indigo-600 dark:text-indigo-400">{selectedProfModal.matricula}</strong>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Chave PIX</span>
-                  <strong className="font-mono text-xs text-sky-600 truncate block">{selectedProfModal.chavePix}</strong>
+                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Forma de Repasse</span>
+                  <strong className="font-mono text-xs text-sky-600 truncate block">
+                    {selectedProfModal.chavePix ? `PIX: ${selectedProfModal.chavePix}` : (selectedProfModal.banco || 'Pendente')}
+                  </strong>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase font-bold">Plantões Realizados</span>
-                  <strong className="text-sm">{selectedProfModal.totalPlantões} plantões</strong>
+                  <strong className="text-sm">{selectedProfModal.plantõesRealizados} plantões</strong>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Valor Líquido</span>
+                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Líquido Realizado</span>
                   <strong className="text-sm text-emerald-600 dark:text-emerald-400">{formatCurrency(selectedProfModal.valorLiquido)}</strong>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <span className="font-black uppercase text-slate-500 text-[11px] block">Relação de Plantões na Escala</span>
+                <span className="font-black uppercase text-slate-500 text-[11px] block">Extrato de Plantões (Realizados vs Programados)</span>
                 <div className="max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800">
                   {selectedProfModal.plantõesList.length === 0 ? (
-                    <div className="p-4 text-center text-slate-400">Nenhum plantão individual registrado na grade deste mês (Regime de Salário Fixo).</div>
+                    <div className="p-4 text-center text-slate-400">Nenhum plantão localizado na grade deste mês.</div>
                   ) : (
                     selectedProfModal.plantõesList.map(p => (
                       <div key={p.id} className="p-2.5 flex items-center justify-between text-xs hover:bg-slate-50 dark:hover:bg-slate-900/50">
                         <div>
-                          <span className="font-bold text-slate-900 dark:text-white block">
-                            {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-900 dark:text-white">
+                              {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                            </span>
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-black uppercase ${p.isRealizado ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
+                              {p.isRealizado ? 'Realizado' : 'A Realizar'}
+                            </span>
+                          </div>
                           <span className="text-[10px] text-slate-500">{sectorMap[p.sector_id]?.name || 'Setor'} • {p.start_time} às {p.end_time}</span>
                         </div>
                         <span className="font-mono font-bold text-sky-600 bg-sky-50 dark:bg-sky-950/30 px-2 py-1 rounded-lg">
-                          {p.duration}h computadas
+                          {p.duration}h
                         </span>
                       </div>
                     ))
@@ -619,7 +692,7 @@ export default function Faturamento() {
                   onClick={() => handlePrintIndividualReceipt(selectedProfModal)}
                   className="h-9 text-xs font-black gap-1.5"
                 >
-                  <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Imprimir Recibo Branco
+                  <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Imprimir Recibo
                 </Button>
                 
                 <Button onClick={() => handleSendStatementWhatsApp(selectedProfModal)} className="h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-5 gap-2">
