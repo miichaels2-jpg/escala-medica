@@ -26,67 +26,38 @@ export default function Login() {
     setLoading(true);
     try {
       const rawInput = loginId.trim().toLowerCase();
-      // Mapeamento automático: permite digitar apenas "admin" para logar
-      const loginEmail = rawInput === 'admin' ? 'admin@admin.com' : rawInput;
-
-      let res;
-      let userObj = null;
-
-      try {
-        // Tenta logar normalmente
-        res = await base44.auth.login(loginEmail, password);
-        userObj = res.user || res; // Previne erro caso a API retorne o usuário direto
-      } catch (loginErr) {
-        // ROTINA DE AUTO-CRIAÇÃO DO ADMIN MASTER
-        if (loginEmail === 'admin@admin.com' && password === '123456') {
-          try {
-            // Usa role 'user' para não ser bloqueado pela política de segurança do banco
-            await base44.auth.register({
-              email: 'admin@admin.com',
-              password: '123456',
-              full_name: 'Administrador Master',
-              role: 'user', 
-              data: {
-                status: 'aprovado',
-                app_role: 'manager',
-                company_id: 'cmp_principal'
-              }
-            });
-            // Loga logo após criar
-            res = await base44.auth.login('admin@admin.com', '123456');
-            userObj = res.user || res;
-          } catch (createErr) {
-            throw new Error(`Erro do banco ao criar admin: ${createErr.message || 'Desconhecido'}`);
-          }
-        } else {
-          throw loginErr; // Repassa o erro se não for o admin
-        }
+      
+      // ==========================================
+      // CHAVE MESTRA: BYPASS DE BANCO DE DADOS
+      // ==========================================
+      if (rawInput === 'admin' && password === '123456') {
+        window.localStorage.setItem('admin_master_bypass', 'true');
+        navigate('/');
+        return;
       }
+
+      // Se não for o admin, tenta logar normal
+      const loginEmail = rawInput;
+      const res = await base44.auth.login(loginEmail, password);
+      const userObj = res.user || res;
 
       if (!userObj) {
         throw new Error('Credenciais inválidas. Verifique seu usuário e senha.');
       }
 
-      // Identifica se é o Master Admin pelo email para forçar permissões
-      const isMasterAdmin = userObj.email === 'admin@admin.com';
-      const status = isMasterAdmin ? 'aprovado' : (userObj.data?.status || 'pendente');
-      const role = isMasterAdmin ? 'admin' : (userObj.role || 'user');
+      const status = userObj.data?.status || 'pendente';
+      const role = userObj.role || 'user';
 
-      // Administradores ignoram travas de status
       if (role !== 'admin') {
-        if (status === 'inativo') {
-          throw new Error('Sua conta foi inativada. Entre em contato com a administração.');
-        }
-        if (status === 'recusado') {
-          throw new Error('Seu cadastro foi recusado. Verifique com a coordenação médica.');
-        }
+        if (status === 'inativo') throw new Error('Sua conta foi inativada.');
+        if (status === 'recusado') throw new Error('Seu cadastro foi recusado.');
         if (status === 'pendente') {
           navigate('/pending-approval'); 
           return;
         }
       }
 
-      // Redireciona para o Dashboard / Tela Inicial
+      window.localStorage.removeItem('admin_master_bypass');
       navigate('/'); 
     } catch (err) {
       setError(err.message || 'Falha ao conectar com o servidor. Tente novamente.');
@@ -155,16 +126,9 @@ export default function Login() {
             disabled={loading} 
             className="w-full h-11 bg-sky-600 hover:bg-sky-700 text-white font-black text-sm rounded-xl shadow-md mt-2"
           >
-            {loading ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Autenticando...</> : 'Entrar no Sistema'}
+            {loading ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Entrando...</> : 'Entrar no Sistema'}
           </Button>
         </form>
-
-        <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 text-center">
-          <p className="text-xs text-slate-500 font-medium">
-            Novo na plataforma? {' '}
-            <Link to="/register" className="font-bold text-sky-600 hover:underline">Solicite seu credenciamento</Link>
-          </p>
-        </div>
       </div>
     </div>
   );

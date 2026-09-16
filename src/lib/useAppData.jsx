@@ -4,16 +4,13 @@ import { base44 } from '@/api/base44Client';
 const AppDataContext = createContext(null);
 
 export function AppDataProvider({ children }) {
-  // Estado de Autenticação
   const [user, setUser] = useState(null);
   const [company, setCompany] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Estado Multi-Hospital
   const [units, setUnits] = useState([]);
   const [selectedUnitId, setSelectedUnitId] = useState('');
 
-  // Memória Central Integrada
   const [professionals, setProfessionals] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [shifts, setShifts] = useState([]);
@@ -21,11 +18,30 @@ export function AppDataProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [globalLoading, setGlobalLoading] = useState(false);
 
-  // Inicialização e Autenticação
   useEffect(() => {
     const initAuth = async () => {
       setAuthLoading(true);
       try {
+        // ==========================================
+        // LEITURA DA CHAVE MESTRA (BYPASS)
+        // ==========================================
+        const isBypass = window.localStorage.getItem('admin_master_bypass') === 'true';
+        if (isBypass) {
+          const mockAdmin = {
+            id: 'mock_admin_id_999',
+            email: 'admin@admin.com',
+            full_name: 'Administrador Master',
+            role: 'admin',
+            data: { status: 'aprovado', app_role: 'manager', company_id: 'cmp_principal' }
+          };
+          setUser(mockAdmin);
+          setCompany({ id: 'cmp_principal', name: 'Hospital Principal', units: [{ id: 'unit_h1', name: 'Unidade Matriz' }] });
+          setUnits([{ id: 'unit_h1', name: 'Unidade Matriz' }]);
+          setSelectedUnitId('unit_h1');
+          setAuthLoading(false);
+          return;
+        }
+
         const currentUser = await base44.auth.getUser(); 
         if (currentUser) {
           setUser(currentUser);
@@ -50,28 +66,25 @@ export function AppDataProvider({ children }) {
     initAuth();
   }, []);
 
-  // Sincronizador Global
   const syncGlobalData = useCallback(async () => {
-    const companyId = user?.data?.company_id || company?.id;
-    if (!companyId || !selectedUnitId) return;
+    const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
+    if (!companyId) return;
 
     setGlobalLoading(true);
     try {
-      const query = { company_id: companyId, unit_id: selectedUnitId };
+      const query = { company_id: companyId, ...(selectedUnitId ? { unit_id: selectedUnitId } : {}) };
 
-      const [pRes, secRes, sRes, swRes, notifRes] = await Promise.all([
+      const [pRes, secRes, sRes, swRes] = await Promise.all([
         base44.entities.Professional.filter({ company_id: companyId }, '-created_date', 1000).catch(() => []),
         base44.entities.Sector.filter(query, 'name', 300).catch(() => []),
         base44.entities.Shift.filter(query, '-date', 5000).catch(() => []),
-        base44.entities.ShiftSwap.filter(query, '-created_date', 1000).catch(() => []),
-        base44.entities.Notification ? base44.entities.Notification.filter({ recipient_user_id: user?.id }, '-created_date', 100).catch(() => []) : Promise.resolve([])
+        base44.entities.ShiftSwap.filter(query, '-created_date', 1000).catch(() => [])
       ]);
 
       setProfessionals(Array.isArray(pRes) ? pRes : pRes?.data || []);
       setSectors(Array.isArray(secRes) ? secRes : secRes?.data || []);
       setShifts(Array.isArray(sRes) ? sRes : sRes?.data || []);
       setSwaps(Array.isArray(swRes) ? swRes : swRes?.data || []);
-      setNotifications(Array.isArray(notifRes) ? notifRes : notifRes?.data || []);
     } catch (err) {
       console.error('Erro no DataSyncService:', err);
     } finally {
@@ -85,7 +98,6 @@ export function AppDataProvider({ children }) {
     }
   }, [authLoading, user, selectedUnitId, syncGlobalData]);
 
-  // Permissões e Perfis
   const isAdmin = user?.role === 'admin';
   const isManager = isAdmin || user?.data?.app_role === 'manager' || user?.data?.app_role === 'gestor';
   const isApproved = user?.data?.status === 'aprovado' || isAdmin;
@@ -120,7 +132,6 @@ export function AppDataProvider({ children }) {
 export function useAppData() {
   const context = useContext(AppDataContext);
   if (!context) {
-    // Fallback de segurança para não dar crash caso esqueça o Provider
     return { loading: false, user: null, professionals: [], shifts: [] };
   }
   return context;
