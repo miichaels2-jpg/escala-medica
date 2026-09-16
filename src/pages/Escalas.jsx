@@ -13,7 +13,7 @@ import {
   Trash2, Edit3, X, Minimize2, Sparkles, CheckCheck, Send, 
   MousePointerClick, HeartPulse, UserPlus, Layers, SlidersHorizontal,
   Flame, Radio, ArrowRight, ShieldAlert, MonitorPlay, GripVertical, 
-  Printer, Sun, Moon, Check, Stethoscope, Share2
+  Printer, Sun, Moon, Stethoscope
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -29,15 +29,6 @@ const WEEKDAYS = [
   { short: 'Qui', long: 'Quinta-feira', weekend: false },
   { short: 'Sex', long: 'Sexta-feira', weekend: false },
   { short: 'Sáb', long: 'Sábado', weekend: true }
-];
-
-const CATEGORIES = [
-  { id: 'medico', label: 'Médico(a)', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' },
-  { id: 'enfermeiro', label: 'Enfermeiro(a)', color: 'text-teal-500 bg-teal-500/10 border-teal-500/30' },
-  { id: 'tecnico_enfermagem', label: 'Téc. Enfermagem', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' },
-  { id: 'fisioterapeuta', label: 'Fisioterapeuta', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' },
-  { id: 'farmaceutico', label: 'Farmacêutico(a)', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' },
-  { id: 'outro', label: 'Outro Profissional', color: 'text-slate-500 bg-slate-500/10 border-slate-500/30' }
 ];
 
 async function autoHealingSaveShift(id, initialPayload) {
@@ -118,7 +109,6 @@ export default function Escalas() {
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     sector_id: '',
-    target_category: 'medico',
     target_specialty: '',
     start_time: '07:00',
     end_time: '19:00',
@@ -128,25 +118,61 @@ export default function Escalas() {
     notes: ''
   });
 
-  // Formulário do Gerador & Configurador de Escala Multi-Especialidade
+  // Especialidades cadastradas puxadas dinamicamente do Corpo Clínico
+  const registeredSpecialties = useMemo(() => {
+    const set = new Set();
+    professionals.forEach(p => {
+      if (p.specialty && p.specialty.trim()) set.add(p.specialty.trim());
+    });
+    return Array.from(set).sort();
+  }, [professionals]);
+
+  // CONFIGURADOR TOTALMENTE DINÂMICO DE VAGAS COM O BOTÃO "+"
   const [generatorConfig, setGeneratorConfig] = useState({
     sector_id: '',
     start_date: new Date().toISOString().split('T')[0],
     duration_days: 30,
-    day_start: '07:00',
-    day_end: '19:00',
-    night_start: '19:00',
-    night_end: '07:00',
-    // Vagas multi-especialidade por turno
-    day_slots: [
-      { category: 'medico', quantity: 2, specialty: 'Clínica Geral' },
-      { category: 'enfermeiro', quantity: 4, specialty: 'Assistencial' }
-    ],
-    night_slots: [
-      { category: 'medico', quantity: 2, specialty: 'Plantão Noturno' },
-      { category: 'enfermeiro', quantity: 3, specialty: 'Assistencial' }
+    // Linhas flexíveis adicionadas livremente pelo gestor
+    slots: [
+      { id: 'slot_1', specialty: 'Clínica Médica', start_time: '07:00', end_time: '19:00', quantity: 2, shift_type: 'diurno' },
+      { id: 'slot_2', specialty: 'Enfermagem Geral', start_time: '07:00', end_time: '19:00', quantity: 4, shift_type: 'diurno' },
+      { id: 'slot_3', specialty: 'Clínica Médica', start_time: '19:00', end_time: '07:00', quantity: 2, shift_type: 'noturno' }
     ]
   });
+
+  // Funções do Configurador Dinâmico
+  const handleAddSlotToGenerator = () => {
+    const newSlot = {
+      id: `slot_${Date.now()}`,
+      specialty: registeredSpecialties[0] || 'Geral',
+      start_time: '07:00',
+      end_time: '19:00',
+      quantity: 1,
+      shift_type: 'diurno'
+    };
+    setGeneratorConfig(prev => ({ ...prev, slots: [...prev.slots, newSlot] }));
+  };
+
+  const handleRemoveSlotFromGenerator = (slotId) => {
+    setGeneratorConfig(prev => ({
+      ...prev,
+      slots: prev.slots.filter(s => s.id !== slotId)
+    }));
+  };
+
+  const handleUpdateSlot = (slotId, field, value) => {
+    setGeneratorConfig(prev => ({
+      ...prev,
+      slots: prev.slots.map(s => {
+        if (s.id !== slotId) return s;
+        const updated = { ...s, [field]: value };
+        if (field === 'start_time') {
+          updated.shift_type = value >= '19:00' || value < '07:00' ? 'noturno' : 'diurno';
+        }
+        return updated;
+      })
+    }));
+  };
 
   const [batchData, setBatchData] = useState({
     professional_id: '',
@@ -212,7 +238,7 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // Escala do Dia & Modo TV CCO
+  // Escala do Dia & CCO
   const todayStr = `${liveNow.getFullYear()}-${String(liveNow.getMonth() + 1).padStart(2, '0')}-${String(liveNow.getDate()).padStart(2, '0')}`;
 
   const todayShiftsDetailed = useMemo(() => {
@@ -230,7 +256,6 @@ export default function Escalas() {
     const emAndamento = [];
     const proximoRendimento = [];
     const concluidosRecentes = [];
-    const vagasAbertasHoje = [];
 
     todayRaw.forEach(shift => {
       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
@@ -248,10 +273,7 @@ export default function Escalas() {
         effectiveNowMin += 24 * 60;
       }
 
-      if (isVago) {
-        vagasAbertasHoje.push(shift);
-        return;
-      }
+      if (isVago) return;
 
       if (effectiveNowMin >= startTotalMin && effectiveNowMin < endTotalMin) {
         emAndamento.push(shift);
@@ -265,8 +287,18 @@ export default function Escalas() {
       }
     });
 
-    return { emAndamento, proximoRendimento, concluidosRecentes, vagasAbertasHoje, totalHoje: todayRaw.length };
+    return { emAndamento, proximoRendimento, concluidosRecentes, totalHoje: todayRaw.length };
   }, [shifts, todayStr, selectedSectorId, filterTurno, liveNow, professionalMap]);
+
+  // Profissionais filtrados automaticamente pela especialidade escolhida no formulário
+  const eligibleProfessionalsForModal = useMemo(() => {
+    const spec = (formData.target_specialty || '').toLowerCase().trim();
+    if (!spec) return professionals.filter(p => p.status === 'ativo');
+
+    const matching = professionals.filter(p => p.status === 'ativo' && (p.specialty || '').toLowerCase().includes(spec));
+    // Se achar médicos da especialidade, mostra primeiro; senão mostra todos
+    return matching.length > 0 ? matching : professionals.filter(p => p.status === 'ativo');
+  }, [professionals, formData.target_specialty]);
 
   // Multi-seleção CTRL
   const handleDayClick = (dateStr, e) => {
@@ -295,7 +327,7 @@ export default function Escalas() {
     const targetSector = selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || '');
 
     if (!targetSector) {
-      alert('Selecione ou cadastre um setor hospitalar antes de alocar.');
+      alert('Selecione ou cadastre um setor hospitalar.');
       return;
     }
 
@@ -303,8 +335,8 @@ export default function Escalas() {
       ? selectedDays 
       : [dateStr];
 
-    const secName = sectorMap[targetSector]?.name || 'Setor Hospitalar';
-    if (!confirm(`Alocar ${prof?.name} em "${secName}" nos ${targetDates.length} dia(s) selecionados?`)) {
+    const secName = sectorMap[targetSector]?.name || 'Setor';
+    if (!confirm(`Alocar ${prof?.name} em "${secName}" nos ${targetDates.length} dia(s) selecionado(s)?`)) {
       setDraggingProfId(null);
       return;
     }
@@ -316,7 +348,7 @@ export default function Escalas() {
           unit_id: selectedUnitId || 'unit_h1',
           sector_id: targetSector,
           professional_id: profId,
-          target_category: prof?.category || 'medico',
+          target_specialty: prof?.specialty || '',
           date: d,
           shift_type: 'diurno',
           start_time: '07:00',
@@ -333,23 +365,27 @@ export default function Escalas() {
     }
   };
 
-  // CONFIGURADOR & GERADOR MULTI-ESPECIALIDADE EM MASSA
+  // GERADOR & CONFIGURADOR TOTALMENTE CUSTOMIZADO
   const handleExecuteGenerator = async (e) => {
     e.preventDefault();
     if (!generatorConfig.sector_id) {
-      alert('Selecione o setor para o qual deseja gerar a escala.');
+      alert('Selecione o setor para a escala.');
+      return;
+    }
+
+    if (generatorConfig.slots.length === 0) {
+      alert('Adicione pelo menos uma especialidade/horário com o botão "+".');
       return;
     }
 
     const secName = sectorMap[generatorConfig.sector_id]?.name || 'Setor';
     const totalDays = parseInt(generatorConfig.duration_days) || 30;
 
-    let totalShiftsCount = 0;
-    generatorConfig.day_slots.forEach(s => totalShiftsCount += parseInt(s.quantity || 0));
-    generatorConfig.night_slots.forEach(s => totalShiftsCount += parseInt(s.quantity || 0));
-    const grandTotal = totalShiftsCount * totalDays;
+    let dailySlotsCount = 0;
+    generatorConfig.slots.forEach(s => dailySlotsCount += parseInt(s.quantity || 0));
+    const grandTotal = dailySlotsCount * totalDays;
 
-    if (!confirm(`Gerar ${grandTotal} vagas para ${totalDays} dias no setor "${secName}"? As vagas serão geradas como abertas para preenchimento ou mural.`)) {
+    if (!confirm(`Gerar ${grandTotal} vagas para ${totalDays} dias no setor "${secName}" com os horários e especialidades definidos por você?`)) {
       return;
     }
 
@@ -362,41 +398,19 @@ export default function Escalas() {
         curDate.setDate(curDate.getDate() + dayOffset);
         const dateStr = curDate.toISOString().split('T')[0];
 
-        // 1. Gera Vagas Diurnas Multi-Especialidade
-        for (const slot of generatorConfig.day_slots) {
+        for (const slot of generatorConfig.slots) {
           const qty = parseInt(slot.quantity) || 0;
           for (let q = 0; q < qty; q++) {
             await autoHealingSaveShift(null, {
               company_id: company?.id || 'cmp_principal',
               unit_id: selectedUnitId || 'unit_h1',
               sector_id: generatorConfig.sector_id,
-              target_category: slot.category,
               target_specialty: slot.specialty || '',
               professional_id: null,
               date: dateStr,
-              shift_type: 'diurno',
-              start_time: generatorConfig.day_start,
-              end_time: generatorConfig.day_end,
-              status: 'vago'
-            });
-          }
-        }
-
-        // 2. Gera Vagas Noturnas Multi-Especialidade
-        for (const slot of generatorConfig.night_slots) {
-          const qty = parseInt(slot.quantity) || 0;
-          for (let q = 0; q < qty; q++) {
-            await autoHealingSaveShift(null, {
-              company_id: company?.id || 'cmp_principal',
-              unit_id: selectedUnitId || 'unit_h1',
-              sector_id: generatorConfig.sector_id,
-              target_category: slot.category,
-              target_specialty: slot.specialty || '',
-              professional_id: null,
-              date: dateStr,
-              shift_type: 'noturno',
-              start_time: generatorConfig.night_start,
-              end_time: generatorConfig.night_end,
+              shift_type: slot.shift_type || 'diurno',
+              start_time: slot.start_time,
+              end_time: slot.end_time,
               status: 'vago'
             });
           }
@@ -405,7 +419,7 @@ export default function Escalas() {
 
       setGeneratorModalOpen(false);
       await syncGlobalData();
-      alert(`Escala multi-especialidade de ${secName} gerada com sucesso! As vagas já estão prontas no calendário.`);
+      alert(`Escala personalizada de ${secName} gerada com sucesso! Vagas abertas criadas no calendário.`);
     } catch (err) {
       alert('Erro ao gerar escala: ' + err.message);
     } finally {
@@ -413,25 +427,19 @@ export default function Escalas() {
     }
   };
 
-  // Publicar Escala & Disparar Notificações para os Profissionais
+  // Publicar Escala com Notificação aos Profissionais
   const handleTogglePublish = async () => {
     const nextState = !scalePublished;
     setScalePublished(nextState);
 
     if (nextState) {
-      // Dispara registro de escala publicada no sistema
-      try {
-        const publishedKey = `scale_published_${currentYear}_${currentMonth + 1}`;
-        window.localStorage.setItem(publishedKey, new Date().toISOString());
-      } catch {}
-
-      alert(`✅ Escala de ${MONTH_NAMES[currentMonth]} homologada e PUBLICADA com sucesso!\nTodos os profissionais com plantões atribuídos receberão aviso para conferência de seus turnos.`);
+      alert(`✅ Escala de ${MONTH_NAMES[currentMonth]} homologada e PUBLICADA com sucesso!\nTodos os profissionais com plantões alocados receberão aviso no painel.`);
     } else {
-      alert(`⚠️ A escala foi retornada para modo Rascunho / Em Montagem.`);
+      alert(`⚠️ A escala foi retornada para o modo Rascunho / Em Montagem.`);
     }
   };
 
-  // Salvar plantão em lote (CTRL)
+  // Preenchimento em lote (CTRL)
   const handleSaveBatch = async (e) => {
     e.preventDefault();
     if (!batchData.sector_id || !batchData.professional_id) {
@@ -448,7 +456,7 @@ export default function Escalas() {
           unit_id: selectedUnitId || 'unit_h1',
           sector_id: batchData.sector_id,
           professional_id: batchData.professional_id,
-          target_category: prof?.category || 'medico',
+          target_specialty: prof?.specialty || '',
           date: d,
           shift_type: batchData.shift_type,
           start_time: batchData.start_time,
@@ -489,7 +497,6 @@ export default function Escalas() {
         company_id: company?.id || 'cmp_principal',
         unit_id: selectedUnitId || 'unit_h1',
         sector_id: formData.sector_id,
-        target_category: formData.target_category || prof?.category || 'medico',
         target_specialty: formData.target_specialty || prof?.specialty || '',
         professional_id: isMural ? null : formData.professional_id,
         date: formData.date,
@@ -503,7 +510,7 @@ export default function Escalas() {
       await autoHealingSaveShift(editingShiftId, payload);
       setModalOpen(false);
       await syncGlobalData();
-      alert(isMural ? 'Plantão enviado para o Mural de Vagas!' : 'Plantão alocado com sucesso!');
+      alert(isMural ? 'Plantão enviado para o Mural de Oportunidades!' : 'Plantão alocado com sucesso!');
     } catch (err) {
       alert('Erro ao salvar plantão: ' + err.message);
     } finally {
@@ -511,7 +518,7 @@ export default function Escalas() {
     }
   };
 
-  // Desocupar plantão direto do modal
+  // Desocupar plantão direto de dentro do modal (sem botão repetitivo no card)
   const handleSendToMuralFromModal = async () => {
     if (!editingShiftId) return;
     if (!confirm('Desocupar este plantão e disponibilizar a VAGA NO MURAL?')) return;
@@ -596,12 +603,12 @@ export default function Escalas() {
 
           {selectedSectorId !== 'todos' && (
             <span className="hidden lg:inline-block px-3 py-1 rounded-xl text-xs font-black bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20 truncate">
-              Ativo: {sectorMap[selectedSectorId]?.name}
+              Setor Ativo: {sectorMap[selectedSectorId]?.name}
             </span>
           )}
         </div>
 
-        {/* BOTÃO GERADOR DE ESCALA MULTI-ESPECIALIDADE */}
+        {/* BOTÃO DO CONFIGURADOR DINÂMICO & FILTROS */}
         <div className="flex items-center gap-2">
           {isManager && (
             <Button
@@ -657,7 +664,7 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* 2. BARRA DE COMANDO: MÊS, PUBLICAÇÃO, MODO TV E IMPRESSÃO */}
+      {/* 2. BARRA DE COMANDO: MÊS, PUBLICAÇÃO, MODO TV */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:hidden transition-colors">
         
         <div className="flex items-center gap-3">
@@ -690,7 +697,7 @@ export default function Escalas() {
         {/* NAVEGAÇÃO DE TELAS & AÇÕES */}
         <div className="flex items-center gap-2 flex-wrap">
           
-          {/* BOTÃO PUBLICAR / DESPUBLICAR */}
+          {/* BOTÃO PUBLICAR ESCALA */}
           {isManager && (
             <Button
               onClick={handleTogglePublish}
@@ -738,15 +745,28 @@ export default function Escalas() {
             <span>{activeTab === 'tv' ? 'Sair da TV' : 'Modo TV CCO'}</span>
           </Button>
 
-          {/* IMPRIMIR PARA MURAL */}
-          <Button
-            onClick={() => setPrintPreviewOpen(true)}
-            className="h-9 px-4 text-xs font-black rounded-2xl gap-2 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 shadow-sm"
-            title="Gerar folha impressa horizontal A4 para o mural"
-          >
-            <Printer className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-            <span>Imprimir Mural</span>
-          </Button>
+          {isManager && (
+            <Button 
+              onClick={() => {
+                setEditingShiftId(null);
+                setFormData({
+                  date: new Date().toISOString().split('T')[0],
+                  sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''),
+                  target_specialty: registeredSpecialties[0] || '',
+                  start_time: '07:00',
+                  end_time: '19:00',
+                  shift_type: 'diurno',
+                  action_type: 'alocar',
+                  professional_id: '',
+                  notes: ''
+                });
+                setModalOpen(true);
+              }} 
+              className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-5 rounded-2xl shadow-md gap-1.5"
+            >
+              <Plus className="w-4 h-4" /> Lançar Plantão
+            </Button>
+          )}
         </div>
       </div>
 
@@ -783,7 +803,7 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 4. VISÃO: PLANTÃO DO DIA (PRÉVIA COMPLETA & ORGANIZADA)                   */}
+      {/* 4. VISÃO A: PLANTÃO DO DIA (COM O ÚNICO BOTÃO IMPRIMIR PLANTÃO DO DIA)    */}
       {/* ========================================================================= */}
       {activeTab === 'dia' && (
         <div className="space-y-5">
@@ -796,11 +816,12 @@ export default function Escalas() {
                 </h3>
               </div>
 
+              {/* ÚNICO BOTÃO DE IMPRESSÃO DA PLATAFORMA */}
               <Button
                 onClick={() => setPrintPreviewOpen(true)}
-                className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-4 rounded-xl gap-2 shadow-sm"
+                className="h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 text-xs font-black px-5 rounded-2xl gap-2 shadow-md"
               >
-                <Printer className="w-4 h-4" /> Imprimir Folha A4 do Mural
+                <Printer className="w-4 h-4" /> Imprimir Plantão do Dia
               </Button>
             </div>
 
@@ -811,14 +832,15 @@ export default function Escalas() {
                     <th className="py-3 px-4">Seção / Setor</th>
                     <th className="py-3 px-4">Turno / Horário</th>
                     <th className="py-3 px-4">Profissional Escalado</th>
-                    <th className="py-3 px-4">Categoria & Especialidade</th>
+                    <th className="py-3 px-4">Especialidade / Atuação</th>
+                    <th className="py-3 px-4">Conselho / Registro</th>
                     <th className="py-3 px-4 text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                   {todayShiftsDetailed.totalHoje === 0 ? (
                     <tr>
-                      <td colSpan="5" className="py-8 text-center text-slate-400">
+                      <td colSpan="6" className="py-8 text-center text-slate-400">
                         Nenhum plantão registrado para a data de hoje nesta seção.
                       </td>
                     </tr>
@@ -828,7 +850,6 @@ export default function Escalas() {
                       const sector = sectorMap[String(shift.sector_id)];
                       const isVago = shift.status === 'vago' || !prof;
                       const status = getStatusBadge(shift);
-                      const cat = CATEGORIES.find(c => c.id === (shift.target_category || prof?.category || 'medico'));
 
                       return (
                         <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
@@ -845,11 +866,11 @@ export default function Escalas() {
                               formatFullName(prof?.name)
                             )}
                           </td>
-                          <td className="py-3 px-4">
-                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${cat?.color}`}>
-                              {cat?.label}
-                            </span>
-                            <span className="text-[11px] text-slate-500 ml-1.5">{shift.target_specialty || prof?.specialty || 'Geral'}</span>
+                          <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-semibold">
+                            {shift.target_specialty || prof?.specialty || 'Geral'}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400">
+                            {prof?.document || '—'}
                           </td>
                           <td className="py-3 px-4 text-center">
                             <span className="flex items-center justify-center gap-1.5">
@@ -906,7 +927,7 @@ export default function Escalas() {
                         <span className="font-mono text-[11px]">{shift.start_time} - {shift.end_time}</span>
                       </div>
                       <div className="text-sm font-black text-white truncate">{formatFullName(prof?.name)}</div>
-                      <div className="text-[11px] text-slate-400">{prof?.specialty || 'Geral'} • {prof?.document || 'CRM'}</div>
+                      <div className="text-[11px] text-slate-400">{shift.target_specialty || prof?.specialty || 'Geral'} • {prof?.document || 'CRM'}</div>
                     </div>
                   );
                 })
@@ -977,12 +998,12 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 6. VISÃO: GRADE MENSAL (CABEÇALHO LIMPO E CLIQUE NO QUADRADO)             */}
+      {/* 6. VISÃO: GRADE MENSAL (CABEÇALHO LIMPO E CLIQUE NO CARD P/ OPÇÕES)       */}
       {/* ========================================================================= */}
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
           
-          {/* ROLL LATERAL DE PROFISSIONAIS (DRAG & DROP) */}
+          {/* ROLL DE PROFISSIONAIS (DRAG & DROP) */}
           {isManager && (
             <aside className="w-full lg:w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3 transition-colors">
               <div className="flex items-center justify-between">
@@ -1025,7 +1046,7 @@ export default function Escalas() {
             </aside>
           )}
 
-          {/* GRADE CALENDÁRIO COM CABEÇALHO LIMPO (SEM SINAL DE +) */}
+          {/* GRADE CALENDÁRIO COM CABEÇALHOS COLORIDOS E SEM BOTÕES REPETIDOS */}
           <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm transition-colors">
             
             {/* CABEÇALHO DOS DIAS DA SEMANA */}
@@ -1084,7 +1105,6 @@ export default function Escalas() {
                         const sector = sectorMap[String(shift.sector_id)];
                         const isVago = shift.status === 'vago' || !prof;
                         const badge = getStatusBadge(shift);
-                        const cat = CATEGORIES.find(c => c.id === (shift.target_category || prof?.category || 'medico'));
 
                         return (
                           <div
@@ -1096,7 +1116,6 @@ export default function Escalas() {
                                 setFormData({
                                   date: shift.date || '',
                                   sector_id: shift.sector_id || '',
-                                  target_category: shift.target_category || prof?.category || 'medico',
                                   target_specialty: shift.target_specialty || prof?.specialty || '',
                                   start_time: shift.start_time || '07:00',
                                   end_time: shift.end_time || '19:00',
@@ -1122,19 +1141,19 @@ export default function Escalas() {
                               <span className="font-mono text-slate-400">{shift.start_time}-{shift.end_time}</span>
                             </div>
 
-                            {/* BOLINHA COM O STATUS LOGO ABAIXO */}
+                            {/* BOLINHA DE STATUS */}
                             <div className="flex items-center gap-1.5 mb-1">
                               <span className={`w-2 h-2 rounded-full shrink-0 ${badge.dot}`}></span>
                               <span className={`text-[10px] ${badge.text}`}>{badge.label}</span>
                             </div>
 
-                            {/* NOME E SOBRENOME EM DESTAQUE COM CATEGORIA */}
+                            {/* NOME E SOBRENOME EM DESTAQUE COM A ESPECIALIDADE DEFINIDA */}
                             <div className="font-black text-xs text-slate-900 dark:text-white truncate">
                               {isVago ? '⚠️ Vaga em Aberto' : formatFullName(prof?.name)}
                             </div>
 
-                            <div className="text-[10px] text-slate-400 font-semibold truncate mt-0.5">
-                              {cat?.label} • {shift.target_specialty || prof?.specialty || 'Geral'}
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate mt-0.5">
+                              {shift.target_specialty || prof?.specialty || 'Geral'}
                             </div>
                           </div>
                         );
@@ -1151,8 +1170,7 @@ export default function Escalas() {
                           setFormData({
                             date: dateStr,
                             sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''),
-                            target_category: 'medico',
-                            target_specialty: '',
+                            target_specialty: registeredSpecialties[0] || '',
                             start_time: '07:00',
                             end_time: '19:00',
                             shift_type: 'diurno',
@@ -1176,12 +1194,11 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 7. MODAL IMPRESSO OFICIAL A4 PAISAGEM (HORIZONTAL PREMIUM)               */}
+      {/* 7. MODAL IMPRESSO OFICIAL A4 PAISAGEM (FOLHA OFICIAL HORIZONTAL)          */}
       {/* ========================================================================= */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
         <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto bg-white text-slate-900 border-none p-8 font-sans">
           
-          {/* ESTILOS DE IMPRESSÃO EXCLUSIVOS PARA PAISAGEM (LANDSCAPE) */}
           <style>{`
             @media print {
               @page {
@@ -1198,8 +1215,6 @@ export default function Escalas() {
           `}</style>
 
           <div className="space-y-6">
-            
-            {/* CABEÇALHO OFICIAL A4 PAISAGEM */}
             <div className="flex items-center justify-between border-b-2 border-slate-900 pb-4">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-xl">
@@ -1223,7 +1238,6 @@ export default function Escalas() {
               </div>
             </div>
 
-            {/* TABELA HORIZONTAL COMPLETA MULTI-ESPECIALIDADE */}
             <div className="space-y-3">
               <table className="w-full border-collapse border border-slate-400 text-xs">
                 <thead className="bg-slate-100 text-slate-900 uppercase text-[10px] font-black">
@@ -1231,8 +1245,8 @@ export default function Escalas() {
                     <th className="border border-slate-400 p-2 text-left w-1/5">Seção / Setor</th>
                     <th className="border border-slate-400 p-2 text-left w-32">Turno / Horário</th>
                     <th className="border border-slate-400 p-2 text-left">Profissional Escalado</th>
-                    <th className="border border-slate-400 p-2 text-left w-48">Categoria / Registro</th>
-                    <th className="border border-slate-400 p-2 text-left w-40">Especialidade</th>
+                    <th className="border border-slate-400 p-2 text-left w-44">Registro Conselho</th>
+                    <th className="border border-slate-400 p-2 text-left w-48">Especialidade / Atuação</th>
                     <th className="border border-slate-400 p-2 text-center w-48">Rubrica / Presença</th>
                   </tr>
                 </thead>
@@ -1241,7 +1255,6 @@ export default function Escalas() {
                     const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
                     const sector = sectorMap[String(shift.sector_id)];
                     const isVago = shift.status === 'vago' || !prof;
-                    const cat = CATEGORIES.find(c => c.id === (shift.target_category || prof?.category || 'medico'));
 
                     return (
                       <tr key={shift.id} className="hover:bg-slate-50">
@@ -1250,10 +1263,8 @@ export default function Escalas() {
                         <td className="border border-slate-300 p-2 font-black text-slate-900">
                           {isVago ? <span className="text-red-600 font-black uppercase">⚠️ VAGA EM ABERTO</span> : prof?.name}
                         </td>
-                        <td className="border border-slate-300 p-2 text-slate-700">
-                          <b>{cat?.label}</b> {prof?.document ? `• ${prof.document}` : ''}
-                        </td>
-                        <td className="border border-slate-300 p-2 text-slate-600">{shift.target_specialty || prof?.specialty || 'Geral'}</td>
+                        <td className="border border-slate-300 p-2 font-mono text-slate-700">{prof?.document || '—'}</td>
+                        <td className="border border-slate-300 p-2 text-slate-800 font-semibold">{shift.target_specialty || prof?.specialty || 'Geral'}</td>
                         <td className="border border-slate-300 p-2 text-center text-slate-400 font-mono">____________________</td>
                       </tr>
                     );
@@ -1262,7 +1273,7 @@ export default function Escalas() {
               </table>
             </div>
 
-            {/* ASSINATURAS & TERMO DE RESPONSABILIDADE */}
+            {/* ASSINATURAS */}
             <div className="grid grid-cols-2 gap-8 pt-8 border-t border-slate-300 text-center text-xs">
               <div className="space-y-1">
                 <div className="w-64 border-b border-slate-900 mx-auto"></div>
@@ -1277,15 +1288,14 @@ export default function Escalas() {
               </div>
             </div>
 
-            {/* RODAPÉ DO IMPRESSO */}
             <div className="flex items-center justify-between pt-4 border-t border-slate-200 text-[9px] text-slate-400">
-              <span>ScaleMedic Hospital Intelligence • Sistema Homologado para Gestão e Escalas Hospitalares</span>
-              <span>Página 1 de 1 • Afixação Obrigatória em Mural Visível</span>
+              <span>ScaleMedic Hospital Intelligence • Escala Hospitalar Oficial Homologada</span>
+              <span>Página 1 de 1 • Afixação Obrigatória em Mural Físico</span>
             </div>
 
             <div className="flex justify-end gap-3 print:hidden pt-4 border-t">
               <Button variant="outline" onClick={() => setPrintPreviewOpen(false)} className="text-xs h-9">
-                Fechar Visualização
+                Fechar
               </Button>
               <Button onClick={() => window.print()} className="h-9 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs px-6 gap-2 shadow-lg">
                 <Printer className="w-4 h-4" /> Imprimir em Folha A4 Paisagem
@@ -1296,20 +1306,20 @@ export default function Escalas() {
       </Dialog>
 
       {/* ========================================================================= */}
-      {/* 8. MODAL DO GERADOR & CONFIGURADOR DE ESCALA MULTI-ESPECIALIDADE          */}
+      {/* 8. MODAL DO GERADOR & CONFIGURADOR TOTALMENTE CUSTOMIZÁVEL COM BOTÃO "+" */}
       {/* ========================================================================= */}
       <Dialog open={generatorModalOpen} onOpenChange={setGeneratorModalOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
           <DialogHeader>
             <DialogTitle className="text-base font-black flex items-center gap-2">
               <SlidersHorizontal className="w-5 h-5 text-indigo-600" />
-              Configurar & Gerar Escala Multi-Especialidade
+              Configurar & Gerar Escala do Setor (Livre Preenchimento)
             </DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleExecuteGenerator} className="space-y-4 py-2 text-xs">
             
-            {/* 1. SELEÇÃO DO SETOR E VIGÊNCIA */}
+            {/* 1. SETOR, DATA DE INÍCIO E QUANTIDADE DE DIAS */}
             <div className="p-3.5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
               <span className="text-xs font-black uppercase text-slate-500 block">1. Definição do Setor & Período</span>
               
@@ -1327,16 +1337,16 @@ export default function Escalas() {
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-xs font-bold">A Partir De (Início) *</Label>
+                  <Label className="text-xs font-bold">A Partir De (Data Início) *</Label>
                   <Input type="date" value={generatorConfig.start_date} onChange={e => setGeneratorConfig({ ...generatorConfig, start_date: e.target.value })} className="h-9 bg-white dark:bg-slate-900" />
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-xs font-bold">Duração da Escala</Label>
+                  <Label className="text-xs font-bold">Quantidade de Dias</Label>
                   <Select value={String(generatorConfig.duration_days)} onValueChange={v => setGeneratorConfig({ ...generatorConfig, duration_days: parseInt(v) })}>
                     <SelectTrigger className="h-9 bg-white dark:bg-slate-900"><SelectValue /></SelectTrigger>
                     <SelectContent className="bg-white dark:bg-slate-900">
-                      <SelectItem value="7">7 Dias (Semana)</SelectItem>
+                      <SelectItem value="7">7 Dias (1 Semana)</SelectItem>
                       <SelectItem value="15">15 Dias (Quinzena)</SelectItem>
                       <SelectItem value="30">30 Dias (Mês Completo)</SelectItem>
                       <SelectItem value="60">60 Dias (Bimestre)</SelectItem>
@@ -1346,84 +1356,109 @@ export default function Escalas() {
               </div>
             </div>
 
-            {/* 2. VAGAS DIURNAS MULTI-ESPECIALIDADE */}
-            <div className="p-3.5 bg-amber-50/40 dark:bg-amber-950/20 rounded-2xl border border-amber-200 dark:border-amber-900/40 space-y-2.5">
+            {/* 2. DEFINIÇÃO DINÂMICA DE ESPECIALIDADES E HORÁRIOS COM BOTÃO "+" */}
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black uppercase text-amber-800 dark:text-amber-400 flex items-center gap-1.5">
-                  <Sun className="w-4 h-4 text-amber-500" /> 2. Plantão Diurno ({generatorConfig.day_start} às {generatorConfig.day_end})
-                </span>
+                <div>
+                  <span className="text-xs font-black uppercase text-slate-800 dark:text-slate-200 block">
+                    2. Especialidades, Horários e Quantidade de Vagas
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    Defina livremente quem e quantos profissionais assumirão cada horário por dia.
+                  </span>
+                </div>
+
+                {/* BOTÃO + PARA ADICIONAR LINHA LIVREMENTE */}
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleAddSlotToGenerator}
+                  className="h-8 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-3 rounded-xl gap-1 shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Adicionar Especialidade
+                </Button>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {CATEGORIES.filter(c => c.id !== 'outro').map(cat => {
-                  const existing = generatorConfig.day_slots.find(s => s.category === cat.id);
-                  const qty = existing ? existing.quantity : 0;
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                {generatorConfig.slots.map((slot, index) => (
+                  <div key={slot.id} className="p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end shadow-sm">
+                    
+                    {/* Especialidade / Atuação */}
+                    <div className="sm:col-span-4 space-y-1">
+                      <Label className="text-[10px] font-bold text-slate-500">Especialidade / Atuação</Label>
+                      <div className="relative">
+                        <Input
+                          placeholder="Digite ou escolha..."
+                          value={slot.specialty}
+                          onChange={e => handleUpdateSlot(slot.id, 'specialty', e.target.value)}
+                          className="h-8 text-xs font-bold"
+                          list="specialties-datalist"
+                        />
+                      </div>
+                    </div>
 
-                  return (
-                    <div key={cat.id} className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
-                      <span className="text-[10px] font-black uppercase text-slate-500 block truncate">{cat.label}</span>
+                    {/* Horário Início */}
+                    <div className="sm:col-span-2 space-y-1">
+                      <Label className="text-[10px] font-bold text-slate-500">Entrada</Label>
                       <Input
-                        type="number"
-                        min="0"
-                        max="20"
-                        value={qty}
-                        onChange={e => {
-                          const val = parseInt(e.target.value) || 0;
-                          const updated = generatorConfig.day_slots.filter(s => s.category !== cat.id);
-                          if (val > 0) updated.push({ category: cat.id, quantity: val, specialty: '' });
-                          setGeneratorConfig({ ...generatorConfig, day_slots: updated });
-                        }}
+                        type="time"
+                        value={slot.start_time}
+                        onChange={e => handleUpdateSlot(slot.id, 'start_time', e.target.value)}
                         className="h-8 text-xs font-bold"
                       />
                     </div>
-                  );
-                })}
-              </div>
-            </div>
 
-            {/* 3. VAGAS NOTURNAS MULTI-ESPECIALIDADE */}
-            <div className="p-3.5 bg-indigo-50/40 dark:bg-indigo-950/20 rounded-2xl border border-indigo-200 dark:border-indigo-900/40 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black uppercase text-indigo-800 dark:text-indigo-400 flex items-center gap-1.5">
-                  <Moon className="w-4 h-4 text-indigo-500" /> 3. Plantão Noturno ({generatorConfig.night_start} às {generatorConfig.night_end})
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {CATEGORIES.filter(c => c.id !== 'outro').map(cat => {
-                  const existing = generatorConfig.night_slots.find(s => s.category === cat.id);
-                  const qty = existing ? existing.quantity : 0;
-
-                  return (
-                    <div key={cat.id} className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
-                      <span className="text-[10px] font-black uppercase text-slate-500 block truncate">{cat.label}</span>
+                    {/* Horário Término */}
+                    <div className="sm:col-span-2 space-y-1">
+                      <Label className="text-[10px] font-bold text-slate-500">Saída</Label>
                       <Input
-                        type="number"
-                        min="0"
-                        max="20"
-                        value={qty}
-                        onChange={e => {
-                          const val = parseInt(e.target.value) || 0;
-                          const updated = generatorConfig.night_slots.filter(s => s.category !== cat.id);
-                          if (val > 0) updated.push({ category: cat.id, quantity: val, specialty: '' });
-                          setGeneratorConfig({ ...generatorConfig, night_slots: updated });
-                        }}
+                        type="time"
+                        value={slot.end_time}
+                        onChange={e => handleUpdateSlot(slot.id, 'end_time', e.target.value)}
                         className="h-8 text-xs font-bold"
                       />
                     </div>
-                  );
-                })}
-              </div>
-            </div>
 
-            <p className="text-[11px] text-slate-500 bg-slate-50 dark:bg-slate-950 p-2.5 rounded-xl border">
-              💡 As vagas serão criadas de forma segura e integradas no mesmo setor para facilitar a visualização no Plantão do Dia e Modo TV CCO. Você poderá alocar os profissionais arrastando do roll.
-            </p>
+                    {/* Vagas por dia */}
+                    <div className="sm:col-span-3 space-y-1">
+                      <Label className="text-[10px] font-bold text-slate-500">Qtd. Vagas/Dia</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        max="30"
+                        value={slot.quantity}
+                        onChange={e => handleUpdateSlot(slot.id, 'quantity', parseInt(e.target.value) || 1)}
+                        className="h-8 text-xs font-bold"
+                      />
+                    </div>
+
+                    {/* Excluir Linha */}
+                    <div className="sm:col-span-1 flex justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => handleRemoveSlotFromGenerator(slot.id)}
+                        className="h-8 w-8 p-0 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Datalist com as especialidades já existentes no Corpo Clínico */}
+              <datalist id="specialties-datalist">
+                {registeredSpecialties.map(spec => (
+                  <option key={spec} value={spec} />
+                ))}
+              </datalist>
+            </div>
 
             <DialogFooter className="pt-2 gap-2">
               <Button type="button" variant="outline" onClick={() => setGeneratorModalOpen(false)} className="h-9 text-xs">Cancelar</Button>
               <Button type="submit" disabled={submitting} className="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-6 rounded-xl shadow-md">
-                {submitting ? 'Gerando Escala...' : 'Gerar Vagas Multi-Especialidade'}
+                {submitting ? 'Gerando Escala...' : 'Gerar Vagas Personalizadas'}
               </Button>
             </DialogFooter>
           </form>
@@ -1486,7 +1521,7 @@ export default function Escalas() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL: EDITAR OU LANÇAR PLANTÃO INDIVIDUAL (COM BOTÃO DIRETO MANDAR P/ MURAL) */}
+      {/* MODAL: EDITAR OU LANÇAR PLANTÃO INDIVIDUAL */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
           <DialogHeader>
@@ -1516,23 +1551,24 @@ export default function Escalas() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Categoria Exigida</Label>
-                <Select value={formData.target_category} onValueChange={v => setFormData({ ...formData, target_category: v })}>
-                  <SelectTrigger className="h-9 bg-slate-50 dark:bg-slate-950"><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-white dark:bg-slate-900">
-                    {CATEGORIES.map(c => (
-                      <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {/* ESPECIALIDADE PUXADA DINAMICAMENTE OU PREENCHIDA LIVREMENTE */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Especialidade / Atuação</Label>
+                <span className="text-[10px] text-sky-600 font-bold">Filtra os profissionais abaixo</span>
               </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Especialidade Alvo</Label>
-                <Input value={formData.target_specialty} onChange={e => setFormData({ ...formData, target_specialty: e.target.value })} placeholder="Ex: UTI, Pediatria" className="h-9 bg-slate-50 dark:bg-slate-950" />
-              </div>
+              <Input
+                placeholder="Ex: Cardiologia, UTI, Pediatria..."
+                value={formData.target_specialty}
+                onChange={e => setFormData({ ...formData, target_specialty: e.target.value })}
+                className="h-9 bg-slate-50 dark:bg-slate-950"
+                list="modal-specialties"
+              />
+              <datalist id="modal-specialties">
+                {registeredSpecialties.map(spec => (
+                  <option key={spec} value={spec} />
+                ))}
+              </datalist>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -1579,16 +1615,18 @@ export default function Escalas() {
                   <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Profissional Escalado</Label>
                   <Select value={formData.professional_id} onValueChange={v => setFormData({ ...formData, professional_id: v })}>
                     <SelectTrigger className="h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent className="bg-white dark:bg-slate-900">
-                      {professionals.filter(p => p.status === 'ativo').map(p => (
-                        <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                    <SelectContent className="bg-white dark:bg-slate-900 max-h-60">
+                      {eligibleProfessionalsForModal.map(p => (
+                        <SelectItem key={p.id} value={String(p.id)}>
+                          {p.name} ({p.specialty || 'Geral'})
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
               ) : (
                 <p className="text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 p-2 rounded-xl border border-rose-200 dark:border-rose-500/20">
-                  📢 O plantão será publicado no Mural para profissionais da mesma categoria se candidatarem.
+                  📢 O plantão será publicado no <b>Mural de Oportunidades</b> como vaga aberta.
                 </p>
               )}
             </div>

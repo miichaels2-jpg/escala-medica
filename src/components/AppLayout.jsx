@@ -66,7 +66,7 @@ export default function AppLayout({ children }) {
     }
   });
 
-  const [theme, setTheme] = useState('light');
+  const [theme, setTheme] = useState('dark');
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
   useEffect(() => {
@@ -74,10 +74,9 @@ export default function AppLayout({ children }) {
     return () => clearInterval(timer);
   }, []);
 
-  // Inicialização rigorosa do Tema Diurno / Noturno
   useEffect(() => {
     try {
-      const savedTheme = window.localStorage.getItem('hospital-intelligence-theme') || 'light';
+      const savedTheme = window.localStorage.getItem('hospital-intelligence-theme') || 'dark';
       setTheme(savedTheme);
       if (savedTheme === 'dark') {
         document.documentElement.classList.add('dark');
@@ -85,8 +84,8 @@ export default function AppLayout({ children }) {
         document.documentElement.classList.remove('dark');
       }
     } catch {
-      setTheme('light');
-      document.documentElement.classList.remove('dark');
+      setTheme('dark');
+      document.documentElement.classList.add('dark');
     }
   }, []);
 
@@ -152,10 +151,11 @@ export default function AppLayout({ children }) {
   const formattedDate = currentTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const formattedTime = currentTime.toLocaleTimeString('pt-BR');
 
+  // NAVEGAÇÃO: RENOMEADO DE "TROCAS & MURAL" PARA "MURAL DE OPORTUNIDADES"
   const navItems = [
     { label: 'Painel Geral', path: '/', icon: LayoutDashboard, visible: true },
     { label: 'Escalas & Plantões', path: '/escalas', icon: CalendarDays, visible: true },
-    { label: 'Trocas & Mural', path: '/trocas', icon: Repeat, visible: true, badge: unreadMuralShifts.length },
+    { label: 'Mural de Oportunidades', path: '/trocas', icon: Flame, visible: true, badge: unreadMuralShifts.length },
     { label: 'Minha Escala', path: '/minha-escala', icon: Activity, visible: true },
     { label: 'Corpo Clínico', path: '/corpo-clinico', icon: Users, visible: isManager || isBilling },
     { label: 'Setores & Especialidades', path: '/setores', icon: Building2, visible: isManager },
@@ -175,7 +175,7 @@ export default function AppLayout({ children }) {
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
-      {/* SIDEBAR DESKTOP RESPONSIVA AO TEMA */}
+      {/* SIDEBAR DESKTOP */}
       <aside className="hidden md:flex w-64 flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 select-none shadow-xl print:hidden transition-colors">
         <div className="p-4 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-sky-500/20 shrink-0 ring-1 ring-white/20">
@@ -288,7 +288,7 @@ export default function AppLayout({ children }) {
               </span>
             </div>
 
-            {/* SINO DE NOTIFICAÇÕES */}
+            {/* SINO DE NOTIFICAÇÕES INTELIGENTE */}
             <div className="relative">
               <button
                 type="button"
@@ -355,13 +355,13 @@ export default function AppLayout({ children }) {
                     onClick={() => { setNotifOpen(false); navigate('/trocas'); }}
                     className="w-full h-8 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl"
                   >
-                    Ir para o Mural de Trocas <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                    Ir para o Mural de Oportunidades <ChevronRight className="w-3.5 h-3.5 ml-1" />
                   </Button>
                 </div>
               )}
             </div>
 
-            {/* BOTÃO MODO CLARO / ESCURO (SOL / LUA) */}
+            {/* BOTÃO MODO CLARO / ESCURO */}
             <button
               type="button"
               onClick={toggleTheme}
@@ -371,7 +371,7 @@ export default function AppLayout({ children }) {
               {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
             </button>
 
-            {/* BOTÃO MOBILE */}
+            {/* BOTÃO MENU MOBILE */}
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
               className="md:hidden p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl"
@@ -381,7 +381,7 @@ export default function AppLayout({ children }) {
           </div>
         </header>
 
-        {/* MENU MOBILE EXPANDIDO */}
+        {/* MENU MOBILE */}
         {mobileMenuOpen && (
           <div className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 space-y-2 z-50 shadow-2xl print:hidden">
             {navItems.map(item => (
