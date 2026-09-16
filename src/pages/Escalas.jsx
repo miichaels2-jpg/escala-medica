@@ -8,10 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
-  CalendarDays, Plus, Search, Filter, Tv, ChevronLeft, 
-  ChevronRight, Clock, Building2, User, AlertTriangle, 
-  CheckCircle2, Flame, Trash2, Edit3, X, UserX, UserCheck,
-  Maximize2, Minimize2, Sparkles, Layers
+  CalendarDays, Plus, Search, Tv, ChevronLeft, ChevronRight, 
+  Clock, Building2, User, AlertTriangle, CheckCircle2, 
+  Trash2, Edit3, X, Maximize2, Minimize2, Sparkles, 
+  Layers, CheckCheck, Send, MousePointerClick, HeartPulse, UserPlus
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -19,9 +19,9 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
 
-const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
-// Salva shifts de forma auto-regenerativa, removendo colunas ausentes no schema
+// Salva plantões no banco removendo colunas inexistentes caso o schema divirja
 async function autoHealingSaveShift(id, initialPayload) {
   let payload = { ...initialPayload };
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -43,6 +43,14 @@ async function autoHealingSaveShift(id, initialPayload) {
   }
 }
 
+// Formata para exibição de Nome e Sobrenome legíveis
+function formatFullName(name) {
+  if (!name) return 'Não Atribuído';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1]}`;
+}
+
 export default function Escalas() {
   const { 
     shifts, 
@@ -57,27 +65,43 @@ export default function Escalas() {
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [selectedSectorId, setSelectedSectorId] = useState('todos');
-  const [filterTurno, setFilterTurno] = useState('todos'); // 'todos', 'diurno', 'noturno'
+  const [filterTurno, setFilterTurno] = useState('todos'); // 'todos' | 'diurno' | 'noturno'
   const [tvMode, setTvMode] = useState(false);
+
+  // Status da Escala (Rascunho vs Publicada)
+  const [scalePublished, setScalePublished] = useState(true);
+
+  // Seleção múltipla de dias com a tecla Ctrl
+  const [selectedDays, setSelectedDays] = useState([]);
+
+  // Busca na bandeja lateral de profissionais
+  const [traySearch, setTraySearch] = useState('');
+  const [draggingProfId, setDraggingProfId] = useState(null);
 
   // Modais de Criação / Edição
   const [modalOpen, setModalOpen] = useState(false);
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Formulário do Plantão
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     sector_id: '',
     professional_id: '',
-    shift_type: 'diurno', // 'diurno' | 'noturno'
+    shift_type: 'diurno',
     start_time: '07:00',
     end_time: '19:00',
-    status: 'confirmado', // 'confirmado' | 'vago' (mural)
+    status: 'confirmado',
     notes: ''
   });
 
-  // Navegação no Calendário
+  const [batchData, setBatchData] = useState({
+    professional_id: '',
+    sector_id: '',
+    shift_type: 'diurno'
+  });
+
+  // Navegação
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
 
@@ -85,7 +109,7 @@ export default function Escalas() {
   const handleNextMonth = () => setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
   const handleToday = () => setCurrentDate(new Date());
 
-  // Mapeamentos rápidos por ID
+  // Mapeamentos rápidos
   const sectorMap = useMemo(() => {
     const m = {};
     sectors.forEach(s => { m[String(s.id)] = s; });
@@ -98,7 +122,7 @@ export default function Escalas() {
     return m;
   }, [professionals]);
 
-  // Dias do mês atual para preenchimento da grade
+  // Dias do mês
   const daysInMonth = useMemo(() => {
     const date = new Date(currentYear, currentMonth, 1);
     const days = [];
@@ -109,7 +133,7 @@ export default function Escalas() {
     return days;
   }, [currentYear, currentMonth]);
 
-  // Filtra os plantões da unidade, mês e filtros ativos
+  // Plantões do mês filtrados
   const monthlyShifts = useMemo(() => {
     const monthStr = String(currentMonth + 1).padStart(2, '0');
     const prefix = `${currentYear}-${monthStr}`;
@@ -122,7 +146,7 @@ export default function Escalas() {
     });
   }, [shifts, currentYear, currentMonth, selectedSectorId, filterTurno]);
 
-  // Agrupa os plantões por dia (formato YYYY-MM-DD)
+  // Agrupamento por dia
   const shiftsByDate = useMemo(() => {
     const map = {};
     monthlyShifts.forEach(s => {
@@ -132,81 +156,155 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // Indicadores de Cobertura
-  const stats = useMemo(() => {
-    let total = monthlyShifts.length;
-    let preenchidos = 0;
+  // Classificação dos ciclos de vida dos plantões (Em Andamento, Concluídos, Programados, Mural)
+  const shiftMetrics = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const currentHour = now.getHours();
+
+    let emAndamento = 0;
+    let concluidos = 0;
+    let programados = 0;
     let vagos = 0;
 
     monthlyShifts.forEach(s => {
-      if (s.professional_id && s.status !== 'vago') preenchidos++;
-      else vagos++;
+      if (s.status === 'vago' || !s.professional_id) {
+        vagos++;
+        return;
+      }
+
+      if (s.date < todayStr) {
+        concluidos++;
+      } else if (s.date === todayStr) {
+        const isDiurno = s.shift_type === 'diurno';
+        const isCurrentlyDay = currentHour >= 7 && currentHour < 19;
+        
+        if ((isDiurno && isCurrentlyDay) || (!isDiurno && !isCurrentlyDay)) {
+          emAndamento++;
+        } else if (isDiurno && currentHour >= 19) {
+          concluidos++;
+        } else {
+          programados++;
+        }
+      } else {
+        programados++;
+      }
     });
 
-    const percent = total > 0 ? Math.round((preenchidos / total) * 100) : 100;
-    return { total, preenchidos, vagos, percent };
+    const total = monthlyShifts.length;
+    const taxaCobertura = total > 0 ? Math.round(((total - vagos) / total) * 100) : 100;
+
+    return { total, emAndamento, concluidos, programados, vagos, taxaCobertura };
   }, [monthlyShifts]);
 
-  // Abrir Modal para Novo Plantão
-  const handleOpenNew = (defaultDate = null) => {
-    setEditingShiftId(null);
-    setFormData({
-      date: defaultDate || new Date().toISOString().split('T')[0],
-      sector_id: sectors[0]?.id || '',
-      professional_id: '',
-      shift_type: 'diurno',
-      start_time: '07:00',
-      end_time: '19:00',
-      status: 'confirmado',
-      notes: ''
-    });
-    setModalOpen(true);
+  // Controle de clique nos dias (com ou sem Ctrl)
+  const handleDayClick = (dateStr, e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      setSelectedDays(prev => 
+        prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]
+      );
+    } else {
+      if (selectedDays.length > 0) {
+        setSelectedDays([]);
+      }
+    }
   };
 
-  // Abrir Modal para Edição
-  const handleOpenEdit = (shift) => {
-    setEditingShiftId(shift.id);
-    setFormData({
-      date: shift.date || '',
-      sector_id: shift.sector_id || '',
-      professional_id: shift.professional_id || '',
-      shift_type: shift.shift_type || 'diurno',
-      start_time: shift.start_time || '07:00',
-      end_time: shift.end_time || '19:00',
-      status: shift.status || 'confirmado',
-      notes: shift.notes || ''
-    });
-    setModalOpen(true);
+  // Drag & Drop: Início
+  const handleDragStart = (e, profId) => {
+    setDraggingProfId(profId);
+    e.dataTransfer.setData('text/plain', profId);
   };
 
-  // Validação de Conflito de Horário (evita médico em dois plantões no mesmo turno)
-  const checkTimeConflict = (profId, shiftDate, shiftType, excludeId = null) => {
-    if (!profId) return false;
-    return shifts.some(s => 
-      s.id !== excludeId &&
-      String(s.professional_id) === String(profId) &&
-      s.date === shiftDate &&
-      s.shift_type === shiftType &&
-      s.status !== 'cancelado'
-    );
-  };
-
-  // Salvar Plantão
-  const handleSaveShift = async (e) => {
+  // Drag & Drop: Soltar sobre um dia
+  const handleDropOnDay = async (e, dateStr) => {
     e.preventDefault();
-    if (!formData.sector_id || !formData.date) {
-      alert('Selecione ao menos a data e o setor.');
+    const profId = e.dataTransfer.getData('text/plain') || draggingProfId;
+    if (!profId) return;
+
+    const prof = professionalMap[profId];
+    const defaultSector = sectors[0]?.id;
+
+    if (!defaultSector) {
+      alert('Cadastre ao menos um setor antes de lançar o plantão.');
       return;
     }
 
-    // Se houver profissional definido, confere conflito de horário
-    if (formData.professional_id && formData.status !== 'vago') {
-      const hasConflict = checkTimeConflict(formData.professional_id, formData.date, formData.shift_type, editingShiftId);
-      if (hasConflict) {
-        if (!confirm('ATENÇÃO: Este profissional já possui outro plantão cadastrado neste mesmo turno e data. Deseja prosseguir mesmo assim?')) {
-          return;
-        }
+    // Se houver múltiplos dias selecionados pelo Ctrl, aplica em todos
+    const targetDates = selectedDays.includes(dateStr) && selectedDays.length > 1 
+      ? selectedDays 
+      : [dateStr];
+
+    const confirmMsg = targetDates.length > 1
+      ? `Escalar ${prof?.name} para os ${targetDates.length} dias selecionados no turno Diurno?`
+      : `Escalar ${prof?.name} para o dia ${dateStr} no turno Diurno?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      for (const d of targetDates) {
+        await autoHealingSaveShift(null, {
+          company_id: company?.id || 'cmp_principal',
+          unit_id: selectedUnitId || 'unit_h1',
+          sector_id: defaultSector,
+          professional_id: profId,
+          date: d,
+          shift_type: 'diurno',
+          start_time: '07:00',
+          end_time: '19:00',
+          status: 'confirmado'
+        });
       }
+      setSelectedDays([]);
+      await syncGlobalData();
+    } catch (err) {
+      alert('Erro ao alocar plantão: ' + err.message);
+    } finally {
+      setDraggingProfId(null);
+    }
+  };
+
+  // Lançamento em Lote pelos dias selecionados
+  const handleSaveBatch = async (e) => {
+    e.preventDefault();
+    if (!batchData.sector_id || !batchData.professional_id) {
+      alert('Selecione o profissional e o setor.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      for (const d of selectedDays) {
+        await autoHealingSaveShift(null, {
+          company_id: company?.id || 'cmp_principal',
+          unit_id: selectedUnitId || 'unit_h1',
+          sector_id: batchData.sector_id,
+          professional_id: batchData.professional_id,
+          date: d,
+          shift_type: batchData.shift_type,
+          start_time: batchData.shift_type === 'diurno' ? '07:00' : '19:00',
+          end_time: batchData.shift_type === 'diurno' ? '19:00' : '07:00',
+          status: 'confirmado'
+        });
+      }
+      setBatchModalOpen(false);
+      setSelectedDays([]);
+      await syncGlobalData();
+      alert(`${selectedDays.length} plantões lançados com sucesso!`);
+    } catch (err) {
+      alert('Erro no preenchimento em lote: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Salvar Plantão Individual
+  const handleSaveShift = async (e) => {
+    e.preventDefault();
+    if (!formData.sector_id || !formData.date) {
+      alert('Preencha a data e o setor.');
+      return;
     }
 
     setSubmitting(true);
@@ -228,15 +326,15 @@ export default function Escalas() {
       setModalOpen(false);
       await syncGlobalData();
     } catch (err) {
-      alert('Erro ao salvar plantão: ' + (err.message || 'Falha de rede.'));
+      alert('Erro ao salvar plantão: ' + err.message);
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Publicar Plantão Descoberto diretamente no Mural de Vagas
+  // Enviar vaga descoberta para o Mural de Oportunidades
   const handleSendToMural = async (shift) => {
-    if (!confirm('Deseja transformar este plantão em uma Vaga Aberta no Mural para os profissionais se candidatarem?')) return;
+    if (!confirm('Disponibilizar este plantão no Mural de Vagas para a equipe se candidatar?')) return;
     try {
       await autoHealingSaveShift(shift.id, {
         professional_id: null,
@@ -244,229 +342,467 @@ export default function Escalas() {
       });
       await syncGlobalData();
     } catch (err) {
-      alert('Erro ao publicar no mural: ' + err.message);
+      alert('Erro ao enviar para o mural: ' + err.message);
     }
   };
 
-  // Excluir Plantão
   const handleDeleteShift = async (shiftId) => {
-    if (!confirm('Deseja excluir este plantão da escala?')) return;
+    if (!confirm('Deseja excluir permanentemente este plantão da escala?')) return;
     try {
       await base44.entities.Shift.delete(shiftId);
       await syncGlobalData();
     } catch (err) {
-      alert('Erro ao remover plantão: ' + err.message);
+      alert('Erro ao excluir: ' + err.message);
     }
   };
 
+  // Lista de profissionais para o Roll lateral
+  const filteredTrayProfessionals = useMemo(() => {
+    const term = traySearch.toLowerCase().trim();
+    return professionals.filter(p => {
+      if (p.status !== 'ativo') return false;
+      if (!term) return true;
+      return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowerCase().includes(term);
+    });
+  }, [professionals, traySearch]);
+
   return (
-    <div className={`p-3 md:p-6 space-y-5 font-sans ${tvMode ? 'fixed inset-0 z-50 bg-slate-950 text-white overflow-y-auto p-6' : ''}`}>
+    <div className={`p-3 md:p-6 space-y-4 font-sans ${tvMode ? 'fixed inset-0 z-50 bg-slate-950 text-white overflow-y-auto p-6' : ''}`}>
       
-      {/* HEADER DE CONTROLE & CCO */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-sm">
+      {/* PAINEL DE CONTROLE, CICLOS DE VIDA & PUBLICAÇÃO */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm space-y-4">
         
-        {/* NAVEGAÇÃO DE MÊS */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
-            <button onClick={handlePrevMonth} className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-slate-700 dark:text-slate-200">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button onClick={handleToday} className="px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-200">
-              Hoje
-            </button>
-            <button onClick={handleNextMonth} className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-slate-700 dark:text-slate-200">
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div>
-            <h2 className="text-lg md:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <CalendarDays className="w-5 h-5 text-sky-600" />
-              {MONTH_NAMES[currentMonth]} {currentYear}
-            </h2>
-            <span className="text-[11px] text-slate-400 font-semibold block">
-              Grade Geral de Cobertura Assistencial
-            </span>
-          </div>
-        </div>
-
-        {/* INDICADORES EM TEMPO REAL */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Cobertura</span>
-            <span className={`font-black text-sm ${stats.percent === 100 ? 'text-emerald-600' : 'text-amber-500'}`}>
-              {stats.percent}% Coberto
-            </span>
-          </div>
-
-          <div className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Vagas no Mural</span>
-            <span className={`font-black text-sm ${stats.vagos > 0 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}>
-              {stats.vagos} Descobertas
-            </span>
-          </div>
-
-          {/* BOTÃO MODO TV / CCO */}
-          <Button
-            variant="outline"
-            onClick={() => setTvMode(!tvMode)}
-            className="h-9 px-3 text-xs font-bold gap-1.5 border-slate-300 dark:border-slate-700"
-            title="Alternar Modo TV / Centro de Comando"
-          >
-            {tvMode ? <Minimize2 className="w-4 h-4 text-sky-500" /> : <Tv className="w-4 h-4 text-sky-500" />}
-            <span>{tvMode ? 'Sair da TV' : 'Modo TV'}</span>
-          </Button>
-
-          {isManager && (
-            <Button onClick={() => handleOpenNew()} className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-4 rounded-xl shadow-md gap-1">
-              <Plus className="w-4 h-4" /> Novo Plantão
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* FILTROS DE SETOR E TURNO */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Select value={selectedSectorId} onValueChange={setSelectedSectorId}>
-            <SelectTrigger className="h-8 w-48 text-xs font-bold bg-white dark:bg-slate-900">
-              <SelectValue placeholder="Filtrar Setor" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os Setores</SelectItem>
-              {sectors.map(s => (
-                <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={filterTurno} onValueChange={setFilterTurno}>
-            <SelectTrigger className="h-8 w-36 text-xs font-bold bg-white dark:bg-slate-900">
-              <SelectValue placeholder="Turno" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os Turnos</SelectItem>
-              <SelectItem value="diurno">Diurno (07h - 19h)</SelectItem>
-              <SelectItem value="noturno">Noturno (19h - 07h)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex items-center gap-3 text-[11px] font-bold text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span> Diurno (07h-19h)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span> Noturno (19h-07h)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Descoberto / Mural
-          </span>
-        </div>
-      </div>
-
-      {/* GRADE MENSAL DE PLANTÕES */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-        
-        {/* CABEÇALHO DOS DIAS DA SEMANA */}
-        <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-center text-[11px] font-black text-slate-500 uppercase py-2">
-          {WEEKDAYS.map(day => (
-            <div key={day}>{day}</div>
-          ))}
-        </div>
-
-        {/* CÉLULAS DOS DIAS */}
-        <div className="grid grid-cols-7 divide-x divide-y divide-slate-100 dark:divide-slate-800/80">
+        {/* LINHA SUPERIOR */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           
-          {/* Espaçamento inicial para o primeiro dia da semana */}
-          {Array.from({ length: daysInMonth[0].getDay() }).map((_, idx) => (
-            <div key={`empty-${idx}`} className="min-h-[110px] bg-slate-50/40 dark:bg-slate-950/30"></div>
-          ))}
+          {/* MÊS E NAVEGAÇÃO */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
+              <button onClick={handlePrevMonth} className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button onClick={handleToday} className="px-3 py-1 text-xs font-black">
+                Hoje
+              </button>
+              <button onClick={handleNextMonth} className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
 
-          {daysInMonth.map(dateObj => {
-            const dateStr = dateObj.toISOString().split('T')[0];
-            const isToday = new Date().toISOString().split('T')[0] === dateStr;
-            const dayShifts = shiftsByDate[dateStr] || [];
+            <div>
+              <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <CalendarDays className="w-5 h-5 text-sky-600" />
+                {MONTH_NAMES[currentMonth]} {currentYear}
+              </h2>
+              <div className="flex items-center gap-2 text-xs font-bold mt-0.5">
+                <span className={scalePublished ? 'text-emerald-600 dark:text-emerald-400 flex items-center gap-1' : 'text-amber-500 flex items-center gap-1'}>
+                  <CheckCheck className="w-3.5 h-3.5" />
+                  {scalePublished ? 'Escala Publicada & Oficial' : 'Modo Rascunho / Em Montagem'}
+                </span>
+              </div>
+            </div>
+          </div>
 
-            return (
-              <div 
-                key={dateStr} 
-                className={`min-h-[120px] p-1.5 transition-colors flex flex-col justify-between ${
-                  isToday 
-                    ? 'bg-sky-50/40 dark:bg-sky-950/20' 
-                    : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/30'
+          {/* BOTÕES DE AÇÃO */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {isManager && (
+              <Button
+                variant={scalePublished ? 'outline' : 'default'}
+                onClick={() => setScalePublished(!scalePublished)}
+                className={`h-9 text-xs font-bold rounded-xl gap-1.5 ${
+                  scalePublished ? 'border-emerald-500 text-emerald-600' : 'bg-amber-600 hover:bg-amber-500 text-white'
                 }`}
               >
-                {/* TOPO DO DIA */}
-                <div className="flex items-center justify-between mb-1">
-                  <span className={`text-xs font-black px-1.5 py-0.5 rounded-md ${
-                    isToday ? 'bg-sky-600 text-white' : 'text-slate-700 dark:text-slate-300'
-                  }`}>
-                    {dateObj.getDate()}
-                  </span>
+                <Send className="w-3.5 h-3.5" />
+                {scalePublished ? 'Publicada (Despublicar)' : 'Publicar Escala'}
+              </Button>
+            )}
 
-                  {isManager && (
-                    <button
-                      onClick={() => handleOpenNew(dateStr)}
-                      title="Adicionar plantão neste dia"
-                      className="p-1 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
+            <Button
+              variant="outline"
+              onClick={() => setTvMode(!tvMode)}
+              className="h-9 px-3 text-xs font-bold rounded-xl gap-1.5 border-slate-300 dark:border-slate-700"
+            >
+              {tvMode ? <Minimize2 className="w-4 h-4 text-sky-500" /> : <Tv className="w-4 h-4 text-sky-500" />}
+              <span>{tvMode ? 'Sair da TV' : 'Modo TV CCO'}</span>
+            </Button>
 
-                {/* LISTA DE PLANTÕES DO DIA */}
-                <div className="space-y-1 flex-1 overflow-y-auto max-h-[140px] pr-0.5">
-                  {dayShifts.map(shift => {
-                    const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-                    const sector = sectorMap[String(shift.sector_id)];
-                    const isVago = shift.status === 'vago' || !prof;
-                    const isDiurno = shift.shift_type === 'diurno';
+            {isManager && (
+              <Button 
+                onClick={() => {
+                  setEditingShiftId(null);
+                  setFormData({
+                    date: new Date().toISOString().split('T')[0],
+                    sector_id: sectors[0]?.id || '',
+                    professional_id: '',
+                    shift_type: 'diurno',
+                    start_time: '07:00',
+                    end_time: '19:00',
+                    status: 'confirmado',
+                    notes: ''
+                  });
+                  setModalOpen(true);
+                }} 
+                className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-4 rounded-xl shadow-md gap-1"
+              >
+                <Plus className="w-4 h-4" /> Novo Plantão
+              </Button>
+            )}
+          </div>
+        </div>
 
-                    return (
-                      <div
-                        key={shift.id}
-                        onClick={() => isManager && handleOpenEdit(shift)}
-                        className={`p-1.5 rounded-lg border text-[10px] transition-all cursor-pointer select-none ${
-                          isVago
-                            ? 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300 ring-1 ring-rose-500/20'
-                            : isDiurno
-                            ? 'bg-amber-500/10 border-amber-500/20 text-amber-900 dark:text-amber-200'
-                            : 'bg-indigo-500/10 border-indigo-500/20 text-indigo-900 dark:text-indigo-200'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between font-bold">
-                          <span className="truncate max-w-[85px]">
-                            {sector?.name || 'Setor'}
-                          </span>
-                          <span className="text-[9px] opacity-75 font-mono">
-                            {isDiurno ? '07-19h' : '19-07h'}
-                          </span>
-                        </div>
+        {/* INDICADORES DO CICLO DE VIDA (CORRENDO, CONCLUÍDOS, PROGRAMADOS, VAGOS) */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          
+          <div className="p-2.5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/60">
+            <span className="text-[10px] font-black uppercase text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+              Em Andamento (Ao Vivo)
+            </span>
+            <span className="text-xl font-black text-emerald-700 dark:text-emerald-400 block mt-1">
+              {shiftMetrics.emAndamento} <span className="text-xs font-semibold">plantões</span>
+            </span>
+          </div>
 
-                        <div className="mt-0.5 flex items-center justify-between">
-                          <span className="truncate font-black">
-                            {isVago ? '⚠️ VAGA ABERTA' : prof?.name?.split(' ')[0] || 'Profissional'}
-                          </span>
+          <div className="p-2.5 rounded-2xl bg-sky-50/80 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/60">
+            <span className="text-[10px] font-black uppercase text-sky-800 dark:text-sky-300">
+              Programados (Futuros)
+            </span>
+            <span className="text-xl font-black text-sky-700 dark:text-sky-400 block mt-1">
+              {shiftMetrics.programados}
+            </span>
+          </div>
 
-                          {isVago && isManager && (
-                            <span className="text-[8px] bg-rose-500 text-white font-black px-1 rounded uppercase animate-pulse">
-                              Mural
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+          <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+            <span className="text-[10px] font-black uppercase text-slate-500">
+              Concluídos (Passados)
+            </span>
+            <span className="text-xl font-black text-slate-700 dark:text-slate-300 block mt-1">
+              {shiftMetrics.concluidos}
+            </span>
+          </div>
+
+          <div className="p-2.5 rounded-2xl bg-rose-50/80 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/60">
+            <span className="text-[10px] font-black uppercase text-rose-800 dark:text-rose-300">
+              Vagas no Mural
+            </span>
+            <span className={`text-xl font-black block mt-1 ${shiftMetrics.vagos > 0 ? 'text-rose-600 animate-pulse' : 'text-slate-400'}`}>
+              {shiftMetrics.vagos} descobertos
+            </span>
+          </div>
+
+          <div className="p-2.5 rounded-2xl bg-slate-900 text-white dark:bg-slate-800 col-span-2 sm:col-span-1">
+            <span className="text-[10px] font-bold uppercase text-slate-400">
+              Taxa de Cobertura
+            </span>
+            <span className="text-xl font-black text-sky-400 block mt-1">
+              {shiftMetrics.taxaCobertura}%
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* MODAL: NOVO OU EDITAR PLANTÃO */}
+      {/* BARRA FLUTUANTE DE DIAS SELECIONADOS VIA CTRL */}
+      {selectedDays.length > 0 && (
+        <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-xl flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2 text-xs font-black">
+            <MousePointerClick className="w-4 h-4" />
+            <span>{selectedDays.length} dias selecionados com o atalho Ctrl</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => {
+                setBatchData({
+                  professional_id: professionals[0]?.id || '',
+                  sector_id: sectors[0]?.id || '',
+                  shift_type: 'diurno'
+                });
+                setBatchModalOpen(true);
+              }}
+              className="h-8 bg-white text-indigo-900 hover:bg-slate-100 text-xs font-black"
+            >
+              <UserPlus className="w-3.5 h-3.5 mr-1" /> Preencher Dias Selecionados
+            </Button>
+            <button 
+              onClick={() => setSelectedDays([])}
+              className="p-1 hover:bg-indigo-700 rounded-lg text-xs"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ÁREA CENTRAL: ROLL LATERAL DE PROFISSIONAIS + GRADE DE ESCALAS */}
+      <div className="flex flex-col lg:flex-row gap-4 items-start">
+        
+        {/* BANDEJA / ROLL LATERAL DE PROFISSIONAIS (DRAG & DROP) */}
+        {!tvMode && (
+          <aside className="w-full lg:w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <HeartPulse className="w-4 h-4 text-sky-600" />
+                Roll de Profissionais
+              </span>
+              <span className="text-[10px] font-bold text-slate-400">
+                Arraste p/ o dia
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-500 leading-tight">
+              Arraste um profissional para qualquer dia do calendário para alocar o plantão. Segure <b>Ctrl</b> para marcar múltiplos dias.
+            </p>
+
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input
+                placeholder="Filtrar por nome..."
+                value={traySearch}
+                onChange={e => setTraySearch(e.target.value)}
+                className="pl-8 h-8 text-xs bg-slate-50 dark:bg-slate-950"
+              />
+            </div>
+
+            <div className="space-y-1.5 max-h-[580px] overflow-y-auto pr-1">
+              {filteredTrayProfessionals.map(prof => (
+                <div
+                  key={prof.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, prof.id)}
+                  className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/60 hover:bg-white dark:hover:bg-slate-900 hover:border-sky-400 transition-all cursor-grab active:cursor-grabbing select-none shadow-sm"
+                >
+                  <div className="font-black text-xs text-slate-900 dark:text-white truncate">
+                    {formatFullName(prof.name)}
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1 font-semibold">
+                    <span className="truncate max-w-[120px]">{prof.specialty || 'Geral'}</span>
+                    <span className="font-mono text-slate-400">{prof.document || 'CRM'}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </aside>
+        )}
+
+        {/* GRADE AMPLIADA DO CALENDÁRIO */}
+        <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+          
+          {/* DIAS DA SEMANA (CABEÇALHO) */}
+          <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-center py-3">
+            {WEEKDAYS.map(day => (
+              <div key={day} className="text-xs font-black text-slate-600 dark:text-slate-300 uppercase tracking-wider">
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* CÉLULAS DOS DIAS (AMPLIADAS) */}
+          <div className="grid grid-cols-7 divide-x divide-y divide-slate-100 dark:divide-slate-800/80">
+            
+            {/* Espaçamento do primeiro dia da semana */}
+            {Array.from({ length: daysInMonth[0].getDay() }).map((_, idx) => (
+              <div key={`empty-${idx}`} className="min-h-[160px] bg-slate-50/40 dark:bg-slate-950/30"></div>
+            ))}
+
+            {daysInMonth.map(dateObj => {
+              const dateStr = dateObj.toISOString().split('T')[0];
+              const isToday = new Date().toISOString().split('T')[0] === dateStr;
+              const isSelected = selectedDays.includes(dateStr);
+              const dayShifts = shiftsByDate[dateStr] || [];
+
+              return (
+                <div
+                  key={dateStr}
+                  onClick={(e) => handleDayClick(dateStr, e)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => handleDropOnDay(e, dateStr)}
+                  className={`min-h-[170px] p-2 transition-all flex flex-col justify-between select-none ${
+                    isSelected 
+                      ? 'bg-indigo-50/80 dark:bg-indigo-950/40 ring-2 ring-indigo-500 z-10' 
+                      : isToday 
+                      ? 'bg-sky-50/30 dark:bg-sky-950/20' 
+                      : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                  }`}
+                >
+                  {/* TOPO DA CÉLULA */}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${
+                      isToday 
+                        ? 'bg-sky-600 text-white shadow-sm' 
+                        : isSelected 
+                        ? 'bg-indigo-600 text-white' 
+                        : 'text-slate-800 dark:text-slate-200'
+                    }`}>
+                      {dateObj.getDate()}
+                    </span>
+
+                    {isManager && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingShiftId(null);
+                          setFormData({
+                            date: dateStr,
+                            sector_id: sectors[0]?.id || '',
+                            professional_id: '',
+                            shift_type: 'diurno',
+                            start_time: '07:00',
+                            end_time: '19:00',
+                            status: 'confirmado',
+                            notes: ''
+                          });
+                          setModalOpen(true);
+                        }}
+                        title="Adicionar plantão"
+                        className="p-1 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-md"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* PLANTÕES DO DIA (COM NOME E SOBRENOME EM DESTAQUE) */}
+                  <div className="space-y-1.5 flex-1 overflow-y-auto max-h-[180px] pr-0.5">
+                    {dayShifts.map(shift => {
+                      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+                      const sector = sectorMap[String(shift.sector_id)];
+                      const isVago = shift.status === 'vago' || !prof;
+                      const isDiurno = shift.shift_type === 'diurno';
+
+                      return (
+                        <div
+                          key={shift.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isManager) {
+                              setEditingShiftId(shift.id);
+                              setFormData({
+                                date: shift.date || '',
+                                sector_id: shift.sector_id || '',
+                                professional_id: shift.professional_id || '',
+                                shift_type: shift.shift_type || 'diurno',
+                                start_time: shift.start_time || '07:00',
+                                end_time: shift.end_time || '19:00',
+                                status: shift.status || 'confirmado',
+                                notes: shift.notes || ''
+                              });
+                              setModalOpen(true);
+                            }
+                          }}
+                          className={`p-2 rounded-xl border text-xs transition-all cursor-pointer shadow-sm ${
+                            isVago
+                              ? 'bg-rose-500/10 border-rose-500/40 text-rose-800 dark:text-rose-300 ring-1 ring-rose-500/30'
+                              : isDiurno
+                              ? 'bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-200'
+                              : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-950 dark:text-indigo-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between text-[10px] font-black opacity-80 mb-0.5">
+                            <span className="truncate max-w-[95px] uppercase">
+                              {sector?.name || 'Setor'}
+                            </span>
+                            <span className="font-mono">
+                              {isDiurno ? '07h-19h' : '19h-07h'}
+                            </span>
+                          </div>
+
+                          {/* NOME E SOBRENOME EM DESTAQUE NÍTIDO */}
+                          <div className="font-black text-xs leading-tight truncate">
+                            {isVago ? '⚠️ VAGA NO MURAL' : formatFullName(prof?.name)}
+                          </div>
+
+                          {/* SUBTÍTULO DO PLANTÃO */}
+                          <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                            <span className="truncate font-semibold">{prof?.specialty || 'Geral'}</span>
+                            {isVago && (
+                              <span className="bg-rose-500 text-white font-black text-[9px] px-1 rounded uppercase">
+                                Mural
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* MODAL: PREENCHIMENTO EM LOTE (ATALHO CTRL) */}
+      <Dialog open={batchModalOpen} onOpenChange={setBatchModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-indigo-600" />
+              Preenchimento em Lote ({selectedDays.length} Dias Selecionados)
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveBatch} className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs font-bold">Profissional a Escalar *</Label>
+              <Select 
+                value={batchData.professional_id} 
+                onValueChange={v => setBatchData({ ...batchData, professional_id: v })}
+              >
+                <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o profissional..." /></SelectTrigger>
+                <SelectContent>
+                  {professionals.filter(p => p.status === 'ativo').map(p => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.name} ({p.specialty || 'Geral'})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold">Setor Hospitalar *</Label>
+              <Select 
+                value={batchData.sector_id} 
+                onValueChange={v => setBatchData({ ...batchData, sector_id: v })}
+              >
+                <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o setor..." /></SelectTrigger>
+                <SelectContent>
+                  {sectors.map(s => (
+                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold">Turno dos Plantões *</Label>
+              <Select 
+                value={batchData.shift_type} 
+                onValueChange={v => setBatchData({ ...batchData, shift_type: v })}
+              >
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="diurno">Diurno (07:00 às 19:00)</SelectItem>
+                  <SelectItem value="noturno">Noturno (19:00 às 07:00)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter className="pt-3 gap-2">
+              <Button type="button" variant="outline" onClick={() => setBatchModalOpen(false)} className="h-9 text-xs">
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={submitting} className="h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs px-5">
+                {submitting ? 'Escalando...' : `Confirmar para ${selectedDays.length} Dias`}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: NOVO OU EDITAR PLANTÃO INDIVIDUAL */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -525,10 +861,7 @@ export default function Escalas() {
             </div>
 
             <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-bold">Status da Escala</Label>
-                <span className="text-[10px] text-slate-400">Marque vago para ir ao Mural</span>
-              </div>
+              <Label className="text-xs font-bold">Status do Plantão</Label>
               <Select 
                 value={formData.status} 
                 onValueChange={v => setFormData({ 
@@ -539,8 +872,8 @@ export default function Escalas() {
               >
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="confirmado">Confirmado (Com Profissional)</SelectItem>
-                  <SelectItem value="vago">Vago / Aberto para o Mural</SelectItem>
+                  <SelectItem value="confirmado">Confirmado (Profissional Alocado)</SelectItem>
+                  <SelectItem value="vago">Vaga Aberta (Disponível no Mural)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -565,11 +898,11 @@ export default function Escalas() {
             )}
 
             <div className="space-y-1">
-              <Label className="text-xs font-bold">Observações do Plantão</Label>
+              <Label className="text-xs font-bold">Observações</Label>
               <Input 
                 value={formData.notes} 
                 onChange={e => setFormData({ ...formData, notes: e.target.value })} 
-                placeholder="Ex: Cobertura de férias, plantão extra..." 
+                placeholder="Ex: Cobertura especial..." 
                 className="h-9" 
               />
             </div>
@@ -581,15 +914,15 @@ export default function Escalas() {
                     type="button"
                     variant="outline"
                     onClick={() => handleSendToMural({ id: editingShiftId })}
-                    className="h-9 text-xs text-amber-600 border-amber-300 hover:bg-amber-50"
+                    className="h-9 text-xs text-rose-600 border-rose-300 hover:bg-rose-50"
                   >
-                    Mandar p/ Mural
+                    Disponibilizar no Mural
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     onClick={() => handleDeleteShift(editingShiftId)}
-                    className="h-9 text-xs text-rose-500 hover:bg-rose-50 px-2"
+                    className="h-9 text-xs text-slate-400 hover:text-rose-500 px-2"
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
@@ -599,7 +932,7 @@ export default function Escalas() {
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="h-9 text-xs">
                 Cancelar
               </Button>
-              <Button type="submit" disabled={submitting} className="h-9 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-5">
+              <Button type="submit" disabled={submitting} className="h-9 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-5">
                 {submitting ? 'Salvando...' : 'Salvar Plantão'}
               </Button>
             </DialogFooter>
