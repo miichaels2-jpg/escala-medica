@@ -11,8 +11,9 @@ import {
   CalendarDays, Plus, Search, Tv, ChevronLeft, ChevronRight, 
   Clock, Building2, User, AlertTriangle, CheckCircle2, 
   Trash2, Edit3, X, Minimize2, Sparkles, CheckCheck, Send, 
-  MousePointerClick, HeartPulse, UserPlus, SlidersHorizontal,
-  Flame, MonitorPlay, GripVertical, Printer, Sun, Moon, Stethoscope, Columns3
+  MousePointerClick, HeartPulse, UserPlus, Layers, SlidersHorizontal,
+  Flame, Radio, ArrowRight, ShieldAlert, MonitorPlay, GripVertical, 
+  Printer, Sun, Moon, Stethoscope, Columns3
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -649,7 +650,7 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 4. VISÃO MENSAL COM COLUNAS EMBUTIDAS DE TURNOS (MANHÃ / TARDE / NOITE)     */}
+      {/* 4. VISÃO MENSAL COM SUB-COLUNAS DE TURNOS (MANHÃ, TARDE, NOITE)           */}
       {/* ========================================================================= */}
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
@@ -675,7 +676,7 @@ export default function Escalas() {
                 <Input placeholder="Buscar profissional..." value={traySearch} onChange={e => setTraySearch(e.target.value)} className="pl-8 h-8 text-xs bg-slate-50 dark:bg-slate-950 rounded-xl" />
               </div>
               <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
-                {professionals.filter(p => p.status === 'ativo').map(prof => (
+                {filteredTrayProfs.map(prof => (
                   <div key={prof.id} draggable onDragStart={(e) => handleDragStart(e, prof.id)} className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:border-sky-500 transition-all cursor-grab active:cursor-grabbing select-none shadow-sm flex items-center gap-2.5">
                     <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-mono font-black text-[10px] text-sky-600 shrink-0">{getInitials(prof.name)}</div>
@@ -1010,7 +1011,7 @@ export default function Escalas() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL INDIVIDUAL */}
+      {/* MODAL INDIVIDUAL LIMPO E ALINHADO */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 border text-slate-900 dark:text-white">
           <DialogHeader><DialogTitle className="text-base font-black">{editingShiftId ? 'Editar Plantão' : 'Lançar Plantão'}</DialogTitle></DialogHeader>
