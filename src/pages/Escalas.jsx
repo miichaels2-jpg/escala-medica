@@ -13,7 +13,7 @@ import {
   Trash2, Edit3, X, Minimize2, Sparkles, CheckCheck, Send, 
   MousePointerClick, HeartPulse, UserPlus, Layers, SlidersHorizontal,
   Flame, Radio, ArrowRight, ShieldAlert, MonitorPlay, GripVertical, 
-  Printer, Sun, Moon, Stethoscope, Columns3, LayoutGrid
+  Printer, Sun, Moon, Stethoscope, Columns3
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -100,7 +100,7 @@ export default function Escalas() {
   } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
-  const [activeTab, setActiveTab] = useState('mensal'); // 'mensal' | 'colunas' | 'dia' | 'tv'
+  const [activeTab, setActiveTab] = useState('mensal'); // 'mensal' | 'dia' | 'tv'
   const [selectedSectorId, setSelectedSectorId] = useState('todos');
   const [filterTurno, setFilterTurno] = useState('todos'); 
 
@@ -121,6 +121,7 @@ export default function Escalas() {
   const [traySpecialtyFilter, setTraySpecialtyFilter] = useState('todas');
   const [draggingProfId, setDraggingProfId] = useState(null);
 
+  // Relógio ao vivo
   const [liveNow, setLiveNow] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setLiveNow(new Date()), 1000);
@@ -134,6 +135,7 @@ export default function Escalas() {
   const [editingShiftId, setEditingShiftId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Especialidades cadastradas no Corpo Clínico
   const registeredSpecialties = useMemo(() => {
     const set = new Set();
     professionals.forEach(p => { if (p.specialty && p.specialty.trim()) set.add(p.specialty.trim()); });
@@ -243,7 +245,7 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // CÁLCULO PRECISO DO PLANTÃO DO DIA
+  // CÁLCULO PRECISO DO PLANTÃO DO DIA & MODO TV CCO
   const todayLocalStr = getLocalDateString(liveNow);
   const yesterdayLocalStr = getLocalDateString(new Date(liveNow.getTime() - 24 * 60 * 60 * 1000));
 
@@ -327,18 +329,6 @@ export default function Escalas() {
     const matching = professionals.filter(p => p.status === 'ativo' && (p.specialty || '').toLowerCase().includes(spec));
     return matching.length > 0 ? matching : professionals.filter(p => p.status === 'ativo');
   }, [professionals, formData.target_specialty]);
-
-  const filteredTrayProfs = useMemo(() => {
-    const term = traySearch.toLowerCase().trim();
-    return professionals.filter(p => {
-      if (p.status !== 'ativo') return false;
-      if (traySpecialtyFilter !== 'todas' && (p.specialty || '').toLowerCase() !== traySpecialtyFilter.toLowerCase()) {
-        return false;
-      }
-      if (!term) return true;
-      return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowerCase().includes(term);
-    });
-  }, [professionals, traySearch, traySpecialtyFilter]);
 
   const handleDayClick = (dateStr, e) => {
     if (e.ctrlKey || e.metaKey) {
@@ -603,7 +593,7 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* BARRA DE COMANDO: MÊS & AÇÕES (COM NOVA ABAS: MENSAL OU COLUNAS POR TURNO) */}
+      {/* BARRA DE COMANDO: MÊS & AÇÕES */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-3">
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 rounded-2xl p-1 border border-slate-200 dark:border-slate-800">
@@ -628,10 +618,8 @@ export default function Escalas() {
             </Button>
           )}
 
-          {/* ALTERNADOR DE VISÃO: MENSAL (CALENDÁRIO) VS COLUNAS POR TURNO */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
             <button onClick={() => setActiveTab('mensal')} className={`px-3 py-1.5 rounded-xl text-xs font-black ${activeTab === 'mensal' ? 'bg-white dark:bg-sky-600 shadow-sm' : 'text-slate-500'}`}>Visão Mensal</button>
-            <button onClick={() => setActiveTab('colunas')} className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 ${activeTab === 'colunas' ? 'bg-white dark:bg-sky-600 shadow-sm' : 'text-slate-500'}`}><Columns3 className="w-3.5 h-3.5" /> Colunas por Turno</button>
             <button onClick={() => setActiveTab('dia')} className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 ${activeTab === 'dia' ? 'bg-white dark:bg-sky-600 shadow-sm' : 'text-slate-500'}`}><Clock className="w-3.5 h-3.5" /> Plantão do Dia</button>
           </div>
 
@@ -664,124 +652,145 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 4. NOVA VISÃO: COLUNAS POR TURNO (MANHÃ / TARDE / NOITE)                  */}
+      {/* 4. VISÃO MENSAL COM SUB-COLUNAS DE TURNOS EMBUTIDAS (MANHÃ, TARDE, NOITE)   */}
       {/* ========================================================================= */}
-      {activeTab === 'colunas' && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm p-4 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-            <div>
-              <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                <Columns3 className="w-5 h-5 text-sky-600" /> Grade Organizada por Turnos ({MONTH_NAMES[currentMonth]} {currentYear})
-              </h3>
-              <p className="text-xs text-slate-400">Visualização didática dividida por colunas de turnos para facilitar a conferência.</p>
+      {activeTab === 'mensal' && (
+        <div className="flex flex-col lg:flex-row gap-4 items-start">
+          
+          {/* ROLL DE PROFISSIONAL */}
+          {isManager && (
+            <aside className="w-full lg:w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <HeartPulse className="w-4 h-4 text-sky-600" /> Roll Profissionais
+                </span>
+                <span className="text-[10px] font-bold text-slate-400">Arraste p/ o dia</span>
+              </div>
+              <Select value={traySpecialtyFilter} onValueChange={setTraySpecialtyFilter}>
+                <SelectTrigger className="h-8 text-xs font-bold bg-slate-50 dark:bg-slate-950"><SelectValue placeholder="Especialidade..." /></SelectTrigger>
+                <SelectContent className="bg-white dark:bg-slate-900 max-h-56">
+                  <SelectItem value="todas">Todas Especialidades</SelectItem>
+                  {registeredSpecialties.map(spec => <SelectItem key={spec} value={spec}>{spec}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input placeholder="Buscar profissional..." value={traySearch} onChange={e => setTraySearch(e.target.value)} className="pl-8 h-8 text-xs bg-slate-50 dark:bg-slate-950 rounded-xl" />
+              </div>
+              <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
+                {professionals.filter(p => p.status === 'ativo').map(prof => (
+                  <div key={prof.id} draggable onDragStart={(e) => handleDragStart(e, prof.id)} className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:border-sky-500 transition-all cursor-grab active:cursor-grabbing select-none shadow-sm flex items-center gap-2.5">
+                    <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-mono font-black text-[10px] text-sky-600 shrink-0">{getInitials(prof.name)}</div>
+                    <div className="min-w-0 flex-1"><div className="font-black text-xs text-slate-900 dark:text-white truncate">{formatFullName(prof.name)}</div><div className="text-[10px] text-slate-500 truncate">{prof.specialty || 'Clínica Geral'}</div></div>
+                  </div>
+                ))}
+              </div>
+            </aside>
+          )}
+
+          {/* GRADE MENSAL COM SEPARAÇÃO DE TURNOS DENTRO DO DIA */}
+          <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+            <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-center py-2.5">
+              {WEEKDAYS.map(day => (<div key={day.short} className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400"><span className={day.weekend ? 'text-indigo-600 font-black' : ''}>{day.short}</span></div>))}
             </div>
-          </div>
+            
+            <div className="grid grid-cols-7 divide-x divide-y divide-slate-200 dark:divide-slate-800">
+              {Array.from({ length: daysInMonth[0].getDay() }).map((_, idx) => (<div key={`empty-${idx}`} className="min-h-[190px] bg-slate-50/60 dark:bg-slate-950/40"></div>))}
+              
+              {daysInMonth.map(dateObj => {
+                const dateStr = getLocalDateString(dateObj);
+                const isToday = todayLocalStr === dateStr;
+                const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+                const isSelected = selectedDays.includes(dateStr);
+                const dayShifts = shiftsByDate[dateStr] || [];
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 uppercase text-[10px] font-black border-b border-slate-200 dark:border-slate-800">
-                <tr>
-                  <th className="py-3 px-4 border-r border-slate-200 dark:border-slate-800 w-32">Data / Dia</th>
-                  <th className="py-3 px-4 border-r border-slate-200 dark:border-slate-800 text-amber-700 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20">☀️ Turno Diurno / Manhã (07h - 13h)</th>
-                  <th className="py-3 px-4 border-r border-slate-200 dark:border-slate-800 text-orange-700 dark:text-orange-400 bg-orange-50/50 dark:bg-orange-950/20">🌇 Turno Tarde (13h - 19h / 12h)</th>
-                  <th className="py-3 px-4 text-indigo-700 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/20">🌙 Turno Noturno / Noite (19h - 07h)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-medium">
-                {daysInMonth.map(dateObj => {
-                  const dateStr = getLocalDateString(dateObj);
-                  const isToday = todayLocalStr === dateStr;
-                  const dayShifts = shiftsByDate[dateStr] || [];
+                // Subdivisão didática por Turnos dentro do dia
+                const manha = dayShifts.filter(s => {
+                  const h = parseInt((s.start_time || '07:00').split(':')[0]);
+                  return h >= 6 && h < 13;
+                });
+                const tarde = dayShifts.filter(s => {
+                  const h = parseInt((s.start_time || '07:00').split(':')[0]);
+                  return h >= 13 && h < 18;
+                });
+                const noite = dayShifts.filter(s => {
+                  const h = parseInt((s.start_time || '07:00').split(':')[0]);
+                  return h >= 18 || h < 6;
+                });
 
-                  // Separa os plantões daquele dia por faixa de horário
-                  const manhaTarde = dayShifts.filter(s => {
-                    const startH = parseInt((s.start_time || '07:00').split(':')[0]);
-                    return startH >= 6 && startH < 18;
-                  });
+                return (
+                  <div key={dateStr} onClick={(e) => handleDayClick(dateStr, e)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnDay(e, dateStr)} className={`min-h-[210px] p-2 transition-all flex flex-col justify-between select-none cursor-pointer ${isSelected ? 'bg-indigo-50 dark:bg-indigo-950/50 ring-2 ring-indigo-500 z-10' : isToday ? 'bg-sky-50/60 dark:bg-sky-950/20' : 'hover:bg-slate-50'}`}>
+                    <div className={`flex items-center justify-between p-1 px-2 rounded-xl mb-1.5 border shadow-sm ${isToday ? 'bg-gradient-to-r from-sky-600 to-cyan-600 border-sky-400 text-white font-black' : isWeekend ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-200 text-indigo-800' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 text-slate-800 dark:text-slate-200 font-bold'}`}>
+                      <span className="text-xs font-black">{dateObj.getDate()}</span>
+                      <span className="text-[10px] uppercase font-bold opacity-70">{WEEKDAYS[dateObj.getDay()].short}</span>
+                    </div>
 
-                  const noite = dayShifts.filter(s => {
-                    const startH = parseInt((s.start_time || '07:00').split(':')[0]);
-                    return startH >= 18 || startH < 6;
-                  });
-
-                  return (
-                    <tr key={dateStr} className={isToday ? 'bg-sky-50/80 dark:bg-sky-950/30' : 'hover:bg-slate-50 dark:hover:bg-slate-850/40'}>
-                      <td className="py-3 px-4 border-r border-slate-200 dark:border-slate-800 font-black">
-                        <div className={`inline-block px-2 py-1 rounded-lg text-xs ${isToday ? 'bg-sky-600 text-white' : 'bg-slate-200 dark:bg-slate-800'}`}>
-                          {dateObj.getDate()} de {MONTH_NAMES[currentMonth].substring(0, 3)} ({WEEKDAYS[dateObj.getDay()].short})
+                    {/* BLOCOS DIDÁTICOS: MANHÃ, TARDE E NOITE */}
+                    <div className="space-y-2 flex-1 overflow-y-auto max-h-[220px] pr-0.5 text-[11px]">
+                      
+                      {/* Manhã */}
+                      {manha.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200 block">☀️ Manhã</span>
+                          {manha.map(shift => {
+                            const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+                            const isVago = shift.status === 'vago' || !prof;
+                            return (
+                              <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date || '', sector_id: shift.sector_id || '', target_specialty: extractSpecialty(shift, prof), start_time: shift.start_time || '07:00', end_time: shift.end_time || '13:00', shift_type: 'diurno', action_type: isVago ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '' }); setModalOpen(true); } }} className={`p-1.5 rounded-xl border text-[10px] ${isVago ? 'bg-rose-50 border-rose-300 text-rose-700' : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800'}`}>
+                                <div className="font-black truncate">{isVago ? '⚠️ Vaga' : formatFullName(prof?.name)}</div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      </td>
+                      )}
 
-                      {/* Coluna Manhã / Diurno */}
-                      <td className="py-3 px-4 border-r border-slate-200 dark:border-slate-800 align-top space-y-2">
-                        {manhaTarde.length === 0 ? (
-                          <span className="text-[10px] text-slate-400 italic">Nenhum</span>
-                        ) : (
-                          manhaTarde.map(shift => {
+                      {/* Tarde */}
+                      {tarde.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-black uppercase text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-200 block">🌇 Tarde</span>
+                          {tarde.map(shift => {
                             const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-                            const sector = sectorMap[String(shift.sector_id)];
                             const isVago = shift.status === 'vago' || !prof;
-                            const realSpec = extractSpecialty(shift, prof);
-
                             return (
-                              <div key={shift.id} className={`p-2 rounded-xl border text-xs ${isVago ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-300' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm'}`}>
-                                <div className="text-[9px] font-bold text-slate-500 uppercase">{sector?.name} • {shift.start_time}-{shift.end_time}</div>
-                                <div className="font-black text-slate-900 dark:text-white">{isVago ? '⚠️ Vaga Aberta' : formatFullName(prof?.name)}</div>
-                                <div className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold">{realSpec}</div>
+                              <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date || '', sector_id: shift.sector_id || '', target_specialty: extractSpecialty(shift, prof), start_time: shift.start_time || '13:00', end_time: shift.end_time || '19:00', shift_type: 'diurno', action_type: isVago ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '' }); setModalOpen(true); } }} className={`p-1.5 rounded-xl border text-[10px] ${isVago ? 'bg-rose-50 border-rose-300 text-rose-700' : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800'}`}>
+                                <div className="font-black truncate">{isVago ? '⚠️ Vaga' : formatFullName(prof?.name)}</div>
                               </div>
                             );
-                          })
-                        )}
-                      </td>
+                          })}
+                        </div>
+                      )}
 
-                      {/* Coluna Tarde (Caso exista plantão intermediário) */}
-                      <td className="py-3 px-4 border-r border-slate-200 dark:border-slate-800 align-top space-y-2">
-                        {manhaTarde.filter(s => parseInt((s.start_time || '07:00').split(':')[0]) >= 12).length === 0 ? (
-                          <span className="text-[10px] text-slate-400 italic">—</span>
-                        ) : (
-                          manhaTarde.filter(s => parseInt((s.start_time || '07:00').split(':')[0]) >= 12).map(shift => {
+                      {/* Noite */}
+                      {noite.length > 0 && (
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-200 block">🌙 Noite</span>
+                          {noite.map(shift => {
                             const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-                            const sector = sectorMap[String(shift.sector_id)];
                             const isVago = shift.status === 'vago' || !prof;
-                            const realSpec = extractSpecialty(shift, prof);
-
                             return (
-                              <div key={shift.id} className={`p-2 rounded-xl border text-xs ${isVago ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-300' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm'}`}>
-                                <div className="text-[9px] font-bold text-slate-500 uppercase">{sector?.name} • {shift.start_time}-{shift.end_time}</div>
-                                <div className="font-black text-slate-900 dark:text-white">{isVago ? '⚠️ Vaga Aberta' : formatFullName(prof?.name)}</div>
-                                <div className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold">{realSpec}</div>
+                              <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date || '', sector_id: shift.sector_id || '', target_specialty: extractSpecialty(shift, prof), start_time: shift.start_time || '19:00', end_time: shift.end_time || '07:00', shift_type: 'noturno', action_type: isVago ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '' }); setModalOpen(true); } }} className={`p-1.5 rounded-xl border text-[10px] ${isVago ? 'bg-rose-50 border-rose-300 text-rose-700' : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800'}`}>
+                                <div className="font-black truncate">{isVago ? '⚠️ Vaga' : formatFullName(prof?.name)}</div>
                               </div>
                             );
-                          })
-                        )}
-                      </td>
+                          })}
+                        </div>
+                      )}
 
-                      {/* Coluna Noite / Noturno */}
-                      <td className="py-3 px-4 align-top space-y-2">
-                        {noite.length === 0 ? (
-                          <span className="text-[10px] text-slate-400 italic">Nenhum</span>
-                        ) : (
-                          noite.map(shift => {
-                            const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-                            const sector = sectorMap[String(shift.sector_id)];
-                            const isVago = shift.status === 'vago' || !prof;
-                            const realSpec = extractSpecialty(shift, prof);
+                      {dayShifts.length === 0 && (
+                        <div className="text-[10px] text-slate-400 italic text-center py-4">Sem plantões</div>
+                      )}
+                    </div>
 
-                            return (
-                              <div key={shift.id} className={`p-2 rounded-xl border text-xs ${isVago ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-300' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm'}`}>
-                                <div className="text-[9px] font-bold text-slate-500 uppercase">{sector?.name} • {shift.start_time}-{shift.end_time}</div>
-                                <div className="font-black text-slate-900 dark:text-white">{isVago ? '⚠️ Vaga Aberta' : formatFullName(prof?.name)}</div>
-                                <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold">{realSpec}</div>
-                              </div>
-                            );
-                          })
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                    {isManager && (
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setEditingShiftId(null); setFormData({ date: dateStr, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''), target_specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar', professional_id: '', notes: '' }); setModalOpen(true); }} className="mt-1 w-full py-1 text-[10px] font-bold text-slate-400 hover:text-sky-600 hover:bg-slate-100 rounded-lg transition-all text-center border border-dashed border-slate-200 dark:border-slate-800">
+                        + Adicionar Vaga
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -871,96 +880,7 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* GRADE MENSAL (PADRÃO) */}
-      {activeTab === 'mensal' && (
-        <div className="flex flex-col lg:flex-row gap-4 items-start">
-          {isManager && (
-            <aside className="w-full lg:w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <HeartPulse className="w-4 h-4 text-sky-600" /> Roll Profissionais
-                </span>
-                <span className="text-[10px] font-bold text-slate-400">Arraste p/ o dia</span>
-              </div>
-              <Select value={traySpecialtyFilter} onValueChange={setTraySpecialtyFilter}>
-                <SelectTrigger className="h-8 text-xs font-bold bg-slate-50 dark:bg-slate-950"><SelectValue placeholder="Especialidade..." /></SelectTrigger>
-                <SelectContent className="bg-white dark:bg-slate-900 max-h-56">
-                  <SelectItem value="todas">Todas Especialidades</SelectItem>
-                  {registeredSpecialties.map(spec => <SelectItem key={spec} value={spec}>{spec}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <Input placeholder="Buscar profissional..." value={traySearch} onChange={e => setTraySearch(e.target.value)} className="pl-8 h-8 text-xs bg-slate-50 dark:bg-slate-950 rounded-xl" />
-              </div>
-              <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
-                {filteredTrayProfs.map(prof => (
-                  <div key={prof.id} draggable onDragStart={(e) => handleDragStart(e, prof.id)} className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:border-sky-500 transition-all cursor-grab active:cursor-grabbing select-none shadow-sm flex items-center gap-2.5">
-                    <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-mono font-black text-[10px] text-sky-600 shrink-0">{getInitials(prof.name)}</div>
-                    <div className="min-w-0 flex-1"><div className="font-black text-xs text-slate-900 dark:text-white truncate">{formatFullName(prof.name)}</div><div className="text-[10px] text-slate-500 truncate">{prof.specialty || 'Clínica Geral'}</div></div>
-                  </div>
-                ))}
-              </div>
-            </aside>
-          )}
-
-          <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
-            <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-center py-2.5">
-              {WEEKDAYS.map(day => (<div key={day.short} className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400"><span className={day.weekend ? 'text-indigo-600 font-black' : ''}>{day.short}</span></div>))}
-            </div>
-            <div className="grid grid-cols-7 divide-x divide-y divide-slate-200 dark:divide-slate-800">
-              {Array.from({ length: daysInMonth[0].getDay() }).map((_, idx) => (<div key={`empty-${idx}`} className="min-h-[170px] bg-slate-50/60 dark:bg-slate-950/40"></div>))}
-              {daysInMonth.map(dateObj => {
-                const dateStr = getLocalDateString(dateObj);
-                const isToday = todayLocalStr === dateStr;
-                const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
-                const isSelected = selectedDays.includes(dateStr);
-                const dayShifts = shiftsByDate[dateStr] || [];
-
-                return (
-                  <div key={dateStr} onClick={(e) => handleDayClick(dateStr, e)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnDay(e, dateStr)} className={`min-h-[185px] p-2 transition-all flex flex-col justify-between select-none cursor-pointer ${isSelected ? 'bg-indigo-50 dark:bg-indigo-950/50 ring-2 ring-indigo-500 z-10' : isToday ? 'bg-sky-50/60 dark:bg-sky-950/20' : 'hover:bg-slate-50'}`}>
-                    <div className={`flex items-center justify-between p-1 px-2.5 rounded-xl mb-1.5 border shadow-sm ${isToday ? 'bg-gradient-to-r from-sky-600 to-cyan-600 border-sky-400 text-white font-black' : isWeekend ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-200 text-indigo-800 dark:text-indigo-300 font-bold' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 text-slate-800 dark:text-slate-200 font-bold'}`}>
-                      <span className="text-xs font-black">{dateObj.getDate()}</span>
-                      <span className="text-[10px] uppercase font-bold opacity-70">{WEEKDAYS[dateObj.getDay()].short}</span>
-                    </div>
-
-                    <div className="space-y-1.5 flex-1 overflow-y-auto max-h-[190px] pr-0.5">
-                      {dayShifts.map(shift => {
-                        const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-                        const sector = sectorMap[String(shift.sector_id)];
-                        const isVago = shift.status === 'vago' || !prof;
-                        const badge = getStatusBadge(shift);
-                        const realSpecialty = extractSpecialty(shift, prof);
-
-                        return (
-                          <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date || '', sector_id: shift.sector_id || '', target_specialty: realSpecialty, start_time: shift.start_time || '07:00', end_time: shift.end_time || '19:00', shift_type: shift.shift_type || 'diurno', action_type: isVago ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '' }); setModalOpen(true); } }} className={`p-2.5 rounded-2xl border transition-all cursor-pointer shadow-sm hover:border-slate-400 ${isVago ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200' : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800'}`}>
-                            <div className="flex items-center justify-between text-[10px] font-black uppercase text-slate-500 mb-1">
-                              <span className="truncate max-w-[100px] text-sky-600 dark:text-sky-400 font-bold">{sector?.name || 'Setor'}</span>
-                              <span className="font-mono text-slate-400">{shift.start_time}-{shift.end_time}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 mb-1"><span className={`w-2 h-2 rounded-full shrink-0 ${badge.dot}`}></span><span className={`text-[10px] ${badge.text}`}>{badge.label}</span></div>
-                            <div className="font-black text-xs text-slate-900 dark:text-white truncate">{isVago ? '⚠️ Vaga em Aberto' : formatFullName(prof?.name)}</div>
-                            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate mt-0.5">{realSpecialty}</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {isManager && (
-                      <button type="button" onClick={(e) => { e.stopPropagation(); setEditingShiftId(null); setFormData({ date: dateStr, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''), target_specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar', professional_id: '', notes: '' }); setModalOpen(true); }} className="mt-1 w-full py-1 text-[10px] font-bold text-slate-400 hover:text-sky-600 hover:bg-slate-100 rounded-lg transition-all text-center border border-dashed border-slate-200 dark:border-slate-800">
-                        + Adicionar Vaga
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* FOLHA DE IMPRESSÃO EXECUTIVA A4 PAISAGEM (100% BRANCO) */}
+      {/* IMPRESSO EXECUTIVO A4 PAISAGEM */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
         <DialogContent className="sm:max-w-6xl max-h-[92vh] overflow-y-auto bg-white text-black border-none p-8 font-sans shadow-2xl">
           <style>{`
