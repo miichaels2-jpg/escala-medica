@@ -8,11 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
-  Users, UserPlus, Search, CheckCircle2, XCircle, 
-  Clock, DollarSign, Phone, Mail, CreditCard, Edit3, 
-  KeyRound, Send, RefreshCw, Ban, UserCheck, MessageSquare,
-  Shield, ShieldCheck, UserCog, BadgeCheck, Eye, EyeOff,
-  HeartPulse, Plus, Building2, IdCard
+  Users, UserPlus, Search, CheckCircle2, 
+  Clock, DollarSign, Edit3, KeyRound, Send, RefreshCw, Ban, 
+  UserCheck, MessageSquare, Shield, UserCog, BadgeCheck, Eye, EyeOff,
+  HeartPulse, Plus, CreditCard
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -29,18 +28,20 @@ const DEFAULT_CATEGORIES = [
   { id: 'medico', label: 'Médico(a)', council: 'CRM' },
   { id: 'enfermeiro', label: 'Enfermeiro(a)', council: 'COREN' },
   { id: 'fisioterapeuta', label: 'Fisioterapeuta', council: 'CREFITO' },
-  { id: 'tecnico_enfermagem', label: 'Téc. Enfermagem', council: 'COREN' },
+  { id: 'tecnico_enfermagem', label: 'Técnico de Enfermagem', council: 'COREN' },
   { id: 'farmaceutico', label: 'Farmacêutico(a)', council: 'CRF' },
   { id: 'nutricionista', label: 'Nutricionista', council: 'CRN' },
   { id: 'psicologo', label: 'Psicólogo(a)', council: 'CRP' },
-  { id: 'biomedico', label: 'Biomédico(a)', council: 'CRBM' }
+  { id: 'biomedico', label: 'Biomédico(a)', council: 'CRBM' },
+  { id: 'fonoaudiologo', label: 'Fonoaudiólogo(a)', council: 'CREFONO' },
+  { id: 'outro', label: 'Outro Profissional', council: 'Registro' }
 ];
 
 const ACCESS_ROLES = [
-  { id: 'assistencial', label: 'Profissional Assistencial', desc: 'Acesso à Minha Escala, Mural, Trocas e Repasses' },
-  { id: 'coordenador', label: 'Coordenador de Escala', desc: 'Montagem de escalas, setores e homologação' },
-  { id: 'faturamento', label: 'Faturamento / Financeiro', desc: 'Fechamento de honorários, conciliação e repasses' },
-  { id: 'gestor', label: 'Gestor Geral / Administrador', desc: 'Acesso pleno a todos os módulos e configurações' },
+  { id: 'assistencial', label: 'Profissional Assistencial', desc: 'Acesso à Minha Escala, Mural de Plantões, Trocas e Repasses' },
+  { id: 'coordenador', label: 'Coordenador de Escala', desc: 'Montagem de escalas, setores e homologação de trocas' },
+  { id: 'faturamento', label: 'Faturamento / Financeiro', desc: 'Fechamento de honorários, conciliação e relatórios de repasse' },
+  { id: 'gestor', label: 'Gestor Geral / Administrador', desc: 'Acesso pleno a todos os módulos, cadastros e configurações' },
 ];
 
 async function autoHealingSave(id, initialPayload) {
@@ -65,15 +66,7 @@ async function autoHealingSave(id, initialPayload) {
 }
 
 export default function CorpoClinico() {
-  const { 
-    professionals, 
-    sectors,
-    units, 
-    selectedUnitId, 
-    company, 
-    isManager, 
-    syncGlobalData 
-  } = useAppData();
+  const { professionals, units, selectedUnitId, company, isManager, syncGlobalData } = useAppData();
 
   const [activeTab, setActiveTab] = useState('ativos'); 
   const [searchQuery, setSearchQuery] = useState('');
@@ -93,19 +86,21 @@ export default function CorpoClinico() {
 
   const allCategories = useMemo(() => [...DEFAULT_CATEGORIES, ...customCategories], [customCategories]);
 
+  // RESTAURADO: Todos os campos do seu formulário original + Matrícula e PIX
   const [formData, setFormData] = useState({
     name: '',
     username: '', 
     category: 'medico',
-    document: '',
-    registration_id: '',
-    main_sector: '',
+    app_role: 'assistencial',
+    specialty: '', // Especialidade / Atuação
+    document: '', // Conselho
+    cbo: '', // CBO
     cpf: '',
-    email: '',
     phone: '',
+    email: '',
+    registration_id: '', // Matrícula ID Automática
     unit_id: '',
     status: 'ativo',
-    app_role: 'assistencial',
     remuneration_type: 'hora',
     hourly_rate: 120,
     daily_rate: 1500,
@@ -124,15 +119,16 @@ export default function CorpoClinico() {
       name: '',
       username: '',
       category: 'medico',
+      app_role: 'assistencial',
+      specialty: '',
       document: '',
-      registration_id: generatedMatricula,
-      main_sector: sectors[0]?.name || 'UTI Geral',
+      cbo: '',
       cpf: '',
-      email: '',
       phone: '',
+      email: '',
+      registration_id: generatedMatricula,
       unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
       status: 'ativo',
-      app_role: 'assistencial',
       remuneration_type: 'hora',
       hourly_rate: 120,
       daily_rate: 1500,
@@ -157,28 +153,23 @@ export default function CorpoClinico() {
     setEditingProf(prof);
     const meta = getProfMeta(prof);
 
-    const defaultUsername = (prof.name || '')
-      .toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]/g, '.')
-      .replace(/\.+/g, '.')
-      .replace(/^\.|\.$/g, '');
-
+    const defaultUsername = (prof.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.').replace(/^\.|\.$/g, '');
     const generatedMatricula = meta.registration_id || prof.registration_id || `MAT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
     setFormData({
       name: prof.name || prof.full_name || '',
       username: meta.username || prof.username || defaultUsername,
       category: meta.category || prof.category || 'medico',
+      app_role: meta.app_role || prof.app_role || 'assistencial',
+      specialty: prof.specialty || meta.specialty || '',
       document: prof.document || prof.registration_number || '',
-      registration_id: generatedMatricula,
-      main_sector: meta.main_sector || prof.specialty || sectors[0]?.name || 'UTI Geral',
+      cbo: meta.cbo || prof.cbo || '',
       cpf: prof.cpf || '',
-      email: prof.email || '',
       phone: prof.phone || '',
+      email: prof.email || '',
+      registration_id: generatedMatricula,
       unit_id: prof.unit_id || selectedUnitId,
       status: prof.status || 'ativo',
-      app_role: meta.app_role || prof.app_role || 'assistencial',
       remuneration_type: prof.remuneration_type || meta.remuneration_type || 'hora',
       hourly_rate: safeNumber(prof.hourly_rate ?? meta.hourly_rate, 120),
       daily_rate: safeNumber(meta.daily_rate ?? prof.daily_rate, 1500),
@@ -196,14 +187,11 @@ export default function CorpoClinico() {
   const handleAddCustomCategory = (e) => {
     e.preventDefault();
     if (!newCatData.label.trim()) return;
-
     const newId = newCatData.label.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const newCatObj = { id: newId, label: newCatData.label.trim(), council: newCatData.council || 'Registro' };
-
     const updated = [...customCategories, newCatObj];
     setCustomCategories(updated);
     try { window.localStorage.setItem('scale_custom_cats', JSON.stringify(updated)); } catch {}
-
     setFormData(prev => ({ ...prev, category: newId }));
     setNewCatData({ label: '', council: 'Registro' });
     setNewCatModalOpen(false);
@@ -215,17 +203,14 @@ export default function CorpoClinico() {
 
     setSubmitting(true);
     try {
-      const cleanUsername = (formData.username || formData.name)
-        .toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]/g, '.')
-        .replace(/\.+/g, '.');
+      const cleanUsername = (formData.username || formData.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
 
       const richMeta = {
         username: cleanUsername,
         category: formData.category,
         app_role: formData.app_role,
-        main_sector: formData.main_sector,
+        specialty: formData.specialty,
+        cbo: formData.cbo,
         registration_id: formData.registration_id,
         coop_tax_rate: safeNumber(formData.coop_tax_rate),
         daily_rate: safeNumber(formData.daily_rate),
@@ -243,7 +228,8 @@ export default function CorpoClinico() {
         unit_id: formData.unit_id || selectedUnitId || 'unit_h1',
         name: formData.name.trim(),
         document: formData.document.trim(),
-        specialty: formData.main_sector,
+        specialty: formData.specialty.trim(),
+        cbo: formData.cbo.trim(),
         cpf: formData.cpf.trim(),
         email: formData.email.trim().toLowerCase(),
         phone: formData.phone.trim(),
@@ -268,6 +254,16 @@ export default function CorpoClinico() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleApprove = async (prof) => {
+    if (!confirm(`Aprovar ${prof.name}?`)) return;
+    try { await autoHealingSave(prof.id, { status: 'ativo' }); await syncGlobalData(); } catch (err) { alert(err.message); }
+  };
+
+  const handleToggleStatus = async (prof, nextStatus) => {
+    if (!confirm(`Alterar status de ${prof.name}?`)) return;
+    try { await autoHealingSave(prof.id, { status: nextStatus }); await syncGlobalData(); } catch (err) { alert(err.message); }
   };
 
   function getProfMeta(prof) {
@@ -316,9 +312,9 @@ export default function CorpoClinico() {
     <div className="p-4 md:p-8 space-y-6 font-sans">
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-400"><Users className="w-4 h-4" /> Gestão de Pessoal & Matrícula ID</div>
-          <h2 className="mt-1 text-2xl sm:text-3xl font-black">Corpo Clínico & Matrículas</h2>
-          <p className="text-xs text-slate-300">Cadastro com ID gerado automaticamente, dados de PIX e regras de remuneração.</p>
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-400"><Users className="w-4 h-4" /> Gestão de Pessoal & Matrícula</div>
+          <h2 className="mt-1 text-2xl sm:text-3xl font-black">Corpo Clínico & Cadastros</h2>
+          <p className="text-xs text-slate-300">Gestão completa de acessos, documentos (CBO/Conselho) e repasse PIX.</p>
         </div>
         {isManager && (<Button onClick={handleOpenNew} className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-10 px-5 rounded-xl shadow-lg gap-1.5 shrink-0"><UserPlus className="w-4 h-4" /> Novo Profissional</Button>)}
       </div>
@@ -340,99 +336,175 @@ export default function CorpoClinico() {
           const meta = getProfMeta(prof);
           const catId = meta.category || prof.category || 'medico';
           const catObj = allCategories.find(c => c.id === catId) || allCategories[0];
-          const matricula = meta.registration_id || prof.registration_id || 'MAT-2026-XXXX';
 
           return (
             <Card key={prof.id} className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4">
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
                   <div>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-black uppercase border bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30">{catObj?.label}</span>
-                    <h3 className="font-black text-sm text-slate-900 dark:text-white mt-1">{prof.name}</h3>
-                    <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400">ID: {matricula}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-black uppercase border bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/30">{catObj?.label}</span>
+                    <h3 className="font-black text-sm text-slate-900 dark:text-white mt-1.5">{prof.name}</h3>
+                    <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400">ID: {meta.registration_id || prof.registration_id || 'MAT-XXXX'}</span>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border bg-emerald-500/10 text-emerald-700 border-emerald-500/30">{prof.status || 'Ativo'}</span>
                 </div>
                 <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
                   <div className="flex justify-between"><span>Conselho:</span><strong>{prof.document || '—'}</strong></div>
-                  <div className="flex justify-between"><span>Setor Principal:</span><strong className="text-slate-900 dark:text-white">{meta.main_sector || prof.specialty || 'Geral'}</strong></div>
-                  <div className="flex justify-between"><span>PIX:</span><strong className="text-sky-600 font-mono">{meta.pix_key || 'Não cadastrado'}</strong></div>
-                  <div className="flex justify-between"><span>Base Remuneração:</span><strong className="text-emerald-600">{formatCurrency(prof.hourly_rate || meta.daily_rate || meta.monthly_salary || 120)}</strong></div>
+                  <div className="flex justify-between"><span>Especialidade:</span><strong className="text-slate-900 dark:text-white">{prof.specialty || 'Geral'}</strong></div>
+                  <div className="flex justify-between"><span>Chave PIX:</span><strong className="text-sky-600 font-mono">{meta.pix_key || 'Não cadastrado'}</strong></div>
                 </div>
               </div>
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
                 <Button size="sm" variant="outline" onClick={() => handleOpenEdit(prof)} className="flex-1 text-xs h-8 font-bold gap-1"><Edit3 className="w-3.5 h-3.5 text-sky-600" /> Editar Perfil</Button>
-                {prof.phone && (<Button size="sm" variant="outline" onClick={() => handleSendWhatsApp(prof)} className="h-8 px-2.5 border-emerald-300 text-emerald-600"><MessageSquare className="w-4 h-4" /></Button>)}
+                {prof.phone && (<Button size="sm" variant="outline" onClick={() => window.open(`https://wa.me/55${prof.phone.replace(/\D/g, '')}`, '_blank')} className="h-8 px-2.5 border-emerald-300 text-emerald-600"><MessageSquare className="w-4 h-4" /></Button>)}
               </div>
             </Card>
           );
         })}
       </div>
 
-      {/* MODAL DE CADASTRO/EDIÇÃO */}
+      {/* MODAL DE CADASTRO/EDIÇÃO (RESTAURADO COM EXATIDÃO) */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2"><UserCog className="w-5 h-5 text-sky-600" /> {editingProf ? 'Editar Perfil & Matrícula' : 'Novo Cadastro Profissional'}</DialogTitle></DialogHeader>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+          <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2 text-slate-900 dark:text-white"><UserCog className="w-5 h-5 text-sky-600" /> {editingProf ? 'Editar Perfil Profissional & Acesso' : 'Cadastrar Novo Profissional'}</DialogTitle></DialogHeader>
 
-          <form onSubmit={handleSaveProfessional} className="space-y-4 py-2 text-xs">
-            <div className="p-3.5 rounded-2xl bg-sky-50/60 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900/60 space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-black uppercase text-sky-900 dark:text-sky-200 flex items-center gap-1.5"><HeartPulse className="w-4 h-4 text-sky-600" /> Categoria *</Label>
-                <Button type="button" size="sm" onClick={() => setNewCatModalOpen(true)} className="h-7 text-[10px] font-black bg-sky-600 text-white px-2.5 rounded-xl gap-1"><Plus className="w-3 h-3" /> Adicionar Categoria</Button>
+          <form onSubmit={handleSaveProfessional} className="space-y-5 py-2 text-xs">
+            
+            {/* 1. CATEGORIA */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <HeartPulse className="w-4 h-4 text-slate-400" />
+                <Label className="text-xs font-black uppercase text-slate-500">Categoria Profissional *</Label>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {allCategories.map(cat => (
-                  <div key={cat.id} onClick={() => setFormData({ ...formData, category: cat.id })} className={`p-2 rounded-xl border cursor-pointer text-center transition-all ${formData.category === cat.id ? 'border-sky-600 bg-white dark:bg-slate-900 font-black ring-1 ring-sky-600 text-sky-600' : 'bg-slate-50 dark:bg-slate-950 text-slate-700'}`}>
+                  <div key={cat.id} onClick={() => setFormData({ ...formData, category: cat.id })} className={`p-2 rounded-xl border cursor-pointer text-center transition-all ${formData.category === cat.id ? 'border-sky-600 bg-sky-50 dark:bg-sky-900/20 font-black ring-1 ring-sky-600 text-sky-700 dark:text-sky-400' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'}`}>
                     <span className="text-[11px] block truncate">{cat.label}</span>
+                    <span className="text-[9px] opacity-60">Conselho: {cat.council}</span>
+                  </div>
+                ))}
+                <div onClick={() => setNewCatModalOpen(true)} className="p-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 cursor-pointer flex items-center justify-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-900 font-bold">
+                  <Plus className="w-3 h-3 text-rose-500" />
+                </div>
+              </div>
+            </div>
+
+            {/* 2. PERFIL DE PERMISSÃO */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4 text-slate-400" />
+                <Label className="text-xs font-black uppercase text-slate-500">Perfil de Permissão no Sistema *</Label>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {ACCESS_ROLES.map(role => (
+                  <div key={role.id} onClick={() => setFormData({ ...formData, app_role: role.id })} className={`p-3 rounded-xl border cursor-pointer transition-all ${formData.app_role === role.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-500' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`font-black text-xs ${formData.app_role === role.id ? 'text-indigo-700 dark:text-indigo-400' : 'text-slate-900 dark:text-white'}`}>{role.label}</span>
+                      {formData.app_role === role.id && <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
+                    </div>
+                    <p className="text-[10px] text-slate-500 leading-tight">{role.desc}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="space-y-1 sm:col-span-2"><Label className="text-xs font-bold">Nome Completo *</Label><Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="h-9" /></div>
-              <div className="space-y-1"><Label className="text-xs font-bold">Matrícula ID</Label><Input value={formData.registration_id} onChange={e => setFormData({...formData, registration_id: e.target.value})} className="h-9 font-mono font-bold" /></div>
+            {/* 3. DADOS PRINCIPAIS (EXATAMENTE COMO NO SEU PRINT) */}
+            <div className="space-y-3 pt-2">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">Nome Completo Oficial *</Label>
+                <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">Especialidade / Atuação *</Label>
+                  <Input value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})} placeholder="Ex: Ginecologista" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">Matrícula (Gerada Auto) *</Label>
+                  <Input value={formData.registration_id} onChange={e => setFormData({...formData, registration_id: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono font-bold" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">CPF *</Label>
+                  <Input value={formData.cpf} onChange={e => setFormData({...formData, cpf: e.target.value})} placeholder="000.000.000-00" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">Número de Registro no Conselho *</Label>
+                  <Input value={formData.document} onChange={e => setFormData({...formData, document: e.target.value})} placeholder="Ex: 2155 - RJ" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">CBO (Código Brasileiro de Ocupações)</Label>
+                  <Input value={formData.cbo} onChange={e => setFormData({...formData, cbo: e.target.value})} placeholder="Ex: 225125" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">Telefone / WhatsApp *</Label>
+                  <Input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="21999999999" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                </div>
+              </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-bold">Setor de Atuação *</Label>
-                <Select value={formData.main_sector} onValueChange={v => setFormData({ ...formData, main_sector: v })}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Setor..." /></SelectTrigger>
-                  <SelectContent>{sectors.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}<SelectItem value="UTI Geral">UTI Geral</SelectItem></SelectContent>
-                </Select>
+                <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">E-mail Profissional</Label>
+                <Input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="email@exemplo.com" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
               </div>
-
-              <div className="space-y-1"><Label className="text-xs font-bold">Registro Conselho *</Label><Input value={formData.document} onChange={e => setFormData({...formData, document: e.target.value})} placeholder="Ex: 2155-RJ" className="h-9 font-mono" /></div>
-              <div className="space-y-1"><Label className="text-xs font-bold">Telefone *</Label><Input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="(21) 99999-9999" className="h-9" /></div>
             </div>
 
-            {/* REPASSE PIX */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
-              <div className="flex items-center gap-2 font-black text-xs uppercase text-slate-900 dark:text-white"><CreditCard className="w-4 h-4 text-sky-600" /> Dados para Repasse & PIX</div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* 4. CREDENCIAIS */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-black text-xs uppercase"><KeyRound className="w-4 h-4 text-sky-600" /> Credenciais de Login & Acesso</div>
+                <div className="flex items-center gap-1.5">
+                  <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'Mudar@123'}))} className="h-7 text-[10px] font-bold border-amber-300 text-amber-600 dark:text-amber-400">Resetar Senha</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'S@ude'+Math.floor(1000+Math.random()*9000)}))} className="h-7 text-[10px] font-bold border-sky-300 text-sky-600 dark:text-sky-400"><RefreshCw className="w-3 h-3 mr-1" /> Gerar Aleatória</Button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold">Usuário (Login por Nome) *</Label>
+                  <Input value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="h-10 font-mono font-bold text-sky-600 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold">{editingProf ? 'Nova Senha (deixe vazio para manter)' : 'Senha de Acesso *'}</Label>
+                  <div className="relative">
+                    <Input type={showPassword ? "text" : "password"} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="h-10 font-mono pr-8 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 5. DADOS FINANCEIROS / PIX */}
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex items-center gap-2 font-black text-xs uppercase"><DollarSign className="w-4 h-4 text-emerald-600" /> Faturamento & Repasse PIX</div>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold">Regime Contratual</Label>
+                  <Select value={formData.remuneration_type} onValueChange={v => setFormData({...formData, remuneration_type: v})}><SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hora">R$ / Hora</SelectItem><SelectItem value="diaria">R$ / Plantão</SelectItem><SelectItem value="mensal">Fixo Mensal</SelectItem></SelectContent></Select>
+                </div>
+                {formData.remuneration_type === 'hora' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Valor da Hora (R$)</Label><Input type="number" step="0.01" value={formData.hourly_rate} onChange={e => setFormData({...formData, hourly_rate: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
+                {formData.remuneration_type === 'diaria' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Valor do Plantão (R$)</Label><Input type="number" step="0.01" value={formData.daily_rate} onChange={e => setFormData({...formData, daily_rate: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
+                {formData.remuneration_type === 'mensal' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Salário (R$)</Label><Input type="number" step="0.01" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
+                
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold">Tipo Chave PIX</Label>
-                  <Select value={formData.pix_type} onValueChange={v => setFormData({...formData, pix_type: v})}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="CPF">CPF</SelectItem><SelectItem value="CNPJ">CNPJ</SelectItem><SelectItem value="Email">E-mail</SelectItem><SelectItem value="Telefone">Telefone</SelectItem><SelectItem value="Aleatoria">Aleatória</SelectItem></SelectContent></Select>
+                  <Select value={formData.pix_type} onValueChange={v => setFormData({...formData, pix_type: v})}><SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="CPF">CPF</SelectItem><SelectItem value="CNPJ">CNPJ</SelectItem><SelectItem value="Email">E-mail</SelectItem><SelectItem value="Telefone">Telefone</SelectItem><SelectItem value="Aleatoria">Aleatória</SelectItem></SelectContent></Select>
                 </div>
-                <div className="space-y-1 sm:col-span-2"><Label className="text-[11px] font-bold">Chave PIX</Label><Input value={formData.pix_key} onChange={e => setFormData({...formData, pix_key: e.target.value})} placeholder="Insira a chave PIX..." className="h-9" /></div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-[11px] font-bold">Chave PIX para Repasse</Label>
+                  <Input value={formData.pix_key} onChange={e => setFormData({...formData, pix_key: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono" />
+                </div>
               </div>
             </div>
 
-            {/* REMUNERAÇÃO */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
-              <div className="flex items-center gap-2 font-black text-xs uppercase text-slate-900 dark:text-white"><DollarSign className="w-4 h-4 text-emerald-600" /> Remuneração & Faturamento</div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-bold">Regime</Label>
-                  <Select value={formData.remuneration_type} onValueChange={v => setFormData({...formData, remuneration_type: v})}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="hora">Horista (R$/hora)</SelectItem><SelectItem value="diaria">Plantonista (R$/plantão)</SelectItem><SelectItem value="mensal">Mensalista</SelectItem></SelectContent></Select>
-                </div>
-                {formData.remuneration_type === 'hora' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Valor da Hora (R$)</Label><Input type="number" step="0.01" value={formData.hourly_rate} onChange={e => setFormData({...formData, hourly_rate: e.target.value})} className="h-9" /></div>)}
-                {formData.remuneration_type === 'diaria' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Valor do Plantão (R$)</Label><Input type="number" step="0.01" value={formData.daily_rate} onChange={e => setFormData({...formData, daily_rate: e.target.value})} className="h-9" /></div>)}
-                {formData.remuneration_type === 'mensal' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Salário (R$)</Label><Input type="number" step="0.01" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} className="h-9" /></div>)}
-                <div className="space-y-1"><Label className="text-[11px] font-bold">Retenção PJ/Coop (%)</Label><Input type="number" step="0.1" value={formData.coop_tax_rate} onChange={e => setFormData({...formData, coop_tax_rate: e.target.value})} placeholder="Ex: 5" className="h-9" /></div>
-              </div>
-            </div>
-
-            <DialogFooter className="pt-3 gap-2"><Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-9">Cancelar</Button><Button type="submit" disabled={submitting} className="bg-sky-600 text-white font-bold text-xs h-9 px-5">Salvar Perfil</Button></DialogFooter>
+            <DialogFooter className="pt-4 gap-2">
+              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-10 border-slate-200 dark:border-slate-700">Cancelar</Button>
+              <Button type="submit" disabled={submitting} className="bg-sky-600 text-white font-black text-xs h-10 px-8">Salvar Perfil Profissional</Button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
