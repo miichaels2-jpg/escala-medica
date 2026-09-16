@@ -13,7 +13,7 @@ import {
   Trash2, Edit3, X, Minimize2, Sparkles, CheckCheck, Send, 
   MousePointerClick, HeartPulse, UserPlus, Layers, SlidersHorizontal,
   Flame, Radio, ArrowRight, ShieldAlert, MonitorPlay, GripVertical, 
-  Printer, Sun, Moon, Stethoscope, Filter
+  Printer, Sun, Moon, Stethoscope, FileText, CheckSquare
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -30,6 +30,14 @@ const WEEKDAYS = [
   { short: 'Sex', long: 'Sexta-feira', weekend: false },
   { short: 'Sáb', long: 'Sábado', weekend: true }
 ];
+
+// Helper para obter a data local em formato YYYY-MM-DD sem bug de fuso UTC
+function getLocalDateString(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 async function autoHealingSaveShift(id, initialPayload) {
   let payload = { ...initialPayload };
@@ -66,20 +74,19 @@ function getInitials(name) {
   return (p[0][0] + p[p.length - 1][0]).toUpperCase();
 }
 
-// Recupera a especialidade real salva sem permitir que caia para 'Geral'
 function extractSpecialty(shift, prof) {
-  if (shift.target_specialty && shift.target_specialty.trim() && shift.target_specialty.toLowerCase() !== 'geral') {
+  if (shift?.target_specialty && shift.target_specialty.trim() && shift.target_specialty.toLowerCase() !== 'geral') {
     return shift.target_specialty.trim();
   }
-  if (shift.notes) {
+  if (shift?.notes) {
     const match = shift.notes.match(/\[ESP:([^\]]+)\]/i);
     if (match && match[1]) return match[1].trim();
   }
   try {
-    const cached = window.localStorage.getItem(`shift_spec_${shift.id}`);
+    const cached = window.localStorage.getItem(`shift_spec_${shift?.id}`);
     if (cached) return cached;
   } catch {}
-  return prof?.specialty || shift.target_specialty || 'Clínica Médica';
+  return prof?.specialty || shift?.target_specialty || 'Clínica Médica';
 }
 
 export default function Escalas() {
@@ -101,7 +108,6 @@ export default function Escalas() {
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
 
-  // Status de publicação persistente por mês
   const publishStorageKey = `scale_pub_${currentYear}_${currentMonth + 1}_${selectedUnitId}`;
   const [scalePublished, setScalePublished] = useState(() => {
     try {
@@ -118,10 +124,7 @@ export default function Escalas() {
     } catch {}
   }, [publishStorageKey]);
 
-  // Multi-seleção com CTRL
   const [selectedDays, setSelectedDays] = useState([]);
-
-  // Roll de profissionais (Drag & Drop)
   const [traySearch, setTraySearch] = useState('');
   const [traySpecialtyFilter, setTraySpecialtyFilter] = useState('todas');
   const [draggingProfId, setDraggingProfId] = useState(null);
@@ -141,7 +144,7 @@ export default function Escalas() {
   const [editingShiftId, setEditingShiftId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Especialidades dinâmicas registradas no Corpo Clínico
+  // Especialidades cadastradas no hospital
   const registeredSpecialties = useMemo(() => {
     const set = new Set();
     professionals.forEach(p => {
@@ -150,9 +153,8 @@ export default function Escalas() {
     return Array.from(set).sort();
   }, [professionals]);
 
-  // Formulário do Plantão Individual
   const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateString(),
     sector_id: '',
     target_specialty: '',
     start_time: '07:00',
@@ -163,10 +165,9 @@ export default function Escalas() {
     notes: ''
   });
 
-  // Configurador de Escala Dinâmico com botão "+"
   const [generatorConfig, setGeneratorConfig] = useState({
     sector_id: '',
-    start_date: new Date().toISOString().split('T')[0],
+    start_date: getLocalDateString(),
     duration_days: 30,
     slots: [
       { id: 'slot_1', specialty: 'Clínica Médica', start_time: '07:00', end_time: '19:00', quantity: 2, shift_type: 'diurno' },
@@ -266,19 +267,23 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // Plantão do Dia & CCO
-  const todayStr = `${liveNow.getFullYear()}-${String(liveNow.getMonth() + 1).padStart(2, '0')}-${String(liveNow.getDate()).padStart(2, '0')}`;
+  // CÁLCULO DA DATA E HORÁRIO LOCAL PRECISO (SEM BUG DE FUSO UTC)
+  const todayLocalStr = getLocalDateString(liveNow);
+  const yesterdayLocalStr = getLocalDateString(new Date(liveNow.getTime() - 24 * 60 * 60 * 1000));
 
   const todayShiftsDetailed = useMemo(() => {
     const nowHour = liveNow.getHours();
     const nowMin = liveNow.getMinutes();
     const nowTotalMin = nowHour * 60 + nowMin;
 
+    // Busca plantões de hoje e também plantões noturnos de ontem que viraram para hoje
     const todayRaw = shifts.filter(s => {
-      if (s.date !== todayStr) return false;
       if (selectedSectorId !== 'todos' && String(s.sector_id) !== String(selectedSectorId)) return false;
       if (!isShiftMatchingTurno(s, filterTurno)) return false;
-      return true;
+      
+      if (s.date === todayLocalStr) return true;
+      if (s.date === yesterdayLocalStr && (s.shift_type === 'noturno' || s.start_time >= '19:00')) return true;
+      return false;
     });
 
     const emAndamento = [];
@@ -292,31 +297,57 @@ export default function Escalas() {
       const [startH, startM] = (shift.start_time || '07:00').split(':').map(Number);
       const [endH, endM] = (shift.end_time || '19:00').split(':').map(Number);
       
-      const startTotalMin = startH * 60 + startM;
-      let endTotalMin = endH * 60 + endM;
-      if (endTotalMin <= startTotalMin) endTotalMin += 24 * 60;
+      const startMin = startH * 60 + startM;
+      let endMin = endH * 60 + endM;
+      const isNightShift = endMin <= startMin; // Vira a noite
 
-      let effectiveNowMin = nowTotalMin;
-      if (endTotalMin > 24 * 60 && nowTotalMin < startTotalMin) {
-        effectiveNowMin += 24 * 60;
+      let isRunning = false;
+      let minutesLeft = 0;
+      let minutesAgo = 999;
+
+      if (shift.date === todayLocalStr) {
+        if (!isNightShift) {
+          // Plantão Diurno de hoje (ex: 07:00 às 19:00)
+          if (nowTotalMin >= startMin && nowTotalMin < endMin) {
+            isRunning = true;
+            minutesLeft = endMin - nowTotalMin;
+          } else if (nowTotalMin >= endMin && (nowTotalMin - endMin) <= 60) {
+            minutesAgo = nowTotalMin - endMin;
+          } else if (nowTotalMin < startMin && (startMin - nowTotalMin) <= 120) {
+            proximoRendimento.push({ shift, startsIn: startMin - nowTotalMin });
+          }
+        } else {
+          // Plantão Noturno que começou hoje (ex: 19:00 às 07:00 de amanhã)
+          if (nowTotalMin >= startMin) {
+            isRunning = true;
+            minutesLeft = (24 * 60 - nowTotalMin) + endMin;
+          } else if (startMin > nowTotalMin && (startMin - nowTotalMin) <= 120) {
+            proximoRendimento.push({ shift, startsIn: startMin - nowTotalMin });
+          }
+        }
+      } else if (shift.date === yesterdayLocalStr && isNightShift) {
+        // Plantão Noturno de ontem que está terminando hoje de manhã (00:00 às 07:00)
+        if (nowTotalMin < endMin) {
+          isRunning = true;
+          minutesLeft = endMin - nowTotalMin;
+        } else if (nowTotalMin >= endMin && (nowTotalMin - endMin) <= 60) {
+          minutesAgo = nowTotalMin - endMin;
+        }
       }
 
-      if (effectiveNowMin >= startTotalMin && effectiveNowMin < endTotalMin) {
+      if (isRunning) {
         emAndamento.push(shift);
-        if ((endTotalMin - effectiveNowMin) <= 120) {
-          proximoRendimento.push({ shift, minutesLeft: endTotalMin - effectiveNowMin });
+        if (minutesLeft <= 120 && minutesLeft > 0) {
+          proximoRendimento.push({ shift, minutesLeft });
         }
-      } else if (effectiveNowMin >= endTotalMin && (effectiveNowMin - endTotalMin) <= 60) {
-        concluidosRecentes.push({ shift, minutesAgo: effectiveNowMin - endTotalMin });
-      } else if (startTotalMin > effectiveNowMin && (startTotalMin - effectiveNowMin) <= 120) {
-        proximoRendimento.push({ shift, startsIn: startTotalMin - effectiveNowMin });
+      } else if (minutesAgo <= 60) {
+        concluidosRecentes.push({ shift, minutesAgo });
       }
     });
 
     return { emAndamento, proximoRendimento, concluidosRecentes, totalHoje: todayRaw.length };
-  }, [shifts, todayStr, selectedSectorId, filterTurno, liveNow, professionalMap]);
+  }, [shifts, todayLocalStr, yesterdayLocalStr, selectedSectorId, filterTurno, liveNow, professionalMap]);
 
-  // Profissionais filtrados pela especialidade do formulário
   const eligibleProfessionalsForModal = useMemo(() => {
     const spec = (formData.target_specialty || '').toLowerCase().trim();
     if (!spec) return professionals.filter(p => p.status === 'ativo');
@@ -325,7 +356,6 @@ export default function Escalas() {
     return matching.length > 0 ? matching : professionals.filter(p => p.status === 'ativo');
   }, [professionals, formData.target_specialty]);
 
-  // Roll de profissionais com filtro por especialidade sem engessar
   const filteredTrayProfs = useMemo(() => {
     const term = traySearch.toLowerCase().trim();
     return professionals.filter(p => {
@@ -363,7 +393,7 @@ export default function Escalas() {
     const targetSector = selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || '');
 
     if (!targetSector) {
-      alert('Selecione ou cadastre um setor hospitalar antes de alocar.');
+      alert('Selecione ou cadastre um setor hospitalar.');
       return;
     }
 
@@ -371,7 +401,7 @@ export default function Escalas() {
       ? selectedDays 
       : [dateStr];
 
-    const secName = sectorMap[targetSector]?.name || 'Setor Hospitalar';
+    const secName = sectorMap[targetSector]?.name || 'Setor';
     if (!confirm(`Alocar ${prof?.name} em "${secName}" para ${targetDates.length} dia(s)?`)) {
       setDraggingProfId(null);
       return;
@@ -406,7 +436,6 @@ export default function Escalas() {
     }
   };
 
-  // GERADOR LIVRE: Cria vagas internas de planejamento sem jogar para o mural
   const handleExecuteGenerator = async (e) => {
     e.preventDefault();
     if (!generatorConfig.sector_id) {
@@ -437,7 +466,7 @@ export default function Escalas() {
       for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
         const curDate = new Date(startDt);
         curDate.setDate(curDate.getDate() + dayOffset);
-        const dateStr = curDate.toISOString().split('T')[0];
+        const dateStr = getLocalDateString(curDate);
 
         for (const slot of generatorConfig.slots) {
           const qty = parseInt(slot.quantity) || 0;
@@ -454,7 +483,7 @@ export default function Escalas() {
               shift_type: slot.shift_type || 'diurno',
               start_time: slot.start_time,
               end_time: slot.end_time,
-              status: 'vago' // Vaga interna para o coordenador alocar
+              status: 'vago'
             });
             if (saved?.id) {
               try { window.localStorage.setItem(`shift_spec_${saved.id}`, spec); } catch {}
@@ -473,7 +502,6 @@ export default function Escalas() {
     }
   };
 
-  // Publicar Escala: Salva e notifica os profissionais
   const handleTogglePublish = async () => {
     const nextState = !scalePublished;
     setScalePublished(nextState);
@@ -488,7 +516,6 @@ export default function Escalas() {
     }
   };
 
-  // Preenchimento em lote (CTRL)
   const handleSaveBatch = async (e) => {
     e.preventDefault();
     if (!batchData.sector_id || !batchData.professional_id) {
@@ -530,7 +557,6 @@ export default function Escalas() {
     }
   };
 
-  // Salvar plantão individual
   const handleSaveShift = async (e) => {
     e.preventDefault();
     if (!formData.sector_id || !formData.date) {
@@ -580,7 +606,6 @@ export default function Escalas() {
     }
   };
 
-  // Desocupar plantão direto de dentro do modal
   const handleSendToMuralFromModal = async () => {
     if (!editingShiftId) return;
     if (!confirm('Desocupar este plantão e disponibilizá-lo como VAGA NO MURAL?')) return;
@@ -608,7 +633,7 @@ export default function Escalas() {
       setModalOpen(false);
       await syncGlobalData();
     } catch (err) {
-      alert('Erro ao excluir: ' + err.message);
+      alert('Erro ao excluir plantão: ' + err.message);
     }
   };
 
@@ -617,10 +642,10 @@ export default function Escalas() {
     if (isVago) {
       return { dot: 'bg-rose-500 shadow-md shadow-rose-500/50 animate-pulse', label: 'Vaga Aberta', text: 'text-rose-600 dark:text-rose-400 font-black' };
     }
-    if (shift.date < todayStr) {
+    if (shift.date < todayLocalStr) {
       return { dot: 'bg-slate-400 dark:bg-slate-500', label: 'Concluído', text: 'text-slate-500 dark:text-slate-400 font-bold' };
     }
-    if (shift.date === todayStr) {
+    if (shift.date === todayLocalStr) {
       return { dot: 'bg-emerald-500 shadow-md shadow-emerald-500/50 animate-ping', label: 'Ao Vivo Hoje', text: 'text-emerald-600 dark:text-emerald-400 font-black' };
     }
     return { dot: 'bg-sky-500', label: 'Programado', text: 'text-sky-600 dark:text-sky-400 font-bold' };
@@ -629,7 +654,7 @@ export default function Escalas() {
   return (
     <div className={`p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200 ${activeTab === 'tv' ? 'fixed inset-0 z-50 bg-slate-950 text-white overflow-y-auto p-6 md:p-8' : ''}`}>
       
-      {/* 1. SELETOR DE SEÇÕES COMPACTO & BOTÃO DO CONFIGURADOR */}
+      {/* 1. SELETOR DE SEÇÕES COMPACTO */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 print:hidden transition-colors">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 shrink-0">
@@ -661,7 +686,6 @@ export default function Escalas() {
           )}
         </div>
 
-        {/* BOTÃO DO CONFIGURADOR DINÂMICO & FILTROS */}
         <div className="flex items-center gap-2">
           {isManager && (
             <Button
@@ -678,7 +702,6 @@ export default function Escalas() {
             </Button>
           )}
 
-          {/* FILTRO DE DIURNO / NOTURNO */}
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shrink-0">
             <button
               type="button"
@@ -717,7 +740,7 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* 2. BARRA DE COMANDO: MÊS, PUBLICAÇÃO, MODO TV */}
+      {/* 2. BARRA DE COMANDO: MÊS, PUBLICAÇÃO E MODO TV */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:hidden transition-colors">
         
         <div className="flex items-center gap-3">
@@ -747,10 +770,7 @@ export default function Escalas() {
           </div>
         </div>
 
-        {/* NAVEGAÇÃO DE TELAS & AÇÕES */}
         <div className="flex items-center gap-2 flex-wrap">
-          
-          {/* BOTÃO PUBLICAR ESCALA */}
           {isManager && (
             <Button
               onClick={handleTogglePublish}
@@ -803,7 +823,7 @@ export default function Escalas() {
               onClick={() => {
                 setEditingShiftId(null);
                 setFormData({
-                  date: new Date().toISOString().split('T')[0],
+                  date: getLocalDateString(),
                   sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''),
                   target_specialty: registeredSpecialties[0] || 'Clínica Médica',
                   start_time: '07:00',
@@ -869,7 +889,6 @@ export default function Escalas() {
                 </h3>
               </div>
 
-              {/* ÚNICO BOTÃO DE IMPRESSÃO */}
               <Button
                 onClick={() => setPrintPreviewOpen(true)}
                 className="h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 text-xs font-black px-5 rounded-2xl gap-2 shadow-md"
@@ -898,7 +917,7 @@ export default function Escalas() {
                       </td>
                     </tr>
                   ) : (
-                    shifts.filter(s => s.date === todayStr && (selectedSectorId === 'todos' || String(s.sector_id) === String(selectedSectorId))).map(shift => {
+                    shifts.filter(s => s.date === todayLocalStr && (selectedSectorId === 'todos' || String(s.sector_id) === String(selectedSectorId))).map(shift => {
                       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
                       const sector = sectorMap[String(shift.sector_id)];
                       const isVago = shift.status === 'vago' || !prof;
@@ -944,7 +963,7 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 5. VISÃO: MODO TV CCO                                                     */}
+      {/* 5. VISÃO: MODO TV CCO (SEM ERRO DE FUSO E COM CONTRASTE REAL)             */}
       {/* ========================================================================= */}
       {activeTab === 'tv' && (
         <div className="space-y-6">
@@ -967,7 +986,7 @@ export default function Escalas() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {todayShiftsDetailed.emAndamento.length === 0 ? (
                 <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 text-xs">
-                  Nenhum profissional em atendimento neste minuto.
+                  Nenhum profissional em atendimento registrado neste minuto exato.
                 </div>
               ) : (
                 todayShiftsDetailed.emAndamento.map(shift => {
@@ -1053,27 +1072,27 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 6. VISÃO: GRADE MENSAL (SEM SINAL DE + NAS DATAS & SEM BOTÃO REPETITIVO)   */}
+      {/* 6. VISÃO: GRADE MENSAL (CABEÇALHO LIMPO E CLIQUE NO CARD P/ OPÇÕES)       */}
       {/* ========================================================================= */}
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
           
-          {/* ROLL DE PROFISSIONAIS (COM FILTRO DE ESPECIALIDADE RÁPIDO) */}
+          {/* ROLL DE PROFISSIONAIS (DRAG & DROP) */}
           {isManager && (
             <aside className="w-full lg:w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3 transition-colors">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                   <HeartPulse className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-                  Roll Profissionais
+                  Roll de Profissionais
                 </span>
                 <span className="text-[10px] font-bold text-slate-400">Arraste p/ o dia</span>
               </div>
 
-              {/* FILTRO DE ESPECIALIDADE RÁPIDO DO ROLL */}
+              {/* FILTRO DE ESPECIALIDADE DO ROLL */}
               <div className="space-y-1">
                 <Select value={traySpecialtyFilter} onValueChange={setTraySpecialtyFilter}>
                   <SelectTrigger className="h-8 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl">
-                    <SelectValue placeholder="Especialidade..." />
+                    <SelectValue placeholder="Filtrar especialidade..." />
                   </SelectTrigger>
                   <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 max-h-56">
                     <SelectItem value="todas">Todas Especialidades</SelectItem>
@@ -1116,7 +1135,7 @@ export default function Escalas() {
             </aside>
           )}
 
-          {/* GRADE CALENDÁRIO COM CABEÇALHOS COLORIDOS E SEM BOTÕES REPETIDOS */}
+          {/* GRADE CALENDÁRIO COM CABEÇALHO LIMPO (SEM SINAL DE +) */}
           <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm transition-colors">
             
             <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-center py-2.5">
@@ -1134,8 +1153,8 @@ export default function Escalas() {
               ))}
 
               {daysInMonth.map(dateObj => {
-                const dateStr = dateObj.toISOString().split('T')[0];
-                const isToday = todayStr === dateStr;
+                const dateStr = getLocalDateString(dateObj);
+                const isToday = todayLocalStr === dateStr;
                 const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
                 const isSelected = selectedDays.includes(dateStr);
                 const dayShifts = shiftsByDate[dateStr] || [];
@@ -1154,7 +1173,7 @@ export default function Escalas() {
                         : 'hover:bg-slate-50 dark:hover:bg-slate-850/50'
                     }`}
                   >
-                    {/* BARRA SUPERIOR LIMPA DA DATA (SEM SINAL DE +) */}
+                    {/* BARRA SUPERIOR LIMPA DA DATA */}
                     <div className={`flex items-center justify-between p-1 px-2.5 rounded-xl mb-1.5 border shadow-sm ${
                       isToday
                         ? 'bg-gradient-to-r from-sky-600 to-cyan-600 border-sky-400 text-white font-black'
@@ -1202,7 +1221,6 @@ export default function Escalas() {
                                 : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800'
                             }`}
                           >
-                            {/* NOME COMPLETO DO SETOR & HORÁRIO */}
                             <div className="flex items-center justify-between text-[10px] font-black uppercase text-slate-500 mb-1">
                               <span className="truncate max-w-[100px] text-sky-600 dark:text-sky-400 font-bold" title={sector?.name}>
                                 {sector?.name || 'Setor'}
@@ -1210,13 +1228,11 @@ export default function Escalas() {
                               <span className="font-mono text-slate-400">{shift.start_time}-{shift.end_time}</span>
                             </div>
 
-                            {/* BOLINHA DE STATUS */}
                             <div className="flex items-center gap-1.5 mb-1">
                               <span className={`w-2 h-2 rounded-full shrink-0 ${badge.dot}`}></span>
                               <span className={`text-[10px] ${badge.text}`}>{badge.label}</span>
                             </div>
 
-                            {/* NOME E SOBRENOME EM DESTAQUE COM A ESPECIALIDADE REAL */}
                             <div className="font-black text-xs text-slate-900 dark:text-white truncate">
                               {isVago ? '⚠️ Vaga em Aberto' : formatFullName(prof?.name)}
                             </div>
@@ -1229,7 +1245,6 @@ export default function Escalas() {
                       })}
                     </div>
 
-                    {/* CLIQUE NO CARD DO DIA PARA ADICIONAR NOVA VAGA AVULSA */}
                     {isManager && (
                       <button
                         type="button"
@@ -1263,85 +1278,97 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 7. MODAL IMPRESSO OFICIAL A4 PAISAGEM (100% BRANCO COM TINTA PRETA)      */}
+      {/* 7. FOLHA DE IMPRESSÃO EXECUTIVA OFICIAL A4 PAISAGEM (100% BRANCO)         */}
       {/* ========================================================================= */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
-        <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto bg-white text-black border-none p-8 font-sans shadow-2xl">
+        <DialogContent className="sm:max-w-6xl max-h-[94vh] overflow-y-auto bg-white text-slate-900 border-none p-8 font-sans shadow-2xl">
           
-          {/* ESTILOS DE IMPRESSÃO RÍGIDOS: FORÇA FUNDO BRANCO E TEXTO PRETO */}
           <style>{`
             @media print {
               @page {
                 size: A4 landscape;
-                margin: 8mm;
+                margin: 6mm;
               }
               html, body, #root {
                 background: #ffffff !important;
                 color: #000000 !important;
+                color-scheme: light !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
               }
-              .print-paper, .print-paper * {
+              .print-container, .print-container * {
                 background: #ffffff !important;
                 color: #000000 !important;
-                border-color: #000000 !important;
+                border-color: #333333 !important;
+              }
+              .print-no-break {
+                page-break-inside: avoid;
               }
             }
           `}</style>
 
-          <div className="print-paper space-y-6 bg-white text-black">
-            <div className="flex items-center justify-between border-b-2 border-black pb-4">
+          <div className="print-container space-y-6 bg-white text-slate-900">
+            
+            {/* CABEÇALHO OFICIAL DE ALTO PADRÃO */}
+            <div className="flex items-center justify-between border-b-2 border-slate-900 pb-4">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-black text-white flex items-center justify-center font-black text-xl">
+                <div className="w-14 h-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black text-2xl shadow-sm">
                   {company?.name ? company.name[0] : 'H'}
                 </div>
                 <div>
-                  <h1 className="text-xl font-black uppercase tracking-tight text-black">{company?.name || 'HOSPITAL PRINCIPAL'}</h1>
-                  <p className="text-xs font-bold text-black uppercase tracking-wider">
-                    ESCALA OFICIAL DE PLANTÃO • AFIXAÇÃO EM MURAL HOSPITALAR
+                  <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">{company?.name || 'HOSPITAL PRINCIPAL'}</h1>
+                  <p className="text-xs font-black text-slate-700 tracking-wider uppercase">
+                    ESCALA MÉDICA & ASSISTENCIAL OFICIAL • REGISTRO DIÁRIO DE PLANTÃO
                   </p>
-                  <p className="text-xs text-black">
-                    Vigência: <b>{liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</b>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Data de Vigência: <b className="text-slate-950">{liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</b>
                   </p>
                 </div>
               </div>
 
-              <div className="text-right text-xs text-black">
-                <span className="font-bold text-black block">DOCUMENTO OFICIAL AUDITÁVEL</span>
-                <span className="text-[11px] text-black block">Emissão: {liveNow.toLocaleDateString('pt-BR')} às {liveNow.toLocaleTimeString('pt-BR')}</span>
-                <span className="text-[10px] font-mono text-black">Autenticação: SM-ESC-{Date.now().toString(36).toUpperCase()}</span>
+              <div className="text-right text-xs space-y-1">
+                <span className="font-black text-slate-900 bg-slate-100 border border-slate-300 px-2.5 py-1 rounded block uppercase">
+                  DOCUMENTO OFICIAL AUDITÁVEL
+                </span>
+                <span className="text-[11px] text-slate-600 block">
+                  Emissão: {liveNow.toLocaleDateString('pt-BR')} às {liveNow.toLocaleTimeString('pt-BR')}
+                </span>
+                <span className="text-[10px] font-mono text-slate-500">
+                  Cód. Autenticidade: SM-ESC-{Date.now().toString(36).toUpperCase()}
+                </span>
               </div>
             </div>
 
-            <div className="space-y-3">
-              <table className="w-full border-collapse border border-black text-xs">
-                <thead className="bg-gray-100 text-black uppercase text-[10px] font-black">
+            {/* TABELA DE PLANTÕES COM LINHAS ZEBRADAS E CONTRASTE NÍTIDO */}
+            <div className="space-y-2">
+              <table className="w-full border-collapse border border-slate-400 text-xs">
+                <thead className="bg-slate-100 text-slate-900 uppercase text-[10px] font-black">
                   <tr>
-                    <th className="border border-black p-2 text-left w-1/5 text-black">Seção / Setor</th>
-                    <th className="border border-black p-2 text-left w-32 text-black">Turno / Horário</th>
-                    <th className="border border-black p-2 text-left text-black">Profissional Escalado</th>
-                    <th className="border border-black p-2 text-left w-44 text-black">Registro Conselho</th>
-                    <th className="border border-black p-2 text-left w-48 text-black">Especialidade / Atuação</th>
-                    <th className="border border-black p-2 text-center w-48 text-black">Rubrica / Presença</th>
+                    <th className="border border-slate-400 p-2 text-left w-1/5">Seção / Setor</th>
+                    <th className="border border-slate-400 p-2 text-left w-28">Horário</th>
+                    <th className="border border-slate-400 p-2 text-left">Profissional Escalado</th>
+                    <th className="border border-slate-400 p-2 text-left w-36">Conselho / Registro</th>
+                    <th className="border border-slate-400 p-2 text-left w-44">Especialidade / Atuação</th>
+                    <th className="border border-slate-400 p-2 text-center w-48">Assinatura / Rubrica</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-black">
-                  {shifts.filter(s => s.date === todayStr && (selectedSectorId === 'todos' || String(s.sector_id) === String(selectedSectorId))).map(shift => {
+                <tbody className="divide-y divide-slate-300">
+                  {shifts.filter(s => s.date === todayLocalStr && (selectedSectorId === 'todos' || String(s.sector_id) === String(selectedSectorId))).map((shift, idx) => {
                     const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
                     const sector = sectorMap[String(shift.sector_id)];
                     const isVago = shift.status === 'vago' || !prof;
                     const realSpecialty = extractSpecialty(shift, prof);
 
                     return (
-                      <tr key={shift.id}>
-                        <td className="border border-black p-2 font-black text-black uppercase">{sector?.name || 'Setor'}</td>
-                        <td className="border border-black p-2 font-mono font-bold text-black">{shift.start_time} - {shift.end_time}</td>
-                        <td className="border border-black p-2 font-black text-black">
-                          {isVago ? <span className="font-black uppercase text-black">⚠️ VAGA EM ABERTO</span> : prof?.name}
+                      <tr key={shift.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                        <td className="border border-slate-400 p-2 font-black text-slate-900 uppercase">{sector?.name || 'Setor'}</td>
+                        <td className="border border-slate-400 p-2 font-mono font-bold text-slate-900">{shift.start_time} - {shift.end_time}</td>
+                        <td className="border border-slate-400 p-2 font-black text-slate-900">
+                          {isVago ? <span className="text-red-700 font-black uppercase">⚠️ VAGA EM ABERTO</span> : `Dr(a). ${prof?.name}`}
                         </td>
-                        <td className="border border-black p-2 font-mono text-black">{prof?.document || '—'}</td>
-                        <td className="border border-black p-2 text-black font-semibold">{realSpecialty}</td>
-                        <td className="border border-black p-2 text-center text-black font-mono">____________________</td>
+                        <td className="border border-slate-400 p-2 font-mono text-slate-800">{prof?.document || '—'}</td>
+                        <td className="border border-slate-400 p-2 font-bold text-slate-800">{realSpecialty}</td>
+                        <td className="border border-slate-400 p-2 text-center text-slate-400 font-mono">____________________</td>
                       </tr>
                     );
                   })}
@@ -1349,32 +1376,33 @@ export default function Escalas() {
               </table>
             </div>
 
-            {/* ASSINATURAS */}
-            <div className="grid grid-cols-2 gap-8 pt-8 border-t border-black text-center text-xs">
+            {/* ASSINATURAS E RESPONSABILIDADE TÉCNICA */}
+            <div className="print-no-break grid grid-cols-2 gap-12 pt-8 border-t-2 border-slate-900 text-center text-xs">
               <div className="space-y-1">
-                <div className="w-64 border-b border-black mx-auto"></div>
-                <span className="font-black text-black block">Coordenação Médica / Responsável Técnico</span>
-                <span className="text-[10px] text-black">CRM / Carimbo</span>
+                <div className="w-72 border-b border-slate-900 mx-auto"></div>
+                <span className="font-black text-slate-900 block uppercase">Diretoria Clínica / Responsável Técnico</span>
+                <span className="text-[10px] text-slate-500">CRM / Carimbo Oficial</span>
               </div>
 
               <div className="space-y-1">
-                <div className="w-64 border-b border-black mx-auto"></div>
-                <span className="font-black text-black block">Coordenação de Enfermagem / RT Assistencial</span>
-                <span className="text-[10px] text-black">COREN / Carimbo</span>
+                <div className="w-72 border-b border-slate-900 mx-auto"></div>
+                <span className="font-black text-slate-900 block uppercase">Gerência de Enfermagem / RT Assistencial</span>
+                <span className="text-[10px] text-slate-500">COREN / Carimbo Oficial</span>
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-black text-[9px] text-black">
-              <span>ScaleMedic Hospital Intelligence • Documento de Afixação Oficial</span>
-              <span>Página 1 de 1</span>
+            {/* RODAPÉ DO DOCUMENTO */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-300 text-[9px] text-slate-500">
+              <span>ScaleMedic Hospital Intelligence • Documento Homologado para Afixação Obrigatória em Mural Físico</span>
+              <span>Página 1 de 1 • Sistema Certificado</span>
             </div>
 
-            <div className="flex justify-end gap-3 print:hidden pt-4 border-t border-gray-200">
-              <Button variant="outline" onClick={() => setPrintPreviewOpen(false)} className="text-xs h-9 bg-white text-black border-gray-300">
+            <div className="flex justify-end gap-3 print:hidden pt-4 border-t border-slate-200">
+              <Button variant="outline" onClick={() => setPrintPreviewOpen(false)} className="text-xs h-9 bg-white text-slate-700 border-slate-300">
                 Fechar
               </Button>
-              <Button onClick={() => window.print()} className="h-9 bg-black hover:bg-gray-800 text-white font-black text-xs px-6 gap-2 shadow-lg">
-                <Printer className="w-4 h-4" /> Imprimir Agora em Folha Branca A4
+              <Button onClick={() => window.print()} className="h-9 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs px-6 gap-2 shadow-lg">
+                <Printer className="w-4 h-4" /> Imprimir em Folha A4 Branca
               </Button>
             </div>
           </div>
@@ -1431,7 +1459,6 @@ export default function Escalas() {
               </div>
             </div>
 
-            {/* ESPECIALIDADES DINÂMICAS COM O BOTÃO "+" */}
             <div className="p-3.5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -1617,7 +1644,6 @@ export default function Escalas() {
               </div>
             </div>
 
-            {/* ESPECIALIDADE LIVRE OU DO CORPO CLÍNICO */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Especialidade / Atuação *</Label>
