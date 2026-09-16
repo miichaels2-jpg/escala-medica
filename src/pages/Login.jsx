@@ -8,7 +8,7 @@ import { Activity, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
-  const [loginId, setLoginId] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -18,49 +18,26 @@ export default function Login() {
     e.preventDefault();
     setError('');
     
-    if (!loginId || !password) {
-      setError('Preencha o usuário e a senha para continuar.');
+    if (!email || !password) {
+      setError('Preencha o e-mail/usuário e a senha para continuar.');
       return;
     }
 
     setLoading(true);
     try {
-      const rawInput = loginId.trim().toLowerCase();
-      
-      // ==========================================
-      // CHAVE MESTRA: BYPASS DE BANCO DE DADOS
-      // ==========================================
-      if (rawInput === 'admin' && password === '123456') {
-        window.localStorage.setItem('admin_master_bypass', 'true');
-        navigate('/');
-        return;
-      }
-
-      // Se não for o admin, tenta logar normal
-      const loginEmail = rawInput;
-      const res = await base44.auth.login(loginEmail, password);
+      // Faz o login real e autêntico no seu banco de dados
+      const loginStr = email.trim().toLowerCase();
+      const res = await base44.auth.login(loginStr, password);
       const userObj = res.user || res;
 
       if (!userObj) {
         throw new Error('Credenciais inválidas. Verifique seu usuário e senha.');
       }
 
-      const status = userObj.data?.status || 'pendente';
-      const role = userObj.role || 'user';
-
-      if (role !== 'admin') {
-        if (status === 'inativo') throw new Error('Sua conta foi inativada.');
-        if (status === 'recusado') throw new Error('Seu cadastro foi recusado.');
-        if (status === 'pendente') {
-          navigate('/pending-approval'); 
-          return;
-        }
-      }
-
-      window.localStorage.removeItem('admin_master_bypass');
+      // Login com sucesso, navega para a raiz (Dashboard/Escalas)
       navigate('/'); 
     } catch (err) {
-      setError(err.message || 'Falha ao conectar com o servidor. Tente novamente.');
+      setError(err.message || 'Falha ao conectar com o servidor. Verifique suas credenciais.');
     } finally {
       setLoading(false);
     }
@@ -89,9 +66,9 @@ export default function Login() {
             <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Usuário ou E-mail</Label>
             <Input 
               type="text" 
-              placeholder="Ex: admin ou medico@hospital.com"
-              value={loginId}
-              onChange={(e) => setLoginId(e.target.value)}
+              placeholder="Digite seu e-mail ou usuário..."
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="h-11 bg-slate-50 dark:bg-slate-950"
               disabled={loading}
             />
@@ -126,9 +103,16 @@ export default function Login() {
             disabled={loading} 
             className="w-full h-11 bg-sky-600 hover:bg-sky-700 text-white font-black text-sm rounded-xl shadow-md mt-2"
           >
-            {loading ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Entrando...</> : 'Entrar no Sistema'}
+            {loading ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Autenticando...</> : 'Entrar no Sistema'}
           </Button>
         </form>
+
+        <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 text-center">
+          <p className="text-xs text-slate-500 font-medium">
+            Novo na plataforma? {' '}
+            <Link to="/register" className="font-bold text-sky-600 hover:underline">Solicite seu credenciamento</Link>
+          </p>
+        </div>
       </div>
     </div>
   );

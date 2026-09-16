@@ -22,26 +22,6 @@ export function AppDataProvider({ children }) {
     const initAuth = async () => {
       setAuthLoading(true);
       try {
-        // ==========================================
-        // LEITURA DA CHAVE MESTRA (BYPASS)
-        // ==========================================
-        const isBypass = window.localStorage.getItem('admin_master_bypass') === 'true';
-        if (isBypass) {
-          const mockAdmin = {
-            id: 'mock_admin_id_999',
-            email: 'admin@admin.com',
-            full_name: 'Administrador Master',
-            role: 'admin',
-            data: { status: 'aprovado', app_role: 'manager', company_id: 'cmp_principal' }
-          };
-          setUser(mockAdmin);
-          setCompany({ id: 'cmp_principal', name: 'Hospital Principal', units: [{ id: 'unit_h1', name: 'Unidade Matriz' }] });
-          setUnits([{ id: 'unit_h1', name: 'Unidade Matriz' }]);
-          setSelectedUnitId('unit_h1');
-          setAuthLoading(false);
-          return;
-        }
-
         const currentUser = await base44.auth.getUser(); 
         if (currentUser) {
           setUser(currentUser);
@@ -68,11 +48,14 @@ export function AppDataProvider({ children }) {
 
   const syncGlobalData = useCallback(async () => {
     const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
-    if (!companyId) return;
-
+    
     setGlobalLoading(true);
     try {
-      const query = { company_id: companyId, ...(selectedUnitId ? { unit_id: selectedUnitId } : {}) };
+      const query = { company_id: companyId };
+      // ATENÇÃO AQUI: Não bloqueia mais o carregamento se não tiver unidade filtrada
+      if (selectedUnitId) {
+        query.unit_id = selectedUnitId;
+      }
 
       const [pRes, secRes, sRes, swRes] = await Promise.all([
         base44.entities.Professional.filter({ company_id: companyId }, '-created_date', 1000).catch(() => []),
@@ -98,9 +81,10 @@ export function AppDataProvider({ children }) {
     }
   }, [authLoading, user, selectedUnitId, syncGlobalData]);
 
-  const isAdmin = user?.role === 'admin';
+  // GARANTIA DE PODERES PARA O SEU USUÁRIO
+  const isAdmin = user?.role === 'admin' || user?.data?.app_role === 'admin';
   const isManager = isAdmin || user?.data?.app_role === 'manager' || user?.data?.app_role === 'gestor';
-  const isApproved = user?.data?.status === 'aprovado' || isAdmin;
+  const isApproved = user?.data?.status === 'aprovado' || isAdmin || isManager;
 
   const currentProfessional = useMemo(() => {
     if (!professionals.length || !user) return null;
