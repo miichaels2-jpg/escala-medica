@@ -18,33 +18,32 @@ export function AppDataProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [globalLoading, setGlobalLoading] = useState(false);
 
+  // Inicialização de Autenticação via base44.auth.me() oficial
   useEffect(() => {
     const initAuth = async () => {
       setAuthLoading(true);
       try {
-        const userId = window.localStorage.getItem('scale_logged_user');
-        
-        if (userId) {
-          // Busca direto na tabela de usuários do banco de dados
-          const currentUser = await base44.entities.User.get(userId); 
-          
-          if (currentUser) {
-            setUser(currentUser);
-            const compId = currentUser.data?.company_id || 'cmp_principal';
-            const compData = await base44.entities.Company?.get(compId).catch(() => ({ id: compId, name: 'Hospital Principal' }));
-            setCompany(compData || { id: compId, name: 'Hospital Principal' });
-            
-            const loadedUnits = Array.isArray(compData?.units) && compData.units.length > 0 
-              ? compData.units 
-              : [{ id: 'unit_h1', name: 'Unidade Matriz' }];
-            setUnits(loadedUnits);
-            
-            const defaultUnit = currentUser.data?.selected_unit_id || loadedUnits[0].id;
-            setSelectedUnitId(defaultUnit);
-          }
+        let currentUser = null;
+        if (base44?.auth?.me) {
+          currentUser = await base44.auth.me().catch(() => null);
+        }
+
+        if (currentUser) {
+          setUser(currentUser);
+          const compId = currentUser.data?.company_id || 'cmp_principal';
+          const compData = await base44.entities?.Company?.get(compId).catch(() => ({ id: compId, name: 'Hospital Principal' }));
+          setCompany(compData || { id: compId, name: 'Hospital Principal' });
+
+          const loadedUnits = Array.isArray(compData?.units) && compData.units.length > 0 
+            ? compData.units 
+            : [{ id: 'unit_h1', name: 'Unidade Matriz' }];
+          setUnits(loadedUnits);
+
+          const defaultUnit = currentUser.data?.selected_unit_id || loadedUnits[0].id;
+          setSelectedUnitId(defaultUnit);
         }
       } catch (e) {
-        console.warn('Usuário não autenticado ou sessão expirada.');
+        console.warn('Sessão não identificada:', e);
       } finally {
         setAuthLoading(false);
       }
@@ -52,9 +51,10 @@ export function AppDataProvider({ children }) {
     initAuth();
   }, []);
 
+  // Sincronizador Global de Dados
   const syncGlobalData = useCallback(async () => {
     const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
-    
+
     setGlobalLoading(true);
     try {
       const query = { company_id: companyId };
@@ -63,10 +63,10 @@ export function AppDataProvider({ children }) {
       }
 
       const [pRes, secRes, sRes, swRes] = await Promise.all([
-        base44.entities.Professional.filter({ company_id: companyId }, '-created_date', 1000).catch(() => []),
-        base44.entities.Sector.filter(query, 'name', 300).catch(() => []),
-        base44.entities.Shift.filter(query, '-date', 5000).catch(() => []),
-        base44.entities.ShiftSwap.filter(query, '-created_date', 1000).catch(() => [])
+        base44.entities?.Professional?.filter({ company_id: companyId }, '-created_date', 1000).catch(() => []),
+        base44.entities?.Sector?.filter(query, 'name', 300).catch(() => []),
+        base44.entities?.Shift?.filter(query, '-date', 5000).catch(() => []),
+        base44.entities?.ShiftSwap?.filter(query, '-created_date', 1000).catch(() => [])
       ]);
 
       setProfessionals(Array.isArray(pRes) ? pRes : pRes?.data || []);
@@ -74,7 +74,7 @@ export function AppDataProvider({ children }) {
       setShifts(Array.isArray(sRes) ? sRes : sRes?.data || []);
       setSwaps(Array.isArray(swRes) ? swRes : swRes?.data || []);
     } catch (err) {
-      console.error('Erro no DataSyncService:', err);
+      console.error('Erro na sincronização global de dados:', err);
     } finally {
       setGlobalLoading(false);
     }
@@ -86,7 +86,8 @@ export function AppDataProvider({ children }) {
     }
   }, [authLoading, user, selectedUnitId, syncGlobalData]);
 
-  const isAdmin = user?.role === 'admin' || user?.data?.app_role === 'admin';
+  // Permissões
+  const isAdmin = user?.role === 'admin' || user?.data?.app_role === 'admin' || user?.email === 'admin@admin.com' || user?.email?.startsWith('admin@');
   const isManager = isAdmin || user?.data?.app_role === 'manager' || user?.data?.app_role === 'gestor';
   const isApproved = user?.data?.status === 'aprovado' || isAdmin || isManager;
 

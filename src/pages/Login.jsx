@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Activity, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
-  const navigate = useNavigate();
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -19,74 +18,50 @@ export default function Login() {
     setError('');
     
     if (!loginId || !password) {
-      setError('Preencha o usuário e a senha para continuar.');
+      setError('Preencha o usuário/e-mail e a senha para continuar.');
       return;
     }
 
     setLoading(true);
     try {
-      const rawInput = loginId.trim().toLowerCase();
-      let userObj = null;
+      const rawInput = loginId.trim();
+      let loggedIn = false;
+      let lastErr = null;
 
-      // 1. Tenta buscar o usuário no banco (por email ou username)
-      let usersFound = await base44.entities.User.filter({ email: rawInput }).catch(() => []);
-      
-      if (!usersFound || usersFound.length === 0) {
-        usersFound = await base44.entities.User.filter({ username: rawInput }).catch(() => []);
+      // Lista de formatos aceitos (nome direto ou com sufixo de e-mail da conta)
+      const candidates = [rawInput];
+      if (!rawInput.includes('@')) {
+        candidates.push(`${rawInput.toLowerCase()}@admin.com`);
+        candidates.push(`${rawInput.toLowerCase()}@hospital.com`);
+        candidates.push(`${rawInput.toLowerCase()}@scalemedic.com`);
       }
 
-      // 2. Verifica a senha
-      if (usersFound && usersFound.length > 0) {
-        userObj = usersFound.find(u => String(u.password) === String(password));
+      // Método oficial do SDK Base44: loginViaEmailPassword
+      const authMethod = base44?.auth?.loginViaEmailPassword || base44?.auth?.signInWithPassword;
+
+      if (!authMethod) {
+        throw new Error('Módulo de autenticação da Base44 não inicializado.');
       }
 
-      // 3. AUTO-CRIAÇÃO DO ADMIN MASTER DIRETO NA TABELA USER
-      if (!userObj && rawInput === 'admin' && password === '123456') {
+      for (const emailToTry of candidates) {
         try {
-          userObj = await base44.entities.User.create({
-            email: 'admin@admin.com',
-            username: 'admin',
-            password: '123456',
-            full_name: 'Administrador Master',
-            role: 'admin',
-            data: {
-              status: 'aprovado',
-              app_role: 'manager',
-              company_id: 'cmp_principal'
-            }
-          });
-        } catch (createErr) {
-          throw new Error('Falha ao gravar o Admin na tabela User. Verifique a conexão com o banco.');
+          await authMethod.call(base44.auth, emailToTry, password);
+          loggedIn = true;
+          break;
+        } catch (authErr) {
+          lastErr = authErr;
         }
       }
 
-      if (!userObj) {
-        throw new Error('Credenciais inválidas. Verifique seu usuário e senha.');
+      if (!loggedIn) {
+        throw new Error(lastErr?.message || 'Credenciais inválidas. Verifique seu usuário e senha.');
       }
 
-      const status = userObj.data?.status || 'pendente';
-      const role = userObj.role || 'user';
-
-      // Administradores ignoram travas de status
-      if (role !== 'admin') {
-        if (status === 'inativo') {
-          throw new Error('Sua conta foi inativada. Entre em contato com a administração.');
-        }
-        if (status === 'recusado') {
-          throw new Error('Seu cadastro foi recusado. Verifique com a coordenação médica.');
-        }
-        if (status === 'pendente') {
-          navigate('/pending-approval'); 
-          return;
-        }
-      }
-
-      // SUCESSO: Salva a sessão no navegador para o AppDataProvider ler
-      window.localStorage.setItem('scale_logged_user', userObj.id);
-      navigate('/'); 
+      // Recarrega na raiz para que o SDK inicialize com o token gravado
+      window.location.href = '/';
 
     } catch (err) {
-      setError(err.message || 'Falha ao conectar com o servidor. Tente novamente.');
+      setError(err.message || 'Falha ao autenticar. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -115,11 +90,12 @@ export default function Login() {
             <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Usuário ou E-mail</Label>
             <Input 
               type="text" 
-              placeholder="Ex: admin ou medico@hospital.com"
+              placeholder="Ex: admin ou seu e-mail"
               value={loginId}
               onChange={(e) => setLoginId(e.target.value)}
               className="h-11 bg-slate-50 dark:bg-slate-950"
               disabled={loading}
+              autoComplete="username"
             />
           </div>
 
@@ -136,6 +112,7 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="h-11 bg-slate-50 dark:bg-slate-950 pr-10"
                 disabled={loading}
+                autoComplete="current-password"
               />
               <button 
                 type="button" 
