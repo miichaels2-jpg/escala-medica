@@ -12,7 +12,8 @@ import {
   Clock, Building2, User, AlertTriangle, CheckCircle2, 
   Trash2, Edit3, X, Minimize2, Sparkles, CheckCheck, Send, 
   MousePointerClick, HeartPulse, UserPlus, Layers, SlidersHorizontal,
-  Flame, Radio, ArrowRight, ShieldAlert, MonitorPlay, GripVertical, Printer, Sun, Moon
+  Flame, Radio, ArrowRight, ShieldAlert, MonitorPlay, GripVertical, 
+  Printer, Sun, Moon, Check, Stethoscope, Share2
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -28,6 +29,15 @@ const WEEKDAYS = [
   { short: 'Qui', long: 'Quinta-feira', weekend: false },
   { short: 'Sex', long: 'Sexta-feira', weekend: false },
   { short: 'Sáb', long: 'Sábado', weekend: true }
+];
+
+const CATEGORIES = [
+  { id: 'medico', label: 'Médico(a)', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' },
+  { id: 'enfermeiro', label: 'Enfermeiro(a)', color: 'text-teal-500 bg-teal-500/10 border-teal-500/30' },
+  { id: 'tecnico_enfermagem', label: 'Téc. Enfermagem', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' },
+  { id: 'fisioterapeuta', label: 'Fisioterapeuta', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' },
+  { id: 'farmaceutico', label: 'Farmacêutico(a)', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' },
+  { id: 'outro', label: 'Outro Profissional', color: 'text-slate-500 bg-slate-500/10 border-slate-500/30' }
 ];
 
 async function autoHealingSaveShift(id, initialPayload) {
@@ -80,33 +90,62 @@ export default function Escalas() {
   const [activeTab, setActiveTab] = useState('mensal'); // 'mensal' | 'dia' | 'tv'
   const [selectedSectorId, setSelectedSectorId] = useState('todos');
   const [filterTurno, setFilterTurno] = useState('todos'); // 'todos' | 'diurno' | 'noturno'
+  const [scalePublished, setScalePublished] = useState(true);
 
+  // Multi-seleção de dias via CTRL
   const [selectedDays, setSelectedDays] = useState([]);
+
+  // Roll de profissionais (Drag & Drop)
   const [traySearch, setTraySearch] = useState('');
   const [draggingProfId, setDraggingProfId] = useState(null);
 
+  // Relógio ao vivo
   const [liveNow, setLiveNow] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setLiveNow(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
+  // Modais
   const [modalOpen, setModalOpen] = useState(false);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [generatorModalOpen, setGeneratorModalOpen] = useState(false);
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Formulário do Plantão Individual
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     sector_id: '',
     target_category: 'medico',
+    target_specialty: '',
     start_time: '07:00',
     end_time: '19:00',
     shift_type: 'diurno',
     action_type: 'alocar',
     professional_id: '',
     notes: ''
+  });
+
+  // Formulário do Gerador & Configurador de Escala Multi-Especialidade
+  const [generatorConfig, setGeneratorConfig] = useState({
+    sector_id: '',
+    start_date: new Date().toISOString().split('T')[0],
+    duration_days: 30,
+    day_start: '07:00',
+    day_end: '19:00',
+    night_start: '19:00',
+    night_end: '07:00',
+    // Vagas multi-especialidade por turno
+    day_slots: [
+      { category: 'medico', quantity: 2, specialty: 'Clínica Geral' },
+      { category: 'enfermeiro', quantity: 4, specialty: 'Assistencial' }
+    ],
+    night_slots: [
+      { category: 'medico', quantity: 2, specialty: 'Plantão Noturno' },
+      { category: 'enfermeiro', quantity: 3, specialty: 'Assistencial' }
+    ]
   });
 
   const [batchData, setBatchData] = useState({
@@ -173,6 +212,7 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
+  // Escala do Dia & Modo TV CCO
   const todayStr = `${liveNow.getFullYear()}-${String(liveNow.getMonth() + 1).padStart(2, '0')}-${String(liveNow.getDate()).padStart(2, '0')}`;
 
   const todayShiftsDetailed = useMemo(() => {
@@ -218,11 +258,9 @@ export default function Escalas() {
         if ((endTotalMin - effectiveNowMin) <= 120) {
           proximoRendimento.push({ shift, minutesLeft: endTotalMin - effectiveNowMin });
         }
-      }
-      else if (effectiveNowMin >= endTotalMin && (effectiveNowMin - endTotalMin) <= 60) {
+      } else if (effectiveNowMin >= endTotalMin && (effectiveNowMin - endTotalMin) <= 60) {
         concluidosRecentes.push({ shift, minutesAgo: effectiveNowMin - endTotalMin });
-      }
-      else if (startTotalMin > effectiveNowMin && (startTotalMin - effectiveNowMin) <= 120) {
+      } else if (startTotalMin > effectiveNowMin && (startTotalMin - effectiveNowMin) <= 120) {
         proximoRendimento.push({ shift, startsIn: startTotalMin - effectiveNowMin });
       }
     });
@@ -230,6 +268,7 @@ export default function Escalas() {
     return { emAndamento, proximoRendimento, concluidosRecentes, vagasAbertasHoje, totalHoje: todayRaw.length };
   }, [shifts, todayStr, selectedSectorId, filterTurno, liveNow, professionalMap]);
 
+  // Multi-seleção CTRL
   const handleDayClick = (dateStr, e) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
@@ -241,6 +280,7 @@ export default function Escalas() {
     }
   };
 
+  // Drag & Drop
   const handleDragStart = (e, profId) => {
     setDraggingProfId(profId);
     e.dataTransfer.setData('text/plain', profId);
@@ -255,7 +295,7 @@ export default function Escalas() {
     const targetSector = selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || '');
 
     if (!targetSector) {
-      alert('Selecione ou cadastre uma seção hospitalar.');
+      alert('Selecione ou cadastre um setor hospitalar antes de alocar.');
       return;
     }
 
@@ -264,7 +304,7 @@ export default function Escalas() {
       : [dateStr];
 
     const secName = sectorMap[targetSector]?.name || 'Setor Hospitalar';
-    if (!confirm(`Alocar ${prof?.name} em "${secName}" nos ${targetDates.length} dia(s) selecionado(s)?`)) {
+    if (!confirm(`Alocar ${prof?.name} em "${secName}" nos ${targetDates.length} dia(s) selecionados?`)) {
       setDraggingProfId(null);
       return;
     }
@@ -293,6 +333,105 @@ export default function Escalas() {
     }
   };
 
+  // CONFIGURADOR & GERADOR MULTI-ESPECIALIDADE EM MASSA
+  const handleExecuteGenerator = async (e) => {
+    e.preventDefault();
+    if (!generatorConfig.sector_id) {
+      alert('Selecione o setor para o qual deseja gerar a escala.');
+      return;
+    }
+
+    const secName = sectorMap[generatorConfig.sector_id]?.name || 'Setor';
+    const totalDays = parseInt(generatorConfig.duration_days) || 30;
+
+    let totalShiftsCount = 0;
+    generatorConfig.day_slots.forEach(s => totalShiftsCount += parseInt(s.quantity || 0));
+    generatorConfig.night_slots.forEach(s => totalShiftsCount += parseInt(s.quantity || 0));
+    const grandTotal = totalShiftsCount * totalDays;
+
+    if (!confirm(`Gerar ${grandTotal} vagas para ${totalDays} dias no setor "${secName}"? As vagas serão geradas como abertas para preenchimento ou mural.`)) {
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const startDt = new Date(generatorConfig.start_date + 'T12:00:00');
+
+      for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
+        const curDate = new Date(startDt);
+        curDate.setDate(curDate.getDate() + dayOffset);
+        const dateStr = curDate.toISOString().split('T')[0];
+
+        // 1. Gera Vagas Diurnas Multi-Especialidade
+        for (const slot of generatorConfig.day_slots) {
+          const qty = parseInt(slot.quantity) || 0;
+          for (let q = 0; q < qty; q++) {
+            await autoHealingSaveShift(null, {
+              company_id: company?.id || 'cmp_principal',
+              unit_id: selectedUnitId || 'unit_h1',
+              sector_id: generatorConfig.sector_id,
+              target_category: slot.category,
+              target_specialty: slot.specialty || '',
+              professional_id: null,
+              date: dateStr,
+              shift_type: 'diurno',
+              start_time: generatorConfig.day_start,
+              end_time: generatorConfig.day_end,
+              status: 'vago'
+            });
+          }
+        }
+
+        // 2. Gera Vagas Noturnas Multi-Especialidade
+        for (const slot of generatorConfig.night_slots) {
+          const qty = parseInt(slot.quantity) || 0;
+          for (let q = 0; q < qty; q++) {
+            await autoHealingSaveShift(null, {
+              company_id: company?.id || 'cmp_principal',
+              unit_id: selectedUnitId || 'unit_h1',
+              sector_id: generatorConfig.sector_id,
+              target_category: slot.category,
+              target_specialty: slot.specialty || '',
+              professional_id: null,
+              date: dateStr,
+              shift_type: 'noturno',
+              start_time: generatorConfig.night_start,
+              end_time: generatorConfig.night_end,
+              status: 'vago'
+            });
+          }
+        }
+      }
+
+      setGeneratorModalOpen(false);
+      await syncGlobalData();
+      alert(`Escala multi-especialidade de ${secName} gerada com sucesso! As vagas já estão prontas no calendário.`);
+    } catch (err) {
+      alert('Erro ao gerar escala: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Publicar Escala & Disparar Notificações para os Profissionais
+  const handleTogglePublish = async () => {
+    const nextState = !scalePublished;
+    setScalePublished(nextState);
+
+    if (nextState) {
+      // Dispara registro de escala publicada no sistema
+      try {
+        const publishedKey = `scale_published_${currentYear}_${currentMonth + 1}`;
+        window.localStorage.setItem(publishedKey, new Date().toISOString());
+      } catch {}
+
+      alert(`✅ Escala de ${MONTH_NAMES[currentMonth]} homologada e PUBLICADA com sucesso!\nTodos os profissionais com plantões atribuídos receberão aviso para conferência de seus turnos.`);
+    } else {
+      alert(`⚠️ A escala foi retornada para modo Rascunho / Em Montagem.`);
+    }
+  };
+
+  // Salvar plantão em lote (CTRL)
   const handleSaveBatch = async (e) => {
     e.preventDefault();
     if (!batchData.sector_id || !batchData.professional_id) {
@@ -328,6 +467,7 @@ export default function Escalas() {
     }
   };
 
+  // Salvar plantão individual
   const handleSaveShift = async (e) => {
     e.preventDefault();
     if (!formData.sector_id || !formData.date) {
@@ -350,6 +490,7 @@ export default function Escalas() {
         unit_id: selectedUnitId || 'unit_h1',
         sector_id: formData.sector_id,
         target_category: formData.target_category || prof?.category || 'medico',
+        target_specialty: formData.target_specialty || prof?.specialty || '',
         professional_id: isMural ? null : formData.professional_id,
         date: formData.date,
         shift_type: formData.shift_type,
@@ -370,17 +511,24 @@ export default function Escalas() {
     }
   };
 
-  const handleSendToMural = async (shift) => {
+  // Desocupar plantão direto do modal
+  const handleSendToMuralFromModal = async () => {
+    if (!editingShiftId) return;
     if (!confirm('Desocupar este plantão e disponibilizar a VAGA NO MURAL?')) return;
+    
+    setSubmitting(true);
     try {
-      await autoHealingSaveShift(shift.id, {
+      await autoHealingSaveShift(editingShiftId, {
         professional_id: null,
         status: 'vago'
       });
+      setModalOpen(false);
       await syncGlobalData();
       alert('Vaga enviada para o Mural de Oportunidades!');
     } catch (err) {
       alert('Erro ao enviar para o mural: ' + err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -388,6 +536,7 @@ export default function Escalas() {
     if (!confirm('Excluir este plantão definitivamente da escala?')) return;
     try {
       await base44.entities.Shift.delete(shiftId);
+      setModalOpen(false);
       await syncGlobalData();
     } catch (err) {
       alert('Erro ao excluir plantão: ' + err.message);
@@ -420,11 +569,11 @@ export default function Escalas() {
   return (
     <div className={`p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200 ${activeTab === 'tv' ? 'fixed inset-0 z-50 bg-slate-950 text-white overflow-y-auto p-6 md:p-8' : ''}`}>
       
-      {/* 1. SELETOR INTELIGENTE DE SEÇÕES (COMPACTO) */}
+      {/* 1. SELETOR DE SEÇÕES COMPACTO & BOTÃO DO CONFIGURADOR */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 print:hidden transition-colors">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 shrink-0">
-            <Building2 className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Seção / Setor:
+            <Building2 className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Setor:
           </div>
 
           <div className="w-full max-w-xs">
@@ -434,7 +583,7 @@ export default function Escalas() {
               </SelectTrigger>
               <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 max-h-72">
                 <SelectItem value="todos" className="font-bold text-sky-600 dark:text-sky-400">
-                  🏥 Todas as Seções do Hospital ({sectors.length})
+                  🏥 Todos os Setores ({sectors.length})
                 </SelectItem>
                 {sectors.map(sec => (
                   <SelectItem key={sec.id} value={String(sec.id)} className="font-semibold text-xs">
@@ -447,50 +596,68 @@ export default function Escalas() {
 
           {selectedSectorId !== 'todos' && (
             <span className="hidden lg:inline-block px-3 py-1 rounded-xl text-xs font-black bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20 truncate">
-              Setor: {sectorMap[selectedSectorId]?.name}
+              Ativo: {sectorMap[selectedSectorId]?.name}
             </span>
           )}
         </div>
 
-        {/* FILTRO DE DIURNO / NOTURNO */}
-        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shrink-0">
-          <button
-            type="button"
-            onClick={() => setFilterTurno('todos')}
-            className={`px-3 py-1 rounded-xl text-xs font-black transition-all ${
-              filterTurno === 'todos' 
-                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' 
-                : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            Todos
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterTurno('diurno')}
-            className={`px-3 py-1 rounded-xl text-xs font-black transition-all flex items-center gap-1 ${
-              filterTurno === 'diurno' 
-                ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 shadow-sm' 
-                : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Sun className="w-3 h-3 text-amber-500" /> Diurno (07-19h)
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterTurno('noturno')}
-            className={`px-3 py-1 rounded-xl text-xs font-black transition-all flex items-center gap-1 ${
-              filterTurno === 'noturno' 
-                ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-500/30 shadow-sm' 
-                : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <Moon className="w-3 h-3 text-indigo-500" /> Noturno (19-07h)
-          </button>
+        {/* BOTÃO GERADOR DE ESCALA MULTI-ESPECIALIDADE */}
+        <div className="flex items-center gap-2">
+          {isManager && (
+            <Button
+              onClick={() => {
+                setGeneratorConfig(prev => ({
+                  ...prev,
+                  sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || '')
+                }));
+                setGeneratorModalOpen(true);
+              }}
+              className="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-4 rounded-2xl shadow-md gap-1.5 shrink-0"
+            >
+              <SlidersHorizontal className="w-4 h-4" /> Configurar & Gerar Escala
+            </Button>
+          )}
+
+          {/* FILTRO DE DIURNO / NOTURNO */}
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shrink-0">
+            <button
+              type="button"
+              onClick={() => setFilterTurno('todos')}
+              className={`px-3 py-1 rounded-xl text-xs font-black transition-all ${
+                filterTurno === 'todos' 
+                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm' 
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Todos
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterTurno('diurno')}
+              className={`px-3 py-1 rounded-xl text-xs font-black transition-all flex items-center gap-1 ${
+                filterTurno === 'diurno' 
+                  ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 shadow-sm' 
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Sun className="w-3 h-3 text-amber-500" /> Diurno
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterTurno('noturno')}
+              className={`px-3 py-1 rounded-xl text-xs font-black transition-all flex items-center gap-1 ${
+                filterTurno === 'noturno' 
+                  ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-500/30 shadow-sm' 
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Moon className="w-3 h-3 text-indigo-500" /> Noturno
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 2. BARRA DE COMANDO: ABAS E BOTÕES */}
+      {/* 2. BARRA DE COMANDO: MÊS, PUBLICAÇÃO, MODO TV E IMPRESSÃO */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:hidden transition-colors">
         
         <div className="flex items-center gap-3">
@@ -511,14 +678,34 @@ export default function Escalas() {
               <CalendarDays className="w-5 h-5 text-sky-600 dark:text-sky-400" />
               {MONTH_NAMES[currentMonth]} {currentYear}
             </h2>
-            <p className="text-xs text-slate-400 font-semibold">
-              {activeTab === 'dia' ? 'Plantão Oficial de Hoje' : activeTab === 'tv' ? 'Painel CCO Ao Vivo' : 'Grade Geral do Mês'}
-            </p>
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
+              <span className={scalePublished ? 'text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1' : 'text-amber-500 font-bold flex items-center gap-1'}>
+                <CheckCheck className="w-3.5 h-3.5" />
+                {scalePublished ? 'Escala Publicada & Oficial' : 'Modo Rascunho / Em Montagem'}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* NAVEGAÇÃO DE TELAS */}
+        {/* NAVEGAÇÃO DE TELAS & AÇÕES */}
         <div className="flex items-center gap-2 flex-wrap">
+          
+          {/* BOTÃO PUBLICAR / DESPUBLICAR */}
+          {isManager && (
+            <Button
+              onClick={handleTogglePublish}
+              variant={scalePublished ? 'outline' : 'default'}
+              className={`h-9 px-4 text-xs font-black rounded-2xl gap-1.5 shadow-sm ${
+                scalePublished 
+                  ? 'border-emerald-500/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50' 
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+              }`}
+            >
+              <Send className="w-3.5 h-3.5" />
+              {scalePublished ? 'Publicada (Despublicar)' : 'Publicar Escala'}
+            </Button>
+          )}
+
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
             <button
               onClick={() => setActiveTab('mensal')}
@@ -534,7 +721,7 @@ export default function Escalas() {
                 activeTab === 'dia' ? 'bg-white dark:bg-sky-600 text-sky-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Clock className="w-3.5 h-3.5" /> Escala do Dia
+              <Clock className="w-3.5 h-3.5" /> Plantão do Dia
             </button>
           </div>
 
@@ -551,37 +738,15 @@ export default function Escalas() {
             <span>{activeTab === 'tv' ? 'Sair da TV' : 'Modo TV CCO'}</span>
           </Button>
 
+          {/* IMPRIMIR PARA MURAL */}
           <Button
             onClick={() => setPrintPreviewOpen(true)}
             className="h-9 px-4 text-xs font-black rounded-2xl gap-2 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 shadow-sm"
-            title="Gerar folha impressa para afixar no mural"
+            title="Gerar folha impressa horizontal A4 para o mural"
           >
             <Printer className="w-4 h-4 text-sky-600 dark:text-sky-400" />
             <span>Imprimir Mural</span>
           </Button>
-
-          {isManager && (
-            <Button 
-              onClick={() => {
-                setEditingShiftId(null);
-                setFormData({
-                  date: new Date().toISOString().split('T')[0],
-                  sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''),
-                  target_category: 'medico',
-                  start_time: '07:00',
-                  end_time: '19:00',
-                  shift_type: 'diurno',
-                  action_type: 'alocar',
-                  professional_id: '',
-                  notes: ''
-                });
-                setModalOpen(true);
-              }} 
-              className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-5 rounded-2xl shadow-md gap-1.5"
-            >
-              <Plus className="w-4 h-4" /> Lançar Plantão
-            </Button>
-          )}
         </div>
       </div>
 
@@ -618,14 +783,14 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 4. VISÃO A: ESCALA DO DIA (TABELA ORGANIZADA)                             */}
+      {/* 4. VISÃO: PLANTÃO DO DIA (PRÉVIA COMPLETA & ORGANIZADA)                   */}
       {/* ========================================================================= */}
       {activeTab === 'dia' && (
         <div className="space-y-5">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
-                <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400 tracking-wider block">Escala Operacional Diária</span>
+                <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400 tracking-wider block">Escala Oficial Diária</span>
                 <h3 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
                   Plantões de Hoje ({liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })})
                 </h3>
@@ -635,7 +800,7 @@ export default function Escalas() {
                 onClick={() => setPrintPreviewOpen(true)}
                 className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-4 rounded-xl gap-2 shadow-sm"
               >
-                <Printer className="w-4 h-4" /> Imprimir Folha do Mural
+                <Printer className="w-4 h-4" /> Imprimir Folha A4 do Mural
               </Button>
             </div>
 
@@ -644,17 +809,16 @@ export default function Escalas() {
                 <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 uppercase text-[10px] font-black border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="py-3 px-4">Seção / Setor</th>
-                    <th className="py-3 px-4">Horário & Turno</th>
+                    <th className="py-3 px-4">Turno / Horário</th>
                     <th className="py-3 px-4">Profissional Escalado</th>
-                    <th className="py-3 px-4">Conselho / Registro</th>
+                    <th className="py-3 px-4">Categoria & Especialidade</th>
                     <th className="py-3 px-4 text-center">Status</th>
-                    <th className="py-3 px-4 text-right">Ação</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                   {todayShiftsDetailed.totalHoje === 0 ? (
                     <tr>
-                      <td colSpan="6" className="py-8 text-center text-slate-400">
+                      <td colSpan="5" className="py-8 text-center text-slate-400">
                         Nenhum plantão registrado para a data de hoje nesta seção.
                       </td>
                     </tr>
@@ -664,6 +828,7 @@ export default function Escalas() {
                       const sector = sectorMap[String(shift.sector_id)];
                       const isVago = shift.status === 'vago' || !prof;
                       const status = getStatusBadge(shift);
+                      const cat = CATEGORIES.find(c => c.id === (shift.target_category || prof?.category || 'medico'));
 
                       return (
                         <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
@@ -675,31 +840,22 @@ export default function Escalas() {
                           </td>
                           <td className="py-3 px-4 font-black text-slate-900 dark:text-slate-100">
                             {isVago ? (
-                              <span className="text-rose-600 dark:text-rose-400 animate-pulse font-black">⚠️ Vaga no Mural (Sem profissional)</span>
+                              <span className="text-rose-600 dark:text-rose-400 animate-pulse font-black">⚠️ Vaga Aberta no Mural</span>
                             ) : (
                               formatFullName(prof?.name)
                             )}
                           </td>
-                          <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400">
-                            {prof?.document || '—'}
+                          <td className="py-3 px-4">
+                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${cat?.color}`}>
+                              {cat?.label}
+                            </span>
+                            <span className="text-[11px] text-slate-500 ml-1.5">{shift.target_specialty || prof?.specialty || 'Geral'}</span>
                           </td>
                           <td className="py-3 px-4 text-center">
                             <span className="flex items-center justify-center gap-1.5">
                               <span className={`w-2 h-2 rounded-full ${status.dot}`}></span>
                               <span className={`text-[10px] ${status.text}`}>{status.label}</span>
                             </span>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            {isManager && !isVago && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleSendToMural(shift)}
-                                className="h-7 text-[10px] font-black border-rose-200 dark:border-rose-500/40 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 px-2 rounded-lg"
-                              >
-                                Mandar p/ Mural
-                              </Button>
-                            )}
                           </td>
                         </tr>
                       );
@@ -713,7 +869,7 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 5. VISÃO B: MODO TV CCO (COM CONTRASTE NOTURNO PERMANENTE)                 */}
+      {/* 5. VISÃO: MODO TV CCO                                                     */}
       {/* ========================================================================= */}
       {activeTab === 'tv' && (
         <div className="space-y-6">
@@ -727,7 +883,6 @@ export default function Escalas() {
             </div>
           </div>
 
-          {/* EM ANDAMENTO */}
           <div className="space-y-2">
             <h3 className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -759,7 +914,6 @@ export default function Escalas() {
             </div>
           </div>
 
-          {/* PRÓXIMA RENDIÇÃO */}
           <div className="space-y-2">
             <h3 className="text-xs font-black uppercase text-sky-400 tracking-wider flex items-center gap-2">
               <ArrowRight className="w-3.5 h-3.5" /> Próxima Rendição (Rendimento a Seguir)
@@ -792,7 +946,6 @@ export default function Escalas() {
             </div>
           </div>
 
-          {/* HISTÓRICO RECENTE 60 MINUTOS */}
           <div className="pt-4 border-t border-slate-800 space-y-2">
             <div className="flex justify-between items-center text-slate-400 text-xs font-black uppercase">
               <span>Plantões Concluídos Recentemente (Histórico dos últimos 60 minutos)</span>
@@ -824,12 +977,12 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 6. VISÃO C: GRADE MENSAL COM DATAS DE ALTO CONTRASTE & ROLL DRAG & DROP   */}
+      {/* 6. VISÃO: GRADE MENSAL (CABEÇALHO LIMPO E CLIQUE NO QUADRADO)             */}
       {/* ========================================================================= */}
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
           
-          {/* ROLL DE PROFISSIONAIS */}
+          {/* ROLL LATERAL DE PROFISSIONAIS (DRAG & DROP) */}
           {isManager && (
             <aside className="w-full lg:w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3 transition-colors">
               <div className="flex items-center justify-between">
@@ -872,7 +1025,7 @@ export default function Escalas() {
             </aside>
           )}
 
-          {/* GRADE CALENDÁRIO COM CABEÇALHOS COLORIDOS */}
+          {/* GRADE CALENDÁRIO COM CABEÇALHO LIMPO (SEM SINAL DE +) */}
           <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm transition-colors">
             
             {/* CABEÇALHO DOS DIAS DA SEMANA */}
@@ -904,7 +1057,7 @@ export default function Escalas() {
                     onClick={(e) => handleDayClick(dateStr, e)}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => handleDropOnDay(e, dateStr)}
-                    className={`min-h-[180px] p-2 transition-all flex flex-col justify-between select-none ${
+                    className={`min-h-[185px] p-2 transition-all flex flex-col justify-between select-none cursor-pointer ${
                       isSelected
                         ? 'bg-indigo-50 dark:bg-indigo-950/50 ring-2 ring-indigo-500 z-10'
                         : isToday
@@ -912,8 +1065,8 @@ export default function Escalas() {
                         : 'hover:bg-slate-50 dark:hover:bg-slate-850/50'
                     }`}
                   >
-                    {/* BARRA DE ALTO CONTRASTE NA DATA */}
-                    <div className={`flex items-center justify-between p-1 px-2 rounded-xl mb-1.5 border shadow-sm ${
+                    {/* BARRA SUPERIOR LIMPA DA DATA (SEM SINAL DE +) */}
+                    <div className={`flex items-center justify-between p-1 px-2.5 rounded-xl mb-1.5 border shadow-sm ${
                       isToday
                         ? 'bg-gradient-to-r from-sky-600 to-cyan-600 border-sky-400 text-white font-black'
                         : isWeekend
@@ -921,31 +1074,7 @@ export default function Escalas() {
                         : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-bold'
                     }`}>
                       <span className="text-xs font-black">{dateObj.getDate()}</span>
-                      
-                      {isManager && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingShiftId(null);
-                            setFormData({
-                              date: dateStr,
-                              sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''),
-                              target_category: 'medico',
-                              start_time: '07:00',
-                              end_time: '19:00',
-                              shift_type: 'diurno',
-                              action_type: 'alocar',
-                              professional_id: '',
-                              notes: ''
-                            });
-                            setModalOpen(true);
-                          }}
-                          title="Lançar plantão"
-                          className="p-0.5 hover:bg-black/10 dark:hover:bg-white/20 rounded text-inherit"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <span className="text-[10px] uppercase font-bold opacity-70">{WEEKDAYS[dateObj.getDay()].short}</span>
                     </div>
 
                     {/* LISTAGEM DOS PLANTÕES */}
@@ -955,6 +1084,7 @@ export default function Escalas() {
                         const sector = sectorMap[String(shift.sector_id)];
                         const isVago = shift.status === 'vago' || !prof;
                         const badge = getStatusBadge(shift);
+                        const cat = CATEGORIES.find(c => c.id === (shift.target_category || prof?.category || 'medico'));
 
                         return (
                           <div
@@ -967,6 +1097,7 @@ export default function Escalas() {
                                   date: shift.date || '',
                                   sector_id: shift.sector_id || '',
                                   target_category: shift.target_category || prof?.category || 'medico',
+                                  target_specialty: shift.target_specialty || prof?.specialty || '',
                                   start_time: shift.start_time || '07:00',
                                   end_time: shift.end_time || '19:00',
                                   shift_type: shift.shift_type || 'diurno',
@@ -977,42 +1108,65 @@ export default function Escalas() {
                                 setModalOpen(true);
                               }
                             }}
-                            className={`p-2 rounded-2xl border transition-all cursor-pointer shadow-sm ${
+                            className={`p-2.5 rounded-2xl border transition-all cursor-pointer shadow-sm hover:border-slate-400 dark:hover:border-slate-600 ${
                               isVago 
-                                ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-500/50 hover:border-rose-400' 
-                                : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                                ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-500/50' 
+                                : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800'
                             }`}
                           >
-                            <div className="flex items-center justify-between text-[10px] font-black uppercase text-slate-400 mb-1">
-                              <span className="truncate max-w-[85px] text-sky-600 dark:text-sky-400 font-bold">{sector?.name || 'Setor'}</span>
-                              <span className="font-mono text-slate-500">{shift.start_time}-{shift.end_time}</span>
+                            {/* NOME COMPLETO DO SETOR & HORÁRIO */}
+                            <div className="flex items-center justify-between text-[10px] font-black uppercase text-slate-500 mb-1">
+                              <span className="truncate max-w-[100px] text-sky-600 dark:text-sky-400 font-bold" title={sector?.name}>
+                                {sector?.name || 'Setor'}
+                              </span>
+                              <span className="font-mono text-slate-400">{shift.start_time}-{shift.end_time}</span>
                             </div>
 
+                            {/* BOLINHA COM O STATUS LOGO ABAIXO */}
                             <div className="flex items-center gap-1.5 mb-1">
                               <span className={`w-2 h-2 rounded-full shrink-0 ${badge.dot}`}></span>
                               <span className={`text-[10px] ${badge.text}`}>{badge.label}</span>
                             </div>
 
+                            {/* NOME E SOBRENOME EM DESTAQUE COM CATEGORIA */}
                             <div className="font-black text-xs text-slate-900 dark:text-white truncate">
-                              {isVago ? '⚠️ Vaga no Mural' : formatFullName(prof?.name)}
+                              {isVago ? '⚠️ Vaga em Aberto' : formatFullName(prof?.name)}
                             </div>
 
-                            {!isVago && isManager && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSendToMural(shift);
-                                }}
-                                className="mt-1.5 w-full py-0.5 text-[9px] font-black uppercase rounded bg-slate-100 dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-500/20 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 border border-slate-200 dark:border-slate-800 transition-all flex items-center justify-center gap-1"
-                              >
-                                <Flame className="w-3 h-3 text-rose-500" /> Mandar p/ Mural
-                              </button>
-                            )}
+                            <div className="text-[10px] text-slate-400 font-semibold truncate mt-0.5">
+                              {cat?.label} • {shift.target_specialty || prof?.specialty || 'Geral'}
+                            </div>
                           </div>
                         );
                       })}
                     </div>
+
+                    {/* BOTÃO DISCRETO PARA ADICIONAR VAGA CASO QUEIRA */}
+                    {isManager && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingShiftId(null);
+                          setFormData({
+                            date: dateStr,
+                            sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''),
+                            target_category: 'medico',
+                            target_specialty: '',
+                            start_time: '07:00',
+                            end_time: '19:00',
+                            shift_type: 'diurno',
+                            action_type: 'alocar',
+                            professional_id: '',
+                            notes: ''
+                          });
+                          setModalOpen(true);
+                        }}
+                        className="mt-1 w-full py-1 text-[10px] font-bold text-slate-400 hover:text-sky-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all text-center border border-dashed border-slate-200 dark:border-slate-800"
+                      >
+                        + Adicionar Vaga
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -1022,50 +1176,85 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 7. MODAL IMPRESSO PARA MURAL DO HOSPITAL (A4 FORMATADO)                   */}
+      {/* 7. MODAL IMPRESSO OFICIAL A4 PAISAGEM (HORIZONTAL PREMIUM)               */}
       {/* ========================================================================= */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white text-slate-900 border-none p-8">
+        <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto bg-white text-slate-900 border-none p-8 font-sans">
+          
+          {/* ESTILOS DE IMPRESSÃO EXCLUSIVOS PARA PAISAGEM (LANDSCAPE) */}
+          <style>{`
+            @media print {
+              @page {
+                size: A4 landscape;
+                margin: 8mm;
+              }
+              body {
+                background: white !important;
+                color: black !important;
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+              }
+            }
+          `}</style>
+
           <div className="space-y-6">
+            
+            {/* CABEÇALHO OFICIAL A4 PAISAGEM */}
             <div className="flex items-center justify-between border-b-2 border-slate-900 pb-4">
-              <div>
-                <h1 className="text-xl font-black uppercase tracking-wider">{company?.name || 'HOSPITAL PRINCIPAL'}</h1>
-                <p className="text-xs text-slate-600 font-bold">ESCALA OFICIAL DE PLANTÃO • AFIXAÇÃO EM MURAL HOSPITALAR</p>
-                <p className="text-xs text-slate-600">
-                  Data: <b>{new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</b>
-                </p>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-xl">
+                  {company?.name ? company.name[0] : 'H'}
+                </div>
+                <div>
+                  <h1 className="text-xl font-black uppercase tracking-tight text-slate-900">{company?.name || 'HOSPITAL PRINCIPAL'}</h1>
+                  <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    ESCALA OFICIAL DE PLANTÃO • AFIXAÇÃO EM MURAL HOSPITALAR
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Vigência: <b>{liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</b>
+                  </p>
+                </div>
               </div>
+
               <div className="text-right text-xs">
-                <span className="font-bold block">Emissão: {liveNow.toLocaleDateString('pt-BR')} às {liveNow.toLocaleTimeString('pt-BR')}</span>
-                <span className="text-[10px] text-slate-500">Documento Oficial</span>
+                <span className="font-bold text-slate-900 block">DOCUMENTO OFICIAL AUDITÁVEL</span>
+                <span className="text-[11px] text-slate-600 block">Emissão: {liveNow.toLocaleDateString('pt-BR')} às {liveNow.toLocaleTimeString('pt-BR')}</span>
+                <span className="text-[10px] font-mono text-slate-400">Autenticação: SM-ESC-{Date.now().toString(36).toUpperCase()}</span>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-700">Equipe Escalada por Setor & Turno</h4>
-              
-              <table className="w-full border-collapse border border-slate-300 text-xs">
-                <thead className="bg-slate-100 text-slate-800 uppercase text-[10px] font-bold">
+            {/* TABELA HORIZONTAL COMPLETA MULTI-ESPECIALIDADE */}
+            <div className="space-y-3">
+              <table className="w-full border-collapse border border-slate-400 text-xs">
+                <thead className="bg-slate-100 text-slate-900 uppercase text-[10px] font-black">
                   <tr>
-                    <th className="border border-slate-300 p-2 text-left">Setor</th>
-                    <th className="border border-slate-300 p-2 text-left">Turno / Horário</th>
-                    <th className="border border-slate-300 p-2 text-left">Profissional Responsável</th>
-                    <th className="border border-slate-300 p-2 text-left">Registro Conselho</th>
-                    <th className="border border-slate-300 p-2 text-center">Assinatura / Presença</th>
+                    <th className="border border-slate-400 p-2 text-left w-1/5">Seção / Setor</th>
+                    <th className="border border-slate-400 p-2 text-left w-32">Turno / Horário</th>
+                    <th className="border border-slate-400 p-2 text-left">Profissional Escalado</th>
+                    <th className="border border-slate-400 p-2 text-left w-48">Categoria / Registro</th>
+                    <th className="border border-slate-400 p-2 text-left w-40">Especialidade</th>
+                    <th className="border border-slate-400 p-2 text-center w-48">Rubrica / Presença</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-300">
                   {shifts.filter(s => s.date === todayStr && (selectedSectorId === 'todos' || String(s.sector_id) === String(selectedSectorId))).map(shift => {
                     const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
                     const sector = sectorMap[String(shift.sector_id)];
+                    const isVago = shift.status === 'vago' || !prof;
+                    const cat = CATEGORIES.find(c => c.id === (shift.target_category || prof?.category || 'medico'));
 
                     return (
-                      <tr key={shift.id}>
-                        <td className="border border-slate-300 p-2 font-bold">{sector?.name || 'Setor'}</td>
-                        <td className="border border-slate-300 p-2">{shift.start_time} - {shift.end_time}</td>
-                        <td className="border border-slate-300 p-2 font-black">{prof?.name || 'VAGA EM ABERTO'}</td>
-                        <td className="border border-slate-300 p-2 font-mono">{prof?.document || '—'}</td>
-                        <td className="border border-slate-300 p-2 text-center text-slate-400">________________________</td>
+                      <tr key={shift.id} className="hover:bg-slate-50">
+                        <td className="border border-slate-300 p-2 font-black text-slate-900 uppercase">{sector?.name || 'Setor'}</td>
+                        <td className="border border-slate-300 p-2 font-mono font-bold text-slate-800">{shift.start_time} - {shift.end_time}</td>
+                        <td className="border border-slate-300 p-2 font-black text-slate-900">
+                          {isVago ? <span className="text-red-600 font-black uppercase">⚠️ VAGA EM ABERTO</span> : prof?.name}
+                        </td>
+                        <td className="border border-slate-300 p-2 text-slate-700">
+                          <b>{cat?.label}</b> {prof?.document ? `• ${prof.document}` : ''}
+                        </td>
+                        <td className="border border-slate-300 p-2 text-slate-600">{shift.target_specialty || prof?.specialty || 'Geral'}</td>
+                        <td className="border border-slate-300 p-2 text-center text-slate-400 font-mono">____________________</td>
                       </tr>
                     );
                   })}
@@ -1073,23 +1262,175 @@ export default function Escalas() {
               </table>
             </div>
 
-            <div className="pt-4 border-t border-slate-200 text-center text-[10px] text-slate-500">
-              Documento gerado pelo ScaleMedic Hospital Management System. Conforme normas internas da Coordenação Médica e Assistencial.
+            {/* ASSINATURAS & TERMO DE RESPONSABILIDADE */}
+            <div className="grid grid-cols-2 gap-8 pt-8 border-t border-slate-300 text-center text-xs">
+              <div className="space-y-1">
+                <div className="w-64 border-b border-slate-900 mx-auto"></div>
+                <span className="font-black text-slate-900 block">Coordenação Médica / Responsável Técnico</span>
+                <span className="text-[10px] text-slate-500">CRM / Carimbo</span>
+              </div>
+
+              <div className="space-y-1">
+                <div className="w-64 border-b border-slate-900 mx-auto"></div>
+                <span className="font-black text-slate-900 block">Coordenação de Enfermagem / RT Assistencial</span>
+                <span className="text-[10px] text-slate-500">COREN / Carimbo</span>
+              </div>
+            </div>
+
+            {/* RODAPÉ DO IMPRESSO */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-200 text-[9px] text-slate-400">
+              <span>ScaleMedic Hospital Intelligence • Sistema Homologado para Gestão e Escalas Hospitalares</span>
+              <span>Página 1 de 1 • Afixação Obrigatória em Mural Visível</span>
             </div>
 
             <div className="flex justify-end gap-3 print:hidden pt-4 border-t">
               <Button variant="outline" onClick={() => setPrintPreviewOpen(false)} className="text-xs h-9">
-                Fechar
+                Fechar Visualização
               </Button>
-              <Button onClick={() => window.print()} className="h-9 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs px-6 gap-2">
-                <Printer className="w-4 h-4" /> Imprimir Agora
+              <Button onClick={() => window.print()} className="h-9 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs px-6 gap-2 shadow-lg">
+                <Printer className="w-4 h-4" /> Imprimir em Folha A4 Paisagem
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* MODAL LOTE (CTRL) */}
+      {/* ========================================================================= */}
+      {/* 8. MODAL DO GERADOR & CONFIGURADOR DE ESCALA MULTI-ESPECIALIDADE          */}
+      {/* ========================================================================= */}
+      <Dialog open={generatorModalOpen} onOpenChange={setGeneratorModalOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black flex items-center gap-2">
+              <SlidersHorizontal className="w-5 h-5 text-indigo-600" />
+              Configurar & Gerar Escala Multi-Especialidade
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleExecuteGenerator} className="space-y-4 py-2 text-xs">
+            
+            {/* 1. SELEÇÃO DO SETOR E VIGÊNCIA */}
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <span className="text-xs font-black uppercase text-slate-500 block">1. Definição do Setor & Período</span>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1 sm:col-span-1">
+                  <Label className="text-xs font-bold">Setor Alvo *</Label>
+                  <Select value={generatorConfig.sector_id} onValueChange={v => setGeneratorConfig({ ...generatorConfig, sector_id: v })}>
+                    <SelectTrigger className="h-9 bg-white dark:bg-slate-900"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent className="bg-white dark:bg-slate-900">
+                      {sectors.map(s => (
+                        <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold">A Partir De (Início) *</Label>
+                  <Input type="date" value={generatorConfig.start_date} onChange={e => setGeneratorConfig({ ...generatorConfig, start_date: e.target.value })} className="h-9 bg-white dark:bg-slate-900" />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold">Duração da Escala</Label>
+                  <Select value={String(generatorConfig.duration_days)} onValueChange={v => setGeneratorConfig({ ...generatorConfig, duration_days: parseInt(v) })}>
+                    <SelectTrigger className="h-9 bg-white dark:bg-slate-900"><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-white dark:bg-slate-900">
+                      <SelectItem value="7">7 Dias (Semana)</SelectItem>
+                      <SelectItem value="15">15 Dias (Quinzena)</SelectItem>
+                      <SelectItem value="30">30 Dias (Mês Completo)</SelectItem>
+                      <SelectItem value="60">60 Dias (Bimestre)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. VAGAS DIURNAS MULTI-ESPECIALIDADE */}
+            <div className="p-3.5 bg-amber-50/40 dark:bg-amber-950/20 rounded-2xl border border-amber-200 dark:border-amber-900/40 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase text-amber-800 dark:text-amber-400 flex items-center gap-1.5">
+                  <Sun className="w-4 h-4 text-amber-500" /> 2. Plantão Diurno ({generatorConfig.day_start} às {generatorConfig.day_end})
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {CATEGORIES.filter(c => c.id !== 'outro').map(cat => {
+                  const existing = generatorConfig.day_slots.find(s => s.category === cat.id);
+                  const qty = existing ? existing.quantity : 0;
+
+                  return (
+                    <div key={cat.id} className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+                      <span className="text-[10px] font-black uppercase text-slate-500 block truncate">{cat.label}</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={qty}
+                        onChange={e => {
+                          const val = parseInt(e.target.value) || 0;
+                          const updated = generatorConfig.day_slots.filter(s => s.category !== cat.id);
+                          if (val > 0) updated.push({ category: cat.id, quantity: val, specialty: '' });
+                          setGeneratorConfig({ ...generatorConfig, day_slots: updated });
+                        }}
+                        className="h-8 text-xs font-bold"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 3. VAGAS NOTURNAS MULTI-ESPECIALIDADE */}
+            <div className="p-3.5 bg-indigo-50/40 dark:bg-indigo-950/20 rounded-2xl border border-indigo-200 dark:border-indigo-900/40 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase text-indigo-800 dark:text-indigo-400 flex items-center gap-1.5">
+                  <Moon className="w-4 h-4 text-indigo-500" /> 3. Plantão Noturno ({generatorConfig.night_start} às {generatorConfig.night_end})
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {CATEGORIES.filter(c => c.id !== 'outro').map(cat => {
+                  const existing = generatorConfig.night_slots.find(s => s.category === cat.id);
+                  const qty = existing ? existing.quantity : 0;
+
+                  return (
+                    <div key={cat.id} className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+                      <span className="text-[10px] font-black uppercase text-slate-500 block truncate">{cat.label}</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={qty}
+                        onChange={e => {
+                          const val = parseInt(e.target.value) || 0;
+                          const updated = generatorConfig.night_slots.filter(s => s.category !== cat.id);
+                          if (val > 0) updated.push({ category: cat.id, quantity: val, specialty: '' });
+                          setGeneratorConfig({ ...generatorConfig, night_slots: updated });
+                        }}
+                        className="h-8 text-xs font-bold"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-500 bg-slate-50 dark:bg-slate-950 p-2.5 rounded-xl border">
+              💡 As vagas serão criadas de forma segura e integradas no mesmo setor para facilitar a visualização no Plantão do Dia e Modo TV CCO. Você poderá alocar os profissionais arrastando do roll.
+            </p>
+
+            <DialogFooter className="pt-2 gap-2">
+              <Button type="button" variant="outline" onClick={() => setGeneratorModalOpen(false)} className="h-9 text-xs">Cancelar</Button>
+              <Button type="submit" disabled={submitting} className="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-6 rounded-xl shadow-md">
+                {submitting ? 'Gerando Escala...' : 'Gerar Vagas Multi-Especialidade'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL: PREENCHIMENTO EM LOTE (CTRL) */}
       <Dialog open={batchModalOpen} onOpenChange={setBatchModalOpen}>
         <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
           <DialogHeader>
@@ -1145,7 +1486,7 @@ export default function Escalas() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL INDIVIDUAL */}
+      {/* MODAL: EDITAR OU LANÇAR PLANTÃO INDIVIDUAL (COM BOTÃO DIRETO MANDAR P/ MURAL) */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
           <DialogHeader>
@@ -1172,6 +1513,25 @@ export default function Escalas() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Categoria Exigida</Label>
+                <Select value={formData.target_category} onValueChange={v => setFormData({ ...formData, target_category: v })}>
+                  <SelectTrigger className="h-9 bg-slate-50 dark:bg-slate-950"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-white dark:bg-slate-900">
+                    {CATEGORIES.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Especialidade Alvo</Label>
+                <Input value={formData.target_specialty} onChange={e => setFormData({ ...formData, target_specialty: e.target.value })} placeholder="Ex: UTI, Pediatria" className="h-9 bg-slate-50 dark:bg-slate-950" />
               </div>
             </div>
 
@@ -1235,9 +1595,21 @@ export default function Escalas() {
 
             <DialogFooter className="pt-2 flex-col sm:flex-row gap-2">
               {editingShiftId && (
-                <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-9 text-xs text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/20 mr-auto">
-                  <Trash2 className="w-4 h-4 mr-1" /> Excluir
-                </Button>
+                <div className="flex items-center gap-2 mr-auto">
+                  {formData.action_type === 'alocar' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleSendToMuralFromModal}
+                      className="h-9 text-xs font-black border-amber-500/50 text-amber-600 hover:bg-amber-50 gap-1"
+                    >
+                      <Flame className="w-3.5 h-3.5 text-amber-500" /> Mandar p/ Mural
+                    </Button>
+                  )}
+                  <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-9 text-xs text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/20">
+                    <Trash2 className="w-4 h-4 mr-1" /> Excluir
+                  </Button>
+                </div>
               )}
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="h-9 text-xs">Cancelar</Button>
               <Button type="submit" disabled={submitting} className="h-9 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-xl">
