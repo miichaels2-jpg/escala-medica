@@ -5,7 +5,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
   Flame, Calendar, Clock, Building2, User, 
-  CheckCircle2, Check, AlertCircle, ShieldAlert, Trash2, Repeat, ArrowRightLeft, Stethoscope
+  CheckCircle2, Check, AlertCircle, ShieldAlert, Trash2, 
+  Repeat, ArrowRightLeft, Stethoscope, Filter
 } from 'lucide-react';
 
 function formatFullName(name) {
@@ -16,25 +17,27 @@ function formatFullName(name) {
 }
 
 function extractSpecialty(shift, prof) {
-  if (shift.target_specialty && shift.target_specialty.trim() && shift.target_specialty.toLowerCase() !== 'geral') {
+  if (shift?.target_specialty && shift.target_specialty.trim() && shift.target_specialty.toLowerCase() !== 'geral') {
     return shift.target_specialty.trim();
   }
-  if (shift.notes) {
+  if (shift?.notes) {
     const match = shift.notes.match(/\[ESP:([^\]]+)\]/i);
     if (match && match[1]) return match[1].trim();
   }
   try {
-    const cached = window.localStorage.getItem(`shift_spec_${shift.id}`);
-    if (cached) return cached;
+    if (shift?.id) {
+      const cached = window.localStorage.getItem(`shift_spec_${shift.id}`);
+      if (cached) return cached;
+    }
   } catch {}
-  return prof?.specialty || shift.target_specialty || 'Clínica Médica';
+  return prof?.specialty || shift?.target_specialty || 'Clínica Médica';
 }
 
 export default function Trocas() {
   const { 
-    shifts, 
-    sectors, 
-    professionals, 
+    shifts = [], 
+    sectors = [], 
+    professionals = [], 
     currentProfessional, 
     isManager, 
     syncGlobalData 
@@ -46,13 +49,13 @@ export default function Trocas() {
 
   const sectorMap = useMemo(() => {
     const m = {};
-    sectors.forEach(s => { m[String(s.id)] = s; });
+    (sectors || []).forEach(s => { if (s?.id) m[String(s.id)] = s; });
     return m;
   }, [sectors]);
 
   const professionalMap = useMemo(() => {
     const m = {};
-    professionals.forEach(p => { m[String(p.id)] = p; });
+    (professionals || []).forEach(p => { if (p?.id) m[String(p.id)] = p; });
     return m;
   }, [professionals]);
 
@@ -62,7 +65,8 @@ export default function Trocas() {
   const openShifts = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
 
-    return shifts.filter(s => {
+    return (shifts || []).filter(s => {
+      if (!s) return false;
       const st = String(s.status || '').toLowerCase();
       const notes = String(s.notes || '').toLowerCase();
       if (st.includes('cancel') || st.includes('inativ') || notes.includes('cancelad') || notes.includes('exclusão')) {
@@ -76,12 +80,9 @@ export default function Trocas() {
       // Isolamento: Médico só vê médico, enfermagem só vê enfermagem
       if (!isManager) {
         const spec = extractSpecialty(s, null).toLowerCase();
-        const profSpec = (currentProfessional?.specialty || '').toLowerCase();
         const profCat = (currentProfessional?.category || 'medico').toLowerCase();
 
-        // Se for enfermagem
         if (profCat.includes('enferm') && !spec.includes('enferm')) return false;
-        // Se for médico e o plantão for de enfermagem
         if (!profCat.includes('enferm') && spec.includes('enferm')) return false;
       }
 
@@ -92,14 +93,14 @@ export default function Trocas() {
       }
 
       return true;
-    }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
   }, [shifts, isManager, userCategory, selectedSpecialtyFilter, currentProfessional]);
 
   // Lista única de especialidades presentes nas vagas do mural
   const availableSpecialtiesInMural = useMemo(() => {
     const set = new Set();
-    shifts.forEach(s => {
-      if (s.status === 'vago' && !s.professional_id) {
+    (shifts || []).forEach(s => {
+      if (s?.status === 'vago' && !s?.professional_id) {
         const spec = extractSpecialty(s, null);
         if (spec) set.add(spec);
       }
@@ -112,14 +113,14 @@ export default function Trocas() {
     if (!currentProfessional?.id) return [];
     const todayStr = new Date().toISOString().split('T')[0];
 
-    return shifts.filter(s => {
+    return (shifts || []).filter(s => {
       return String(s.professional_id) === String(currentProfessional.id) && s.date >= todayStr && s.status === 'confirmado';
-    }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
   }, [shifts, currentProfessional]);
 
   // Assumir vaga aberta
   const handleClaimShift = async (shift) => {
-    const targetProf = currentProfessional || professionals.find(p => p.status === 'ativo');
+    const targetProf = currentProfessional || (professionals || []).find(p => p.status === 'ativo');
 
     if (!targetProf?.id) {
       alert('Usuário profissional não identificado.');
