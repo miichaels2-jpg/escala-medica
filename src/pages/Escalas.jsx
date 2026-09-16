@@ -13,7 +13,7 @@ import {
   Trash2, Edit3, X, Minimize2, Sparkles, CheckCheck, Send, 
   MousePointerClick, HeartPulse, UserPlus, Layers, SlidersHorizontal,
   Flame, Radio, ArrowRight, ShieldAlert, MonitorPlay, GripVertical, 
-  Printer, Sun, Moon, Stethoscope
+  Printer, Sun, Moon, Stethoscope, Columns3, LayoutGrid
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -100,7 +100,7 @@ export default function Escalas() {
   } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
-  const [activeTab, setActiveTab] = useState('mensal'); // 'mensal' | 'dia' | 'tv'
+  const [activeTab, setActiveTab] = useState('mensal'); // 'mensal' | 'colunas' | 'dia' | 'tv'
   const [selectedSectorId, setSelectedSectorId] = useState('todos');
   const [filterTurno, setFilterTurno] = useState('todos'); 
 
@@ -121,7 +121,6 @@ export default function Escalas() {
   const [traySpecialtyFilter, setTraySpecialtyFilter] = useState('todas');
   const [draggingProfId, setDraggingProfId] = useState(null);
 
-  // Relógio ao vivo robusto
   const [liveNow, setLiveNow] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setLiveNow(new Date()), 1000);
@@ -244,7 +243,7 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // CÁLCULO PRECISO DO PLANTÃO DO DIA (CORRIGIDO PARA AS 07h E 19h LOCAIS)
+  // CÁLCULO PRECISO DO PLANTÃO DO DIA
   const todayLocalStr = getLocalDateString(liveNow);
   const yesterdayLocalStr = getLocalDateString(new Date(liveNow.getTime() - 24 * 60 * 60 * 1000));
 
@@ -517,7 +516,12 @@ export default function Escalas() {
         notes: `[ESP:${finalSpecialty}] ${formData.notes || ''}`.trim()
       };
 
-      await autoHealingSaveShift(editingShiftId, payload);
+      const saved = await autoHealingSaveShift(editingShiftId, payload);
+      const savedId = saved?.id || editingShiftId;
+      if (savedId) {
+        try { window.localStorage.setItem(`shift_spec_${savedId}`, finalSpecialty); } catch {}
+      }
+
       setModalOpen(false);
       await syncGlobalData();
     } finally {
@@ -599,7 +603,7 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* BARRA DE COMANDO: MÊS & AÇÕES */}
+      {/* BARRA DE COMANDO: MÊS & AÇÕES (COM NOVA ABAS: MENSAL OU COLUNAS POR TURNO) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-3">
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 rounded-2xl p-1 border border-slate-200 dark:border-slate-800">
@@ -624,8 +628,10 @@ export default function Escalas() {
             </Button>
           )}
 
+          {/* ALTERNADOR DE VISÃO: MENSAL (CALENDÁRIO) VS COLUNAS POR TURNO */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
-            <button onClick={() => setActiveTab('mensal')} className={`px-3 py-1.5 rounded-xl text-xs font-black ${activeTab === 'mensal' ? 'bg-white dark:bg-sky-600 shadow-sm' : 'text-slate-500'}`}>Grade Mensal</button>
+            <button onClick={() => setActiveTab('mensal')} className={`px-3 py-1.5 rounded-xl text-xs font-black ${activeTab === 'mensal' ? 'bg-white dark:bg-sky-600 shadow-sm' : 'text-slate-500'}`}>Visão Mensal</button>
+            <button onClick={() => setActiveTab('colunas')} className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 ${activeTab === 'colunas' ? 'bg-white dark:bg-sky-600 shadow-sm' : 'text-slate-500'}`}><Columns3 className="w-3.5 h-3.5" /> Colunas por Turno</button>
             <button onClick={() => setActiveTab('dia')} className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 ${activeTab === 'dia' ? 'bg-white dark:bg-sky-600 shadow-sm' : 'text-slate-500'}`}><Clock className="w-3.5 h-3.5" /> Plantão do Dia</button>
           </div>
 
@@ -641,7 +647,146 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* PLANTÃO DO DIA & IMPRESSO OFICIAL EXECUTIVO A4 PAISAGEM */}
+      {/* DOCA FLUTUANTE DE DIAS SELECIONADOS (CTRL) */}
+      {selectedDays.length > 0 && (
+        <div className="p-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-3xl shadow-xl flex items-center justify-between gap-4 animate-in fade-in print:hidden">
+          <div className="flex items-center gap-2.5 text-xs font-black">
+            <MousePointerClick className="w-5 h-5 animate-pulse" />
+            <span>{selectedDays.length} dias selecionados com o atalho CTRL</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => { setBatchData({ professional_id: professionals[0]?.id || '', sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''), shift_type: 'diurno', start_time: '07:00', end_time: '19:00' }); setBatchModalOpen(true); }} className="h-8 bg-white text-indigo-900 font-black text-xs rounded-xl">
+              <UserPlus className="w-3.5 h-3.5 mr-1" /> Preencher Selecionados
+            </Button>
+            <button onClick={() => setSelectedDays([])} className="p-1 hover:bg-white/20 rounded-xl text-xs"><X className="w-4 h-4" /></button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 4. NOVA VISÃO: COLUNAS POR TURNO (MANHÃ / TARDE / NOITE)                  */}
+      {/* ========================================================================= */}
+      {activeTab === 'colunas' && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm p-4 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+            <div>
+              <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                <Columns3 className="w-5 h-5 text-sky-600" /> Grade Organizada por Turnos ({MONTH_NAMES[currentMonth]} {currentYear})
+              </h3>
+              <p className="text-xs text-slate-400">Visualização didática dividida por colunas de turnos para facilitar a conferência.</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead className="bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 uppercase text-[10px] font-black border-b border-slate-200 dark:border-slate-800">
+                <tr>
+                  <th className="py-3 px-4 border-r border-slate-200 dark:border-slate-800 w-32">Data / Dia</th>
+                  <th className="py-3 px-4 border-r border-slate-200 dark:border-slate-800 text-amber-700 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20">☀️ Turno Diurno / Manhã (07h - 13h)</th>
+                  <th className="py-3 px-4 border-r border-slate-200 dark:border-slate-800 text-orange-700 dark:text-orange-400 bg-orange-50/50 dark:bg-orange-950/20">🌇 Turno Tarde (13h - 19h / 12h)</th>
+                  <th className="py-3 px-4 text-indigo-700 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/20">🌙 Turno Noturno / Noite (19h - 07h)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-medium">
+                {daysInMonth.map(dateObj => {
+                  const dateStr = getLocalDateString(dateObj);
+                  const isToday = todayLocalStr === dateStr;
+                  const dayShifts = shiftsByDate[dateStr] || [];
+
+                  // Separa os plantões daquele dia por faixa de horário
+                  const manhaTarde = dayShifts.filter(s => {
+                    const startH = parseInt((s.start_time || '07:00').split(':')[0]);
+                    return startH >= 6 && startH < 18;
+                  });
+
+                  const noite = dayShifts.filter(s => {
+                    const startH = parseInt((s.start_time || '07:00').split(':')[0]);
+                    return startH >= 18 || startH < 6;
+                  });
+
+                  return (
+                    <tr key={dateStr} className={isToday ? 'bg-sky-50/80 dark:bg-sky-950/30' : 'hover:bg-slate-50 dark:hover:bg-slate-850/40'}>
+                      <td className="py-3 px-4 border-r border-slate-200 dark:border-slate-800 font-black">
+                        <div className={`inline-block px-2 py-1 rounded-lg text-xs ${isToday ? 'bg-sky-600 text-white' : 'bg-slate-200 dark:bg-slate-800'}`}>
+                          {dateObj.getDate()} de {MONTH_NAMES[currentMonth].substring(0, 3)} ({WEEKDAYS[dateObj.getDay()].short})
+                        </div>
+                      </td>
+
+                      {/* Coluna Manhã / Diurno */}
+                      <td className="py-3 px-4 border-r border-slate-200 dark:border-slate-800 align-top space-y-2">
+                        {manhaTarde.length === 0 ? (
+                          <span className="text-[10px] text-slate-400 italic">Nenhum</span>
+                        ) : (
+                          manhaTarde.map(shift => {
+                            const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+                            const sector = sectorMap[String(shift.sector_id)];
+                            const isVago = shift.status === 'vago' || !prof;
+                            const realSpec = extractSpecialty(shift, prof);
+
+                            return (
+                              <div key={shift.id} className={`p-2 rounded-xl border text-xs ${isVago ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-300' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm'}`}>
+                                <div className="text-[9px] font-bold text-slate-500 uppercase">{sector?.name} • {shift.start_time}-{shift.end_time}</div>
+                                <div className="font-black text-slate-900 dark:text-white">{isVago ? '⚠️ Vaga Aberta' : formatFullName(prof?.name)}</div>
+                                <div className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold">{realSpec}</div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </td>
+
+                      {/* Coluna Tarde (Caso exista plantão intermediário) */}
+                      <td className="py-3 px-4 border-r border-slate-200 dark:border-slate-800 align-top space-y-2">
+                        {manhaTarde.filter(s => parseInt((s.start_time || '07:00').split(':')[0]) >= 12).length === 0 ? (
+                          <span className="text-[10px] text-slate-400 italic">—</span>
+                        ) : (
+                          manhaTarde.filter(s => parseInt((s.start_time || '07:00').split(':')[0]) >= 12).map(shift => {
+                            const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+                            const sector = sectorMap[String(shift.sector_id)];
+                            const isVago = shift.status === 'vago' || !prof;
+                            const realSpec = extractSpecialty(shift, prof);
+
+                            return (
+                              <div key={shift.id} className={`p-2 rounded-xl border text-xs ${isVago ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-300' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm'}`}>
+                                <div className="text-[9px] font-bold text-slate-500 uppercase">{sector?.name} • {shift.start_time}-{shift.end_time}</div>
+                                <div className="font-black text-slate-900 dark:text-white">{isVago ? '⚠️ Vaga Aberta' : formatFullName(prof?.name)}</div>
+                                <div className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold">{realSpec}</div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </td>
+
+                      {/* Coluna Noite / Noturno */}
+                      <td className="py-3 px-4 align-top space-y-2">
+                        {noite.length === 0 ? (
+                          <span className="text-[10px] text-slate-400 italic">Nenhum</span>
+                        ) : (
+                          noite.map(shift => {
+                            const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+                            const sector = sectorMap[String(shift.sector_id)];
+                            const isVago = shift.status === 'vago' || !prof;
+                            const realSpec = extractSpecialty(shift, prof);
+
+                            return (
+                              <div key={shift.id} className={`p-2 rounded-xl border text-xs ${isVago ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-300' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm'}`}>
+                                <div className="text-[9px] font-bold text-slate-500 uppercase">{sector?.name} • {shift.start_time}-{shift.end_time}</div>
+                                <div className="font-black text-slate-900 dark:text-white">{isVago ? '⚠️ Vaga Aberta' : formatFullName(prof?.name)}</div>
+                                <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold">{realSpec}</div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* PLANTÃO DO DIA */}
       {activeTab === 'dia' && (
         <div className="space-y-5">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
@@ -665,13 +810,13 @@ export default function Escalas() {
                     <th className="py-3 px-4">Turno / Horário</th>
                     <th className="py-3 px-4">Profissional Escalado</th>
                     <th className="py-3 px-4">Especialidade / Atuação</th>
-                    <th className="py-3 px-4">Registro</th>
+                    <th className="py-3 px-4">Conselho</th>
                     <th className="py-3 px-4 text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                   {todayShiftsDetailed.totalHoje === 0 ? (
-                    <tr><td colSpan="6" className="py-8 text-center text-slate-400">Nenhum plantão registrado para hoje nesta seção.</td></tr>
+                    <tr><td colSpan="6" className="py-8 text-center text-slate-400">Nenhum plantão registrado para hoje.</td></tr>
                   ) : (
                     shifts.filter(s => s.date === todayLocalStr && (selectedSectorId === 'todos' || String(s.sector_id) === String(selectedSectorId))).map(shift => {
                       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
@@ -684,7 +829,7 @@ export default function Escalas() {
                         <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
                           <td className="py-3 px-4 font-black text-slate-900 dark:text-white">{sector?.name || 'Setor'}</td>
                           <td className="py-3 px-4 font-mono font-bold text-sky-600">{shift.start_time} às {shift.end_time}</td>
-                          <td className="py-3 px-4 font-black text-slate-900 dark:text-white">{isVago ? <span className="text-rose-600 font-black">⚠️ Vaga Aberta</span> : formatFullName(prof?.name)}</td>
+                          <td className="py-3 px-4 font-black text-slate-900 dark:text-slate-100">{isVago ? <span className="text-rose-600 font-black">⚠️ Vaga Aberta</span> : formatFullName(prof?.name)}</td>
                           <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-semibold">{realSpecialty}</td>
                           <td className="py-3 px-4 font-mono text-slate-500">{prof?.document || '—'}</td>
                           <td className="py-3 px-4 text-center"><span className="flex items-center justify-center gap-1.5"><span className={`w-2 h-2 rounded-full ${status.dot}`}></span><span className={`text-[10px] ${status.text}`}>{status.label}</span></span></td>
@@ -726,7 +871,7 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* GRADE MENSAL */}
+      {/* GRADE MENSAL (PADRÃO) */}
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
           {isManager && (
