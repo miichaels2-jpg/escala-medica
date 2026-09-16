@@ -18,46 +18,59 @@ export default function Login() {
     setError('');
     
     if (!loginId || !password) {
-      setError('Preencha o usuário/e-mail e a senha para continuar.');
+      setError('Preencha o usuário e a senha para continuar.');
       return;
     }
 
     setLoading(true);
     try {
       const rawInput = loginId.trim();
-      let loggedIn = false;
-      let lastErr = null;
+      let emailToAuth = rawInput;
 
-      // Lista de formatos aceitos (nome direto ou com sufixo de e-mail da conta)
-      const candidates = [rawInput];
+      // 1. Suporte a Login por Nome de Usuário (username)
       if (!rawInput.includes('@')) {
-        candidates.push(`${rawInput.toLowerCase()}@admin.com`);
-        candidates.push(`${rawInput.toLowerCase()}@hospital.com`);
-        candidates.push(`${rawInput.toLowerCase()}@scalemedic.com`);
+        const users = await base44.entities.User.filter({ username: rawInput.toLowerCase() }).catch(() => []);
+        if (users && users.length > 0 && users[0].email) {
+          emailToAuth = users[0].email;
+        } else {
+          // Fallbacks comuns
+          emailToAuth = `${rawInput.toLowerCase()}@hospital.com`;
+        }
       }
 
-      // Método oficial do SDK Base44: loginViaEmailPassword
       const authMethod = base44?.auth?.loginViaEmailPassword || base44?.auth?.signInWithPassword;
 
       if (!authMethod) {
-        throw new Error('Módulo de autenticação da Base44 não inicializado.');
+        throw new Error('Serviço de autenticação não inicializado.');
       }
 
-      for (const emailToTry of candidates) {
+      let loggedIn = false;
+      let lastErr = null;
+
+      const candidates = [emailToAuth];
+      if (!candidates.includes(rawInput)) candidates.push(rawInput);
+      if (rawInput === 'admin') candidates.push('admin@admin.com');
+
+      for (const candidate of candidates) {
         try {
-          await authMethod.call(base44.auth, emailToTry, password);
+          await authMethod.call(base44.auth, candidate, password);
           loggedIn = true;
           break;
-        } catch (authErr) {
-          lastErr = authErr;
+        } catch (err) {
+          lastErr = err;
         }
       }
 
       if (!loggedIn) {
-        throw new Error(lastErr?.message || 'Credenciais inválidas. Verifique seu usuário e senha.');
+        throw new Error(lastErr?.message || 'Usuário ou senha incorretos.');
       }
 
-      // Recarrega na raiz para que o SDK inicialize com o token gravado
+      // Salva identificador e redireciona
+      const me = await base44.auth.me().catch(() => null);
+      if (me?.id) {
+        window.localStorage.setItem('scale_logged_user', me.id);
+      }
+
       window.location.href = '/';
 
     } catch (err) {
@@ -90,7 +103,7 @@ export default function Login() {
             <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Usuário ou E-mail</Label>
             <Input 
               type="text" 
-              placeholder="Ex: admin ou seu e-mail"
+              placeholder="Ex: admin ou dr.carlos"
               value={loginId}
               onChange={(e) => setLoginId(e.target.value)}
               className="h-11 bg-slate-50 dark:bg-slate-950"

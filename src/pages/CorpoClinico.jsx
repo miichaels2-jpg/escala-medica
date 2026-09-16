@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   Users, UserPlus, Search, CheckCircle2, XCircle, 
   Clock, DollarSign, Phone, Mail, CreditCard, Edit3, 
-  KeyRound, Send, RefreshCw, Ban, UserCheck, MessageSquare
+  KeyRound, Send, RefreshCw, Ban, UserCheck, MessageSquare,
+  Shield, ShieldCheck, UserCog, BadgeCheck, Eye, EyeOff
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -23,12 +24,20 @@ function formatCurrency(val) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(safeNumber(val));
 }
 
+// Perfis de Acesso Disponíveis
+const ACCESS_ROLES = [
+  { id: 'medico', label: 'Plantonista / Médico', desc: 'Acesso restrito à Minha Escala, Mural e Trocas' },
+  { id: 'coordenador', label: 'Coordenador de Escala', desc: 'Criação e edição de escalas, setores e homologação de trocas' },
+  { id: 'faturamento', label: 'Faturamento / Financeiro', desc: 'Gestão financeira, relatórios de repasses e fechamento' },
+  { id: 'gestor', label: 'Gestor Geral / Administrador', desc: 'Acesso total, aprovação de cadastros e configurações' },
+];
+
 export default function CorpoClinico() {
   const { 
     professionals, 
     units, 
     selectedUnitId, 
-    companyId, 
+    company, 
     isManager, 
     syncGlobalData 
   } = useAppData();
@@ -36,15 +45,18 @@ export default function CorpoClinico() {
   const [activeTab, setActiveTab] = useState('ativos'); 
   const [searchQuery, setSearchQuery] = useState('');
   const [specialtyFilter, setSpecialtyFilter] = useState('todas');
+  const [roleFilter, setRoleFilter] = useState('todos');
   
   // Modal de Edição / Criação
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProf, setEditingProf] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Formulário do Profissional
+  // Formulário Completo
   const [formData, setFormData] = useState({
     name: '',
+    username: '', // Login por nome
     document: '',
     specialty: '',
     cbo: '',
@@ -53,6 +65,7 @@ export default function CorpoClinico() {
     phone: '',
     unit_id: '',
     status: 'ativo',
+    app_role: 'medico', // Perfil de acesso
     remuneration_type: 'hora',
     hourly_rate: 120,
     daily_rate: 1500,
@@ -62,13 +75,13 @@ export default function CorpoClinico() {
     pix_type: 'CPF',
     pix_key: '',
     bank_info: '',
-    // Campos de Acesso e Senha
     password: ''
   });
 
   const resetForm = () => {
     setFormData({
       name: '',
+      username: '',
       document: '',
       specialty: '',
       cbo: '',
@@ -77,6 +90,7 @@ export default function CorpoClinico() {
       phone: '',
       unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
       status: 'ativo',
+      app_role: 'medico',
       remuneration_type: 'hora',
       hourly_rate: 120,
       daily_rate: 1500,
@@ -89,6 +103,7 @@ export default function CorpoClinico() {
       password: ''
     });
     setEditingProf(null);
+    setShowPassword(false);
   };
 
   const handleOpenNew = () => {
@@ -99,36 +114,49 @@ export default function CorpoClinico() {
   const handleOpenEdit = (prof) => {
     setEditingProf(prof);
 
-    // Extrai notas auxiliares salvas anteriormente
-    let cboExtracted = '';
-    let bankExtracted = '';
+    // Deserializa os dados auxiliares gravados com segurança em notes
+    let meta = {};
     if (prof.notes) {
-      const cboMatch = prof.notes.match(/CBO:\s*([^|]+)/i);
-      if (cboMatch) cboExtracted = cboMatch[1].trim();
-      const bankMatch = prof.notes.match(/Banco:\s*([^|]+)/i);
-      if (bankMatch) bankExtracted = bankMatch[1].trim();
+      try {
+        meta = JSON.parse(prof.notes);
+      } catch {
+        // Compatibilidade com formato legado em texto
+        const cboMatch = prof.notes.match(/CBO:\s*([^|]+)/i);
+        if (cboMatch) meta.cbo = cboMatch[1].trim();
+        const bankMatch = prof.notes.match(/Banco:\s*([^|]+)/i);
+        if (bankMatch) meta.bank_info = bankMatch[1].trim();
+      }
     }
+
+    const defaultUsername = (prof.name || '')
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/g, '.')
+      .replace(/\.+/g, '.')
+      .replace(/^\.|\.$/g, '');
 
     setFormData({
       name: prof.name || prof.full_name || '',
+      username: meta.username || prof.username || defaultUsername,
       document: prof.document || prof.registration_number || '',
       specialty: prof.specialty || '',
-      cbo: cboExtracted,
+      cbo: meta.cbo || prof.cbo || '',
       cpf: prof.cpf || '',
       email: prof.email || '',
       phone: prof.phone || '',
       unit_id: prof.unit_id || selectedUnitId,
       status: prof.status || 'ativo',
-      remuneration_type: prof.remuneration_type || 'hora',
-      hourly_rate: safeNumber(prof.hourly_rate, 120),
-      daily_rate: safeNumber(prof.daily_rate, 1500),
-      monthly_salary: safeNumber(prof.monthly_salary, 18000),
-      monthly_work_hours: safeNumber(prof.monthly_work_hours, 220),
-      coop_tax_rate: safeNumber(prof.coop_tax_rate, 0),
-      pix_type: prof.pix_type || 'CPF',
-      pix_key: prof.pix_key || '',
-      bank_info: bankExtracted,
-      password: '' // Inicializa em branco; preenche apenas se for alterar
+      app_role: meta.app_role || prof.app_role || 'medico',
+      remuneration_type: prof.remuneration_type || meta.remuneration_type || 'hora',
+      hourly_rate: safeNumber(prof.hourly_rate ?? meta.hourly_rate, 120),
+      daily_rate: safeNumber(meta.daily_rate, 1500),
+      monthly_salary: safeNumber(meta.monthly_salary, 18000),
+      monthly_work_hours: safeNumber(meta.monthly_work_hours, 220),
+      coop_tax_rate: safeNumber(meta.coop_tax_rate, 0),
+      pix_type: meta.pix_type || 'CPF',
+      pix_key: meta.pix_key || '',
+      bank_info: meta.bank_info || '',
+      password: ''
     });
     setModalOpen(true);
   };
@@ -137,6 +165,12 @@ export default function CorpoClinico() {
   const handleGeneratePassword = () => {
     const randomPass = 'Med@' + Math.floor(1000 + Math.random() * 9000);
     setFormData(prev => ({ ...prev, password: randomPass }));
+  };
+
+  // Resetar Senha Padrão
+  const handleResetDefaultPassword = () => {
+    setFormData(prev => ({ ...prev, password: 'Mudar@123' }));
+    alert('Senha redefinida temporariamente para "Mudar@123". Clique em Salvar Perfil para confirmar.');
   };
 
   // Enviar Acesso via WhatsApp
@@ -150,18 +184,21 @@ export default function CorpoClinico() {
     }
 
     const phoneWithDDI = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-    const loginUser = prof.email || formData.email || prof.cpf || formData.cpf;
-    const pass = customPassword || formData.password || '(senha previamente cadastrada)';
+    const loginUser = formData.username || prof.username || prof.email || formData.email;
+    const pass = customPassword || formData.password || '(sua senha cadastrada)';
     const siteUrl = window.location.origin;
 
+    const roleName = ACCESS_ROLES.find(r => r.id === (formData.app_role || 'medico'))?.label || 'Plantonista';
+
     const message = [
-      `*ScaleMedic - Plataforma de Gestão Hospitalar* 🏥\n`,
-      `Olá, Dr(a). *${prof.name || formData.name}*!`,
-      `Seu acesso à plataforma de escalas e plantões está ativo:\n`,
-      `🌐 *Acesso:* ${siteUrl}/login`,
-      `👤 *Usuário:* ${loginUser}`,
+      `*ScaleMedic - Plataforma Integrada de Gestão Hospitalar* 🏥\n`,
+      `Olá, *${prof.name || formData.name}*!`,
+      `Seu cadastro foi homologado com o perfil: *${roleName}*.\n`,
+      `Acesse o sistema com seus dados:`,
+      `🌐 *Link de Acesso:* ${siteUrl}/login`,
+      `👤 *Login / Usuário:* ${loginUser}`,
       `🔑 *Senha:* ${pass}\n`,
-      `Por favor, acesse o sistema para visualizar sua escala e confirmar seus plantões.`
+      `_Ao entrar pela primeira vez, você pode alterar sua senha de acesso._`
     ].join('\n');
 
     const waUrl = `https://api.whatsapp.com/send?phone=${phoneWithDDI}&text=${encodeURIComponent(message)}`;
@@ -170,12 +207,10 @@ export default function CorpoClinico() {
 
   // Aprovar Cadastro Pendente
   const handleApprove = async (prof) => {
-    if (!confirm(`Aprovar o credenciamento de Dr(a). ${prof.name}? O profissional será liberado para a escala.`)) return;
+    if (!confirm(`Aprovar o cadastro de ${prof.name}? O acesso será liberado imediatamente.`)) return;
 
     try {
-      await base44.entities.Professional.update(prof.id, {
-        status: 'ativo'
-      });
+      await base44.entities.Professional.update(prof.id, { status: 'ativo' });
 
       if (prof.user_id && base44.entities.User?.update) {
         await base44.entities.User.update(prof.user_id, {
@@ -184,16 +219,16 @@ export default function CorpoClinico() {
       }
 
       await syncGlobalData();
-      alert(`Dr(a). ${prof.name} aprovado(a) com sucesso!`);
+      alert(`${prof.name} aprovado(a) com sucesso!`);
     } catch (err) {
-      alert('Erro ao aprovar profissional: ' + err.message);
+      alert('Erro ao aprovar: ' + err.message);
     }
   };
 
-  // Recusar ou Inativar
+  // Alterar Status (Ativar / Inativar / Recusar)
   const handleToggleStatus = async (prof, nextStatus) => {
-    const actionText = nextStatus === 'ativo' ? 'ativar' : (nextStatus === 'recusado' ? 'recusar' : 'inativar');
-    if (!confirm(`Deseja realmente ${actionText} o profissional ${prof.name}?`)) return;
+    const actionText = nextStatus === 'ativo' ? 'reativar' : (nextStatus === 'recusado' ? 'recusar' : 'inativar');
+    if (!confirm(`Deseja realmente ${actionText} o cadastro de ${prof.name}?`)) return;
 
     try {
       await base44.entities.Professional.update(prof.id, { status: nextStatus });
@@ -210,7 +245,7 @@ export default function CorpoClinico() {
     }
   };
 
-  // Salvar Alterações (Protegido contra colunas inexistentes)
+  // Salvar Criação ou Edição
   const handleSaveProfessional = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
@@ -220,14 +255,30 @@ export default function CorpoClinico() {
 
     setSubmitting(true);
     try {
-      // Notas auxiliares para preservar CBO e Banco sem quebrar o esquema
-      const notesArray = [];
-      if (formData.cbo.trim()) notesArray.push(`CBO: ${formData.cbo.trim()}`);
-      if (formData.bank_info.trim()) notesArray.push(`Banco: ${formData.bank_info.trim()}`);
+      const cleanUsername = (formData.username || formData.name)
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, '.')
+        .replace(/\.+/g, '.')
+        .replace(/^\.|\.$/g, '');
 
-      // Payload contendo apenas colunas oficiais confirmadas
+      // Serializa todos os campos que não existem como colunas físicas no banco
+      const metadata = {
+        username: cleanUsername,
+        app_role: formData.app_role,
+        cbo: formData.cbo.trim(),
+        coop_tax_rate: safeNumber(formData.coop_tax_rate),
+        daily_rate: safeNumber(formData.daily_rate),
+        monthly_salary: safeNumber(formData.monthly_salary),
+        monthly_work_hours: safeNumber(formData.monthly_work_hours),
+        pix_type: formData.pix_type,
+        pix_key: formData.pix_key.trim(),
+        bank_info: formData.bank_info.trim()
+      };
+
+      // Payload contendo apenas as colunas padrão seguras da tabela Professional
       const payload = {
-        company_id: companyId || 'cmp_principal',
+        company_id: company?.id || 'cmp_principal',
         unit_id: formData.unit_id || selectedUnitId || 'unit_h1',
         name: formData.name.trim(),
         document: formData.document.trim(),
@@ -238,13 +289,7 @@ export default function CorpoClinico() {
         status: formData.status,
         remuneration_type: formData.remuneration_type,
         hourly_rate: safeNumber(formData.hourly_rate),
-        daily_rate: safeNumber(formData.daily_rate),
-        monthly_salary: safeNumber(formData.monthly_salary),
-        monthly_work_hours: safeNumber(formData.monthly_work_hours),
-        coop_tax_rate: safeNumber(formData.coop_tax_rate),
-        pix_type: formData.pix_type,
-        pix_key: formData.pix_key.trim(),
-        notes: notesArray.join(' | ')
+        notes: JSON.stringify(metadata)
       };
 
       let savedProfId = editingProf?.id;
@@ -256,61 +301,73 @@ export default function CorpoClinico() {
         savedProfId = created?.id;
       }
 
-      // Se informou nova senha ou se precisa criar/atualizar conta de usuário
-      if (formData.password.trim() || !editingProf?.user_id) {
-        const userEmail = formData.email.trim().toLowerCase();
-        
-        if (userEmail) {
-          // Busca se o usuário já existe na tabela User
-          const existingUsers = await base44.entities.User.filter({ email: userEmail }).catch(() => []);
-          
-          if (existingUsers && existingUsers.length > 0) {
-            const userToUpdate = existingUsers[0];
-            const userUpdatePayload = {
-              full_name: formData.name.trim(),
-              data: {
-                ...(userToUpdate.data || {}),
-                status: formData.status === 'ativo' ? 'aprovado' : formData.status,
-                phone: formData.phone.trim(),
-                professional_id: savedProfId
-              }
-            };
-            if (formData.password.trim()) {
-              userUpdatePayload.password = formData.password.trim();
-            }
-            await base44.entities.User.update(userToUpdate.id, userUpdatePayload).catch(() => {});
-          } else if (formData.password.trim()) {
-            // Cria a conta do usuário se não existir
-            const newUser = await base44.entities.User.create({
-              email: userEmail,
-              username: userEmail.split('@')[0],
-              password: formData.password.trim(),
-              full_name: formData.name.trim(),
-              role: 'user',
-              data: {
-                company_id: companyId || 'cmp_principal',
-                selected_unit_id: formData.unit_id || selectedUnitId || 'unit_h1',
-                status: formData.status === 'ativo' ? 'aprovado' : 'pendente',
-                phone: formData.phone.trim(),
-                professional_id: savedProfId
-              }
-            }).catch(() => null);
+      // Sincroniza a conta na tabela User para login por Nome ou E-mail
+      const userEmail = formData.email.trim().toLowerCase() || `${cleanUsername}@hospital.com`;
+      const isMasterRole = formData.app_role === 'gestor';
 
-            if (newUser && savedProfId) {
-              await base44.entities.Professional.update(savedProfId, { user_id: newUser.id }).catch(() => {});
-            }
-          }
+      const existingUsers = await base44.entities.User.filter({ username: cleanUsername }).catch(() => []);
+      let userObj = existingUsers && existingUsers.length > 0 ? existingUsers[0] : null;
+
+      if (!userObj && userEmail) {
+        const byEmail = await base44.entities.User.filter({ email: userEmail }).catch(() => []);
+        if (byEmail && byEmail.length > 0) userObj = byEmail[0];
+      }
+
+      const userDataPayload = {
+        app_role: formData.app_role,
+        status: formData.status === 'ativo' ? 'aprovado' : formData.status,
+        phone: formData.phone.trim(),
+        professional_id: savedProfId,
+        company_id: company?.id || 'cmp_principal',
+        selected_unit_id: formData.unit_id || selectedUnitId || 'unit_h1'
+      };
+
+      if (userObj) {
+        // Atualiza usuário existente
+        const updateBody = {
+          full_name: formData.name.trim(),
+          username: cleanUsername,
+          role: isMasterRole ? 'admin' : 'user',
+          data: { ...(userObj.data || {}), ...userDataPayload }
+        };
+        if (formData.password.trim()) {
+          updateBody.password = formData.password.trim();
+        }
+        await base44.entities.User.update(userObj.id, updateBody).catch(() => {});
+      } else {
+        // Cria usuário para permitir login por nome ou e-mail
+        const newUser = await base44.entities.User.create({
+          username: cleanUsername,
+          email: userEmail,
+          password: formData.password.trim() || '123456',
+          full_name: formData.name.trim(),
+          role: isMasterRole ? 'admin' : 'user',
+          data: userDataPayload
+        }).catch(() => null);
+
+        if (newUser && savedProfId) {
+          await base44.entities.Professional.update(savedProfId, { user_id: newUser.id }).catch(() => {});
         }
       }
 
       setModalOpen(false);
       resetForm();
       await syncGlobalData();
-      alert('Dados do profissional atualizados com sucesso!');
+      alert('Cadastro e credenciais do profissional salvos com sucesso!');
     } catch (err) {
       alert('Erro ao salvar profissional: ' + err.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Helper para ler os metadados deserializados de cada profissional
+  const getProfMeta = (prof) => {
+    if (!prof.notes) return {};
+    try {
+      return JSON.parse(prof.notes);
+    } catch {
+      return {};
     }
   };
 
@@ -336,24 +393,27 @@ export default function CorpoClinico() {
 
     return professionals.filter(p => {
       const st = String(p.status || 'ativo').toLowerCase();
+      const meta = getProfMeta(p);
+      const role = meta.app_role || p.app_role || 'medico';
       
       if (activeTab === 'pendentes' && st !== 'pendente' && st !== 'em_analise') return false;
       if (activeTab === 'inativos' && st !== 'inativo' && st !== 'recusado') return false;
       if (activeTab === 'ativos' && (st === 'pendente' || st === 'em_analise' || st === 'inativo' || st === 'recusado')) return false;
 
       if (specialtyFilter !== 'todas' && p.specialty !== specialtyFilter) return false;
+      if (roleFilter !== 'todos' && role !== roleFilter) return false;
 
       if (term) {
         const matchesName = (p.name || '').toLowerCase().includes(term);
         const matchesDoc = (p.document || '').toLowerCase().includes(term);
         const matchesCpf = (p.cpf || '').toLowerCase().includes(term);
-        const matchesSpec = (p.specialty || '').toLowerCase().includes(term);
-        if (!matchesName && !matchesDoc && !matchesCpf && !matchesSpec) return false;
+        const matchesUser = (meta.username || '').toLowerCase().includes(term);
+        if (!matchesName && !matchesDoc && !matchesCpf && !matchesUser) return false;
       }
 
       return true;
     });
-  }, [professionals, activeTab, specialtyFilter, searchQuery]);
+  }, [professionals, activeTab, specialtyFilter, roleFilter, searchQuery]);
 
   return (
     <div className="p-4 md:p-8 space-y-6 font-sans">
@@ -362,23 +422,23 @@ export default function CorpoClinico() {
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-400">
-            <Users className="w-4 h-4" /> Gestão de Pessoas & Honorários
+            <Users className="w-4 h-4" /> Gestão de Pessoas, Perfis & Acessos
           </div>
-          <h2 className="mt-1 text-2xl sm:text-3xl font-black">Corpo Clínico & Credenciamento</h2>
+          <h2 className="mt-1 text-2xl sm:text-3xl font-black">Corpo Clínico & Credenciais</h2>
           <p className="text-xs text-slate-300">
-            Aprovação de cadastros, envio de acessos via WhatsApp e parametrização financeira.
+            Liberação de login por perfil (Gestor, Coordenador, Faturamento ou Plantonista), envio de credenciais e faturamento.
           </p>
         </div>
 
         {isManager && (
           <Button onClick={handleOpenNew} className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-10 px-5 rounded-xl shadow-lg gap-1.5 shrink-0">
-            <UserPlus className="w-4 h-4" /> Novo Profissional
+            <UserPlus className="w-4 h-4" /> Novo Cadastro
           </Button>
         )}
       </div>
 
       {/* ABAS & FILTROS */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-3">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-3">
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           <button
             onClick={() => setActiveTab('ativos')}
@@ -389,7 +449,7 @@ export default function CorpoClinico() {
             }`}
           >
             <UserCheck className="w-3.5 h-3.5" />
-            <span>Ativos na Escala</span>
+            <span>Ativos no Sistema</span>
             <span className="text-[10px] opacity-70">({counts.ativos})</span>
           </button>
 
@@ -419,29 +479,41 @@ export default function CorpoClinico() {
             }`}
           >
             <Ban className="w-3.5 h-3.5" />
-            <span>Inativos / Recusados</span>
+            <span>Inativos / Bloqueados</span>
             <span className="text-[10px] opacity-70">({counts.inativos})</span>
           </button>
         </div>
 
-        {/* BUSCA E FILTRO DE ESPECIALIDADE */}
+        {/* BUSCA E FILTROS */}
         <div className="flex items-center gap-2 flex-wrap">
+          <Select value={roleFilter} onValueChange={setRoleFilter}>
+            <SelectTrigger className="h-9 w-40 text-xs font-semibold">
+              <SelectValue placeholder="Filtrar Perfil" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os Perfis</SelectItem>
+              {ACCESS_ROLES.map(r => (
+                <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select value={specialtyFilter} onValueChange={setSpecialtyFilter}>
-            <SelectTrigger className="h-9 w-44 text-xs font-semibold">
+            <SelectTrigger className="h-9 w-40 text-xs font-semibold">
               <SelectValue placeholder="Especialidade" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todas">Todas especialidades</SelectItem>
+              <SelectItem value="todas">Especialidades</SelectItem>
               {allSpecialties.map(spec => (
                 <SelectItem key={spec} value={spec}>{spec}</SelectItem>
               ))}
             </SelectContent>
           </Select>
 
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-full sm:w-56">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <Input 
-              placeholder="Buscar por nome, CRM ou CPF..." 
+              placeholder="Nome, CRM, usuário..." 
               value={searchQuery} 
               onChange={e => setSearchQuery(e.target.value)} 
               className="pl-9 h-9 text-xs" 
@@ -450,15 +522,13 @@ export default function CorpoClinico() {
         </div>
       </div>
 
-      {/* LISTAGEM DOS CARDS */}
+      {/* GRID DE PROFISSIONAIS */}
       {filteredList.length === 0 ? (
         <Card className="p-16 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-2">
           <Users className="w-10 h-10 text-slate-300 mx-auto" />
-          <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">Nenhum profissional localizado</h3>
+          <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">Nenhum profissional encontrado</h3>
           <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            {activeTab === 'pendentes' && 'Não há novos cadastros aguardando aprovação.'}
-            {activeTab === 'ativos' && 'Nenhum profissional ativo encontrado com os filtros informados.'}
-            {activeTab === 'inativos' && 'Nenhum profissional inativo registrado.'}
+            {activeTab === 'pendentes' ? 'Não há cadastros pendentes de homologação.' : 'Nenhum registro com os filtros selecionados.'}
           </p>
         </Card>
       ) : (
@@ -466,6 +536,16 @@ export default function CorpoClinico() {
           {filteredList.map(prof => {
             const isPending = prof.status === 'pendente' || prof.status === 'em_analise';
             const isInactive = prof.status === 'inativo' || prof.status === 'recusado';
+            const meta = getProfMeta(prof);
+            const userRole = meta.app_role || prof.app_role || 'medico';
+
+            // Estilos de Tag para cada Perfil
+            const roleBadgeConfig = {
+              gestor: { label: 'Gestor Master', color: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30' },
+              coordenador: { label: 'Coordenador', color: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30' },
+              faturamento: { label: 'Faturamento', color: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30' },
+              medico: { label: 'Plantonista', color: 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/30' }
+            }[userRole] || { label: 'Plantonista', color: 'bg-slate-500/10 text-slate-700' };
 
             return (
               <Card 
@@ -486,9 +566,16 @@ export default function CorpoClinico() {
                       <h3 className="font-black text-sm text-slate-900 dark:text-white truncate">
                         {prof.name}
                       </h3>
-                      <span className="text-xs text-sky-600 font-bold block mt-0.5">
-                        {prof.specialty || 'Clínica Médica'}
-                      </span>
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase border ${roleBadgeConfig.color}`}>
+                          {roleBadgeConfig.label}
+                        </span>
+                        {prof.specialty && (
+                          <span className="text-[11px] text-slate-500 font-semibold truncate">
+                            • {prof.specialty}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border shrink-0 ${
@@ -502,15 +589,17 @@ export default function CorpoClinico() {
                     </span>
                   </div>
 
-                  {/* IDENTIFICAÇÃO */}
+                  {/* IDENTIFICAÇÃO E CREDENCIAIS */}
                   <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
+                    {meta.username && (
+                      <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/40 px-2 py-1 rounded-lg">
+                        <span className="font-bold text-sky-600">Usuário de Login:</span>
+                        <strong className="font-mono text-slate-900 dark:text-white font-black">{meta.username}</strong>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span>CRM / Registro:</span>
                       <strong className="text-slate-800 dark:text-slate-200">{prof.document || '—'}</strong>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>CPF:</span>
-                      <strong className="text-slate-800 dark:text-slate-200">{prof.cpf || '—'}</strong>
                     </div>
                     <div className="flex justify-between">
                       <span>Telefone:</span>
@@ -521,38 +610,31 @@ export default function CorpoClinico() {
                   {/* FINANCEIRO */}
                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 space-y-1 text-xs">
                     <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase">
-                      <span>Modelo</span>
+                      <span>Remuneração</span>
                       <span className="text-sky-600 font-black">{(prof.remuneration_type || 'hora').toUpperCase()}</span>
                     </div>
 
                     <div className="flex justify-between items-center font-bold text-slate-800 dark:text-slate-200">
-                      <span>Base:</span>
+                      <span>Valor Base:</span>
                       <span className="text-emerald-600 dark:text-emerald-400 font-black">
                         {prof.remuneration_type === 'diaria' 
-                          ? `${formatCurrency(prof.daily_rate)} / plantão`
+                          ? `${formatCurrency(meta.daily_rate || 1500)} / plantão`
                           : prof.remuneration_type === 'mensal'
-                          ? `${formatCurrency(prof.monthly_salary)} / mês`
+                          ? `${formatCurrency(meta.monthly_salary || 18000)} / mês`
                           : `${formatCurrency(prof.hourly_rate || 120)} / hora`}
                       </span>
                     </div>
 
-                    <div className="flex justify-between items-center text-[11px]">
-                      <span>Retenção Coop:</span>
-                      <span className={safeNumber(prof.coop_tax_rate) > 0 ? 'font-bold text-amber-600' : 'text-slate-400'}>
-                        {safeNumber(prof.coop_tax_rate)}%
-                      </span>
-                    </div>
-
-                    {prof.pix_key && (
-                      <div className="pt-1.5 mt-1.5 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center text-[10px]">
-                        <span className="text-slate-400">PIX ({prof.pix_type || 'CPF'}):</span>
-                        <span className="font-mono text-slate-700 dark:text-slate-300 truncate max-w-[140px]">{prof.pix_key}</span>
+                    {safeNumber(meta.coop_tax_rate) > 0 && (
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span>Retenção Cooperativa:</span>
+                        <span className="font-bold text-amber-600">{meta.coop_tax_rate}%</span>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* AÇÕES */}
+                {/* BOTÕES DE AÇÃO */}
                 <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
                   {isPending ? (
                     <>
@@ -561,7 +643,7 @@ export default function CorpoClinico() {
                         onClick={() => handleApprove(prof)} 
                         className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 gap-1 shadow-sm"
                       >
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Aprovar
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Homologar
                       </Button>
                       <Button 
                         size="sm" 
@@ -588,7 +670,7 @@ export default function CorpoClinico() {
                           size="sm" 
                           variant="outline"
                           onClick={() => handleSendWhatsApp(prof)}
-                          title="Enviar dados de acesso via WhatsApp"
+                          title="Enviar dados de login via WhatsApp"
                           className="h-8 px-2.5 border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
                         >
                           <MessageSquare className="w-4 h-4" />
@@ -623,28 +705,57 @@ export default function CorpoClinico() {
         </div>
       )}
 
-      {/* MODAL: CRIAR OU EDITAR PROFISSIONAL */}
+      {/* MODAL: CRIAR OU EDITAR CADASTRO */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-black flex items-center gap-2">
-              <Users className="w-5 h-5 text-sky-600" />
-              {editingProf ? 'Editar Perfil & Parâmetros do Médico' : 'Cadastrar Novo Profissional'}
+              <UserCog className="w-5 h-5 text-sky-600" />
+              {editingProf ? 'Editar Perfil, Permissões & Credenciais' : 'Cadastrar Novo Profissional'}
             </DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleSaveProfessional} className="space-y-4 py-2 text-xs">
             
-            {/* DADOS CADASTRAIS */}
+            {/* 1. SELEÇÃO DO PERFIL DE ACESSO */}
+            <div className="p-3.5 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/60 space-y-2">
+              <Label className="text-xs font-black uppercase text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                <Shield className="w-4 h-4 text-indigo-600" /> Perfil de Acesso no Sistema *
+              </Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {ACCESS_ROLES.map(role => {
+                  const selected = formData.app_role === role.id;
+                  return (
+                    <div
+                      key={role.id}
+                      onClick={() => setFormData({ ...formData, app_role: role.id })}
+                      className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                        selected 
+                          ? 'border-indigo-600 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-indigo-600' 
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 hover:bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-black text-xs text-slate-900 dark:text-white">{role.label}</span>
+                        {selected && <BadgeCheck className="w-4 h-4 text-indigo-600" />}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-tight">{role.desc}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. DADOS BÁSICOS */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1 sm:col-span-2">
                 <Label className="text-xs font-bold">Nome Completo *</Label>
-                <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Dr(a)..." className="h-9" />
+                <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Nome completo oficial" className="h-9" />
               </div>
 
               <div className="space-y-1">
                 <Label className="text-xs font-bold">Especialidade Principal *</Label>
-                <Input value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})} placeholder="Ex: Clínica Médica" className="h-9" />
+                <Input value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})} placeholder="Ex: Clínica Médica, Pediatria" className="h-9" />
               </div>
 
               <div className="space-y-1">
@@ -668,57 +779,90 @@ export default function CorpoClinico() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-bold">E-mail Profissional (Login) *</Label>
+                <Label className="text-xs font-bold">E-mail Profissional</Label>
                 <Input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="medico@hospital.com" className="h-9" />
               </div>
             </div>
 
-            {/* SEÇÃO DE ACESSO, SENHA E WHATSAPP */}
-            <div className="p-4 rounded-2xl bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/50 space-y-3">
+            {/* 3. SEÇÃO DE CREDENCIAIS & LOGIN POR NOME */}
+            <div className="p-4 rounded-2xl bg-sky-50/60 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/60 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 font-black text-xs text-sky-900 dark:text-sky-200 uppercase tracking-wider">
                   <KeyRound className="w-4 h-4 text-sky-600" />
-                  Credenciais de Acesso & Notificação
+                  Credenciais de Login & Acesso
                 </div>
 
-                <Button 
-                  type="button" 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={handleGeneratePassword} 
-                  className="h-7 text-[11px] gap-1 font-bold border-sky-300 text-sky-600 hover:bg-sky-100 dark:hover:bg-sky-900/40"
-                >
-                  <RefreshCw className="w-3 h-3" /> Gerar Nova Senha
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button 
+                    type="button" 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={handleResetDefaultPassword} 
+                    className="h-7 text-[10px] font-bold border-amber-300 text-amber-700 dark:text-amber-300"
+                  >
+                    Resetar Senha
+                  </Button>
+                  <Button 
+                    type="button" 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={handleGeneratePassword} 
+                    className="h-7 text-[10px] font-bold border-sky-300 text-sky-600"
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" /> Gerar Aleatória
+                  </Button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                    {editingProf ? 'Redefinir Senha (opcional)' : 'Definir Senha de Acesso *'}
+                    Usuário (Login por Nome) *
                   </Label>
                   <Input 
                     type="text" 
-                    value={formData.password} 
-                    onChange={e => setFormData({...formData, password: e.target.value})} 
-                    placeholder={editingProf ? 'Deixe em branco para não alterar' : 'Digite a senha inicial'} 
-                    className="h-9 bg-white dark:bg-slate-900 font-mono" 
+                    value={formData.username} 
+                    onChange={e => setFormData({...formData, username: e.target.value})} 
+                    placeholder="Ex: dr.carlos" 
+                    className="h-9 bg-white dark:bg-slate-900 font-mono font-bold text-sky-600" 
                   />
                 </div>
 
-                <div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                    {editingProf ? 'Nova Senha (deixe vazio para manter)' : 'Senha de Acesso *'}
+                  </Label>
+                  <div className="relative">
+                    <Input 
+                      type={showPassword ? "text" : "password"} 
+                      value={formData.password} 
+                      onChange={e => setFormData({...formData, password: e.target.value})} 
+                      placeholder={editingProf ? '••••••••' : 'Digite a senha'} 
+                      className="h-9 bg-white dark:bg-slate-900 font-mono pr-8" 
+                    />
+                    <button 
+                      type="button" 
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2 pt-1">
                   <Button 
                     type="button" 
                     onClick={() => handleSendWhatsApp(editingProf || formData, formData.password)}
                     className="w-full h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs gap-1.5 shadow-sm"
                   >
-                    <Send className="w-3.5 h-3.5" /> Enviar Acesso via WhatsApp
+                    <Send className="w-3.5 h-3.5" /> Enviar Dados de Acesso via WhatsApp
                   </Button>
                 </div>
               </div>
             </div>
 
-            {/* SEÇÃO CONTRATUAL E FINANCEIRA */}
+            {/* 4. CONTRATO & REMUNERAÇÃO (PROTEGIDO CONTRA ERROS DE SCHEMA) */}
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
               <div className="flex items-center gap-2 font-black text-xs text-slate-900 dark:text-white uppercase tracking-wider">
                 <DollarSign className="w-4 h-4 text-emerald-600" />
@@ -772,7 +916,7 @@ export default function CorpoClinico() {
               </div>
             </div>
 
-            {/* SEÇÃO DADOS BANCÁRIOS / PIX */}
+            {/* 5. REPASSE FINANCEIRO / PIX */}
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
               <div className="flex items-center gap-2 font-black text-xs text-slate-900 dark:text-white uppercase tracking-wider">
                 <CreditCard className="w-4 h-4 text-sky-600" />
