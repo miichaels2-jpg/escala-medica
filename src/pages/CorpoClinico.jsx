@@ -9,9 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
   Users, UserPlus, Search, CheckCircle2, 
-  Clock, DollarSign, Edit3, KeyRound, Send, RefreshCw, Ban, 
-  UserCheck, MessageSquare, Shield, UserCog, Eye, EyeOff,
-  HeartPulse, Plus, CreditCard, Landmark
+  DollarSign, Edit3, KeyRound, Send, RefreshCw, Ban, 
+  MessageSquare, Shield, UserCog, Eye, EyeOff,
+  HeartPulse, Plus, Landmark, CreditCard
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -44,13 +44,13 @@ const ACCESS_ROLES = [
 
 async function autoHealingSave(id, initialPayload) {
   let payload = { ...initialPayload };
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let attempt = 0; attempt < 15; attempt++) {
     try {
       if (id) return await base44.entities.Professional.update(id, payload);
       else return await base44.entities.Professional.create(payload);
     } catch (err) {
       const msg = err.message || '';
-      const match = msg.match(/Could not find the '([^']+)' column of 'professionals'/i);
+      const match = msg.match(/Could not find the '([^']+)' column/i);
       if (match && match[1]) { delete payload[match[1]]; continue; }
       throw err;
     }
@@ -73,13 +73,13 @@ export default function CorpoClinico() {
   const [customCategories, setCustomCategories] = useState(() => {
     try { return JSON.parse(window.localStorage.getItem('scale_custom_cats') || '[]'); } catch { return []; }
   });
-  const [newCatData, setNewCatData] = useState({ label: '', council: 'Registro' });
 
+  const [newCatData, setNewCatData] = useState({ label: '', council: 'Registro' });
   const allCategories = useMemo(() => [...DEFAULT_CATEGORIES, ...customCategories], [customCategories]);
 
   const [formData, setFormData] = useState({
     name: '', username: '', category: 'medico', document: '',
-    registration_id: '', specialty: '', cbo: '',
+    registration_id: '', main_sector: '', specialty: '', cbo: '',
     cpf: '', email: '', phone: '', unit_id: '',
     status: 'ativo', app_role: 'assistencial', remuneration_type: 'mensal',
     hourly_rate: 120, daily_rate: 1500, monthly_salary: 5000,
@@ -90,8 +90,9 @@ export default function CorpoClinico() {
     const generatedMatricula = `MAT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
     setFormData({
       name: '', username: '', category: 'medico', document: '',
-      registration_id: generatedMatricula, specialty: '', cbo: '',
-      cpf: '', email: '', phone: '', unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
+      registration_id: generatedMatricula, main_sector: (sectors || [])[0]?.name || 'UTI Geral',
+      specialty: '', cbo: '', cpf: '', email: '', phone: '',
+      unit_id: selectedUnitId || ((units || [])[0]?.id || 'unit_h1'),
       status: 'ativo', app_role: 'assistencial', remuneration_type: 'mensal',
       hourly_rate: 120, daily_rate: 1500, monthly_salary: 5000,
       coop_tax_rate: 0, pix_type: 'CPF', pix_key: '', bank_info: '', password: ''
@@ -105,6 +106,7 @@ export default function CorpoClinico() {
   const handleOpenEdit = (prof) => {
     setEditingProf(prof);
     const meta = getProfMeta(prof);
+
     const defaultUsername = (prof.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
     const generatedMatricula = meta.registration_id || prof.registration_id || `MAT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
@@ -114,6 +116,7 @@ export default function CorpoClinico() {
       category: meta.category || prof.category || 'medico',
       document: prof.document || prof.registration_number || '',
       registration_id: generatedMatricula,
+      main_sector: meta.main_sector || prof.specialty || (sectors || [])[0]?.name || 'Geral',
       specialty: prof.specialty || meta.specialty || '',
       cbo: meta.cbo || prof.cbo || '',
       cpf: prof.cpf || '',
@@ -124,9 +127,9 @@ export default function CorpoClinico() {
       app_role: meta.app_role || prof.app_role || 'assistencial',
       remuneration_type: prof.remuneration_type || meta.remuneration_type || 'mensal',
       hourly_rate: safeNumber(prof.hourly_rate ?? meta.hourly_rate, 120),
-      daily_rate: safeNumber(meta.daily_rate ?? prof.daily_rate, 1500),
-      monthly_salary: safeNumber(meta.monthly_salary ?? prof.monthly_salary, 5000),
-      coop_tax_rate: safeNumber(meta.coop_tax_rate ?? prof.coop_tax_rate, 0),
+      daily_rate: safeNumber(prof.daily_rate ?? meta.daily_rate, 1500),
+      monthly_salary: safeNumber(prof.monthly_salary ?? meta.monthly_salary, 5000),
+      coop_tax_rate: safeNumber(prof.coop_tax_rate ?? meta.coop_tax_rate, 0),
       pix_type: meta.pix_type || 'CPF',
       pix_key: meta.pix_key || '',
       bank_info: meta.bank_info || '',
@@ -151,7 +154,7 @@ export default function CorpoClinico() {
   const handleSendWhatsApp = () => {
     const rawPhone = formData.phone;
     const cleanPhone = String(rawPhone || '').replace(/\D/g, '');
-    if (!cleanPhone) { alert('Preencha o campo Telefone / WhatsApp para enviar.'); return; }
+    if (!cleanPhone) { alert('Preencha o campo Telefone / WhatsApp.'); return; }
 
     const phoneWithDDI = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
     const loginUser = formData.username || formData.email || '';
@@ -162,29 +165,46 @@ export default function CorpoClinico() {
     window.open(`https://api.whatsapp.com/send?phone=${phoneWithDDI}&text=${encodeURIComponent(message)}`, '_blank');
   };
 
+  // SALVAMENTO BLINDADO DE FATURAMENTO
   const handleSaveProfessional = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) return;
 
     setSubmitting(true);
     try {
-      const cleanUsername = (formData.username || formData.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.');
+      const cleanUsername = (formData.username || formData.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
 
       const richMeta = {
         username: cleanUsername, category: formData.category, app_role: formData.app_role,
-        specialty: formData.specialty, cbo: formData.cbo, registration_id: formData.registration_id,
-        coop_tax_rate: safeNumber(formData.coop_tax_rate), daily_rate: safeNumber(formData.daily_rate),
-        monthly_salary: safeNumber(formData.monthly_salary), pix_type: formData.pix_type,
-        pix_key: formData.pix_key.trim(), bank_info: formData.bank_info.trim(),
-        remuneration_type: formData.remuneration_type, hourly_rate: safeNumber(formData.hourly_rate)
+        main_sector: formData.main_sector, specialty: formData.specialty, cbo: formData.cbo,
+        registration_id: formData.registration_id, coop_tax_rate: safeNumber(formData.coop_tax_rate),
+        daily_rate: safeNumber(formData.daily_rate), monthly_salary: safeNumber(formData.monthly_salary),
+        hourly_rate: safeNumber(formData.hourly_rate), remuneration_type: formData.remuneration_type,
+        pix_type: formData.pix_type, pix_key: formData.pix_key.trim(), bank_info: formData.bank_info.trim()
       };
 
+      // INJETANDO DADOS FINANCEIROS DIRETAMENTE NA ENTIDADE PARA REFLETIR NOS OUTROS MÓDULOS
       const profPayload = {
-        company_id: company?.id || 'cmp_principal', unit_id: formData.unit_id || selectedUnitId || 'unit_h1',
-        name: formData.name.trim(), document: formData.document.trim(), specialty: formData.specialty.trim(),
-        cbo: formData.cbo.trim(), cpf: formData.cpf.trim(), email: formData.email.trim().toLowerCase(),
-        phone: formData.phone.trim(), status: formData.status, remuneration_type: formData.remuneration_type,
-        hourly_rate: safeNumber(formData.hourly_rate)
+        company_id: company?.id || 'cmp_principal', 
+        unit_id: formData.unit_id || selectedUnitId || 'unit_h1',
+        name: formData.name.trim(), 
+        document: formData.document.trim(), 
+        specialty: formData.specialty.trim() || formData.main_sector,
+        cbo: formData.cbo.trim(), 
+        cpf: formData.cpf.trim(), 
+        email: formData.email.trim().toLowerCase(),
+        phone: formData.phone.trim(), 
+        status: formData.status, 
+        registration_id: formData.registration_id,
+        remuneration_type: formData.remuneration_type,
+        hourly_rate: safeNumber(formData.hourly_rate),
+        daily_rate: safeNumber(formData.daily_rate),
+        monthly_salary: safeNumber(formData.monthly_salary),
+        coop_tax_rate: safeNumber(formData.coop_tax_rate),
+        pix_type: formData.pix_type,
+        pix_key: formData.pix_key.trim(),
+        bank_info: formData.bank_info.trim(),
+        data: richMeta // Payload JSON redundante para Minha Escala ler
       };
 
       let savedProf = await autoHealingSave(editingProf?.id, profPayload);
@@ -194,7 +214,7 @@ export default function CorpoClinico() {
         try { window.localStorage.setItem(`prof_meta_${savedProfId}`, JSON.stringify(richMeta)); } catch {}
       }
 
-      setModalOpen(false); resetForm(); await syncGlobalData(); alert('Profissional salvo com sucesso!');
+      setModalOpen(false); resetForm(); await syncGlobalData(); alert('Profissional e Faturamento salvos com sucesso!');
     } catch (err) { alert('Erro ao salvar: ' + err.message); } finally { setSubmitting(false); }
   };
 
@@ -207,7 +227,7 @@ export default function CorpoClinico() {
 
   const counts = useMemo(() => {
     let ativos = 0, pendentes = 0, inativos = 0;
-    professionals.forEach(p => {
+    (professionals || []).forEach(p => {
       const st = String(p.status || 'ativo').toLowerCase();
       if (st === 'pendente' || st === 'em_analise') pendentes++;
       else if (st === 'inativo' || st === 'recusado') inativos++;
@@ -218,7 +238,7 @@ export default function CorpoClinico() {
 
   const filteredList = useMemo(() => {
     const term = searchQuery.toLowerCase().trim();
-    return professionals.filter(p => {
+    return (professionals || []).filter(p => {
       const st = String(p.status || 'ativo').toLowerCase();
       const meta = getProfMeta(p);
       const cat = meta.category || p.category || 'medico';
@@ -242,8 +262,8 @@ export default function CorpoClinico() {
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-400"><Users className="w-4 h-4" /> Gestão de Pessoal & Matrícula ID</div>
-          <h2 className="mt-1 text-2xl sm:text-3xl font-black">Corpo Clínico & Matrículas</h2>
-          <p className="text-xs text-slate-300">Cadastro de profissionais, repasse PIX e geração automática de Matrícula ID.</p>
+          <h2 className="mt-1 text-2xl sm:text-3xl font-black">Corpo Clínico & Faturamento</h2>
+          <p className="text-xs text-slate-300">Cadastro de profissionais, repasse financeiro, PIX e geração de Matrícula.</p>
         </div>
         {isManager && (<Button onClick={handleOpenNew} className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-10 px-5 rounded-xl shadow-lg gap-1.5 shrink-0"><UserPlus className="w-4 h-4" /> Novo Profissional</Button>)}
       </div>
@@ -285,13 +305,12 @@ export default function CorpoClinico() {
                 <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
                   <div className="flex justify-between"><span>Conselho:</span><strong>{prof.document || '—'}</strong></div>
                   <div className="flex justify-between"><span>Especialidade:</span><strong className="text-slate-900 dark:text-white truncate max-w-[140px]">{prof.specialty || meta.specialty || 'Geral'}</strong></div>
-                  <div className="flex justify-between"><span>Chave PIX:</span><strong className="text-sky-600 font-mono truncate max-w-[140px]">{meta.pix_key || 'Não cadastrado'}</strong></div>
+                  <div className="flex justify-between"><span>Chave PIX:</span><strong className="text-sky-600 font-mono truncate max-w-[140px]">{meta.pix_key || prof.pix_key || 'Não cadastrado'}</strong></div>
                 </div>
 
-                {/* BLOCO DE SALÁRIO EM DESTAQUE */}
                 <div className="mt-2 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 flex items-center justify-between shadow-sm">
                   <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                    <DollarSign className="w-3.5 h-3.5" /> Remuneração Base
+                    <DollarSign className="w-3.5 h-3.5" /> Remuneração
                   </span>
                   <span className="font-black text-sm text-emerald-600 dark:text-emerald-300">
                     {formatCurrency(remunValue)} <span className="text-[9px] font-bold opacity-70">{remunLabel}</span>
@@ -308,13 +327,11 @@ export default function CorpoClinico() {
         })}
       </div>
 
-      {/* MODAL DE CADASTRO/EDIÇÃO (FIEL À IMAGEM) */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-2xl">
           <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2 text-slate-900 dark:text-white"><UserCog className="w-5 h-5 text-sky-600" /> {editingProf ? 'Editar Perfil Profissional & Acesso' : 'Cadastrar Novo Profissional'}</DialogTitle></DialogHeader>
 
           <form onSubmit={handleSaveProfessional} className="space-y-5 py-2 text-xs">
-            
             <div className="space-y-2">
               <div className="flex items-center gap-2"><HeartPulse className="w-4 h-4 text-slate-400" /><Label className="text-xs font-black uppercase text-slate-500">Categoria Profissional *</Label></div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -392,7 +409,9 @@ export default function CorpoClinico() {
 
             <div className="p-4 rounded-2xl bg-sky-50/60 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/60 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2 font-black text-xs text-sky-900 dark:text-sky-200 uppercase tracking-wider"><KeyRound className="w-4 h-4 text-sky-600" /> Credenciais de Login & Acesso</div>
+                <div className="flex items-center gap-2 font-black text-xs text-sky-900 dark:text-sky-200 uppercase tracking-wider">
+                  <KeyRound className="w-4 h-4 text-sky-600" /> Credenciais de Login & Acesso
+                </div>
                 <div className="flex items-center gap-1.5">
                   <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'Mudar@123'}))} className="h-7 text-[10px] font-bold border-amber-300 text-amber-700 hover:bg-amber-50">Resetar Senha</Button>
                   <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'S@ude'+Math.floor(1000+Math.random()*9000)}))} className="h-7 text-[10px] font-bold border-sky-300 text-sky-600 hover:bg-sky-50"><RefreshCw className="w-3 h-3 mr-1" /> Gerar Aleatória</Button>
@@ -418,7 +437,10 @@ export default function CorpoClinico() {
             </div>
 
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-3">
-              <div className="flex items-center gap-2 font-black text-xs uppercase text-emerald-700 dark:text-emerald-400"><DollarSign className="w-4 h-4" /> Faturamento, PIX & Dados Bancários</div>
+              <div className="flex items-center gap-2 font-black text-xs uppercase text-emerald-700 dark:text-emerald-400">
+                <Landmark className="w-4 h-4" /> Faturamento, PIX & Dados Bancários
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold">Regime Contratual</Label>
@@ -463,7 +485,7 @@ export default function CorpoClinico() {
               </div>
 
               <div className="space-y-1 pt-1">
-                <Label className="text-[11px] font-bold flex items-center gap-1.5"><Landmark className="w-3.5 h-3.5 text-slate-500" /> Dados Bancários Físicos (Para TED/DOC)</Label>
+                <Label className="text-[11px] font-bold flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5 text-slate-500" /> Dados Bancários Físicos (Para TED/DOC)</Label>
                 <Input value={formData.bank_info} onChange={e => setFormData({...formData, bank_info: e.target.value})} placeholder="Ex: Banco Itaú, Ag: 0000, CC: 00000-0" className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
               </div>
             </div>

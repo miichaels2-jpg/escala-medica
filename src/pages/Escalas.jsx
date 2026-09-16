@@ -24,15 +24,22 @@ function getLocalDateString(d = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function getShiftDates(shift) {
+  const start = new Date(`${shift.date}T${shift.start_time || '07:00'}:00`);
+  const end = new Date(`${shift.date}T${shift.end_time || '19:00'}:00`);
+  if (end <= start) end.setDate(end.getDate() + 1); 
+  return { start, end };
+}
+
 async function autoHealingSaveShift(id, initialPayload) {
   let payload = { ...initialPayload };
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let attempt = 0; attempt < 10; attempt++) {
     try {
       if (id) return await base44.entities.Shift.update(id, payload);
       else return await base44.entities.Shift.create(payload);
     } catch (err) {
       const msg = err.message || '';
-      const match = msg.match(/Could not find the '([^']+)' column of 'shifts'/i);
+      const match = msg.match(/Could not find the '([^']+)' column/i);
       if (match && match[1]) { delete payload[match[1]]; continue; }
       throw err;
     }
@@ -84,7 +91,6 @@ export default function Escalas() {
   const [traySpecialtyFilter, setTraySpecialtyFilter] = useState('todas');
   const [draggingProfId, setDraggingProfId] = useState(null);
 
-  // Relógio ao Vivo otimizado: só roda se precisar
   const [liveNow, setLiveNow] = useState(() => new Date());
   useEffect(() => { 
     if (activeTab === 'tv' || activeTab === 'dia') {
@@ -102,7 +108,7 @@ export default function Escalas() {
 
   const registeredSpecialties = useMemo(() => {
     const set = new Set();
-    professionals.forEach(p => { if (p.specialty && p.specialty.trim()) set.add(p.specialty.trim()); });
+    (professionals || []).forEach(p => { if (p?.specialty && p.specialty.trim()) set.add(p.specialty.trim()); });
     return Array.from(set).sort();
   }, [professionals]);
 
@@ -120,14 +126,37 @@ export default function Escalas() {
     ]
   });
 
+  const handleAddSlot = () => {
+    setGeneratorConfig(prev => ({
+      ...prev,
+      slots: [...prev.slots, { id: `slot_${Date.now()}`, specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', quantity: 1, shift_type: 'diurno' }]
+    }));
+  };
+
+  const handleRemoveSlot = (slotId) => {
+    setGeneratorConfig(prev => ({ ...prev, slots: prev.slots.filter(s => s.id !== slotId) }));
+  };
+
+  const handleUpdateSlot = (slotId, field, value) => {
+    setGeneratorConfig(prev => ({
+      ...prev,
+      slots: prev.slots.map(s => {
+        if (s.id !== slotId) return s;
+        const updated = { ...s, [field]: value };
+        if (field === 'start_time') updated.shift_type = value >= '18:00' || value < '06:00' ? 'noturno' : 'diurno';
+        return updated;
+      })
+    }));
+  };
+
   const [batchData, setBatchData] = useState({ professional_id: '', sector_id: '', shift_type: 'diurno', start_time: '07:00', end_time: '19:00' });
 
   const handlePrevMonth = () => setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
   const handleToday = () => setCurrentDate(new Date());
 
-  const sectorMap = useMemo(() => { const m = {}; sectors.forEach(s => { m[String(s.id)] = s; }); return m; }, [sectors]);
-  const professionalMap = useMemo(() => { const m = {}; professionals.forEach(p => { m[String(p.id)] = p; }); return m; }, [professionals]);
+  const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if(s) m[String(s.id)] = s; }); return m; }, [sectors]);
+  const professionalMap = useMemo(() => { const m = {}; (professionals || []).forEach(p => { if(p) m[String(p.id)] = p; }); return m; }, [professionals]);
 
   const daysInMonth = useMemo(() => {
     const date = new Date(currentYear, currentMonth, 1);
@@ -140,22 +169,23 @@ export default function Escalas() {
 
   const getStatusBadge = (shift) => {
     const isVago = shift.status === 'vago' || !shift.professional_id;
-    if (isVago) {
-      if (shift.date < todayLocalStr) return { dot: 'bg-slate-400', label: 'VAGA PERDIDA', text: 'text-slate-500', wrapper: 'border-l-slate-400 bg-slate-100 dark:bg-slate-900/50 opacity-60 grayscale', icon: <AlertTriangle className="w-3 h-3 text-slate-500" /> };
-      return { dot: 'bg-rose-500 animate-pulse', label: 'VAGA ABERTA', text: 'text-rose-600 dark:text-rose-400', wrapper: 'border-l-rose-500 bg-rose-50 dark:bg-rose-950/30', icon: <Flame className="w-3 h-3 text-rose-500 animate-pulse" /> };
-    }
-    
     const [startH, startM] = (shift.start_time || '07:00').split(':').map(Number);
     const [endH, endM] = (shift.end_time || '19:00').split(':').map(Number);
     const startMin = startH * 60 + startM;
     let endMin = endH * 60 + endM;
     if (endMin <= startMin) endMin += 24 * 60;
     
-    const nowHour = liveNow.getHours();
-    const nowMin = liveNow.getMinutes();
-    let nowTotalMin = nowHour * 60 + nowMin;
+    const now = new Date();
+    let nowTotalMin = now.getHours() * 60 + now.getMinutes();
     if (endMin > 24 * 60 && nowTotalMin < startMin) nowTotalMin += 24 * 60;
 
+    if (isVago) {
+      if (shift.date < todayLocalStr || (shift.date === todayLocalStr && nowTotalMin >= endMin)) {
+        return { dot: 'bg-slate-400', label: 'VAGA PERDIDA', text: 'text-slate-500', wrapper: 'border-l-slate-400 bg-slate-100 dark:bg-slate-900/50 opacity-60 grayscale hover:grayscale-0', icon: <AlertTriangle className="w-3 h-3 text-slate-500" /> };
+      }
+      return { dot: 'bg-rose-500 animate-pulse', label: 'VAGA ABERTA', text: 'text-rose-600 dark:text-rose-400', wrapper: 'border-l-rose-500 bg-rose-50 dark:bg-rose-950/30', icon: <Flame className="w-3 h-3 text-rose-500 animate-pulse" /> };
+    }
+    
     if (shift.date < todayLocalStr || (shift.date === todayLocalStr && nowTotalMin >= endMin)) {
       return { dot: 'bg-slate-400', label: 'CONCLUÍDO', text: 'text-slate-500 dark:text-slate-400', wrapper: 'border-l-slate-300 bg-slate-100 dark:bg-slate-800/40 opacity-70 grayscale hover:grayscale-0', icon: <CheckCircle2 className="w-3 h-3 text-slate-400" /> };
     }
@@ -174,8 +204,8 @@ export default function Escalas() {
   const monthlyShifts = useMemo(() => {
     const monthStr = String(currentMonth + 1).padStart(2, '0');
     const prefix = `${currentYear}-${monthStr}`;
-    return shifts.filter(s => {
-      if (!s.date || !s.date.startsWith(prefix)) return false;
+    return (shifts || []).filter(s => {
+      if (!s?.date || !s.date.startsWith(prefix)) return false;
       if (selectedSectorId !== 'todos' && String(s.sector_id) !== String(selectedSectorId)) return false;
       if (!isShiftMatchingTurno(s, filterTurno)) return false;
       return true;
@@ -188,73 +218,54 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // CÁLCULO MODO TV & PLANTÃO DO DIA (100% Blindado)
-  const tvShiftsDetailed = useMemo(() => {
-    const nowHour = liveNow.getHours();
-    const nowMin = liveNow.getMinutes();
-    let nowTotalMin = nowHour * 60 + nowMin;
-    const yesterdayDate = new Date(liveNow.getTime() - 24 * 60 * 60 * 1000);
-    const yStr = getLocalDateString(yesterdayDate);
-
+  const tvData = useMemo(() => {
+    const now = liveNow;
     const emAndamento = [];
     const proximoRendimento = [];
-    const concluidosRecentes = [];
-    
-    shifts.forEach(shift => {
+    const tableDayShifts = [];
+
+    (shifts || []).forEach(shift => {
+      if (!shift) return;
       if (selectedSectorId !== 'todos' && String(shift.sector_id) !== String(selectedSectorId)) return;
       if (!isShiftMatchingTurno(shift, filterTurno)) return;
+
+      const { start, end } = getShiftDates(shift);
+      
+      const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
+      const todayEnd = new Date(now); todayEnd.setHours(23,59,59,999);
+      if (start <= todayEnd && end >= todayStart) {
+        tableDayShifts.push(shift);
+      }
+
       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
       if (shift.status === 'vago' || !prof) return;
 
-      const [startH, startM] = (shift.start_time || '07:00').split(':').map(Number);
-      const [endH, endM] = (shift.end_time || '19:00').split(':').map(Number);
-      const startMin = startH * 60 + startM;
-      let endMin = endH * 60 + endM;
-      if (endMin <= startMin) endMin += 24 * 60;
-      
-      let effectiveNow = nowTotalMin;
-      if (endMin > 24 * 60 && nowTotalMin < startMin) effectiveNow += 24 * 60;
+      const diffMins = (end - now) / 60000;
+      const startDiffMins = (start - now) / 60000;
 
-      if (shift.date === todayLocalStr) {
-         if (effectiveNow >= startMin && effectiveNow < endMin) emAndamento.push(shift);
-         else if (effectiveNow >= endMin && (effectiveNow - endMin) <= 60) concluidosRecentes.push({ shift, minutesAgo: effectiveNow - endMin });
-         else if (startMin > effectiveNow && (startMin - effectiveNow) <= 120) proximoRendimento.push({ shift, startsIn: startMin - effectiveNow });
-      } else if (shift.date === yStr && endMin > 24 * 60) {
-         // Plantão que virou a noite de ontem para hoje
-         if (nowTotalMin < (endMin - 24*60)) emAndamento.push(shift);
-         else if (nowTotalMin >= (endMin - 24*60) && (nowTotalMin - (endMin - 24*60)) <= 60) concluidosRecentes.push({ shift, minutesAgo: nowTotalMin - (endMin - 24*60) });
+      if (now >= start && now < end) {
+        emAndamento.push(shift);
+        if (diffMins <= 120 && diffMins > 0) proximoRendimento.push({ shift, minutesLeft: Math.round(diffMins) });
+      } else if (startDiffMins > 0 && startDiffMins <= 120) {
+        proximoRendimento.push({ shift, startsIn: Math.round(startDiffMins) });
       }
     });
 
-    return { emAndamento, proximoRendimento, concluidosRecentes };
-  }, [shifts, todayLocalStr, selectedSectorId, filterTurno, liveNow, professionalMap]);
-
-  // Lista para o Plantão do Dia
-  const todayShiftsForTable = useMemo(() => {
-    return shifts.filter(s => {
-      if (selectedSectorId !== 'todos' && String(s.sector_id) !== String(selectedSectorId)) return false;
-      if (!isShiftMatchingTurno(s, filterTurno)) return false;
-      if (s.date === todayLocalStr) return true;
-      const [sh, sm] = (s.start_time || '07:00').split(':').map(Number);
-      const [eh, em] = (s.end_time || '19:00').split(':').map(Number);
-      let endMins = eh * 60 + em;
-      if (endMins <= (sh * 60 + sm)) endMins += 24 * 60;
-      if (s.date === getLocalDateString(new Date(liveNow.getTime() - 24*60*60*1000)) && endMins > 24 * 60) return true;
-      return false;
-    }).sort((a, b) => (a.start_time || '07:00').localeCompare(b.start_time || '07:00'));
-  }, [shifts, todayLocalStr, selectedSectorId, filterTurno, liveNow]);
+    tableDayShifts.sort((a, b) => (a.start_time || '07:00').localeCompare(b.start_time || '07:00'));
+    return { emAndamento, proximoRendimento, tableDayShifts };
+  }, [shifts, selectedSectorId, filterTurno, liveNow, professionalMap]);
 
   const eligibleProfessionalsForModal = useMemo(() => {
     const spec = (formData.target_specialty || '').toLowerCase().trim();
-    if (!spec) return professionals.filter(p => p.status === 'ativo');
-    const matching = professionals.filter(p => p.status === 'ativo' && (p.specialty || '').toLowerCase().includes(spec));
-    return matching.length > 0 ? matching : professionals.filter(p => p.status === 'ativo');
+    if (!spec) return (professionals || []).filter(p => p?.status === 'ativo');
+    const matching = (professionals || []).filter(p => p?.status === 'ativo' && (p.specialty || '').toLowerCase().includes(spec));
+    return matching.length > 0 ? matching : (professionals || []).filter(p => p?.status === 'ativo');
   }, [professionals, formData.target_specialty]);
 
   const filteredTrayProfs = useMemo(() => {
     const term = traySearch.toLowerCase().trim();
-    return professionals.filter(p => {
-      if (p.status !== 'ativo') return false;
+    return (professionals || []).filter(p => {
+      if (p?.status !== 'ativo') return false;
       if (traySpecialtyFilter !== 'todas' && (p.specialty || '').toLowerCase() !== traySpecialtyFilter.toLowerCase()) return false;
       if (!term) return true;
       return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowerCase().includes(term);
@@ -282,7 +293,6 @@ export default function Escalas() {
     if (!targetSector) { alert('Selecione ou cadastre um setor hospitalar.'); return; }
 
     const targetDates = selectedDays.includes(dateStr) && selectedDays.length > 1 ? selectedDays : [dateStr];
-
     if (!confirm(`Alocar ${prof?.name} para ${targetDates.length} dia(s)?`)) { setDraggingProfId(null); return; }
 
     try {
@@ -343,7 +353,6 @@ export default function Escalas() {
           }
         }
       }
-
       setGeneratorModalOpen(false); await syncGlobalData(); alert('Escala gerada com sucesso!');
     } catch (err) { alert(err.message); } finally { setSubmitting(false); }
   };
@@ -409,7 +418,6 @@ export default function Escalas() {
 
       const saved = await autoHealingSaveShift(editingShiftId, payload);
       if (saved?.id || editingShiftId) try { window.localStorage.setItem(`shift_spec_${saved?.id || editingShiftId}`, finalSpecialty); } catch {}
-
       setModalOpen(false); await syncGlobalData();
     } finally { setSubmitting(false); }
   };
@@ -444,7 +452,7 @@ export default function Escalas() {
               </SelectTrigger>
               <SelectContent className="bg-white dark:bg-slate-900">
                 <SelectItem value="todos" className="font-bold text-sky-600">🏥 Todos os Setores</SelectItem>
-                {sectors.map(s => <SelectItem key={s.id} value={String(s.id)} className="text-xs">{s.name}</SelectItem>)}
+                {(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)} className="text-xs">{s.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -452,7 +460,7 @@ export default function Escalas() {
 
         <div className="flex items-center gap-2">
           {isManager && (
-            <Button onClick={() => { setGeneratorConfig(prev => ({ ...prev, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || '') })); setGeneratorModalOpen(true); }} className="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-4 rounded-2xl shadow-md gap-1.5 shrink-0">
+            <Button onClick={() => { setGeneratorConfig(prev => ({ ...prev, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '') })); setGeneratorModalOpen(true); }} className="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-4 rounded-2xl shadow-md gap-1.5 shrink-0">
               <SlidersHorizontal className="w-4 h-4" /> Configurar & Gerar Escala
             </Button>
           )}
@@ -499,7 +507,7 @@ export default function Escalas() {
           </Button>
 
           {isManager && (
-            <Button onClick={() => { setEditingShiftId(null); setFormData({ date: getLocalDateString(), sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''), target_specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar', professional_id: '', notes: '' }); setModalOpen(true); }} className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-5 rounded-2xl gap-1.5">
+            <Button onClick={() => { setEditingShiftId(null); setFormData({ date: getLocalDateString(), sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || ''), target_specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar', professional_id: '', notes: '' }); setModalOpen(true); }} className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-5 rounded-2xl gap-1.5">
               <Plus className="w-4 h-4" /> Lançar Plantão
             </Button>
           )}
@@ -511,7 +519,7 @@ export default function Escalas() {
         <div className="p-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-3xl shadow-xl flex items-center justify-between gap-4 animate-in fade-in print:hidden">
           <div className="flex items-center gap-2.5 text-xs font-black"><MousePointerClick className="w-5 h-5 animate-pulse" /><span>{selectedDays.length} dias selecionados</span></div>
           <div className="flex items-center gap-2">
-            <Button size="sm" onClick={() => { setBatchData({ professional_id: professionals[0]?.id || '', sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''), shift_type: 'diurno', start_time: '07:00', end_time: '19:00' }); setBatchModalOpen(true); }} className="h-8 bg-white text-indigo-900 font-black text-xs rounded-xl"><UserPlus className="w-3.5 h-3.5 mr-1" /> Preencher Selecionados</Button>
+            <Button size="sm" onClick={() => { setBatchData({ professional_id: professionals[0]?.id || '', sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || ''), shift_type: 'diurno', start_time: '07:00', end_time: '19:00' }); setBatchModalOpen(true); }} className="h-8 bg-white text-indigo-900 font-black text-xs rounded-xl">Preencher Selecionados</Button>
             <button onClick={() => setSelectedDays([])} className="p-1 hover:bg-white/20 rounded-xl text-xs"><X className="w-4 h-4" /></button>
           </div>
         </div>
@@ -552,7 +560,7 @@ export default function Escalas() {
 
           <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
             <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-center py-2.5">
-              {WEEKDAYS.map(day => (<div key={day.short} className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400"><span className={day.weekend ? 'text-indigo-600 dark:text-indigo-400 font-black' : ''}>{day.short}</span></div>))}
+              {WEEKDAYS.map(day => (<div key={day.short} className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400"><span className={day.weekend ? 'text-indigo-600 font-black' : ''}>{day.short}</span></div>))}
             </div>
             
             <div className="grid grid-cols-7 divide-x divide-y divide-slate-200 dark:divide-slate-800">
@@ -578,9 +586,7 @@ export default function Escalas() {
                     <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date, sector_id: shift.sector_id, target_specialty: realSpec, start_time: shift.start_time, end_time: shift.end_time, shift_type: shift.shift_type || 'diurno', action_type: (shift.status === 'vago' || !prof) ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '' }); setModalOpen(true); } }} className={`p-1.5 rounded-xl border border-l-4 shadow-sm cursor-pointer transition-all hover:brightness-95 ${status.wrapper}`}>
                       <div className="flex justify-between font-mono text-[9px] mb-0.5 opacity-80">
                         <span>{shift.start_time}-{shift.end_time}</span>
-                        <span className={`font-black uppercase tracking-tight flex items-center gap-1 ${status.text}`}>
-                          {status.icon} {status.label}
-                        </span>
+                        <span className={`font-black uppercase tracking-tight flex items-center gap-1 ${status.text}`}>{status.icon} {status.label}</span>
                       </div>
                       <div className="font-black truncate leading-tight text-slate-900 dark:text-white">
                         {status.code === 'vaga' || status.code === 'perdida' ? `⚠️ ${status.label}` : formatFullName(prof?.name)}
@@ -616,14 +622,7 @@ export default function Escalas() {
                           {noite.map(renderCard)}
                         </div>
                       )}
-                      {dayShifts.length === 0 && (<div className="text-[10px] text-slate-400 italic text-center py-4">Sem plantões</div>)}
                     </div>
-
-                    {isManager && (
-                      <button type="button" onClick={(e) => { e.stopPropagation(); setEditingShiftId(null); setFormData({ date: dateStr, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''), target_specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar', professional_id: '', notes: '' }); setModalOpen(true); }} className="mt-1 w-full py-1 text-[10px] font-bold text-slate-400 hover:text-sky-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all text-center border border-dashed border-slate-200 dark:border-slate-800">
-                        + Adicionar Vaga
-                      </button>
-                    )}
                   </div>
                 );
               })}
@@ -662,10 +661,10 @@ export default function Escalas() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                  {todayShiftsForTable.length === 0 ? (
+                  {tvData.tableDayShifts.length === 0 ? (
                     <tr><td colSpan="5" className="py-8 text-center text-slate-400">Nenhum plantão registrado tocando o dia de hoje.</td></tr>
                   ) : (
-                    todayShiftsForTable.map(shift => {
+                    tvData.tableDayShifts.map(shift => {
                       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
                       const sector = sectorMap[String(shift.sector_id)];
                       const status = getStatusBadge(shift);
@@ -710,7 +709,7 @@ export default function Escalas() {
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span> Plantões em Andamento (No Posto Neste Momento)
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {tvShiftsDetailed.emAndamento.length === 0 ? <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 text-xs">Nenhum profissional em atendimento neste minuto.</div> : tvShiftsDetailed.emAndamento.map(shift => {
+              {tvData.emAndamento.length === 0 ? <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 text-xs">Nenhum profissional em atendimento neste minuto.</div> : tvData.emAndamento.map(shift => {
                 const prof = professionalMap[String(shift.professional_id)];
                 const sector = sectorMap[String(shift.sector_id)];
                 const realSpecialty = extractSpecialty(shift, prof);
@@ -730,7 +729,7 @@ export default function Escalas() {
               <ArrowRight className="w-3.5 h-3.5" /> Próxima Rendição (Nas próximas 2 horas)
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {tvShiftsDetailed.proximoRendimento.length === 0 ? <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 text-xs">Nenhuma troca de turno programada para as próximas 2 horas.</div> : tvShiftsDetailed.proximoRendimento.map(({ shift, startsIn, minutesLeft }) => {
+              {tvData.proximoRendimento.length === 0 ? <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 text-xs">Nenhuma troca de turno programada para as próximas 2 horas.</div> : tvData.proximoRendimento.map(({ shift, startsIn, minutesLeft }) => {
                 const prof = professionalMap[String(shift.professional_id)];
                 const sector = sectorMap[String(shift.sector_id)];
                 return (
@@ -803,10 +802,10 @@ export default function Escalas() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black">
-                  {todayShiftsForTable.length === 0 ? (
-                    <tr><td colSpan="6" className="p-4 text-center">Nenhum plantão cadastrado tocando o dia de hoje.</td></tr>
+                  {tvData.tableDayShifts.length === 0 ? (
+                    <tr><td colSpan="6" className="p-4 text-center">Nenhum plantão cadastrado para a data de hoje.</td></tr>
                   ) : (
-                    todayShiftsForTable.map((shift, idx) => {
+                    tvData.tableDayShifts.map((shift, idx) => {
                       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
                       const sector = sectorMap[String(shift.sector_id)];
                       const isVago = shift.status === 'vago' || !prof;
@@ -846,7 +845,7 @@ export default function Escalas() {
             
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1"><Label className="text-xs font-bold">Data *</Label><Input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800" /></div>
-              <div className="space-y-1"><Label className="text-xs font-bold">Setor / Seção *</Label><Select value={formData.sector_id} onValueChange={v => setFormData({ ...formData, sector_id: v })}><SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent className="bg-white dark:bg-slate-900">{sectors.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-1"><Label className="text-xs font-bold">Setor / Seção *</Label><Select value={formData.sector_id} onValueChange={v => setFormData({ ...formData, sector_id: v })}><SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent className="bg-white dark:bg-slate-900">{(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent></Select></div>
             </div>
             
             <div className="space-y-1">
@@ -896,15 +895,15 @@ export default function Escalas() {
         </DialogContent>
       </Dialog>
 
-      {/* GERADOR DE ESCALA */}
+      {/* GERADOR DE ESCALA (BOTÃO CORRIGIDO: handleAddSlot) */}
       <Dialog open={generatorModalOpen} onOpenChange={setGeneratorModalOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
-          <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2"><SlidersHorizontal className="w-5 h-5 text-indigo-600" /> Gerador de Escala do Setor</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2"><SlidersHorizontal className="w-5 h-5 text-indigo-600" /> Configurar & Gerar Escala do Setor</DialogTitle></DialogHeader>
           <form onSubmit={handleExecuteGenerator} className="space-y-4 py-2 text-xs">
             <div className="p-3.5 bg-slate-50 dark:bg-slate-950 rounded-2xl border space-y-3">
               <span className="text-xs font-black uppercase text-slate-500 block">1. Setor & Período</span>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1"><Label className="text-xs font-bold">Setor *</Label><Select value={generatorConfig.sector_id} onValueChange={v => setGeneratorConfig({ ...generatorConfig, sector_id: v })}><SelectTrigger className="h-9"><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent className="bg-white dark:bg-slate-900">{sectors.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1"><Label className="text-xs font-bold">Setor *</Label><Select value={generatorConfig.sector_id} onValueChange={v => setGeneratorConfig({ ...generatorConfig, sector_id: v })}><SelectTrigger className="h-9"><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent className="bg-white dark:bg-slate-900">{(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent></Select></div>
                 <div className="space-y-1"><Label className="text-xs font-bold">Início *</Label><Input type="date" value={generatorConfig.start_date} onChange={e => setGeneratorConfig({ ...generatorConfig, start_date: e.target.value })} className="h-9" /></div>
                 <div className="space-y-1"><Label className="text-xs font-bold">Dias</Label><Select value={String(generatorConfig.duration_days)} onValueChange={v => setGeneratorConfig({ ...generatorConfig, duration_days: parseInt(v) })}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger><SelectContent className="bg-white dark:bg-slate-900"><SelectItem value="7">7 Dias</SelectItem><SelectItem value="15">15 Dias</SelectItem><SelectItem value="30">30 Dias</SelectItem></SelectContent></Select></div>
               </div>
@@ -918,11 +917,10 @@ export default function Escalas() {
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                 {generatorConfig.slots.map(slot => (
                   <div key={slot.id} className="p-3 rounded-2xl bg-white dark:bg-slate-900 border grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
-                    <div className="sm:col-span-3 space-y-1"><Label className="text-[10px]">Especialidade</Label><Input value={slot.specialty} onChange={e => handleUpdateSlot(slot.id, 'specialty', e.target.value)} className="h-8 text-xs font-bold" list="specialties-datalist" /></div>
-                    <div className="sm:col-span-2 space-y-1"><Label className="text-[10px]">Turno</Label><Select value={slot.shift_type} onValueChange={v => handleUpdateSlot(slot.id, 'shift_type', v)}><SelectTrigger className="h-8"><SelectValue /></SelectTrigger><SelectContent className="bg-white dark:bg-slate-900"><SelectItem value="diurno">Diurno</SelectItem><SelectItem value="noturno">Noturno</SelectItem></SelectContent></Select></div>
+                    <div className="sm:col-span-4 space-y-1"><Label className="text-[10px]">Especialidade</Label><Input value={slot.specialty} onChange={e => handleUpdateSlot(slot.id, 'specialty', e.target.value)} className="h-8 text-xs font-bold" list="specialties-datalist" /></div>
                     <div className="sm:col-span-2 space-y-1"><Label className="text-[10px]">Entrada</Label><Input type="time" value={slot.start_time} onChange={e => handleUpdateSlot(slot.id, 'start_time', e.target.value)} className="h-8 text-xs" /></div>
                     <div className="sm:col-span-2 space-y-1"><Label className="text-[10px]">Saída</Label><Input type="time" value={slot.end_time} onChange={e => handleUpdateSlot(slot.id, 'end_time', e.target.value)} className="h-8 text-xs" /></div>
-                    <div className="sm:col-span-2 space-y-1"><Label className="text-[10px]">Qtd. Vagas</Label><Input type="number" min="1" value={slot.quantity} onChange={e => handleUpdateSlot(slot.id, 'quantity', parseInt(e.target.value) || 1)} className="h-8 text-xs" /></div>
+                    <div className="sm:col-span-3 space-y-1"><Label className="text-[10px]">Qtd. Vagas</Label><Input type="number" min="1" value={slot.quantity} onChange={e => handleUpdateSlot(slot.id, 'quantity', parseInt(e.target.value) || 1)} className="h-8 text-xs" /></div>
                     <div className="sm:col-span-1 flex justify-end"><Button type="button" variant="ghost" onClick={() => handleRemoveSlot(slot.id)} className="h-8 w-8 p-0 text-rose-500"><Trash2 className="w-4 h-4" /></Button></div>
                   </div>
                 ))}
