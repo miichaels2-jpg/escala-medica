@@ -25,9 +25,38 @@ export default function Login() {
 
     setLoading(true);
     try {
-      // Chamada de autenticação da sua API
-      const res = await base44.auth.login(email.trim(), password);
-      
+      const loginEmail = email.trim().toLowerCase();
+      let res;
+
+      try {
+        // Tenta logar normalmente
+        res = await base44.auth.login(loginEmail, password);
+      } catch (loginErr) {
+        // ROTINA DE AUTO-CRIAÇÃO DO ADMIN MASTER
+        // Se falhar e for o usuário admin padrão, o sistema auto-cadastra ele com permissão total
+        if (loginEmail === 'admin@admin.com' && password === '123456') {
+          try {
+            await base44.auth.register({
+              email: 'admin@admin.com',
+              password: '123456',
+              full_name: 'Administrador Master',
+              role: 'admin',
+              data: {
+                status: 'aprovado',
+                app_role: 'manager',
+                company_id: 'cmp_principal'
+              }
+            });
+            // Tenta logar novamente logo após a criação
+            res = await base44.auth.login('admin@admin.com', '123456');
+          } catch (createErr) {
+            throw new Error('Falha ao auto-criar a conta de Admin Master no banco de dados.');
+          }
+        } else {
+          throw loginErr; // Se não for o admin, repassa o erro de login incorreto
+        }
+      }
+
       if (!res || !res.user) {
         throw new Error('Credenciais inválidas. Verifique seu e-mail e senha.');
       }
@@ -35,18 +64,23 @@ export default function Login() {
       const status = res.user.data?.status || 'pendente';
       const role = res.user.role || 'user';
 
-      if (status === 'inativo') {
-        throw new Error('Sua conta foi inativada. Entre em contato com a administração.');
-      }
-      if (status === 'recusado') {
-        throw new Error('Seu cadastro foi recusado. Verifique com a coordenação médica.');
-      }
-      if (status === 'pendente' && role !== 'admin') {
-        navigate('/pending-approval'); // Crie esta rota simples depois para aviso de pendência
-        return;
+      // Administradores ignoram travas de status
+      if (role !== 'admin') {
+        if (status === 'inativo') {
+          throw new Error('Sua conta foi inativada. Entre em contato com a administração.');
+        }
+        if (status === 'recusado') {
+          throw new Error('Seu cadastro foi recusado. Verifique com a coordenação médica.');
+        }
+        if (status === 'pendente') {
+          // Se for pendente e não for admin, impede o acesso às escalas
+          navigate('/pending-approval'); 
+          return;
+        }
       }
 
-      navigate('/'); // Redireciona para o Dashboard (que fará a leitura limpa do contexto)
+      // Redireciona para o Dashboard / Tela Inicial
+      navigate('/'); 
     } catch (err) {
       setError(err.message || 'Falha ao conectar com o servidor. Tente novamente.');
     } finally {
