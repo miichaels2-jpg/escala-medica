@@ -58,7 +58,7 @@ export default function Faturamento() {
     return {};
   }
 
-  // CÁLCULO PROGRESSIVO: VALOR FIXO x PLANTÕES REALIZADOS
+  // CÁLCULO PROPORCIONAL PROGRESSIVO
   const reportData = useMemo(() => {
     const profsSummary = {};
 
@@ -68,15 +68,36 @@ export default function Faturamento() {
       const st = String(p.status || meta.status || 'ativo').toLowerCase();
       if (st === 'inativo' || st === 'recusado') return;
 
-      const remunType = meta.remuneration_type || p.remuneration_type || 'diaria';
+      const remunType = meta.remuneration_type || p.remuneration_type || 'mensal';
       
-      let baseVal = 0;
-      if (remunType === 'hora') {
-        baseVal = meta.hourly_rate !== undefined ? meta.hourly_rate : (p.hourly_rate ?? 120);
+      const salaryBase = p.monthly_salary !== undefined && p.monthly_salary !== null ? p.monthly_salary : (meta.monthly_salary ?? 5000);
+      const dailyRateInput = p.daily_rate !== undefined && p.daily_rate !== null ? p.daily_rate : (meta.daily_rate ?? 0);
+      const hourlyRateInput = p.hourly_rate !== undefined && p.hourly_rate !== null ? p.hourly_rate : (meta.hourly_rate ?? 0);
+
+      // Regra de divisão das modalidades:
+      let valorPorPlantao = 0;
+      let valorPorHora = 0;
+
+      if (remunType === 'mensal') {
+        // Salário fixo dividido por 20 dias úteis de plantão
+        valorPorPlantao = safeNumber(salaryBase) / 20;
+        valorPorHora = safeNumber(salaryBase) / 220;
       } else if (remunType === 'diaria') {
-        baseVal = meta.daily_rate !== undefined ? meta.daily_rate : (p.daily_rate ?? 1500);
+        // Diarista / Plantonista
+        if (dailyRateInput > 0) {
+          valorPorPlantao = safeNumber(dailyRateInput);
+        } else {
+          valorPorPlantao = safeNumber(salaryBase) / 20;
+        }
+        valorPorHora = valorPorPlantao / 12;
       } else {
-        baseVal = meta.monthly_salary !== undefined ? meta.monthly_salary : (p.monthly_salary ?? 5000);
+        // Horista
+        if (hourlyRateInput > 0) {
+          valorPorHora = safeNumber(hourlyRateInput);
+        } else {
+          valorPorHora = safeNumber(salaryBase) / 220;
+        }
+        valorPorPlantao = valorPorHora * 12;
       }
 
       const taxRate = p.coop_tax_rate ?? meta.coop_tax_rate ?? 0;
@@ -92,7 +113,9 @@ export default function Faturamento() {
         pixTipo,
         banco,
         remunType,
-        baseVal: safeNumber(baseVal),
+        salarioBaseContratual: safeNumber(salaryBase),
+        valorPorPlantao: safeNumber(valorPorPlantao),
+        valorPorHora: safeNumber(valorPorHora),
         taxRate: safeNumber(taxRate),
         plantõesRealizados: 0,
         horasRealizadas: 0,
@@ -137,17 +160,15 @@ export default function Faturamento() {
     return Object.values(profsSummary).map(item => {
       let valorBruto = 0;
 
+      // Se for mês futuro, inicia zerado para ir somando conforme os plantões forem realizados
       if (monthPrefix > todayStr.substring(0, 7)) {
-        // Mês futuro: vem zerado para preencher conforme os plantões ocorrerem
         valorBruto = 0;
       } else {
         if (item.remunType === 'hora') {
-          valorBruto = item.horasRealizadas * item.baseVal;
-        } else if (item.remunType === 'diaria') {
-          valorBruto = item.plantõesRealizados * item.baseVal;
+          valorBruto = item.horasRealizadas * item.valorPorHora;
         } else {
-          // Valor fixo cruzado pela quantidade de plantões cumpridos no mês
-          valorBruto = item.plantõesRealizados * item.baseVal;
+          // Diarista ou Mensalista proporcional: valor do plantão (salário/20) x plantões cumpridos
+          valorBruto = item.plantõesRealizados * item.valorPorPlantao;
         }
       }
 
@@ -204,9 +225,9 @@ export default function Faturamento() {
           <td style="border: 1px solid #111; padding: 6px 8px; font-weight: bold;">${item.prof.name}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace;">${item.matricula}</td>
           <td style="border: 1px solid #111; padding: 6px 8px;">${item.prof.specialty || 'Geral'}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-transform: uppercase;">${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Fixo x Plantão'}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.plantõesRealizados} pl (${item.horasRealizadas}h)</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-size: 9.5px;">${formaPagto}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; font-size: 9px;">${formatCurrency(item.salarioBaseContratual)} (${formatCurrency(item.valorPorPlantao)}/pl)</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.plantõesRealizados} plantões (${item.horasRealizadas}h)</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-size: 9px;">${formaPagto}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${formatCurrency(item.valorBruto)}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: right; font-weight: bold;">${formatCurrency(item.valorLiquido)}</td>
         </tr>
@@ -249,7 +270,7 @@ export default function Faturamento() {
               <th>Profissional</th>
               <th>Matrícula</th>
               <th>Especialidade</th>
-              <th>Regime</th>
+              <th>Base Contratual</th>
               <th style="text-align: center;">Plantões Realizados</th>
               <th>Dados p/ Pagamento</th>
               <th style="text-align: right;">Bruto Realizado</th>
@@ -287,7 +308,7 @@ export default function Faturamento() {
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = new Date().toLocaleDateString('pt-BR');
 
-    // Identificação precisa e limpa dos dados de pagamento
+    // Identificação dos dados de pagamento
     let dadosPagamentoHtml = '';
     if (item.chavePix && item.banco) {
       dadosPagamentoHtml = `
@@ -321,7 +342,7 @@ export default function Faturamento() {
         <div class="section">
           <div class="grid"><span>Profissional:</span> <span>${item.prof.name} (ID: ${item.matricula})</span></div>
           <div class="grid"><span>Documento / Especialidade:</span> <span>${item.prof.document || 'CRM'} • ${item.prof.specialty || 'Geral'}</span></div>
-          <div class="grid"><span>Regime / Valor Unitário:</span> <span>${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Fixo x Plantão'} (${formatCurrency(item.baseVal)})</span></div>
+          <div class="grid"><span>Base Contratual / Valor Diária:</span> <span>${formatCurrency(item.salarioBaseContratual)} (${formatCurrency(item.valorPorPlantao)}/plantão)</span></div>
           <div class="grid"><span>Produção Efetiva Realizada:</span> <span>${item.plantõesRealizados} plantões cumpridos (${item.horasRealizadas} horas)</span></div>
         </div>
 
@@ -412,9 +433,9 @@ export default function Faturamento() {
       `Competência: *${MONTH_NAMES[currentMonth]} / ${currentYear}*`,
       `Profissional: *${item.prof.name}* (ID: ${item.matricula})\n`,
       `📊 *Produção Realizada:*`,
+      `• Base Contratual: ${formatCurrency(item.salarioBaseContratual)} (${formatCurrency(item.valorPorPlantao)}/plantão)`,
       `• Plantões Efetivamente Cumpridos: ${item.plantõesRealizados}`,
-      `• Horas Computadas: ${item.horasRealizadas}h`,
-      `• Regime: ${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Fixo x Plantão'}\n`,
+      `• Horas Computadas: ${item.horasRealizadas}h\n`,
       `💰 *Valores Apurados:*`,
       `• Valor Bruto Realizado: ${formatCurrency(item.valorBruto)}`,
       `• Retenção/Impostos: ${formatCurrency(item.valorDesconto)}`,
@@ -496,7 +517,7 @@ export default function Faturamento() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
             <h3 className="text-base font-black text-slate-900 dark:text-white">Espelho de Conciliação e Fechamento Atual</h3>
-            <p className="text-xs text-slate-500">Valores somados conforme a execução diária dos plantões.</p>
+            <p className="text-xs text-slate-500">Valores somados conforme a execução diária dos plantões (Base / 20 por plantão).</p>
           </div>
 
           <div className="relative w-full sm:w-72">
@@ -515,7 +536,7 @@ export default function Faturamento() {
             <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 uppercase text-[10px] font-black border-b border-slate-200 dark:border-slate-800">
               <tr>
                 <th className="py-3 px-4">Profissional / Matrícula</th>
-                <th className="py-3 px-4">Regime Contratual</th>
+                <th className="py-3 px-4">Base Contratual</th>
                 <th className="py-3 px-4 text-center">Realizados (Plantões/h)</th>
                 <th className="py-3 px-4">Dados p/ Repasse</th>
                 <th className="py-3 px-4 text-right">Bruto Realizado</th>
@@ -548,10 +569,12 @@ export default function Faturamento() {
                       </td>
 
                       <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                          {item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Fixo x Plantão'}
+                        <span className="font-bold text-slate-900 dark:text-white">
+                          {formatCurrency(item.salarioBaseContratual)}
                         </span>
-                        <div className="text-[10px] text-slate-400 mt-0.5">{formatCurrency(item.baseVal)} base</div>
+                        <div className="text-[10px] text-slate-400 font-semibold">
+                          {formatCurrency(item.valorPorPlantao)} / plantão
+                        </div>
                       </td>
 
                       <td className="py-3 px-4 text-center">
@@ -576,7 +599,7 @@ export default function Faturamento() {
 
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          {/* 1. BOTÃO RECIBO */}
+                          {/* BOTÃO RECIBO */}
                           <Button 
                             size="sm" 
                             variant="outline" 
@@ -587,7 +610,7 @@ export default function Faturamento() {
                             <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Recibo
                           </Button>
 
-                          {/* 2. BOTÃO DETALHAR */}
+                          {/* BOTÃO DETALHAR */}
                           <Button 
                             size="sm" 
                             variant="outline" 
@@ -597,7 +620,7 @@ export default function Faturamento() {
                             <FileText className="w-3.5 h-3.5 text-sky-600" /> Detalhar
                           </Button>
 
-                          {/* 3. BOTÃO WHATSAPP */}
+                          {/* BOTÃO WHATSAPP */}
                           {item.prof.phone && (
                             <Button 
                               size="sm" 
