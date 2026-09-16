@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
-  CalendarDays, Plus, Search, ChevronLeft, ChevronRight, 
+  CalendarDays, Plus, Search, ChevronLeft, ChevronRight, ArrowRight, 
   Clock, Building2, Trash2, X, Minimize2, Sparkles, CheckCheck, Send, 
   MousePointerClick, HeartPulse, UserPlus, SlidersHorizontal,
   Flame, MonitorPlay, GripVertical, Printer, Sun, Moon,
@@ -31,6 +31,28 @@ function getLocalDateString(d = new Date()) {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+
+function parseShiftDateTime(shift, field) {
+  const date = shift?.date || getLocalDateString();
+  const time = shift?.[field] || (field === 'start_time' ? '07:00' : '19:00');
+  const [hours, minutes] = time.split(':').map(Number);
+  const result = new Date(`${date}T00:00:00`);
+  result.setHours(Number.isFinite(hours) ? hours : 0, Number.isFinite(minutes) ? minutes : 0, 0, 0);
+  return result;
+}
+
+function getShiftInterval(shift) {
+  const start = parseShiftDateTime(shift, 'start_time');
+  const end = parseShiftDateTime(shift, 'end_time');
+  if (end <= start) end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+function isShiftRunningNow(shift, now = new Date()) {
+  const { start, end } = getShiftInterval(shift);
+  return now >= start && now < end;
 }
 
 async function autoHealingSaveShift(id, initialPayload) {
@@ -154,26 +176,50 @@ export default function Escalas() {
   // Status Badge Logic
   const getStatusBadge = (shift) => {
     const isVago = shift.status === 'vago' || !shift.professional_id;
-    if (isVago) return { dot: 'bg-rose-500 animate-pulse', label: 'VAGA ABERTA', text: 'text-rose-600', wrapper: 'border-l-rose-500 bg-rose-50 dark:bg-rose-950/30', icon: <Flame className="w-3 h-3 text-rose-500" /> };
 
-    const [startH, startM] = (shift.start_time || '07:00').split(':').map(Number);
-    const [endH, endM] = (shift.end_time || '19:00').split(':').map(Number);
-    const startMin = startH * 60 + startM;
-    let endMin = endH * 60 + endM;
-    if (endMin <= startMin) endMin += 24 * 60;
-    
-    const nowHour = liveNow.getHours();
-    const nowMin = liveNow.getMinutes();
-    let nowTotalMin = nowHour * 60 + nowMin;
-    if (endMin > 24 * 60 && nowTotalMin < startMin) nowTotalMin += 24 * 60;
+    if (isVago) {
+      return {
+        code: 'vaga',
+        dot: 'bg-rose-500 animate-pulse',
+        label: 'VAGA ABERTA',
+        text: 'text-rose-600',
+        wrapper: 'border-l-rose-500 bg-rose-50 dark:bg-rose-950/30',
+        icon: <Flame className="w-3 h-3 text-rose-500" />
+      };
+    }
 
-    if (shift.date < todayLocalStr || (shift.date === todayLocalStr && nowTotalMin >= endMin)) {
-      return { dot: 'bg-slate-400', label: 'CONCLUÍDO', text: 'text-slate-500', wrapper: 'border-l-slate-300 bg-slate-100 dark:bg-slate-800/40 opacity-70 grayscale hover:grayscale-0', icon: <CheckCircle2 className="w-3 h-3 text-slate-400" /> };
+    const { start, end } = getShiftInterval(shift);
+
+    if (liveNow >= end) {
+      return {
+        code: 'concluido',
+        dot: 'bg-slate-400',
+        label: 'CONCLUÍDO',
+        text: 'text-slate-500',
+        wrapper: 'border-l-slate-300 bg-slate-100 dark:bg-slate-800/40 opacity-70 grayscale hover:grayscale-0',
+        icon: <CheckCircle2 className="w-3 h-3 text-slate-400" />
+      };
     }
-    if (shift.date === todayLocalStr && nowTotalMin >= startMin && nowTotalMin < endMin) {
-      return { dot: 'bg-emerald-500 animate-ping', label: 'AO VIVO', text: 'text-emerald-600 dark:text-emerald-400', wrapper: 'border-l-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 ring-1 ring-emerald-500/50', icon: <Radio className="w-3 h-3 text-emerald-500" /> };
+
+    if (liveNow >= start && liveNow < end) {
+      return {
+        code: 'ao_vivo',
+        dot: 'bg-emerald-500 animate-ping',
+        label: 'AO VIVO',
+        text: 'text-emerald-600 dark:text-emerald-400',
+        wrapper: 'border-l-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 ring-1 ring-emerald-500/50',
+        icon: <Radio className="w-3 h-3 text-emerald-500" />
+      };
     }
-    return { dot: 'bg-sky-500', label: 'PROGRAMADO', text: 'text-sky-600 dark:text-sky-400', wrapper: 'border-l-sky-400 bg-sky-50 dark:bg-sky-900/10', icon: <CalendarIcon className="w-3 h-3 text-sky-500" /> };
+
+    return {
+      code: 'programado',
+      dot: 'bg-sky-500',
+      label: 'PROGRAMADO',
+      text: 'text-sky-600 dark:text-sky-400',
+      wrapper: 'border-l-sky-400 bg-sky-50 dark:bg-sky-900/10',
+      icon: <CalendarIcon className="w-3 h-3 text-sky-500" />
+    };
   };
 
   const isShiftMatchingTurno = (shift, filter) => {
@@ -199,53 +245,61 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // Lista para o Plantão do Dia
+  // Lista para o Plantão do Dia — inclui plantão noturno iniciado ontem
   const todayShiftsForTable = useMemo(() => {
-    return shifts.filter(s => {
-      if (s.date !== todayLocalStr) return false;
-      if (selectedSectorId !== 'todos' && String(s.sector_id) !== String(selectedSectorId)) return false;
-      if (!isShiftMatchingTurno(s, filterTurno)) return false;
-      return true;
-    }).sort((a, b) => (a.start_time || '07:00').localeCompare(b.start_time || '07:00'));
-  }, [shifts, todayLocalStr, selectedSectorId, filterTurno]);
+    return shifts
+      .filter(s => {
+        const isToday = s.date === todayLocalStr;
+        const isOvernightFromYesterday =
+          s.date !== todayLocalStr &&
+          isShiftRunningNow(s, liveNow);
 
-  // Modo TV CCO
+        if (!isToday && !isOvernightFromYesterday) return false;
+        if (selectedSectorId !== 'todos' && String(s.sector_id) !== String(selectedSectorId)) return false;
+        if (!isShiftMatchingTurno(s, filterTurno)) return false;
+        return true;
+      })
+      .sort((a, b) => parseShiftDateTime(a, 'start_time') - parseShiftDateTime(b, 'start_time'));
+  }, [shifts, todayLocalStr, selectedSectorId, filterTurno, liveNow]);
+
+  // Modo TV CCO — considera corretamente plantões diurnos e noturnos
   const tvShiftsDetailed = useMemo(() => {
-    const nowHour = liveNow.getHours();
-    const nowMin = liveNow.getMinutes();
-    let nowTotalMin = nowHour * 60 + nowMin;
-
     const emAndamento = [];
     const proximoRendimento = [];
-    
+
     shifts.forEach(shift => {
       if (selectedSectorId !== 'todos' && String(shift.sector_id) !== String(selectedSectorId)) return;
-      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+      if (!isShiftMatchingTurno(shift, filterTurno)) return;
+
+      const prof = shift.professional_id
+        ? professionalMap[String(shift.professional_id)]
+        : null;
+
       if (shift.status === 'vago' || !prof) return;
 
-      const [startH, startM] = (shift.start_time || '07:00').split(':').map(Number);
-      const [endH, endM] = (shift.end_time || '19:00').split(':').map(Number);
-      const startMin = startH * 60 + startM;
-      let endMin = endH * 60 + endM;
-      if (endMin <= startMin) endMin += 24 * 60;
-      
-      let effectiveNow = nowTotalMin;
-      if (endMin > 24 * 60 && nowTotalMin < startMin) effectiveNow += 24 * 60;
+      const { start, end } = getShiftInterval(shift);
 
-      if (shift.date === todayLocalStr) {
-         if (effectiveNow >= startMin && effectiveNow < endMin) emAndamento.push(shift);
-      } else {
-         // Plantão de ontem que virou a madrugada
-         if (endMin > 24 * 60) {
-            const yesterdayDate = new Date(liveNow.getTime() - 24 * 60 * 60 * 1000);
-            if (shift.date === getLocalDateString(yesterdayDate)) {
-               if (nowTotalMin < (endMin - 24*60)) emAndamento.push(shift);
-            }
-         }
+      if (liveNow >= start && liveNow < end) {
+        emAndamento.push(shift);
+        return;
+      }
+
+      if (start > liveNow) {
+        const startsIn = Math.ceil((start.getTime() - liveNow.getTime()) / 60000);
+
+        if (startsIn <= 120) {
+          proximoRendimento.push({ shift, startsIn });
+        }
       }
     });
-    return { emAndamento, proximoRendimento: [] };
-  }, [shifts, todayLocalStr, selectedSectorId, filterTurno, liveNow, professionalMap]);
+
+    emAndamento.sort((a, b) => parseShiftDateTime(a, 'start_time') - parseShiftDateTime(b, 'start_time'));
+    proximoRendimento.sort(
+      (a, b) => parseShiftDateTime(a.shift, 'start_time') - parseShiftDateTime(b.shift, 'start_time')
+    );
+
+    return { emAndamento, proximoRendimento };
+  }, [shifts, selectedSectorId, filterTurno, liveNow, professionalMap]);
 
   const eligibleProfessionalsForModal = useMemo(() => {
     const spec = (formData.target_specialty || '').toLowerCase().trim();
@@ -658,7 +712,7 @@ export default function Escalas() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                   {todayShiftsForTable.length === 0 ? (
-                    <tr><td colSpan="5" className="py-8 text-center text-slate-400">Nenhum plantão registrado para hoje.</td></tr>
+                    <tr><td colSpan="5" className="py-8 text-center text-slate-400">Nenhum plantão registrado para hoje ou em andamento desde a madrugada.</td></tr>
                   ) : (
                     todayShiftsForTable.map(shift => {
                       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
@@ -763,10 +817,28 @@ export default function Escalas() {
             <style>{`
               @media print {
                 @page { size: A4 landscape; margin: 8mm; }
-                body * { visibility: hidden; }
-                #print-section, #print-section * { visibility: visible; }
-                #print-section { position: absolute; left: 0; top: 0; width: 100%; margin: 0; background: white; }
-                html, body { background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                body * { visibility: hidden !important; }
+                #print-section, #print-section * { visibility: visible !important; }
+                #print-section {
+                  position: absolute !important;
+                  inset: 0 !important;
+                  width: 100% !important;
+                  max-width: none !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  background: white !important;
+                  box-shadow: none !important;
+                  border: 0 !important;
+                  color: #000 !important;
+                }
+                #print-section table { page-break-inside: auto; }
+                #print-section thead { display: table-header-group; }
+                #print-section tr { break-inside: avoid; page-break-inside: avoid; }
+                html, body {
+                  background: white !important;
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                }
               }
             `}</style>
             
@@ -790,7 +862,7 @@ export default function Escalas() {
                 <thead className="print-header bg-slate-100 text-black uppercase text-[10px] font-black border-b-2 border-black">
                   <tr>
                     <th className="border border-black p-2 text-left w-1/5">Seção / Setor</th>
-                    <th className="border border-black p-2 text-left w-32">Horário</th>
+                    <th className="border border-black p-2 text-left w-32">Data / Horário</th>
                     <th className="border border-black p-2 text-left">Profissional Escalado</th>
                     <th className="border border-black p-2 text-left w-48">Especialidade / Atuação</th>
                     <th className="border border-black p-2 text-left w-32">Conselho</th>
@@ -799,7 +871,7 @@ export default function Escalas() {
                 </thead>
                 <tbody className="divide-y divide-black">
                   {todayShiftsForTable.length === 0 ? (
-                    <tr><td colSpan="6" className="p-4 text-center">Nenhum plantão cadastrado para a data de hoje.</td></tr>
+                    <tr><td colSpan="6" className="p-4 text-center">Nenhum plantão cadastrado para hoje ou em andamento desde a madrugada.</td></tr>
                   ) : (
                     todayShiftsForTable.map((shift, idx) => {
                       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
@@ -810,7 +882,7 @@ export default function Escalas() {
                       return (
                         <tr key={shift.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                           <td className="border border-black p-2 font-black text-black uppercase">{sector?.name || 'Setor'}</td>
-                          <td className="border border-black p-2 font-mono font-bold text-black">{shift.start_time} - {shift.end_time}</td>
+                          <td className="border border-black p-2 font-mono font-bold text-black">{shift.date !== todayLocalStr ? `${shift.date.split("-").reverse().join("/")} • ` : ""}{shift.start_time} - {shift.end_time}</td>
                           <td className="border border-black p-2 font-black text-black">{isVago ? <span className="font-black">⚠️ VAGA EM ABERTO</span> : `Dr(a). ${prof?.name}`}</td>
                           <td className="border border-black p-2 text-black font-semibold">{realSpecialty}</td>
                           <td className="border border-black p-2 font-mono text-black">{prof?.document || '—'}</td>
