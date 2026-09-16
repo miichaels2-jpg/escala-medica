@@ -10,8 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   CalendarDays, Plus, Search, Tv, ChevronLeft, ChevronRight, 
   Clock, Building2, User, AlertTriangle, CheckCircle2, 
-  Trash2, Edit3, X, Maximize2, Minimize2, Sparkles, 
-  Layers, CheckCheck, Send, MousePointerClick, HeartPulse, UserPlus
+  Trash2, Edit3, X, Minimize2, Sparkles, CheckCheck, Send, 
+  MousePointerClick, HeartPulse, UserPlus
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -21,7 +21,6 @@ const MONTH_NAMES = [
 
 const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
-// Salva plantões no banco removendo colunas inexistentes caso o schema divirja
 async function autoHealingSaveShift(id, initialPayload) {
   let payload = { ...initialPayload };
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -43,7 +42,6 @@ async function autoHealingSaveShift(id, initialPayload) {
   }
 }
 
-// Formata para exibição de Nome e Sobrenome legíveis
 function formatFullName(name) {
   if (!name) return 'Não Atribuído';
   const parts = name.trim().split(/\s+/);
@@ -56,7 +54,6 @@ export default function Escalas() {
     shifts, 
     sectors, 
     professionals, 
-    units, 
     selectedUnitId, 
     company, 
     isManager, 
@@ -65,20 +62,18 @@ export default function Escalas() {
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [selectedSectorId, setSelectedSectorId] = useState('todos');
-  const [filterTurno, setFilterTurno] = useState('todos'); // 'todos' | 'diurno' | 'noturno'
+  const [filterTurno, setFilterTurno] = useState('todos');
   const [tvMode, setTvMode] = useState(false);
-
-  // Status da Escala (Rascunho vs Publicada)
   const [scalePublished, setScalePublished] = useState(true);
 
-  // Seleção múltipla de dias com a tecla Ctrl
+  // Seleção múltipla de dias via Ctrl
   const [selectedDays, setSelectedDays] = useState([]);
 
-  // Busca na bandeja lateral de profissionais
+  // Roll lateral de profissionais
   const [traySearch, setTraySearch] = useState('');
   const [draggingProfId, setDraggingProfId] = useState(null);
 
-  // Modais de Criação / Edição
+  // Modais
   const [modalOpen, setModalOpen] = useState(false);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState(null);
@@ -101,7 +96,6 @@ export default function Escalas() {
     shift_type: 'diurno'
   });
 
-  // Navegação
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
 
@@ -109,7 +103,6 @@ export default function Escalas() {
   const handleNextMonth = () => setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
   const handleToday = () => setCurrentDate(new Date());
 
-  // Mapeamentos rápidos
   const sectorMap = useMemo(() => {
     const m = {};
     sectors.forEach(s => { m[String(s.id)] = s; });
@@ -122,7 +115,6 @@ export default function Escalas() {
     return m;
   }, [professionals]);
 
-  // Dias do mês
   const daysInMonth = useMemo(() => {
     const date = new Date(currentYear, currentMonth, 1);
     const days = [];
@@ -133,7 +125,6 @@ export default function Escalas() {
     return days;
   }, [currentYear, currentMonth]);
 
-  // Plantões do mês filtrados
   const monthlyShifts = useMemo(() => {
     const monthStr = String(currentMonth + 1).padStart(2, '0');
     const prefix = `${currentYear}-${monthStr}`;
@@ -146,7 +137,6 @@ export default function Escalas() {
     });
   }, [shifts, currentYear, currentMonth, selectedSectorId, filterTurno]);
 
-  // Agrupamento por dia
   const shiftsByDate = useMemo(() => {
     const map = {};
     monthlyShifts.forEach(s => {
@@ -156,7 +146,7 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // Classificação dos ciclos de vida dos plantões (Em Andamento, Concluídos, Programados, Mural)
+  // Contadores de ciclo de vida
   const shiftMetrics = useMemo(() => {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
@@ -197,7 +187,6 @@ export default function Escalas() {
     return { total, emAndamento, concluidos, programados, vagos, taxaCobertura };
   }, [monthlyShifts]);
 
-  // Controle de clique nos dias (com ou sem Ctrl)
   const handleDayClick = (dateStr, e) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
@@ -211,13 +200,11 @@ export default function Escalas() {
     }
   };
 
-  // Drag & Drop: Início
   const handleDragStart = (e, profId) => {
     setDraggingProfId(profId);
     e.dataTransfer.setData('text/plain', profId);
   };
 
-  // Drag & Drop: Soltar sobre um dia
   const handleDropOnDay = async (e, dateStr) => {
     e.preventDefault();
     const profId = e.dataTransfer.getData('text/plain') || draggingProfId;
@@ -231,14 +218,13 @@ export default function Escalas() {
       return;
     }
 
-    // Se houver múltiplos dias selecionados pelo Ctrl, aplica em todos
     const targetDates = selectedDays.includes(dateStr) && selectedDays.length > 1 
       ? selectedDays 
       : [dateStr];
 
     const confirmMsg = targetDates.length > 1
-      ? `Escalar ${prof?.name} para os ${targetDates.length} dias selecionados no turno Diurno?`
-      : `Escalar ${prof?.name} para o dia ${dateStr} no turno Diurno?`;
+      ? `Alocar ${prof?.name} em ${targetDates.length} dias selecionados?`
+      : `Alocar ${prof?.name} para o dia ${dateStr}?`;
 
     if (!confirm(confirmMsg)) return;
 
@@ -265,7 +251,6 @@ export default function Escalas() {
     }
   };
 
-  // Lançamento em Lote pelos dias selecionados
   const handleSaveBatch = async (e) => {
     e.preventDefault();
     if (!batchData.sector_id || !batchData.professional_id) {
@@ -299,7 +284,6 @@ export default function Escalas() {
     }
   };
 
-  // Salvar Plantão Individual
   const handleSaveShift = async (e) => {
     e.preventDefault();
     if (!formData.sector_id || !formData.date) {
@@ -332,7 +316,6 @@ export default function Escalas() {
     }
   };
 
-  // Enviar vaga descoberta para o Mural de Oportunidades
   const handleSendToMural = async (shift) => {
     if (!confirm('Disponibilizar este plantão no Mural de Vagas para a equipe se candidatar?')) return;
     try {
@@ -356,7 +339,6 @@ export default function Escalas() {
     }
   };
 
-  // Lista de profissionais para o Roll lateral
   const filteredTrayProfessionals = useMemo(() => {
     const term = traySearch.toLowerCase().trim();
     return professionals.filter(p => {
@@ -369,13 +351,10 @@ export default function Escalas() {
   return (
     <div className={`p-3 md:p-6 space-y-4 font-sans ${tvMode ? 'fixed inset-0 z-50 bg-slate-950 text-white overflow-y-auto p-6' : ''}`}>
       
-      {/* PAINEL DE CONTROLE, CICLOS DE VIDA & PUBLICAÇÃO */}
+      {/* PAINEL DE CONTROLE E CICLOS DE VIDA */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm space-y-4">
-        
-        {/* LINHA SUPERIOR */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           
-          {/* MÊS E NAVEGAÇÃO */}
           <div className="flex items-center gap-3">
             <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-1">
               <button onClick={handlePrevMonth} className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg">
@@ -403,7 +382,6 @@ export default function Escalas() {
             </div>
           </div>
 
-          {/* BOTÕES DE AÇÃO */}
           <div className="flex items-center gap-2 flex-wrap">
             {isManager && (
               <Button
@@ -414,7 +392,7 @@ export default function Escalas() {
                 }`}
               >
                 <Send className="w-3.5 h-3.5" />
-                {scalePublished ? 'Publicada (Despublicar)' : 'Publicar Escala'}
+                {scalePublished ? 'Publicada' : 'Publicar Escala'}
               </Button>
             )}
 
@@ -423,7 +401,7 @@ export default function Escalas() {
               onClick={() => setTvMode(!tvMode)}
               className="h-9 px-3 text-xs font-bold rounded-xl gap-1.5 border-slate-300 dark:border-slate-700"
             >
-              {tvMode ? <Minimize2 className="w-4 h-4 text-sky-500" /> : <Tv className="w-4 h-4 text-sky-500" />}
+              <Tv className="w-4 h-4 text-sky-500" />
               <span>{tvMode ? 'Sair da TV' : 'Modo TV CCO'}</span>
             </Button>
 
@@ -451,60 +429,45 @@ export default function Escalas() {
           </div>
         </div>
 
-        {/* INDICADORES DO CICLO DE VIDA (CORRENDO, CONCLUÍDOS, PROGRAMADOS, VAGOS) */}
+        {/* MÉTRICAS DE COBERTURA */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-          
           <div className="p-2.5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/60">
             <span className="text-[10px] font-black uppercase text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-              Em Andamento (Ao Vivo)
+              Em Andamento
             </span>
             <span className="text-xl font-black text-emerald-700 dark:text-emerald-400 block mt-1">
-              {shiftMetrics.emAndamento} <span className="text-xs font-semibold">plantões</span>
+              {shiftMetrics.emAndamento} <span className="text-xs font-semibold">vivos</span>
             </span>
           </div>
 
           <div className="p-2.5 rounded-2xl bg-sky-50/80 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/60">
-            <span className="text-[10px] font-black uppercase text-sky-800 dark:text-sky-300">
-              Programados (Futuros)
-            </span>
-            <span className="text-xl font-black text-sky-700 dark:text-sky-400 block mt-1">
-              {shiftMetrics.programados}
-            </span>
+            <span className="text-[10px] font-black uppercase text-sky-800 dark:text-sky-300">Programados</span>
+            <span className="text-xl font-black text-sky-700 dark:text-sky-400 block mt-1">{shiftMetrics.programados}</span>
           </div>
 
           <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-            <span className="text-[10px] font-black uppercase text-slate-500">
-              Concluídos (Passados)
-            </span>
-            <span className="text-xl font-black text-slate-700 dark:text-slate-300 block mt-1">
-              {shiftMetrics.concluidos}
-            </span>
+            <span className="text-[10px] font-black uppercase text-slate-500">Concluídos</span>
+            <span className="text-xl font-black text-slate-700 dark:text-slate-300 block mt-1">{shiftMetrics.concluidos}</span>
           </div>
 
           <div className="p-2.5 rounded-2xl bg-rose-50/80 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/60">
-            <span className="text-[10px] font-black uppercase text-rose-800 dark:text-rose-300">
-              Vagas no Mural
-            </span>
+            <span className="text-[10px] font-black uppercase text-rose-800 dark:text-rose-300">Vagas no Mural</span>
             <span className={`text-xl font-black block mt-1 ${shiftMetrics.vagos > 0 ? 'text-rose-600 animate-pulse' : 'text-slate-400'}`}>
-              {shiftMetrics.vagos} descobertos
+              {shiftMetrics.vagos} abertos
             </span>
           </div>
 
           <div className="p-2.5 rounded-2xl bg-slate-900 text-white dark:bg-slate-800 col-span-2 sm:col-span-1">
-            <span className="text-[10px] font-bold uppercase text-slate-400">
-              Taxa de Cobertura
-            </span>
-            <span className="text-xl font-black text-sky-400 block mt-1">
-              {shiftMetrics.taxaCobertura}%
-            </span>
+            <span className="text-[10px] font-bold uppercase text-slate-400">Cobertura Total</span>
+            <span className="text-xl font-black text-sky-400 block mt-1">{shiftMetrics.taxaCobertura}%</span>
           </div>
         </div>
       </div>
 
-      {/* BARRA FLUTUANTE DE DIAS SELECIONADOS VIA CTRL */}
+      {/* BARRA FLUTUANTE DE DIAS SELECIONADOS (CTRL) */}
       {selectedDays.length > 0 && (
-        <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-xl flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+        <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-xl flex items-center justify-between gap-4 animate-in fade-in">
           <div className="flex items-center gap-2 text-xs font-black">
             <MousePointerClick className="w-4 h-4" />
             <span>{selectedDays.length} dias selecionados com o atalho Ctrl</span>
@@ -523,42 +486,33 @@ export default function Escalas() {
               }}
               className="h-8 bg-white text-indigo-900 hover:bg-slate-100 text-xs font-black"
             >
-              <UserPlus className="w-3.5 h-3.5 mr-1" /> Preencher Dias Selecionados
+              <UserPlus className="w-3.5 h-3.5 mr-1" /> Preencher Selecionados
             </Button>
-            <button 
-              onClick={() => setSelectedDays([])}
-              className="p-1 hover:bg-indigo-700 rounded-lg text-xs"
-            >
+            <button onClick={() => setSelectedDays([])} className="p-1 hover:bg-indigo-700 rounded-lg text-xs">
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
       )}
 
-      {/* ÁREA CENTRAL: ROLL LATERAL DE PROFISSIONAIS + GRADE DE ESCALAS */}
+      {/* ÁREA PRINCIPAL: ROLL LATERAL + GRADE AMPLIADA */}
       <div className="flex flex-col lg:flex-row gap-4 items-start">
         
-        {/* BANDEJA / ROLL LATERAL DE PROFISSIONAIS (DRAG & DROP) */}
+        {/* BANDEJA LATERAL (ROLL COM DRAG & DROP) */}
         {!tvMode && (
           <aside className="w-full lg:w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                 <HeartPulse className="w-4 h-4 text-sky-600" />
-                Roll de Profissionais
+                Roll Profissionais
               </span>
-              <span className="text-[10px] font-bold text-slate-400">
-                Arraste p/ o dia
-              </span>
+              <span className="text-[10px] font-bold text-slate-400">Arraste para o dia</span>
             </div>
-
-            <p className="text-[11px] text-slate-500 leading-tight">
-              Arraste um profissional para qualquer dia do calendário para alocar o plantão. Segure <b>Ctrl</b> para marcar múltiplos dias.
-            </p>
 
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <Input
-                placeholder="Filtrar por nome..."
+                placeholder="Filtrar profissionais..."
                 value={traySearch}
                 onChange={e => setTraySearch(e.target.value)}
                 className="pl-8 h-8 text-xs bg-slate-50 dark:bg-slate-950"
@@ -586,10 +540,8 @@ export default function Escalas() {
           </aside>
         )}
 
-        {/* GRADE AMPLIADA DO CALENDÁRIO */}
+        {/* GRADE DO CALENDÁRIO COM CÉLULAS GRANDES */}
         <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
-          
-          {/* DIAS DA SEMANA (CABEÇALHO) */}
           <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-center py-3">
             {WEEKDAYS.map(day => (
               <div key={day} className="text-xs font-black text-slate-600 dark:text-slate-300 uppercase tracking-wider">
@@ -598,10 +550,7 @@ export default function Escalas() {
             ))}
           </div>
 
-          {/* CÉLULAS DOS DIAS (AMPLIADAS) */}
           <div className="grid grid-cols-7 divide-x divide-y divide-slate-100 dark:divide-slate-800/80">
-            
-            {/* Espaçamento do primeiro dia da semana */}
             {Array.from({ length: daysInMonth[0].getDay() }).map((_, idx) => (
               <div key={`empty-${idx}`} className="min-h-[160px] bg-slate-50/40 dark:bg-slate-950/30"></div>
             ))}
@@ -626,7 +575,6 @@ export default function Escalas() {
                       : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
                   }`}
                 >
-                  {/* TOPO DA CÉLULA */}
                   <div className="flex items-center justify-between mb-1.5">
                     <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${
                       isToday 
@@ -663,7 +611,7 @@ export default function Escalas() {
                     )}
                   </div>
 
-                  {/* PLANTÕES DO DIA (COM NOME E SOBRENOME EM DESTAQUE) */}
+                  {/* PLANTÕES DO DIA COM NOME COMPLETO */}
                   <div className="space-y-1.5 flex-1 overflow-y-auto max-h-[180px] pr-0.5">
                     {dayShifts.map(shift => {
                       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
@@ -708,12 +656,10 @@ export default function Escalas() {
                             </span>
                           </div>
 
-                          {/* NOME E SOBRENOME EM DESTAQUE NÍTIDO */}
                           <div className="font-black text-xs leading-tight truncate">
                             {isVago ? '⚠️ VAGA NO MURAL' : formatFullName(prof?.name)}
                           </div>
 
-                          {/* SUBTÍTULO DO PLANTÃO */}
                           <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 mt-1">
                             <span className="truncate font-semibold">{prof?.specialty || 'Geral'}</span>
                             {isVago && (
@@ -733,40 +679,32 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* MODAL: PREENCHIMENTO EM LOTE (ATALHO CTRL) */}
+      {/* MODAL LOTE (CTRL) */}
       <Dialog open={batchModalOpen} onOpenChange={setBatchModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-black flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-indigo-600" />
-              Preenchimento em Lote ({selectedDays.length} Dias Selecionados)
+              Preenchimento em Lote ({selectedDays.length} Dias)
             </DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleSaveBatch} className="space-y-3 py-2 text-xs">
             <div className="space-y-1">
               <Label className="text-xs font-bold">Profissional a Escalar *</Label>
-              <Select 
-                value={batchData.professional_id} 
-                onValueChange={v => setBatchData({ ...batchData, professional_id: v })}
-              >
+              <Select value={batchData.professional_id} onValueChange={v => setBatchData({ ...batchData, professional_id: v })}>
                 <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o profissional..." /></SelectTrigger>
                 <SelectContent>
                   {professionals.filter(p => p.status === 'ativo').map(p => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.name} ({p.specialty || 'Geral'})
-                    </SelectItem>
+                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs font-bold">Setor Hospitalar *</Label>
-              <Select 
-                value={batchData.sector_id} 
-                onValueChange={v => setBatchData({ ...batchData, sector_id: v })}
-              >
+              <Label className="text-xs font-bold">Setor *</Label>
+              <Select value={batchData.sector_id} onValueChange={v => setBatchData({ ...batchData, sector_id: v })}>
                 <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o setor..." /></SelectTrigger>
                 <SelectContent>
                   {sectors.map(s => (
@@ -777,11 +715,8 @@ export default function Escalas() {
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs font-bold">Turno dos Plantões *</Label>
-              <Select 
-                value={batchData.shift_type} 
-                onValueChange={v => setBatchData({ ...batchData, shift_type: v })}
-              >
+              <Label className="text-xs font-bold">Turno *</Label>
+              <Select value={batchData.shift_type} onValueChange={v => setBatchData({ ...batchData, shift_type: v })}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="diurno">Diurno (07:00 às 19:00)</SelectItem>
@@ -791,51 +726,40 @@ export default function Escalas() {
             </div>
 
             <DialogFooter className="pt-3 gap-2">
-              <Button type="button" variant="outline" onClick={() => setBatchModalOpen(false)} className="h-9 text-xs">
-                Cancelar
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setBatchModalOpen(false)} className="h-9 text-xs">Cancelar</Button>
               <Button type="submit" disabled={submitting} className="h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs px-5">
-                {submitting ? 'Escalando...' : `Confirmar para ${selectedDays.length} Dias`}
+                Confirmar p/ {selectedDays.length} Dias
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* MODAL: NOVO OU EDITAR PLANTÃO INDIVIDUAL */}
+      {/* MODAL INDIVIDUAL */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-black flex items-center gap-2">
               <CalendarDays className="w-5 h-5 text-sky-600" />
-              {editingShiftId ? 'Editar Plantão da Escala' : 'Lançar Novo Plantão'}
+              {editingShiftId ? 'Editar Plantão' : 'Lançar Plantão'}
             </DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleSaveShift} className="space-y-3 py-2 text-xs">
-            
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs font-bold">Data do Plantão *</Label>
-                <Input 
-                  type="date" 
-                  value={formData.date} 
-                  onChange={e => setFormData({ ...formData, date: e.target.value })} 
-                  className="h-9" 
-                />
+                <Label className="text-xs font-bold">Data *</Label>
+                <Input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} className="h-9" />
               </div>
 
               <div className="space-y-1">
                 <Label className="text-xs font-bold">Turno *</Label>
-                <Select 
-                  value={formData.shift_type} 
-                  onValueChange={v => setFormData({ 
-                    ...formData, 
-                    shift_type: v,
-                    start_time: v === 'diurno' ? '07:00' : '19:00',
-                    end_time: v === 'diurno' ? '19:00' : '07:00'
-                  })}
-                >
+                <Select value={formData.shift_type} onValueChange={v => setFormData({ 
+                  ...formData, 
+                  shift_type: v,
+                  start_time: v === 'diurno' ? '07:00' : '19:00',
+                  end_time: v === 'diurno' ? '19:00' : '07:00'
+                })}>
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="diurno">Diurno (07h às 19h)</SelectItem>
@@ -847,10 +771,7 @@ export default function Escalas() {
 
             <div className="space-y-1">
               <Label className="text-xs font-bold">Setor Hospitalar *</Label>
-              <Select 
-                value={formData.sector_id} 
-                onValueChange={v => setFormData({ ...formData, sector_id: v })}
-              >
+              <Select value={formData.sector_id} onValueChange={v => setFormData({ ...formData, sector_id: v })}>
                 <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o setor..." /></SelectTrigger>
                 <SelectContent>
                   {sectors.map(s => (
@@ -862,79 +783,46 @@ export default function Escalas() {
 
             <div className="space-y-1">
               <Label className="text-xs font-bold">Status do Plantão</Label>
-              <Select 
-                value={formData.status} 
-                onValueChange={v => setFormData({ 
-                  ...formData, 
-                  status: v, 
-                  professional_id: v === 'vago' ? '' : formData.professional_id 
-                })}
-              >
+              <Select value={formData.status} onValueChange={v => setFormData({ 
+                ...formData, 
+                status: v, 
+                professional_id: v === 'vago' ? '' : formData.professional_id 
+              })}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="confirmado">Confirmado (Profissional Alocado)</SelectItem>
-                  <SelectItem value="vago">Vaga Aberta (Disponível no Mural)</SelectItem>
+                  <SelectItem value="vago">Vaga Aberta (Mural de Vagas)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {formData.status !== 'vago' && (
               <div className="space-y-1">
-                <Label className="text-xs font-bold">Profissional Escalado</Label>
-                <Select 
-                  value={formData.professional_id} 
-                  onValueChange={v => setFormData({ ...formData, professional_id: v })}
-                >
+                <Label className="text-xs font-bold">Profissional</Label>
+                <Select value={formData.professional_id} onValueChange={v => setFormData({ ...formData, professional_id: v })}>
                   <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o profissional..." /></SelectTrigger>
                   <SelectContent>
                     {professionals.filter(p => p.status === 'ativo').map(p => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.name} ({p.specialty || 'Geral'})
-                      </SelectItem>
+                      <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             )}
 
-            <div className="space-y-1">
-              <Label className="text-xs font-bold">Observações</Label>
-              <Input 
-                value={formData.notes} 
-                onChange={e => setFormData({ ...formData, notes: e.target.value })} 
-                placeholder="Ex: Cobertura especial..." 
-                className="h-9" 
-              />
-            </div>
-
             <DialogFooter className="pt-3 flex-col sm:flex-row gap-2">
               {editingShiftId && (
                 <div className="flex items-center gap-2 mr-auto">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => handleSendToMural({ id: editingShiftId })}
-                    className="h-9 text-xs text-rose-600 border-rose-300 hover:bg-rose-50"
-                  >
-                    Disponibilizar no Mural
+                  <Button type="button" variant="outline" onClick={() => handleSendToMural({ id: editingShiftId })} className="h-9 text-xs text-rose-600 border-rose-300">
+                    Mandar p/ Mural
                   </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => handleDeleteShift(editingShiftId)}
-                    className="h-9 text-xs text-slate-400 hover:text-rose-500 px-2"
-                  >
+                  <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-9 text-xs text-slate-400 hover:text-rose-500 px-2">
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
               )}
-
-              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="h-9 text-xs">
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={submitting} className="h-9 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-5">
-                {submitting ? 'Salvando...' : 'Salvar Plantão'}
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="h-9 text-xs">Cancelar</Button>
+              <Button type="submit" disabled={submitting} className="h-9 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-5">Salvar</Button>
             </DialogFooter>
           </form>
         </DialogContent>
