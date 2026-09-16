@@ -22,7 +22,7 @@ export default function Register() {
     email: '',
     phone: '',
     documentNumber: '',
-    councilState: 'SP',
+    councilState: 'RJ',
     specialty: '',
     unitId: '',
     password: '',
@@ -38,7 +38,7 @@ export default function Register() {
           if (comp.units.length > 0) setFormData(prev => ({ ...prev, unitId: comp.units[0].id }));
         }
       } catch (e) {
-        console.warn('Sem unidades da empresa localizadas.');
+        console.warn('Unidades não carregadas:', e);
       }
     };
     fetchCompanyData();
@@ -64,13 +64,13 @@ export default function Register() {
     try {
       const loginEmail = formData.email.trim().toLowerCase();
       
-      // Verifica na tabela de Usuários (sem usar base44.auth)
-      const existing = await base44.entities.User.filter({ email: loginEmail });
+      // 1. Verifica se já existe usuário com esse e-mail
+      const existing = await base44.entities.User.filter({ email: loginEmail }).catch(() => []);
       if (existing && existing.length > 0) {
-        throw new Error('Este e-mail já está cadastrado.');
+        throw new Error('Este e-mail já está cadastrado. Volte ao login ou use outro.');
       }
 
-      // Cria na tabela User (sem auth.register que não existe)
+      // 2. Gravação na tabela User com status pendente
       const newUser = await base44.entities.User.create({
         email: loginEmail,
         username: loginEmail.split('@')[0],
@@ -79,39 +79,45 @@ export default function Register() {
         role: 'user', 
         data: {
           company_id: identifiedCompanyId,
-          selected_unit_id: formData.unitId,
+          selected_unit_id: formData.unitId || 'unit_h1',
           status: 'pendente',
           phone: formData.phone,
           document_cpf: formData.cpf,
         }
       });
 
+      // 3. Gravação na tabela Professional
       if (newUser && base44.entities.Professional?.create) {
         await base44.entities.Professional.create({
           user_id: newUser.id,
           company_id: identifiedCompanyId,
-          unit_id: formData.unitId,
+          unit_id: formData.unitId || 'unit_h1',
           name: formData.fullName.trim(),
           cpf: formData.cpf,
           email: loginEmail,
           phone: formData.phone,
           document: `${formData.documentNumber} - ${formData.councilState}`,
           specialty: formData.specialty,
-          status: 'pendente', 
+          status: 'pendente',
           remuneration_type: 'hora',
-          hourly_rate: 0
+          hourly_rate: 120
         });
 
-        if (base44.entities.Notification?.create) {
-          await base44.entities.Notification.create({
-            company_id: identifiedCompanyId,
-            unit_id: formData.unitId,
-            recipient_user_id: 'admin',
-            title: 'Novo Cadastro Médico',
-            message: `Dr(a). ${formData.fullName} solicitou acesso.`,
-            is_read: false,
-            created_date: new Date().toISOString()
-          });
+        // 4. Notificação opcional e blindada contra ausência da tabela no banco
+        try {
+          if (base44.entities.Notification?.create) {
+            await base44.entities.Notification.create({
+              company_id: identifiedCompanyId,
+              unit_id: formData.unitId || 'unit_h1',
+              recipient_user_id: 'admin',
+              title: 'Novo Cadastro Médico',
+              message: `Dr(a). ${formData.fullName} solicitou acesso.`,
+              is_read: false,
+              created_date: new Date().toISOString()
+            }).catch(() => {});
+          }
+        } catch {
+          // Ignora silenciosamente caso a tabela notifications não exista
         }
       }
 
@@ -130,10 +136,10 @@ export default function Register() {
           <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
           <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Cadastro Solicitado!</h2>
           <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-            Seus dados foram enviados para a coordenação. Você será avisado quando for aprovado.
+            Seus dados foram enviados para a coordenação. Seu acesso estará liberado assim que for homologado na aba <b>Aguardando Aprovação</b>.
           </p>
           <Button onClick={() => navigate('/login')} className="w-full h-11 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl">
-            Voltar para o Login
+            Ir para o Login
           </Button>
         </div>
       </div>
@@ -187,7 +193,7 @@ export default function Register() {
               <Select value={formData.councilState} onValueChange={(val) => setFormData({...formData, councilState: val})} disabled={loading}>
                 <SelectTrigger className="h-10 text-sm"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {['SP', 'RJ', 'MG', 'PR', 'SC', 'RS', 'BA', 'PE', 'CE'].map(uf => (
+                  {['RJ', 'SP', 'MG', 'ES', 'PR', 'SC', 'RS', 'BA', 'PE', 'CE', 'DF', 'GO'].map(uf => (
                     <SelectItem key={uf} value={uf}>{uf}</SelectItem>
                   ))}
                 </SelectContent>
@@ -196,7 +202,7 @@ export default function Register() {
 
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Especialidade Principal *</Label>
-              <Input name="specialty" value={formData.specialty} onChange={handleChange} placeholder="Ex: Clínica Médica" className="h-10 text-sm" disabled={loading} />
+              <Input name="specialty" value={formData.specialty} onChange={handleChange} placeholder="Ex: Clínica Médica, Pediatria" className="h-10 text-sm" disabled={loading} />
             </div>
 
             <div className="space-y-1.5">
@@ -209,7 +215,7 @@ export default function Register() {
               <Input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Mínimo 6 caracteres" className="h-10 text-sm" disabled={loading} />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Confirme a Senha *</Label>
               <Input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} placeholder="Repita a senha" className="h-10 text-sm" disabled={loading} />
             </div>
