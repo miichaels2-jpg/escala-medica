@@ -3,13 +3,9 @@ import { useAppData } from '@/lib/useAppData';
 import { base44 } from '@/api/base44Client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
   Repeat, Flame, Calendar, Clock, Building2, User, 
-  CheckCircle2, XCircle, ArrowRightLeft, Search, 
-  Check, UserCheck, AlertCircle, Sparkles
+  CheckCircle2, ArrowRightLeft, Search, Check, AlertCircle
 } from 'lucide-react';
 
 function formatFullName(name) {
@@ -25,62 +21,67 @@ export default function Trocas() {
     sectors, 
     professionals, 
     currentProfessional, 
-    company, 
-    selectedUnitId, 
     isManager, 
     syncGlobalData 
   } = useAppData();
 
-  const [activeTab, setActiveTab] = useState('mural'); // 'mural' (vagas abertas) | 'trocas' (solicitações)
-  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('mural');
   const [submitting, setSubmitting] = useState(false);
 
-  // Mapeamentos
   const sectorMap = useMemo(() => {
     const m = {};
     sectors.forEach(s => { m[String(s.id)] = s; });
     return m;
   }, [sectors]);
 
-  const professionalMap = useMemo(() => {
-    const m = {};
-    professionals.forEach(p => { m[String(p.id)] = p; });
-    return m;
-  }, [professionals]);
-
-  // Vagas Abertas no Mural (Plantões com status 'vago' ou sem profissional)
+  // Vagas Abertas no Mural com fuso horário local
   const openShifts = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    // Data de corte 2 dias atrás para não perder plantões recém-abertos em fuso diferente
+    const cutDate = new Date(now.getTime() - (48 * 60 * 60 * 1000)).toISOString().split('T')[0];
+
+    let localMuralIds = [];
+    try {
+      localMuralIds = JSON.parse(window.localStorage.getItem('scale_mural_ids') || '[]');
+    } catch {}
+
     return shifts.filter(s => {
-      const isVago = s.status === 'vago' || !s.professional_id;
+      const isVago = s.status === 'vago' || !s.professional_id || s.is_open === true || localMuralIds.includes(s.id);
       if (!isVago) return false;
-      if (s.date < todayStr) return false; // apenas plantões de hoje em diante
+      if (s.date && s.date < cutDate) return false;
       return true;
-    }).sort((a, b) => a.date.localeCompare(b.date));
+    }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }, [shifts]);
 
-  // Candidatar-se / Assumir Plantão do Mural
+  // Candidatar-se ou Assumir o Plantão
   const handleClaimShift = async (shift) => {
-    if (!currentProfessional && !isManager) {
-      alert('Você precisa estar vinculado a um profissional ativo para assumir este plantão.');
+    const targetProf = currentProfessional || professionals.find(p => p.status === 'ativo') || professionals[0];
+
+    if (!targetProf?.id) {
+      alert('Não foi possível identificar o profissional logado para assumir o plantão.');
       return;
     }
 
-    const assignedProfId = currentProfessional?.id || professionals[0]?.id;
-    const assignedProfName = currentProfessional?.name || professionals[0]?.name;
-
-    if (!confirm(`Deseja assumir o plantão do dia ${shift.date} (${shift.shift_type === 'diurno' ? 'Diurno 07h-19h' : 'Noturno 19h-07h'}) em nome de ${assignedProfName}?`)) {
+    if (!confirm(`Deseja assumir o plantão do dia ${shift.date} (${shift.shift_type === 'diurno' ? 'Diurno 07h-19h' : 'Noturno 19h-07h'}) em nome de ${targetProf.name}?`)) {
       return;
     }
 
     setSubmitting(true);
     try {
       await base44.entities.Shift.update(shift.id, {
-        professional_id: assignedProfId,
+        professional_id: targetProf.id,
         status: 'confirmado'
       });
+
+      // Remove do cache de mural
+      try {
+        const muralArr = JSON.parse(window.localStorage.getItem('scale_mural_ids') || '[]');
+        const updated = muralArr.filter(id => id !== shift.id);
+        window.localStorage.setItem('scale_mural_ids', JSON.stringify(updated));
+      } catch {}
+
       await syncGlobalData();
-      alert('Plantão assumido com sucesso! Ele já consta na sua escala.');
+      alert(`Parabéns, Dr(a). ${targetProf.name}! Você assumiu este plantão com sucesso. Ele já consta na sua escala.`);
     } catch (err) {
       alert('Erro ao assumir plantão: ' + err.message);
     } finally {
@@ -95,11 +96,11 @@ export default function Trocas() {
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-400">
-            <Flame className="w-4 h-4" /> Oportunidades & Cobertura
+            <Flame className="w-4 h-4" /> Mural de Oportunidades & Cobertura
           </div>
-          <h2 className="mt-1 text-2xl sm:text-3xl font-black">Mural de Vagas & Trocas</h2>
+          <h2 className="mt-1 text-2xl sm:text-3xl font-black">Mural de Vagas Abertas</h2>
           <p className="text-xs text-slate-300">
-            Plantões descobertos disponíveis para candidatura imediata e fluxo de trocas entre profissionais.
+            Plantões descobertos disponíveis para candidatura imediata por médicos e plantonistas.
           </p>
         </div>
 
@@ -123,19 +124,19 @@ export default function Trocas() {
             }`}
           >
             <Flame className="w-3.5 h-3.5" />
-            <span>Mural de Vagas Abertas</span>
+            <span>Mural de Vagas</span>
             <span className="text-[10px] opacity-80">({openShifts.length})</span>
           </button>
         </div>
       </div>
 
-      {/* CARDS DO MURAL DE VAGAS */}
+      {/* CARDS DO MURAL */}
       {openShifts.length === 0 ? (
         <Card className="p-16 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-2">
           <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
-          <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">Escala 100% Coberta</h3>
+          <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">Escala 100% Preenchida</h3>
           <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            Não há plantões vagos no momento. Qualquer vaga enviada para o mural na grade de escalas aparecerá aqui imediatamente.
+            Não há vagas abertas no momento. Novos plantões marcados como "Vago" ou enviados para o mural aparecerão aqui.
           </p>
         </Card>
       ) : (
@@ -150,8 +151,6 @@ export default function Trocas() {
                 className="p-5 rounded-3xl border-2 border-amber-300 dark:border-amber-900/60 bg-amber-50/20 dark:bg-amber-950/10 flex flex-col justify-between space-y-4 shadow-sm hover:shadow-md transition-all"
               >
                 <div className="space-y-3">
-                  
-                  {/* CABEÇALHO */}
                   <div className="flex items-start justify-between gap-2 border-b border-amber-200/60 dark:border-amber-900/40 pb-3">
                     <div>
                       <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
@@ -167,7 +166,6 @@ export default function Trocas() {
                     </span>
                   </div>
 
-                  {/* INFORMAÇÕES */}
                   <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
                     <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200">
                       <Calendar className="w-4 h-4 text-sky-600" />
@@ -187,7 +185,6 @@ export default function Trocas() {
                   </div>
                 </div>
 
-                {/* BOTÃO ASSUMIR PLANTÃO */}
                 <div className="pt-3 border-t border-amber-200/60 dark:border-amber-900/40">
                   <Button
                     onClick={() => handleClaimShift(shift)}
