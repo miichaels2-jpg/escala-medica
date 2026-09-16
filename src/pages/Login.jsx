@@ -8,7 +8,7 @@ import { Activity, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -18,14 +18,18 @@ export default function Login() {
     e.preventDefault();
     setError('');
     
-    if (!email || !password) {
-      setError('Preencha e-mail e senha para continuar.');
+    if (!loginId || !password) {
+      setError('Preencha o usuário e a senha para continuar.');
       return;
     }
 
     setLoading(true);
     try {
-      const loginEmail = email.trim().toLowerCase();
+      const rawInput = loginId.trim().toLowerCase();
+      
+      // Mapeamento automático: permite digitar apenas "admin" para logar
+      const loginEmail = rawInput === 'admin' ? 'admin@admin.com' : rawInput;
+
       let res;
 
       try {
@@ -33,7 +37,6 @@ export default function Login() {
         res = await base44.auth.login(loginEmail, password);
       } catch (loginErr) {
         // ROTINA DE AUTO-CRIAÇÃO DO ADMIN MASTER
-        // Se falhar e for o usuário admin padrão, o sistema auto-cadastra ele com permissão total
         if (loginEmail === 'admin@admin.com' && password === '123456') {
           try {
             await base44.auth.register({
@@ -53,12 +56,12 @@ export default function Login() {
             throw new Error('Falha ao auto-criar a conta de Admin Master no banco de dados.');
           }
         } else {
-          throw loginErr; // Se não for o admin, repassa o erro de login incorreto
+          throw loginErr; // Repassa o erro se não for o admin
         }
       }
 
       if (!res || !res.user) {
-        throw new Error('Credenciais inválidas. Verifique seu e-mail e senha.');
+        throw new Error('Credenciais inválidas. Verifique seu usuário e senha.');
       }
 
       const status = res.user.data?.status || 'pendente';
@@ -73,7 +76,6 @@ export default function Login() {
           throw new Error('Seu cadastro foi recusado. Verifique com a coordenação médica.');
         }
         if (status === 'pendente') {
-          // Se for pendente e não for admin, impede o acesso às escalas
           navigate('/pending-approval'); 
           return;
         }
@@ -108,12 +110,12 @@ export default function Login() {
 
         <form onSubmit={handleLogin} className="space-y-5">
           <div className="space-y-2">
-            <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">E-mail Corporativo ou Usuário</Label>
+            <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Usuário ou E-mail</Label>
             <Input 
               type="text" 
-              placeholder="exemplo@hospital.com.br"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Ex: admin ou medico@hospital.com"
+              value={loginId}
+              onChange={(e) => setLoginId(e.target.value)}
               className="h-11 bg-slate-50 dark:bg-slate-950"
               disabled={loading}
             />
