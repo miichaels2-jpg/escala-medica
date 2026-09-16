@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
   Flame, Calendar, Clock, Building2, User, 
-  CheckCircle2, Check, AlertCircle, ShieldAlert, Trash2, Repeat, ArrowRightLeft
+  CheckCircle2, Check, AlertCircle, ShieldAlert, Trash2, Repeat, ArrowRightLeft, Stethoscope
 } from 'lucide-react';
 
 function formatFullName(name) {
@@ -13,6 +13,21 @@ function formatFullName(name) {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0];
   return `${parts[0]} ${parts[parts.length - 1]}`;
+}
+
+function extractSpecialty(shift, prof) {
+  if (shift.target_specialty && shift.target_specialty.trim() && shift.target_specialty.toLowerCase() !== 'geral') {
+    return shift.target_specialty.trim();
+  }
+  if (shift.notes) {
+    const match = shift.notes.match(/\[ESP:([^\]]+)\]/i);
+    if (match && match[1]) return match[1].trim();
+  }
+  try {
+    const cached = window.localStorage.getItem(`shift_spec_${shift.id}`);
+    if (cached) return cached;
+  } catch {}
+  return prof?.specialty || shift.target_specialty || 'Clínica Médica';
 }
 
 export default function Trocas() {
@@ -26,6 +41,7 @@ export default function Trocas() {
   } = useAppData();
 
   const [activeTab, setActiveTab] = useState('vagas'); // 'vagas' | 'trocas'
+  const [selectedSpecialtyFilter, setSelectedSpecialtyFilter] = useState('todas');
   const [submitting, setSubmitting] = useState(false);
 
   const sectorMap = useMemo(() => {
@@ -34,10 +50,15 @@ export default function Trocas() {
     return m;
   }, [sectors]);
 
-  const userCategory = currentProfessional?.category || (currentProfessional?.specialty?.toLowerCase().includes('enferm') ? 'enfermeiro' : 'medico');
-  const userSpecialty = (currentProfessional?.specialty || '').toLowerCase();
+  const professionalMap = useMemo(() => {
+    const m = {};
+    professionals.forEach(p => { m[String(p.id)] = p; });
+    return m;
+  }, [professionals]);
 
-  // VAGAS ABERTAS NO MURAL (Sem cancelados e isoladas por área de atuação)
+  const userCategory = currentProfessional?.category || (currentProfessional?.specialty?.toLowerCase().includes('enferm') ? 'enfermeiro' : 'medico');
+
+  // VAGAS ABERTAS NO MURAL (Totalmente isoladas de cancelados)
   const openShifts = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
 
@@ -52,17 +73,41 @@ export default function Trocas() {
       if (!isMuralVaga || s.professional_id) return false;
       if (s.date && s.date < todayStr) return false;
 
-      // Se não for gestor geral, só visualiza vagas da mesma área/especialidade
+      // Isolamento: Médico só vê médico, enfermagem só vê enfermagem
       if (!isManager) {
-        const requiredCat = s.target_category || 'medico';
-        if (requiredCat !== userCategory) return false;
+        const spec = extractSpecialty(s, null).toLowerCase();
+        const profSpec = (currentProfessional?.specialty || '').toLowerCase();
+        const profCat = (currentProfessional?.category || 'medico').toLowerCase();
+
+        // Se for enfermagem
+        if (profCat.includes('enferm') && !spec.includes('enferm')) return false;
+        // Se for médico e o plantão for de enfermagem
+        if (!profCat.includes('enferm') && spec.includes('enferm')) return false;
+      }
+
+      // Filtro de aba por Especialidade
+      if (selectedSpecialtyFilter !== 'todas') {
+        const spec = extractSpecialty(s, null);
+        if (spec.toLowerCase() !== selectedSpecialtyFilter.toLowerCase()) return false;
       }
 
       return true;
     }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  }, [shifts, isManager, userCategory]);
+  }, [shifts, isManager, userCategory, selectedSpecialtyFilter, currentProfessional]);
 
-  // Plantões do próprio usuário para solicitar troca direta
+  // Lista única de especialidades presentes nas vagas do mural
+  const availableSpecialtiesInMural = useMemo(() => {
+    const set = new Set();
+    shifts.forEach(s => {
+      if (s.status === 'vago' && !s.professional_id) {
+        const spec = extractSpecialty(s, null);
+        if (spec) set.add(spec);
+      }
+    });
+    return Array.from(set).sort();
+  }, [shifts]);
+
+  // Plantões do próprio usuário para solicitar troca
   const myUpcomingShifts = useMemo(() => {
     if (!currentProfessional?.id) return [];
     const todayStr = new Date().toISOString().split('T')[0];
@@ -101,7 +146,7 @@ export default function Trocas() {
     }
   };
 
-  // Solicitar que um plantão meu vá para troca
+  // Disponibilizar meu plantão para troca
   const handleOfferMyShiftForSwap = async (shift) => {
     if (!confirm('Deseja disponibilizar este seu plantão para troca com colegas ou enviá-lo ao Mural?')) return;
 
@@ -157,32 +202,66 @@ export default function Trocas() {
       </div>
 
       {/* ABAS DA TELA: 1. VAGAS ABERTAS | 2. MINHAS TROCAS */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
-        <button
-          onClick={() => setActiveTab('vagas')}
-          className={`px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-2 ${
-            activeTab === 'vagas'
-              ? 'bg-amber-600 text-white shadow-md'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
-        >
-          <Flame className="w-4 h-4" />
-          <span>Vagas em Aberto no Mural</span>
-          <span className="text-[10px] opacity-80">({openShifts.length})</span>
-        </button>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div className="flex items-center gap-2 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('vagas')}
+            className={`px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'vagas'
+                ? 'bg-amber-600 text-white shadow-md'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
+          >
+            <Flame className="w-4 h-4" />
+            <span>Vagas em Aberto no Mural</span>
+            <span className="text-[10px] opacity-80">({openShifts.length})</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('trocas')}
-          className={`px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-2 ${
-            activeTab === 'trocas'
-              ? 'bg-sky-600 text-white shadow-md'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
-        >
-          <ArrowRightLeft className="w-4 h-4" />
-          <span>Disponibilizar Plantão Meu para Troca</span>
-          <span className="text-[10px] opacity-80">({myUpcomingShifts.length})</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('trocas')}
+            className={`px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+              activeTab === 'trocas'
+                ? 'bg-sky-600 text-white shadow-md'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+            }`}
+          >
+            <ArrowRightLeft className="w-4 h-4" />
+            <span>Disponibilizar Plantão Meu para Troca</span>
+            <span className="text-[10px] opacity-80">({myUpcomingShifts.length})</span>
+          </button>
+        </div>
+
+        {/* FILTROS POR ESPECIALIDADE SEPARADA */}
+        {activeTab === 'vagas' && availableSpecialtiesInMural.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto shrink-0">
+            <span className="text-[10px] font-black uppercase text-slate-400 mr-1 flex items-center gap-1">
+              <Filter className="w-3 h-3" /> Especialidade:
+            </span>
+            <button
+              onClick={() => setSelectedSpecialtyFilter('todas')}
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all ${
+                selectedSpecialtyFilter === 'todas'
+                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900'
+                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+              }`}
+            >
+              Todas
+            </button>
+            {availableSpecialtiesInMural.map(spec => (
+              <button
+                key={spec}
+                onClick={() => setSelectedSpecialtyFilter(spec)}
+                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                  selectedSpecialtyFilter === spec
+                    ? 'bg-amber-600 text-white shadow-sm'
+                    : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300'
+                }`}
+              >
+                {spec}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ABA 1: VAGAS EM ABERTO NO MURAL */}
@@ -193,13 +272,14 @@ export default function Trocas() {
               <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
               <h3 className="font-black text-slate-900 dark:text-white text-base">Nenhuma vaga aberta no momento</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-                Todos os plantões da sua área estão preenchidos. Quando o coordenador lançar uma vaga no mural, você receberá um alerta no sininho.
+                Não há vagas disponíveis para a especialidade selecionada. Quando uma vaga for publicada, você receberá um alerta no sininho.
               </p>
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {openShifts.map(shift => {
                 const sector = sectorMap[String(shift.sector_id)];
+                const realSpecialty = extractSpecialty(shift, null);
 
                 return (
                   <Card 
@@ -210,7 +290,7 @@ export default function Trocas() {
                       <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
                         <div>
                           <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-500/30">
-                            Vaga em Aberto
+                            Vaga: {realSpecialty}
                           </span>
                           <h3 className="font-black text-base text-slate-900 dark:text-white mt-2">
                             {sector?.name || 'Setor Hospitalar'}
@@ -228,16 +308,14 @@ export default function Trocas() {
                           <span>Data: {new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</span>
                         </div>
 
-                        {shift.target_specialty && (
-                          <div className="flex items-center gap-2 text-slate-500">
-                            <Stethoscope className="w-4 h-4" />
-                            <span>Atuação: <b>{shift.target_specialty}</b></span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2 text-slate-500">
+                          <Stethoscope className="w-4 h-4" />
+                          <span>Especialidade Exigida: <b>{realSpecialty}</b></span>
+                        </div>
 
-                        {shift.notes && (
+                        {shift.notes && !shift.notes.startsWith('[ESP:') && (
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 italic mt-2 bg-slate-50 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
-                            "{shift.notes}"
+                            "{shift.notes.replace(/\[ESP:[^\]]+\]/g, '').trim()}"
                           </p>
                         )}
                       </div>

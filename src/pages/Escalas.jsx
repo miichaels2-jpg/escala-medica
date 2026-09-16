@@ -13,7 +13,7 @@ import {
   Trash2, Edit3, X, Minimize2, Sparkles, CheckCheck, Send, 
   MousePointerClick, HeartPulse, UserPlus, Layers, SlidersHorizontal,
   Flame, Radio, ArrowRight, ShieldAlert, MonitorPlay, GripVertical, 
-  Printer, Sun, Moon, Stethoscope
+  Printer, Sun, Moon, Stethoscope, Filter
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -66,6 +66,22 @@ function getInitials(name) {
   return (p[0][0] + p[p.length - 1][0]).toUpperCase();
 }
 
+// Recupera a especialidade real salva sem permitir que caia para 'Geral'
+function extractSpecialty(shift, prof) {
+  if (shift.target_specialty && shift.target_specialty.trim() && shift.target_specialty.toLowerCase() !== 'geral') {
+    return shift.target_specialty.trim();
+  }
+  if (shift.notes) {
+    const match = shift.notes.match(/\[ESP:([^\]]+)\]/i);
+    if (match && match[1]) return match[1].trim();
+  }
+  try {
+    const cached = window.localStorage.getItem(`shift_spec_${shift.id}`);
+    if (cached) return cached;
+  } catch {}
+  return prof?.specialty || shift.target_specialty || 'Clínica Médica';
+}
+
 export default function Escalas() {
   const { 
     shifts, 
@@ -81,13 +97,33 @@ export default function Escalas() {
   const [activeTab, setActiveTab] = useState('mensal'); // 'mensal' | 'dia' | 'tv'
   const [selectedSectorId, setSelectedSectorId] = useState('todos');
   const [filterTurno, setFilterTurno] = useState('todos'); // 'todos' | 'diurno' | 'noturno'
-  const [scalePublished, setScalePublished] = useState(true);
 
-  // Multi-seleção de dias via CTRL
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth();
+
+  // Status de publicação persistente por mês
+  const publishStorageKey = `scale_pub_${currentYear}_${currentMonth + 1}_${selectedUnitId}`;
+  const [scalePublished, setScalePublished] = useState(() => {
+    try {
+      return window.localStorage.getItem(publishStorageKey) === 'true';
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      const isPub = window.localStorage.getItem(publishStorageKey) === 'true';
+      setScalePublished(isPub);
+    } catch {}
+  }, [publishStorageKey]);
+
+  // Multi-seleção com CTRL
   const [selectedDays, setSelectedDays] = useState([]);
 
   // Roll de profissionais (Drag & Drop)
   const [traySearch, setTraySearch] = useState('');
+  const [traySpecialtyFilter, setTraySpecialtyFilter] = useState('todas');
   const [draggingProfId, setDraggingProfId] = useState(null);
 
   // Relógio ao vivo
@@ -105,6 +141,15 @@ export default function Escalas() {
   const [editingShiftId, setEditingShiftId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Especialidades dinâmicas registradas no Corpo Clínico
+  const registeredSpecialties = useMemo(() => {
+    const set = new Set();
+    professionals.forEach(p => {
+      if (p.specialty && p.specialty.trim()) set.add(p.specialty.trim());
+    });
+    return Array.from(set).sort();
+  }, [professionals]);
+
   // Formulário do Plantão Individual
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -118,21 +163,11 @@ export default function Escalas() {
     notes: ''
   });
 
-  // Especialidades cadastradas puxadas dinamicamente do Corpo Clínico
-  const registeredSpecialties = useMemo(() => {
-    const set = new Set();
-    professionals.forEach(p => {
-      if (p.specialty && p.specialty.trim()) set.add(p.specialty.trim());
-    });
-    return Array.from(set).sort();
-  }, [professionals]);
-
-  // CONFIGURADOR TOTALMENTE DINÂMICO DE VAGAS COM O BOTÃO "+"
+  // Configurador de Escala Dinâmico com botão "+"
   const [generatorConfig, setGeneratorConfig] = useState({
     sector_id: '',
     start_date: new Date().toISOString().split('T')[0],
     duration_days: 30,
-    // Linhas flexíveis adicionadas livremente pelo gestor
     slots: [
       { id: 'slot_1', specialty: 'Clínica Médica', start_time: '07:00', end_time: '19:00', quantity: 2, shift_type: 'diurno' },
       { id: 'slot_2', specialty: 'Enfermagem Geral', start_time: '07:00', end_time: '19:00', quantity: 4, shift_type: 'diurno' },
@@ -140,11 +175,10 @@ export default function Escalas() {
     ]
   });
 
-  // Funções do Configurador Dinâmico
-  const handleAddSlotToGenerator = () => {
+  const handleAddSlot = () => {
     const newSlot = {
       id: `slot_${Date.now()}`,
-      specialty: registeredSpecialties[0] || 'Geral',
+      specialty: registeredSpecialties[0] || 'Clínica Médica',
       start_time: '07:00',
       end_time: '19:00',
       quantity: 1,
@@ -153,11 +187,8 @@ export default function Escalas() {
     setGeneratorConfig(prev => ({ ...prev, slots: [...prev.slots, newSlot] }));
   };
 
-  const handleRemoveSlotFromGenerator = (slotId) => {
-    setGeneratorConfig(prev => ({
-      ...prev,
-      slots: prev.slots.filter(s => s.id !== slotId)
-    }));
+  const handleRemoveSlot = (slotId) => {
+    setGeneratorConfig(prev => ({ ...prev, slots: prev.slots.filter(s => s.id !== slotId) }));
   };
 
   const handleUpdateSlot = (slotId, field, value) => {
@@ -181,9 +212,6 @@ export default function Escalas() {
     start_time: '07:00',
     end_time: '19:00'
   });
-
-  const currentYear = currentDate.getFullYear();
-  const currentMonth = currentDate.getMonth();
 
   const handlePrevMonth = () => setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
@@ -238,7 +266,7 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // Escala do Dia & CCO
+  // Plantão do Dia & CCO
   const todayStr = `${liveNow.getFullYear()}-${String(liveNow.getMonth() + 1).padStart(2, '0')}-${String(liveNow.getDate()).padStart(2, '0')}`;
 
   const todayShiftsDetailed = useMemo(() => {
@@ -259,7 +287,7 @@ export default function Escalas() {
 
     todayRaw.forEach(shift => {
       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-      const isVago = shift.status === 'vago' || !prof;
+      if (shift.status === 'vago' || !prof) return;
 
       const [startH, startM] = (shift.start_time || '07:00').split(':').map(Number);
       const [endH, endM] = (shift.end_time || '19:00').split(':').map(Number);
@@ -272,8 +300,6 @@ export default function Escalas() {
       if (endTotalMin > 24 * 60 && nowTotalMin < startTotalMin) {
         effectiveNowMin += 24 * 60;
       }
-
-      if (isVago) return;
 
       if (effectiveNowMin >= startTotalMin && effectiveNowMin < endTotalMin) {
         emAndamento.push(shift);
@@ -290,17 +316,28 @@ export default function Escalas() {
     return { emAndamento, proximoRendimento, concluidosRecentes, totalHoje: todayRaw.length };
   }, [shifts, todayStr, selectedSectorId, filterTurno, liveNow, professionalMap]);
 
-  // Profissionais filtrados automaticamente pela especialidade escolhida no formulário
+  // Profissionais filtrados pela especialidade do formulário
   const eligibleProfessionalsForModal = useMemo(() => {
     const spec = (formData.target_specialty || '').toLowerCase().trim();
     if (!spec) return professionals.filter(p => p.status === 'ativo');
 
     const matching = professionals.filter(p => p.status === 'ativo' && (p.specialty || '').toLowerCase().includes(spec));
-    // Se achar médicos da especialidade, mostra primeiro; senão mostra todos
     return matching.length > 0 ? matching : professionals.filter(p => p.status === 'ativo');
   }, [professionals, formData.target_specialty]);
 
-  // Multi-seleção CTRL
+  // Roll de profissionais com filtro por especialidade sem engessar
+  const filteredTrayProfs = useMemo(() => {
+    const term = traySearch.toLowerCase().trim();
+    return professionals.filter(p => {
+      if (p.status !== 'ativo') return false;
+      if (traySpecialtyFilter !== 'todas' && (p.specialty || '').toLowerCase() !== traySpecialtyFilter.toLowerCase()) {
+        return false;
+      }
+      if (!term) return true;
+      return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowerCase().includes(term);
+    });
+  }, [professionals, traySearch, traySpecialtyFilter]);
+
   const handleDayClick = (dateStr, e) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
@@ -312,7 +349,6 @@ export default function Escalas() {
     }
   };
 
-  // Drag & Drop
   const handleDragStart = (e, profId) => {
     setDraggingProfId(profId);
     e.dataTransfer.setData('text/plain', profId);
@@ -327,7 +363,7 @@ export default function Escalas() {
     const targetSector = selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || '');
 
     if (!targetSector) {
-      alert('Selecione ou cadastre um setor hospitalar.');
+      alert('Selecione ou cadastre um setor hospitalar antes de alocar.');
       return;
     }
 
@@ -335,26 +371,31 @@ export default function Escalas() {
       ? selectedDays 
       : [dateStr];
 
-    const secName = sectorMap[targetSector]?.name || 'Setor';
-    if (!confirm(`Alocar ${prof?.name} em "${secName}" nos ${targetDates.length} dia(s) selecionado(s)?`)) {
+    const secName = sectorMap[targetSector]?.name || 'Setor Hospitalar';
+    if (!confirm(`Alocar ${prof?.name} em "${secName}" para ${targetDates.length} dia(s)?`)) {
       setDraggingProfId(null);
       return;
     }
 
     try {
       for (const d of targetDates) {
-        await autoHealingSaveShift(null, {
+        const spec = prof?.specialty || 'Clínica Médica';
+        const saved = await autoHealingSaveShift(null, {
           company_id: company?.id || 'cmp_principal',
           unit_id: selectedUnitId || 'unit_h1',
           sector_id: targetSector,
           professional_id: profId,
-          target_specialty: prof?.specialty || '',
+          target_specialty: spec,
+          notes: `[ESP:${spec}]`,
           date: d,
           shift_type: 'diurno',
           start_time: '07:00',
           end_time: '19:00',
           status: 'confirmado'
         });
+        if (saved?.id) {
+          try { window.localStorage.setItem(`shift_spec_${saved.id}`, spec); } catch {}
+        }
       }
       setSelectedDays([]);
       await syncGlobalData();
@@ -365,7 +406,7 @@ export default function Escalas() {
     }
   };
 
-  // GERADOR & CONFIGURADOR TOTALMENTE CUSTOMIZADO
+  // GERADOR LIVRE: Cria vagas internas de planejamento sem jogar para o mural
   const handleExecuteGenerator = async (e) => {
     e.preventDefault();
     if (!generatorConfig.sector_id) {
@@ -385,7 +426,7 @@ export default function Escalas() {
     generatorConfig.slots.forEach(s => dailySlotsCount += parseInt(s.quantity || 0));
     const grandTotal = dailySlotsCount * totalDays;
 
-    if (!confirm(`Gerar ${grandTotal} vagas para ${totalDays} dias no setor "${secName}" com os horários e especialidades definidos por você?`)) {
+    if (!confirm(`Gerar grade de ${grandTotal} plantões planejados para ${totalDays} dias em "${secName}"?`)) {
       return;
     }
 
@@ -401,25 +442,30 @@ export default function Escalas() {
         for (const slot of generatorConfig.slots) {
           const qty = parseInt(slot.quantity) || 0;
           for (let q = 0; q < qty; q++) {
-            await autoHealingSaveShift(null, {
+            const spec = slot.specialty || 'Clínica Médica';
+            const saved = await autoHealingSaveShift(null, {
               company_id: company?.id || 'cmp_principal',
               unit_id: selectedUnitId || 'unit_h1',
               sector_id: generatorConfig.sector_id,
-              target_specialty: slot.specialty || '',
+              target_specialty: spec,
+              notes: `[ESP:${spec}]`,
               professional_id: null,
               date: dateStr,
               shift_type: slot.shift_type || 'diurno',
               start_time: slot.start_time,
               end_time: slot.end_time,
-              status: 'vago'
+              status: 'vago' // Vaga interna para o coordenador alocar
             });
+            if (saved?.id) {
+              try { window.localStorage.setItem(`shift_spec_${saved.id}`, spec); } catch {}
+            }
           }
         }
       }
 
       setGeneratorModalOpen(false);
       await syncGlobalData();
-      alert(`Escala personalizada de ${secName} gerada com sucesso! Vagas abertas criadas no calendário.`);
+      alert(`Grade planejada de ${secName} gerada com sucesso! Você pode alocar os profissionais arrastando pelo roll.`);
     } catch (err) {
       alert('Erro ao gerar escala: ' + err.message);
     } finally {
@@ -427,15 +473,18 @@ export default function Escalas() {
     }
   };
 
-  // Publicar Escala com Notificação aos Profissionais
+  // Publicar Escala: Salva e notifica os profissionais
   const handleTogglePublish = async () => {
     const nextState = !scalePublished;
     setScalePublished(nextState);
+    try {
+      window.localStorage.setItem(publishStorageKey, String(nextState));
+    } catch {}
 
     if (nextState) {
-      alert(`✅ Escala de ${MONTH_NAMES[currentMonth]} homologada e PUBLICADA com sucesso!\nTodos os profissionais com plantões alocados receberão aviso no painel.`);
+      alert(`✅ Escala de ${MONTH_NAMES[currentMonth]} HOMOLOGADA e PUBLICADA!\nAgora as notificações oficiais de plantão estão liberadas para a equipe.`);
     } else {
-      alert(`⚠️ A escala foi retornada para o modo Rascunho / Em Montagem.`);
+      alert(`⚠️ A escala retornou para MODO RASCUNHO (notificações pausadas).`);
     }
   };
 
@@ -443,26 +492,32 @@ export default function Escalas() {
   const handleSaveBatch = async (e) => {
     e.preventDefault();
     if (!batchData.sector_id || !batchData.professional_id) {
-      alert('Selecione a seção e o profissional.');
+      alert('Selecione o setor e o profissional.');
       return;
     }
 
     const prof = professionalMap[batchData.professional_id];
+    const spec = prof?.specialty || 'Clínica Médica';
+
     setSubmitting(true);
     try {
       for (const d of selectedDays) {
-        await autoHealingSaveShift(null, {
+        const saved = await autoHealingSaveShift(null, {
           company_id: company?.id || 'cmp_principal',
           unit_id: selectedUnitId || 'unit_h1',
           sector_id: batchData.sector_id,
           professional_id: batchData.professional_id,
-          target_specialty: prof?.specialty || '',
+          target_specialty: spec,
+          notes: `[ESP:${spec}]`,
           date: d,
           shift_type: batchData.shift_type,
           start_time: batchData.start_time,
           end_time: batchData.end_time,
           status: 'confirmado'
         });
+        if (saved?.id) {
+          try { window.localStorage.setItem(`shift_spec_${saved.id}`, spec); } catch {}
+        }
       }
       setBatchModalOpen(false);
       setSelectedDays([]);
@@ -492,22 +547,29 @@ export default function Escalas() {
     setSubmitting(true);
     try {
       const prof = formData.professional_id ? professionalMap[formData.professional_id] : null;
+      const finalSpecialty = (formData.target_specialty || prof?.specialty || 'Clínica Médica').trim();
+      const combinedNotes = `[ESP:${finalSpecialty}] ${formData.notes || ''}`.trim();
 
       const payload = {
         company_id: company?.id || 'cmp_principal',
         unit_id: selectedUnitId || 'unit_h1',
         sector_id: formData.sector_id,
-        target_specialty: formData.target_specialty || prof?.specialty || '',
+        target_specialty: finalSpecialty,
         professional_id: isMural ? null : formData.professional_id,
         date: formData.date,
         shift_type: formData.shift_type,
         start_time: formData.start_time,
         end_time: formData.end_time,
         status: isMural ? 'vago' : 'confirmado',
-        notes: formData.notes
+        notes: combinedNotes
       };
 
-      await autoHealingSaveShift(editingShiftId, payload);
+      const saved = await autoHealingSaveShift(editingShiftId, payload);
+      const savedId = saved?.id || editingShiftId;
+      if (savedId) {
+        try { window.localStorage.setItem(`shift_spec_${savedId}`, finalSpecialty); } catch {}
+      }
+
       setModalOpen(false);
       await syncGlobalData();
       alert(isMural ? 'Plantão enviado para o Mural de Oportunidades!' : 'Plantão alocado com sucesso!');
@@ -518,10 +580,10 @@ export default function Escalas() {
     }
   };
 
-  // Desocupar plantão direto de dentro do modal (sem botão repetitivo no card)
+  // Desocupar plantão direto de dentro do modal
   const handleSendToMuralFromModal = async () => {
     if (!editingShiftId) return;
-    if (!confirm('Desocupar este plantão e disponibilizar a VAGA NO MURAL?')) return;
+    if (!confirm('Desocupar este plantão e disponibilizá-lo como VAGA NO MURAL?')) return;
     
     setSubmitting(true);
     try {
@@ -546,14 +608,14 @@ export default function Escalas() {
       setModalOpen(false);
       await syncGlobalData();
     } catch (err) {
-      alert('Erro ao excluir plantão: ' + err.message);
+      alert('Erro ao excluir: ' + err.message);
     }
   };
 
   const getStatusBadge = (shift) => {
     const isVago = shift.status === 'vago' || !shift.professional_id;
     if (isVago) {
-      return { dot: 'bg-rose-500 shadow-md shadow-rose-500/50 animate-pulse', label: 'Vaga no Mural', text: 'text-rose-600 dark:text-rose-400 font-black' };
+      return { dot: 'bg-rose-500 shadow-md shadow-rose-500/50 animate-pulse', label: 'Vaga Aberta', text: 'text-rose-600 dark:text-rose-400 font-black' };
     }
     if (shift.date < todayStr) {
       return { dot: 'bg-slate-400 dark:bg-slate-500', label: 'Concluído', text: 'text-slate-500 dark:text-slate-400 font-bold' };
@@ -563,15 +625,6 @@ export default function Escalas() {
     }
     return { dot: 'bg-sky-500', label: 'Programado', text: 'text-sky-600 dark:text-sky-400 font-bold' };
   };
-
-  const filteredTrayProfs = useMemo(() => {
-    const term = traySearch.toLowerCase().trim();
-    return professionals.filter(p => {
-      if (p.status !== 'ativo') return false;
-      if (!term) return true;
-      return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowerCase().includes(term);
-    });
-  }, [professionals, traySearch]);
 
   return (
     <div className={`p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200 ${activeTab === 'tv' ? 'fixed inset-0 z-50 bg-slate-950 text-white overflow-y-auto p-6 md:p-8' : ''}`}>
@@ -603,7 +656,7 @@ export default function Escalas() {
 
           {selectedSectorId !== 'todos' && (
             <span className="hidden lg:inline-block px-3 py-1 rounded-xl text-xs font-black bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20 truncate">
-              Setor Ativo: {sectorMap[selectedSectorId]?.name}
+              Ativo: {sectorMap[selectedSectorId]?.name}
             </span>
           )}
         </div>
@@ -688,7 +741,7 @@ export default function Escalas() {
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
               <span className={scalePublished ? 'text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1' : 'text-amber-500 font-bold flex items-center gap-1'}>
                 <CheckCheck className="w-3.5 h-3.5" />
-                {scalePublished ? 'Escala Publicada & Oficial' : 'Modo Rascunho / Em Montagem'}
+                {scalePublished ? 'Escala Publicada (Notificações Ativas)' : 'Modo Rascunho (Notificações Bloqueadas)'}
               </span>
             </div>
           </div>
@@ -752,7 +805,7 @@ export default function Escalas() {
                 setFormData({
                   date: new Date().toISOString().split('T')[0],
                   sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''),
-                  target_specialty: registeredSpecialties[0] || '',
+                  target_specialty: registeredSpecialties[0] || 'Clínica Médica',
                   start_time: '07:00',
                   end_time: '19:00',
                   shift_type: 'diurno',
@@ -803,7 +856,7 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 4. VISÃO A: PLANTÃO DO DIA (COM O ÚNICO BOTÃO IMPRIMIR PLANTÃO DO DIA)    */}
+      {/* 4. VISÃO A: PLANTÃO DO DIA (COM O ÚNICO BOTÃO "IMPRIMIR PLANTÃO DO DIA")  */}
       {/* ========================================================================= */}
       {activeTab === 'dia' && (
         <div className="space-y-5">
@@ -816,7 +869,7 @@ export default function Escalas() {
                 </h3>
               </div>
 
-              {/* ÚNICO BOTÃO DE IMPRESSÃO DA PLATAFORMA */}
+              {/* ÚNICO BOTÃO DE IMPRESSÃO */}
               <Button
                 onClick={() => setPrintPreviewOpen(true)}
                 className="h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 text-xs font-black px-5 rounded-2xl gap-2 shadow-md"
@@ -850,6 +903,7 @@ export default function Escalas() {
                       const sector = sectorMap[String(shift.sector_id)];
                       const isVago = shift.status === 'vago' || !prof;
                       const status = getStatusBadge(shift);
+                      const realSpecialty = extractSpecialty(shift, prof);
 
                       return (
                         <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
@@ -861,13 +915,13 @@ export default function Escalas() {
                           </td>
                           <td className="py-3 px-4 font-black text-slate-900 dark:text-slate-100">
                             {isVago ? (
-                              <span className="text-rose-600 dark:text-rose-400 animate-pulse font-black">⚠️ Vaga Aberta no Mural</span>
+                              <span className="text-rose-600 dark:text-rose-400 font-black">⚠️ Vaga Aberta</span>
                             ) : (
                               formatFullName(prof?.name)
                             )}
                           </td>
                           <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-semibold">
-                            {shift.target_specialty || prof?.specialty || 'Geral'}
+                            {realSpecialty}
                           </td>
                           <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400">
                             {prof?.document || '—'}
@@ -919,6 +973,7 @@ export default function Escalas() {
                 todayShiftsDetailed.emAndamento.map(shift => {
                   const prof = professionalMap[String(shift.professional_id)];
                   const sector = sectorMap[String(shift.sector_id)];
+                  const realSpecialty = extractSpecialty(shift, prof);
 
                   return (
                     <div key={shift.id} className="p-4 bg-slate-900 border-2 border-emerald-500/40 rounded-2xl shadow-lg space-y-2">
@@ -927,7 +982,7 @@ export default function Escalas() {
                         <span className="font-mono text-[11px]">{shift.start_time} - {shift.end_time}</span>
                       </div>
                       <div className="text-sm font-black text-white truncate">{formatFullName(prof?.name)}</div>
-                      <div className="text-[11px] text-slate-400">{shift.target_specialty || prof?.specialty || 'Geral'} • {prof?.document || 'CRM'}</div>
+                      <div className="text-[11px] text-slate-400">{realSpecialty} • {prof?.document || 'CRM'}</div>
                     </div>
                   );
                 })
@@ -998,20 +1053,35 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 6. VISÃO: GRADE MENSAL (CABEÇALHO LIMPO E CLIQUE NO CARD P/ OPÇÕES)       */}
+      {/* 6. VISÃO: GRADE MENSAL (SEM SINAL DE + NAS DATAS & SEM BOTÃO REPETITIVO)   */}
       {/* ========================================================================= */}
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
           
-          {/* ROLL DE PROFISSIONAIS (DRAG & DROP) */}
+          {/* ROLL DE PROFISSIONAIS (COM FILTRO DE ESPECIALIDADE RÁPIDO) */}
           {isManager && (
             <aside className="w-full lg:w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3 transition-colors">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                   <HeartPulse className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-                  Roll de Profissionais
+                  Roll Profissionais
                 </span>
                 <span className="text-[10px] font-bold text-slate-400">Arraste p/ o dia</span>
+              </div>
+
+              {/* FILTRO DE ESPECIALIDADE RÁPIDO DO ROLL */}
+              <div className="space-y-1">
+                <Select value={traySpecialtyFilter} onValueChange={setTraySpecialtyFilter}>
+                  <SelectTrigger className="h-8 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl">
+                    <SelectValue placeholder="Especialidade..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 max-h-56">
+                    <SelectItem value="todas">Todas Especialidades</SelectItem>
+                    {registeredSpecialties.map(spec => (
+                      <SelectItem key={spec} value={spec}>{spec}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="relative">
@@ -1024,7 +1094,7 @@ export default function Escalas() {
                 />
               </div>
 
-              <div className="space-y-2 max-h-[580px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
                 {filteredTrayProfs.map(prof => (
                   <div
                     key={prof.id}
@@ -1049,7 +1119,6 @@ export default function Escalas() {
           {/* GRADE CALENDÁRIO COM CABEÇALHOS COLORIDOS E SEM BOTÕES REPETIDOS */}
           <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm transition-colors">
             
-            {/* CABEÇALHO DOS DIAS DA SEMANA */}
             <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-center py-2.5">
               {WEEKDAYS.map(day => (
                 <div key={day.short} className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400">
@@ -1058,7 +1127,6 @@ export default function Escalas() {
               ))}
             </div>
 
-            {/* CÉLULAS DOS DIAS */}
             <div className="grid grid-cols-7 divide-x divide-y divide-slate-200 dark:divide-slate-800">
               
               {Array.from({ length: daysInMonth[0].getDay() }).map((_, idx) => (
@@ -1105,6 +1173,7 @@ export default function Escalas() {
                         const sector = sectorMap[String(shift.sector_id)];
                         const isVago = shift.status === 'vago' || !prof;
                         const badge = getStatusBadge(shift);
+                        const realSpecialty = extractSpecialty(shift, prof);
 
                         return (
                           <div
@@ -1116,7 +1185,7 @@ export default function Escalas() {
                                 setFormData({
                                   date: shift.date || '',
                                   sector_id: shift.sector_id || '',
-                                  target_specialty: shift.target_specialty || prof?.specialty || '',
+                                  target_specialty: realSpecialty,
                                   start_time: shift.start_time || '07:00',
                                   end_time: shift.end_time || '19:00',
                                   shift_type: shift.shift_type || 'diurno',
@@ -1127,7 +1196,7 @@ export default function Escalas() {
                                 setModalOpen(true);
                               }
                             }}
-                            className={`p-2.5 rounded-2xl border transition-all cursor-pointer shadow-sm hover:border-slate-400 dark:hover:border-slate-600 ${
+                            className={`p-2 rounded-2xl border transition-all cursor-pointer shadow-sm hover:border-slate-400 dark:hover:border-slate-600 ${
                               isVago 
                                 ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-500/50' 
                                 : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800'
@@ -1147,20 +1216,20 @@ export default function Escalas() {
                               <span className={`text-[10px] ${badge.text}`}>{badge.label}</span>
                             </div>
 
-                            {/* NOME E SOBRENOME EM DESTAQUE COM A ESPECIALIDADE DEFINIDA */}
+                            {/* NOME E SOBRENOME EM DESTAQUE COM A ESPECIALIDADE REAL */}
                             <div className="font-black text-xs text-slate-900 dark:text-white truncate">
                               {isVago ? '⚠️ Vaga em Aberto' : formatFullName(prof?.name)}
                             </div>
 
                             <div className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate mt-0.5">
-                              {shift.target_specialty || prof?.specialty || 'Geral'}
+                              {realSpecialty}
                             </div>
                           </div>
                         );
                       })}
                     </div>
 
-                    {/* BOTÃO DISCRETO PARA ADICIONAR VAGA CASO QUEIRA */}
+                    {/* CLIQUE NO CARD DO DIA PARA ADICIONAR NOVA VAGA AVULSA */}
                     {isManager && (
                       <button
                         type="button"
@@ -1170,7 +1239,7 @@ export default function Escalas() {
                           setFormData({
                             date: dateStr,
                             sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''),
-                            target_specialty: registeredSpecialties[0] || '',
+                            target_specialty: registeredSpecialties[0] || 'Clínica Médica',
                             start_time: '07:00',
                             end_time: '19:00',
                             shift_type: 'diurno',
@@ -1194,78 +1263,85 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 7. MODAL IMPRESSO OFICIAL A4 PAISAGEM (FOLHA OFICIAL HORIZONTAL)          */}
+      {/* 7. MODAL IMPRESSO OFICIAL A4 PAISAGEM (100% BRANCO COM TINTA PRETA)      */}
       {/* ========================================================================= */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
-        <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto bg-white text-slate-900 border-none p-8 font-sans">
+        <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto bg-white text-black border-none p-8 font-sans shadow-2xl">
           
+          {/* ESTILOS DE IMPRESSÃO RÍGIDOS: FORÇA FUNDO BRANCO E TEXTO PRETO */}
           <style>{`
             @media print {
               @page {
                 size: A4 landscape;
                 margin: 8mm;
               }
-              body {
-                background: white !important;
-                color: black !important;
-                print-color-adjust: exact;
-                -webkit-print-color-adjust: exact;
+              html, body, #root {
+                background: #ffffff !important;
+                color: #000000 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .print-paper, .print-paper * {
+                background: #ffffff !important;
+                color: #000000 !important;
+                border-color: #000000 !important;
               }
             }
           `}</style>
 
-          <div className="space-y-6">
-            <div className="flex items-center justify-between border-b-2 border-slate-900 pb-4">
+          <div className="print-paper space-y-6 bg-white text-black">
+            <div className="flex items-center justify-between border-b-2 border-black pb-4">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black text-xl">
+                <div className="w-12 h-12 rounded-xl bg-black text-white flex items-center justify-center font-black text-xl">
                   {company?.name ? company.name[0] : 'H'}
                 </div>
                 <div>
-                  <h1 className="text-xl font-black uppercase tracking-tight text-slate-900">{company?.name || 'HOSPITAL PRINCIPAL'}</h1>
-                  <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  <h1 className="text-xl font-black uppercase tracking-tight text-black">{company?.name || 'HOSPITAL PRINCIPAL'}</h1>
+                  <p className="text-xs font-bold text-black uppercase tracking-wider">
                     ESCALA OFICIAL DE PLANTÃO • AFIXAÇÃO EM MURAL HOSPITALAR
                   </p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-black">
                     Vigência: <b>{liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</b>
                   </p>
                 </div>
               </div>
 
-              <div className="text-right text-xs">
-                <span className="font-bold text-slate-900 block">DOCUMENTO OFICIAL AUDITÁVEL</span>
-                <span className="text-[11px] text-slate-600 block">Emissão: {liveNow.toLocaleDateString('pt-BR')} às {liveNow.toLocaleTimeString('pt-BR')}</span>
-                <span className="text-[10px] font-mono text-slate-400">Autenticação: SM-ESC-{Date.now().toString(36).toUpperCase()}</span>
+              <div className="text-right text-xs text-black">
+                <span className="font-bold text-black block">DOCUMENTO OFICIAL AUDITÁVEL</span>
+                <span className="text-[11px] text-black block">Emissão: {liveNow.toLocaleDateString('pt-BR')} às {liveNow.toLocaleTimeString('pt-BR')}</span>
+                <span className="text-[10px] font-mono text-black">Autenticação: SM-ESC-{Date.now().toString(36).toUpperCase()}</span>
               </div>
             </div>
 
             <div className="space-y-3">
-              <table className="w-full border-collapse border border-slate-400 text-xs">
-                <thead className="bg-slate-100 text-slate-900 uppercase text-[10px] font-black">
+              <table className="w-full border-collapse border border-black text-xs">
+                <thead className="bg-gray-100 text-black uppercase text-[10px] font-black">
                   <tr>
-                    <th className="border border-slate-400 p-2 text-left w-1/5">Seção / Setor</th>
-                    <th className="border border-slate-400 p-2 text-left w-32">Turno / Horário</th>
-                    <th className="border border-slate-400 p-2 text-left">Profissional Escalado</th>
-                    <th className="border border-slate-400 p-2 text-left w-44">Registro Conselho</th>
-                    <th className="border border-slate-400 p-2 text-left w-48">Especialidade / Atuação</th>
-                    <th className="border border-slate-400 p-2 text-center w-48">Rubrica / Presença</th>
+                    <th className="border border-black p-2 text-left w-1/5 text-black">Seção / Setor</th>
+                    <th className="border border-black p-2 text-left w-32 text-black">Turno / Horário</th>
+                    <th className="border border-black p-2 text-left text-black">Profissional Escalado</th>
+                    <th className="border border-black p-2 text-left w-44 text-black">Registro Conselho</th>
+                    <th className="border border-black p-2 text-left w-48 text-black">Especialidade / Atuação</th>
+                    <th className="border border-black p-2 text-center w-48 text-black">Rubrica / Presença</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-300">
+                <tbody className="divide-y divide-black">
                   {shifts.filter(s => s.date === todayStr && (selectedSectorId === 'todos' || String(s.sector_id) === String(selectedSectorId))).map(shift => {
                     const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
                     const sector = sectorMap[String(shift.sector_id)];
                     const isVago = shift.status === 'vago' || !prof;
+                    const realSpecialty = extractSpecialty(shift, prof);
 
                     return (
-                      <tr key={shift.id} className="hover:bg-slate-50">
-                        <td className="border border-slate-300 p-2 font-black text-slate-900 uppercase">{sector?.name || 'Setor'}</td>
-                        <td className="border border-slate-300 p-2 font-mono font-bold text-slate-800">{shift.start_time} - {shift.end_time}</td>
-                        <td className="border border-slate-300 p-2 font-black text-slate-900">
-                          {isVago ? <span className="text-red-600 font-black uppercase">⚠️ VAGA EM ABERTO</span> : prof?.name}
+                      <tr key={shift.id}>
+                        <td className="border border-black p-2 font-black text-black uppercase">{sector?.name || 'Setor'}</td>
+                        <td className="border border-black p-2 font-mono font-bold text-black">{shift.start_time} - {shift.end_time}</td>
+                        <td className="border border-black p-2 font-black text-black">
+                          {isVago ? <span className="font-black uppercase text-black">⚠️ VAGA EM ABERTO</span> : prof?.name}
                         </td>
-                        <td className="border border-slate-300 p-2 font-mono text-slate-700">{prof?.document || '—'}</td>
-                        <td className="border border-slate-300 p-2 text-slate-800 font-semibold">{shift.target_specialty || prof?.specialty || 'Geral'}</td>
-                        <td className="border border-slate-300 p-2 text-center text-slate-400 font-mono">____________________</td>
+                        <td className="border border-black p-2 font-mono text-black">{prof?.document || '—'}</td>
+                        <td className="border border-black p-2 text-black font-semibold">{realSpecialty}</td>
+                        <td className="border border-black p-2 text-center text-black font-mono">____________________</td>
                       </tr>
                     );
                   })}
@@ -1274,31 +1350,31 @@ export default function Escalas() {
             </div>
 
             {/* ASSINATURAS */}
-            <div className="grid grid-cols-2 gap-8 pt-8 border-t border-slate-300 text-center text-xs">
+            <div className="grid grid-cols-2 gap-8 pt-8 border-t border-black text-center text-xs">
               <div className="space-y-1">
-                <div className="w-64 border-b border-slate-900 mx-auto"></div>
-                <span className="font-black text-slate-900 block">Coordenação Médica / Responsável Técnico</span>
-                <span className="text-[10px] text-slate-500">CRM / Carimbo</span>
+                <div className="w-64 border-b border-black mx-auto"></div>
+                <span className="font-black text-black block">Coordenação Médica / Responsável Técnico</span>
+                <span className="text-[10px] text-black">CRM / Carimbo</span>
               </div>
 
               <div className="space-y-1">
-                <div className="w-64 border-b border-slate-900 mx-auto"></div>
-                <span className="font-black text-slate-900 block">Coordenação de Enfermagem / RT Assistencial</span>
-                <span className="text-[10px] text-slate-500">COREN / Carimbo</span>
+                <div className="w-64 border-b border-black mx-auto"></div>
+                <span className="font-black text-black block">Coordenação de Enfermagem / RT Assistencial</span>
+                <span className="text-[10px] text-black">COREN / Carimbo</span>
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-slate-200 text-[9px] text-slate-400">
-              <span>ScaleMedic Hospital Intelligence • Escala Hospitalar Oficial Homologada</span>
-              <span>Página 1 de 1 • Afixação Obrigatória em Mural Físico</span>
+            <div className="flex items-center justify-between pt-4 border-t border-black text-[9px] text-black">
+              <span>ScaleMedic Hospital Intelligence • Documento de Afixação Oficial</span>
+              <span>Página 1 de 1</span>
             </div>
 
-            <div className="flex justify-end gap-3 print:hidden pt-4 border-t">
-              <Button variant="outline" onClick={() => setPrintPreviewOpen(false)} className="text-xs h-9">
+            <div className="flex justify-end gap-3 print:hidden pt-4 border-t border-gray-200">
+              <Button variant="outline" onClick={() => setPrintPreviewOpen(false)} className="text-xs h-9 bg-white text-black border-gray-300">
                 Fechar
               </Button>
-              <Button onClick={() => window.print()} className="h-9 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs px-6 gap-2 shadow-lg">
-                <Printer className="w-4 h-4" /> Imprimir em Folha A4 Paisagem
+              <Button onClick={() => window.print()} className="h-9 bg-black hover:bg-gray-800 text-white font-black text-xs px-6 gap-2 shadow-lg">
+                <Printer className="w-4 h-4" /> Imprimir Agora em Folha Branca A4
               </Button>
             </div>
           </div>
@@ -1306,7 +1382,7 @@ export default function Escalas() {
       </Dialog>
 
       {/* ========================================================================= */}
-      {/* 8. MODAL DO GERADOR & CONFIGURADOR TOTALMENTE CUSTOMIZÁVEL COM BOTÃO "+" */}
+      {/* 8. MODAL GERADOR LIVRE: COM BOTÃO "+" E ESPECIALIDADES DO CORPO CLÍNICO   */}
       {/* ========================================================================= */}
       <Dialog open={generatorModalOpen} onOpenChange={setGeneratorModalOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
@@ -1319,9 +1395,8 @@ export default function Escalas() {
 
           <form onSubmit={handleExecuteGenerator} className="space-y-4 py-2 text-xs">
             
-            {/* 1. SETOR, DATA DE INÍCIO E QUANTIDADE DE DIAS */}
             <div className="p-3.5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
-              <span className="text-xs font-black uppercase text-slate-500 block">1. Definição do Setor & Período</span>
+              <span className="text-xs font-black uppercase text-slate-500 block">1. Setor & Período</span>
               
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1 sm:col-span-1">
@@ -1337,7 +1412,7 @@ export default function Escalas() {
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-xs font-bold">A Partir De (Data Início) *</Label>
+                  <Label className="text-xs font-bold">Data Início *</Label>
                   <Input type="date" value={generatorConfig.start_date} onChange={e => setGeneratorConfig({ ...generatorConfig, start_date: e.target.value })} className="h-9 bg-white dark:bg-slate-900" />
                 </div>
 
@@ -1356,7 +1431,7 @@ export default function Escalas() {
               </div>
             </div>
 
-            {/* 2. DEFINIÇÃO DINÂMICA DE ESPECIALIDADES E HORÁRIOS COM BOTÃO "+" */}
+            {/* ESPECIALIDADES DINÂMICAS COM O BOTÃO "+" */}
             <div className="p-3.5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -1368,11 +1443,10 @@ export default function Escalas() {
                   </span>
                 </div>
 
-                {/* BOTÃO + PARA ADICIONAR LINHA LIVREMENTE */}
                 <Button
                   type="button"
                   size="sm"
-                  onClick={handleAddSlotToGenerator}
+                  onClick={handleAddSlot}
                   className="h-8 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-3 rounded-xl gap-1 shadow-sm"
                 >
                   <Plus className="w-3.5 h-3.5" /> Adicionar Especialidade
@@ -1380,24 +1454,20 @@ export default function Escalas() {
               </div>
 
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {generatorConfig.slots.map((slot, index) => (
+                {generatorConfig.slots.map(slot => (
                   <div key={slot.id} className="p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end shadow-sm">
                     
-                    {/* Especialidade / Atuação */}
                     <div className="sm:col-span-4 space-y-1">
                       <Label className="text-[10px] font-bold text-slate-500">Especialidade / Atuação</Label>
-                      <div className="relative">
-                        <Input
-                          placeholder="Digite ou escolha..."
-                          value={slot.specialty}
-                          onChange={e => handleUpdateSlot(slot.id, 'specialty', e.target.value)}
-                          className="h-8 text-xs font-bold"
-                          list="specialties-datalist"
-                        />
-                      </div>
+                      <Input
+                        placeholder="Digite ou escolha..."
+                        value={slot.specialty}
+                        onChange={e => handleUpdateSlot(slot.id, 'specialty', e.target.value)}
+                        className="h-8 text-xs font-bold"
+                        list="specialties-datalist"
+                      />
                     </div>
 
-                    {/* Horário Início */}
                     <div className="sm:col-span-2 space-y-1">
                       <Label className="text-[10px] font-bold text-slate-500">Entrada</Label>
                       <Input
@@ -1408,7 +1478,6 @@ export default function Escalas() {
                       />
                     </div>
 
-                    {/* Horário Término */}
                     <div className="sm:col-span-2 space-y-1">
                       <Label className="text-[10px] font-bold text-slate-500">Saída</Label>
                       <Input
@@ -1419,7 +1488,6 @@ export default function Escalas() {
                       />
                     </div>
 
-                    {/* Vagas por dia */}
                     <div className="sm:col-span-3 space-y-1">
                       <Label className="text-[10px] font-bold text-slate-500">Qtd. Vagas/Dia</Label>
                       <Input
@@ -1432,12 +1500,11 @@ export default function Escalas() {
                       />
                     </div>
 
-                    {/* Excluir Linha */}
                     <div className="sm:col-span-1 flex justify-end">
                       <Button
                         type="button"
                         variant="ghost"
-                        onClick={() => handleRemoveSlotFromGenerator(slot.id)}
+                        onClick={() => handleRemoveSlot(slot.id)}
                         className="h-8 w-8 p-0 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1447,7 +1514,6 @@ export default function Escalas() {
                 ))}
               </div>
 
-              {/* Datalist com as especialidades já existentes no Corpo Clínico */}
               <datalist id="specialties-datalist">
                 {registeredSpecialties.map(spec => (
                   <option key={spec} value={spec} />
@@ -1551,10 +1617,10 @@ export default function Escalas() {
               </div>
             </div>
 
-            {/* ESPECIALIDADE PUXADA DINAMICAMENTE OU PREENCHIDA LIVREMENTE */}
+            {/* ESPECIALIDADE LIVRE OU DO CORPO CLÍNICO */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Especialidade / Atuação</Label>
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Especialidade / Atuação *</Label>
                 <span className="text-[10px] text-sky-600 font-bold">Filtra os profissionais abaixo</span>
               </div>
               <Input
