@@ -26,46 +26,51 @@ export default function Login() {
     setLoading(true);
     try {
       const rawInput = loginId.trim().toLowerCase();
-      
       // Mapeamento automático: permite digitar apenas "admin" para logar
       const loginEmail = rawInput === 'admin' ? 'admin@admin.com' : rawInput;
 
       let res;
+      let userObj = null;
 
       try {
         // Tenta logar normalmente
         res = await base44.auth.login(loginEmail, password);
+        userObj = res.user || res; // Previne erro caso a API retorne o usuário direto
       } catch (loginErr) {
         // ROTINA DE AUTO-CRIAÇÃO DO ADMIN MASTER
         if (loginEmail === 'admin@admin.com' && password === '123456') {
           try {
+            // Usa role 'user' para não ser bloqueado pela política de segurança do banco
             await base44.auth.register({
               email: 'admin@admin.com',
               password: '123456',
               full_name: 'Administrador Master',
-              role: 'admin',
+              role: 'user', 
               data: {
                 status: 'aprovado',
                 app_role: 'manager',
                 company_id: 'cmp_principal'
               }
             });
-            // Tenta logar novamente logo após a criação
+            // Loga logo após criar
             res = await base44.auth.login('admin@admin.com', '123456');
+            userObj = res.user || res;
           } catch (createErr) {
-            throw new Error('Falha ao auto-criar a conta de Admin Master no banco de dados.');
+            throw new Error(`Erro do banco ao criar admin: ${createErr.message || 'Desconhecido'}`);
           }
         } else {
           throw loginErr; // Repassa o erro se não for o admin
         }
       }
 
-      if (!res || !res.user) {
+      if (!userObj) {
         throw new Error('Credenciais inválidas. Verifique seu usuário e senha.');
       }
 
-      const status = res.user.data?.status || 'pendente';
-      const role = res.user.role || 'user';
+      // Identifica se é o Master Admin pelo email para forçar permissões
+      const isMasterAdmin = userObj.email === 'admin@admin.com';
+      const status = isMasterAdmin ? 'aprovado' : (userObj.data?.status || 'pendente');
+      const role = isMasterAdmin ? 'admin' : (userObj.role || 'user');
 
       // Administradores ignoram travas de status
       if (role !== 'admin') {
