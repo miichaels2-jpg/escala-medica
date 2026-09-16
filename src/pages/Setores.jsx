@@ -1,227 +1,332 @@
-import { useEffect, useState, useMemo } from 'react';
-import { base44 } from '@/api/base44Client';
+import React, { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
+import { base44 } from '@/api/base44Client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
-  Plus, Pencil, Trash2, Layers, Grid3X3, List, Search, 
-  Building2, Users, ShieldAlert, CheckCircle2 
+  Building2, Plus, Search, Edit3, Ban, CheckCircle2, 
+  MapPin, Stethoscope, Layers, AlertCircle, Clock
 } from 'lucide-react';
-import SectorFormDialog from '@/components/sectors/SectorFormDialog';
 
 export default function Setores() {
-  const { user, company, loading } = useAppData();
-  const [sectors, setSectors] = useState([]);
-  const [shifts, setShifts] = useState([]);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [viewMode, setViewMode] = useState('grid');
-  const [search, setSearch] = useState('');
-  
-  const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
-  const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id;
+  const { 
+    sectors, 
+    units, 
+    selectedUnitId, 
+    companyId, 
+    isManager, 
+    syncGlobalData 
+  } = useAppData();
 
-  const load = async () => {
-    try {
-      const f = companyId ? { company_id: companyId, ...(unitId ? { unit_id: unitId } : {}) } : {};
-      const [s, sh] = await Promise.all([
-        base44.entities.Sector.filter(f, '-created_date', 100).catch(() => []),
-        base44.entities.Shift.filter(f, '-date', 500).catch(() => []),
-      ]);
-      setSectors(s || []);
-      setShifts(sh || []);
-    } catch (e) {
-      console.error('Erro ao carregar setores:', e);
-    }
-  };
+  const [searchQuery, setSearchQuery] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => { if (!loading) load(); }, [loading, companyId, unitId]);
+  const [formData, setFormData] = useState({
+    name: '',
+    code: '',
+    location: '',
+    unit_id: '',
+    status: 'ativo',
+    description: ''
+  });
 
-  const handleDelete = async (id) => {
-    if (!confirm('Tem certeza que deseja excluir este setor?')) return;
-    try {
-      await base44.entities.Sector.delete(id);
-      load();
-    } catch (e) {
-      alert(e.message || 'Erro ao excluir setor.');
-    }
-  };
-
-  const visibleSectors = useMemo(() => {
-    return sectors.filter((sector) => {
-      const term = search.toLowerCase();
-      const name = (sector.name || '').toLowerCase();
-      const specialty = (sector.specialty || '').toLowerCase();
-      const unit = (sector.unit || '').toLowerCase();
-      return !search || name.includes(term) || specialty.includes(term) || unit.includes(term);
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      code: '',
+      location: '',
+      unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
+      status: 'ativo',
+      description: ''
     });
-  }, [sectors, search]);
+    setEditingId(null);
+  };
+
+  const handleOpenNew = () => {
+    resetForm();
+    setModalOpen(true);
+  };
+
+  const handleOpenEdit = (sector) => {
+    setEditingId(sector.id);
+    setFormData({
+      name: sector.name || '',
+      code: sector.code || '',
+      location: sector.location || '',
+      unit_id: sector.unit_id || selectedUnitId,
+      status: sector.status || 'ativo',
+      description: sector.description || ''
+    });
+    setModalOpen(true);
+  };
+
+  const handleToggleSectorStatus = async (sector) => {
+    const nextStatus = sector.status === 'inativo' ? 'ativo' : 'inativo';
+    const msg = nextStatus === 'inativo' 
+      ? `Inativar o setor "${sector.name}"? Ele não aparecerá para novas escalas, mas os plantões antigos e relatórios serão preservados.` 
+      : `Reativar o setor "${sector.name}"?`;
+
+    if (!confirm(msg)) return;
+
+    try {
+      await base44.entities.Sector.update(sector.id, { status: nextStatus });
+      await syncGlobalData();
+    } catch (err) {
+      alert('Erro ao alterar status do setor: ' + err.message);
+    }
+  };
+
+  const handleSaveSector = async (e) => {
+    e.preventDefault();
+    if (!formData.name.trim()) {
+      alert('Informe o nome do setor.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const payload = {
+        company_id: companyId || 'cmp_principal',
+        unit_id: formData.unit_id || selectedUnitId,
+        name: formData.name.trim(),
+        code: formData.code.trim().toUpperCase(),
+        location: formData.location.trim(),
+        status: formData.status,
+        description: formData.description.trim()
+      };
+
+      if (editingId) {
+        await base44.entities.Sector.update(editingId, payload);
+      } else {
+        await base44.entities.Sector.create(payload);
+      }
+
+      setModalOpen(false);
+      resetForm();
+      await syncGlobalData();
+      alert('Setor salvo com sucesso!');
+    } catch (err) {
+      alert('Erro ao salvar setor: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const filteredSectors = useMemo(() => {
+    const term = searchQuery.toLowerCase().trim();
+    return sectors.filter(s => {
+      if (!term) return true;
+      return (s.name || '').toLowerCase().includes(term) || (s.code || '').toLowerCase().includes(term);
+    });
+  }, [sectors, searchQuery]);
 
   return (
-    <div className="p-4 md:p-8 space-y-6">
-      {/* HEADER ENTERPRISE */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+    <div className="p-4 md:p-8 space-y-6 font-sans">
+      
+      {/* BANNER PRINCIPAL */}
+      <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Setores & Alas Hospitalares</h1>
-          <p className="text-sm text-slate-500">
-            Gerencie as unidades de atendimento, especialidades e dimensionamento de equipe.
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-400">
+            <Building2 className="w-4 h-4" /> Estrutura Hospitalar
+          </div>
+          <h2 className="mt-1 text-2xl sm:text-3xl font-black">Setores & Unidades de Atendimento</h2>
+          <p className="text-xs text-slate-300">
+            Cadastro de alas, UTIs, pronto atendimento e centros cirúrgicos que alimentam as escalas e relatórios.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Alternador de Visão */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl shrink-0">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-sky-700 dark:bg-slate-700 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
-              title="Visualização em cartões"
-            >
-              <Grid3X3 className="w-4 h-4" /> Cartões
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-sky-700 dark:bg-slate-700 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}
-              title="Visualização em lista"
-            >
-              <List className="w-4 h-4" /> Tabela
-            </button>
-          </div>
-
-          <Button onClick={() => { setEditing(null); setDialogOpen(true); }} className="bg-sky-600 hover:bg-sky-700 text-white font-bold gap-2">
+        {isManager && (
+          <Button onClick={handleOpenNew} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs h-10 px-5 rounded-xl shadow-lg gap-1.5 shrink-0">
             <Plus className="w-4 h-4" /> Novo Setor
           </Button>
+        )}
+      </div>
+
+      {/* BARRA DE FILTRO */}
+      <div className="flex items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-3">
+        <span className="text-xs font-bold text-slate-500">
+          Total de setores: {filteredSectors.length}
+        </span>
+
+        <div className="relative w-full sm:w-64">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Input 
+            placeholder="Buscar por setor ou sigla..." 
+            value={searchQuery} 
+            onChange={e => setSearchQuery(e.target.value)} 
+            className="pl-9 h-9 text-xs" 
+          />
         </div>
       </div>
 
-      {/* BARRA DE BUSCA */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <Input 
-          value={search} 
-          onChange={(e) => setSearch(e.target.value)} 
-          placeholder="Buscar por nome do setor, especialidade ou ala..." 
-          className="pl-9 h-10 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" 
-        />
-      </div>
-
-      {/* CONTEÚDO */}
-      {visibleSectors.length === 0 ? (
-        <Card className="p-12 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-          <Layers className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-          <p className="text-slate-400 text-sm font-medium">Nenhum setor localizado.</p>
+      {/* GRID DE SETORES */}
+      {filteredSectors.length === 0 ? (
+        <Card className="p-16 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-2">
+          <Building2 className="w-10 h-10 text-slate-300 mx-auto" />
+          <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">Nenhum setor cadastrado</h3>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            Cadastre os setores operacionais (ex: UTI, PA, Centro Cirúrgico) para poder gerar escalas.
+          </p>
         </Card>
-      ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {visibleSectors.map((s) => {
-            const sectorShifts = shifts.filter((sh) => String(sh.sector_id) === String(s.id) && sh.status !== 'cancelado');
-            const color = s.color || '#0284c7';
-            const minStaff = Number(s.min_staff) || 1;
-            
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredSectors.map(sector => {
+            const isInactive = sector.status === 'inativo';
+
             return (
-              <Card key={s.id} className="p-5 border-slate-200 dark:border-slate-800 hover:border-sky-300 transition-all flex flex-col justify-between space-y-4 shadow-sm bg-white dark:bg-slate-900">
+              <Card 
+                key={sector.id} 
+                className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col justify-between space-y-4 shadow-sm ${
+                  isInactive 
+                    ? 'border-slate-200 dark:border-slate-800 opacity-60 bg-slate-50 dark:bg-slate-950' 
+                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                }`}
+              >
                 <div className="space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm" style={{ backgroundColor: color + '15', color: color }}>
-                        <Layers className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="font-bold text-slate-900 dark:text-white text-base">{s.name}</div>
-                        {s.specialty && <div className="text-xs font-semibold text-sky-600 uppercase tracking-wide">{s.specialty}</div>}
-                      </div>
+                  <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                    <div>
+                      <h3 className="font-black text-sm text-slate-900 dark:text-white">
+                        {sector.name}
+                      </h3>
+                      {sector.code && (
+                        <span className="text-[10px] font-mono font-bold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-900 mt-1 inline-block">
+                          {sector.code}
+                        </span>
+                      )}
                     </div>
-                    {s.active === false ? (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 font-bold uppercase">Inativo</span>
-                    ) : (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 font-bold uppercase border border-emerald-200/60">Ativo</span>
-                    )}
+
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
+                      isInactive 
+                        ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30' 
+                        : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+                    }`}>
+                      {sector.status || 'Ativo'}
+                    </span>
                   </div>
 
-                  <div className="text-xs text-slate-500 space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                    {s.unit && (
-                      <div className="flex items-center gap-2">
-                        <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="font-medium text-slate-700 dark:text-slate-300">Ala / Unidade: {s.unit}</span>
+                  <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
+                    {sector.location && (
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Localização: <b>{sector.location}</b></span>
                       </div>
                     )}
-                    <div className="flex items-center gap-2">
-                      <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span>Dimensionamento mín.: <b>{minStaff} prof. por plantão</b></span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sky-600 font-semibold">
-                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                      <span>{sectorShifts.length} plantão(ões) vinculados na grade</span>
-                    </div>
+                    {sector.description && (
+                      <p className="text-[11px] text-slate-500 italic mt-1 bg-slate-50 dark:bg-slate-800/40 p-2 rounded-lg">
+                        "{sector.description}"
+                      </p>
+                    )}
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex gap-2">
-                  <Button variant="outline" size="sm" className="flex-1 text-xs font-semibold" onClick={() => { setEditing(s); setDialogOpen(true); }}>
-                    <Pencil className="w-3.5 h-3.5 mr-1" /> Editar
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => handleOpenEdit(sector)} 
+                    className="flex-1 text-xs h-8 gap-1 font-bold"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-indigo-600" /> Editar Setor
                   </Button>
-                  <Button variant="outline" size="sm" className="text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40" onClick={() => handleDelete(s.id)}>
-                    <Trash2 className="w-3.5 h-3.5" />
+
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    onClick={() => handleToggleSectorStatus(sector)} 
+                    className={`text-xs h-8 px-2.5 ${isInactive ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'}`}
+                    title={isInactive ? 'Reativar setor' : 'Inativar setor'}
+                  >
+                    {isInactive ? <CheckCircle2 className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
                   </Button>
                 </div>
               </Card>
             );
           })}
         </div>
-      ) : (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 border-b border-slate-200 dark:border-slate-800">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Setor</th>
-                  <th className="px-4 py-3 font-semibold">Especialidade</th>
-                  <th className="px-4 py-3 font-semibold">Ala / Unidade</th>
-                  <th className="px-4 py-3 font-semibold">Equipe Mínima</th>
-                  <th className="px-4 py-3 font-semibold">Plantões</th>
-                  <th className="px-4 py-3 font-semibold text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {visibleSectors.map((s) => {
-                  const count = shifts.filter((sh) => String(sh.sector_id) === String(s.id) && sh.status !== 'cancelado').length;
-                  return (
-                    <tr key={s.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
-                      <td className="px-4 py-3 font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color || '#0284c7' }} />
-                        {s.name}
-                      </td>
-                      <td className="px-4 py-3 text-sky-600 font-semibold">{s.specialty || '—'}</td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{s.unit || '—'}</td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{s.min_staff || 1} prof.</td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{count} plantão(ões)</td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:bg-slate-100" onClick={() => { setEditing(s); setDialogOpen(true); }}>
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:bg-red-50" onClick={() => handleDelete(s.id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
       )}
 
-      <SectorFormDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onSaved={load}
-        sector={editing}
-        companyId={companyId}
-        unitId={unitId}
-      />
+      {/* MODAL: CRIAR OU EDITAR SETOR */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-indigo-600" />
+              {editingId ? 'Editar Setor Hospitalar' : 'Cadastrar Novo Setor'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveSector} className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <Label className="text-xs font-bold">Nome do Setor *</Label>
+              <Input 
+                value={formData.name} 
+                onChange={e => setFormData({...formData, name: e.target.value})} 
+                placeholder="Ex: UTI Adulto Geral, Pronto Atendimento, Pediatria" 
+                className="h-9" 
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Sigla / Código</Label>
+                <Input 
+                  value={formData.code} 
+                  onChange={e => setFormData({...formData, code: e.target.value})} 
+                  placeholder="Ex: UTI-A, PA, CC" 
+                  className="h-9" 
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Localização / Andar</Label>
+                <Input 
+                  value={formData.location} 
+                  onChange={e => setFormData({...formData, location: e.target.value})} 
+                  placeholder="Ex: 2º Andar, Bloco B" 
+                  className="h-9" 
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold">Unidade Hospitalar Vinculada</Label>
+              <Select value={formData.unit_id} onValueChange={v => setFormData({...formData, unit_id: v})}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent>
+                  {units.map(u => (
+                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold">Observações / Descrição</Label>
+              <Input 
+                value={formData.description} 
+                onChange={e => setFormData({...formData, description: e.target.value})} 
+                placeholder="Ex: Exige especialista RQE em terapia intensiva" 
+                className="h-9" 
+              />
+            </div>
+
+            <DialogFooter className="pt-3 gap-2">
+              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-9">
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={submitting} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-5">
+                {submitting ? 'Salvando...' : 'Salvar Setor'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
