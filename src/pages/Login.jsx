@@ -1,717 +1,130 @@
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
-import { useAuth } from "@/lib/AuthContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { 
-  LogIn, 
-  Mail, 
-  Lock, 
-  Loader2, 
-  ShieldCheck, 
-  ArrowRight, 
-  CalendarClock, 
-  Stethoscope, 
-  BarChart3, 
-  MapPin, 
-  Sparkles, 
-  UserRound, 
-  Building2, 
-  Download, 
-  MessageCircleMore,
-  KeyRound,
-  AlertCircle
-} from "lucide-react";
-
-const features = [
-  { icon: CalendarClock, title: 'Escala inteligente', text: 'Planejamento automático de turnos e cobertura por especialidade.' },
-  { icon: BarChart3, title: 'Gestão financeira', text: 'Acompanhe faturamento, repasses e metas em um painel claro.' },
-  { icon: ShieldCheck, title: 'Controle e segurança', text: 'Centralize acesso, convites e reconhecimento do time em um ambiente seguro.' },
-];
-
-const plans = [
-  {
-    id: 'free',
-    name: 'Free',
-    price: 'R$ 0',
-    description: 'Até 3 profissionais ativos',
-    highlight: false,
-    badge: 'Para testar',
-    cta: 'Começar grátis',
-    info: 'Ideal para clínicas iniciais, consultórios pequenos e equipes em fase de organização.',
-    features: ['Até 3 profissionais', 'Escalas básicas', 'Acompanhamento de plantões', 'Suporte por e-mail']
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    price: 'R$ 79',
-    description: 'Por colaborador / mês',
-    highlight: true,
-    badge: 'Mais usado',
-    cta: 'Quero esse',
-    info: 'A partir do 4º profissional, o cliente paga por colaborador em uso. Estrutura simples, clara e escalável.',
-    features: ['Tudo do Free', 'Escala em tempo real', 'Faturamento por profissional', 'Relatórios e exportação', 'App mobile completo']
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise',
-    price: 'Sob consulta',
-    description: 'Para redes e grupos com customização',
-    highlight: false,
-    badge: 'Custom',
-    cta: 'Solicitar consultoria',
-    info: 'Para múltiplas unidades, integração, suporte dedicado e regras especiais de operação.',
-    features: ['Múltiplas unidades', 'Suporte premium', 'Integrações e automações', 'Estratégia de operação personalizada']
-  },
-];
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Activity, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState('pro');
   const navigate = useNavigate();
-  const { checkUserAuth } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  // Estados do Pop-up Obrigatório de Troca de Senha
-  const [forcePasswordModal, setForcePasswordModal] = useState(false);
-  const [pendingUser, setPendingUser] = useState(null);
-  const [oldPasswordInput, setOldPasswordInput] = useState("");
-  const [newPasswordInput, setNewPasswordInput] = useState("");
-  const [confirmPasswordInput, setConfirmPasswordInput] = useState("");
-  const [modalError, setModalError] = useState("");
-  const [savingNewPassword, setSavingNewPassword] = useState(false);
-
-  const handleSubmit = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    setError("");
+    setError('');
+    
+    if (!email || !password) {
+      setError('Preencha e-mail e senha para continuar.');
+      return;
+    }
+
     setLoading(true);
-
     try {
-      const res = await base44.auth.loginViaUsernamePassword(username.trim(), password);
-      const sessionUser = res?.user;
-
-      // Trava de Primeiro Acesso / Troca Obrigatória
-      if (sessionUser?.data?.must_change_password) {
-        setPendingUser(sessionUser);
-        setOldPasswordInput(password); // Preenche a provisória digitada
-        setNewPasswordInput("");
-        setConfirmPasswordInput("");
-        setModalError("");
-        setForcePasswordModal(true); // Abre o pop-up na hora!
-        setLoading(false);
-        return; // Não redireciona para o dashboard
+      // Chamada de autenticação da sua API
+      const res = await base44.auth.login(email.trim(), password);
+      
+      if (!res || !res.user) {
+        throw new Error('Credenciais inválidas. Verifique seu e-mail e senha.');
       }
 
-      // Se não precisa trocar senha, entra normalmente
-      if (checkUserAuth) {
-        await checkUserAuth();
+      const status = res.user.data?.status || 'pendente';
+      const role = res.user.role || 'user';
+
+      if (status === 'inativo') {
+        throw new Error('Sua conta foi inativada. Entre em contato com a administração.');
       }
-      navigate('/dashboard');
+      if (status === 'recusado') {
+        throw new Error('Seu cadastro foi recusado. Verifique com a coordenação médica.');
+      }
+      if (status === 'pendente' && role !== 'admin') {
+        navigate('/pending-approval'); // Crie esta rota simples depois para aviso de pendência
+        return;
+      }
+
+      navigate('/'); // Redireciona para o Dashboard (que fará a leitura limpa do contexto)
     } catch (err) {
-      setError(err.message || "Usuário ou senha inválidos.");
+      setError(err.message || 'Falha ao conectar com o servidor. Tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleConfirmNewPassword = async (e) => {
-    e.preventDefault();
-    setModalError("");
-
-    if (!pendingUser) return;
-
-    if (oldPasswordInput !== password && oldPasswordInput !== pendingUser.password) {
-      setModalError("A senha anterior provisória informada não coincide.");
-      return;
-    }
-
-    // Regra: Mínimo 7 e máximo 20 caracteres (formato livre)
-    if (newPasswordInput.length < 7 || newPasswordInput.length > 20) {
-      setModalError("A nova senha deve conter entre 7 e 20 caracteres.");
-      return;
-    }
-
-    if (newPasswordInput !== confirmPasswordInput) {
-      setModalError("A confirmação de senha não coincide com a nova senha digitada.");
-      return;
-    }
-
-    if (newPasswordInput === oldPasswordInput) {
-      setModalError("A nova senha precisa ser diferente da senha provisória.");
-      return;
-    }
-
-    setSavingNewPassword(true);
-    try {
-      if (base44.auth.changePassword) {
-        await base44.auth.changePassword(pendingUser.id, newPasswordInput);
-      } else {
-        await base44.entities.User.update(pendingUser.id, {
-          password: newPasswordInput,
-          data: { ...(pendingUser.data || {}), must_change_password: false }
-        });
-      }
-
-      if (checkUserAuth) {
-        await checkUserAuth();
-      }
-
-      setForcePasswordModal(false);
-      navigate('/dashboard');
-    } catch (err) {
-      setModalError(err.message || "Erro ao salvar nova senha. Tente novamente.");
-    } finally {
-      setSavingNewPassword(false);
-    }
-  };
-
-  const handleAppDownload = () => {
-    const userAgent = navigator.userAgent || "";
-    const isAndroid = /Android/i.test(userAgent);
-    const isIOS = /iPhone|iPad|iPod/i.test(userAgent);
-
-    const targetUrl = isAndroid
-      ? "https://play.google.com/store/apps"
-      : isIOS
-        ? "https://www.apple.com/br/app-store/"
-        : "#contato";
-
-    if (targetUrl.startsWith("#")) {
-      document.querySelector(targetUrl)?.scrollIntoView({ behavior: 'smooth' });
-    } else {
-      window.open(targetUrl, "_blank", "noopener,noreferrer");
-    }
-  };
-
-  const handleWhatsAppQuote = () => {
-    window.open(
-      "https://wa.me/5511999999999?text=Ol%C3%A1%2C%20quero%20fazer%20uma%20cotação%20da%20ScaleMedic%20CGT.",
-      "_blank",
-      "noopener,noreferrer"
-    );
-  };
-
-  const handleSelectPlan = (planId) => {
-    setSelectedPlan(planId);
-    const plan = plans.find((item) => item.id === planId);
-    if (plan) {
-      document.getElementById('planos')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      const target = document.getElementById('detalhe-plano');
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-    }
-  };
-
-  const activePlan = plans.find((plan) => plan.id === selectedPlan) || plans[1];
-
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.18),transparent_35%),linear-gradient(180deg,#f8fbff_0%,#eef6ff_100%)] text-slate-900">
-      <header className="sticky top-0 z-40 border-b border-sky-100/80 bg-white/70 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-600 text-white shadow-lg shadow-sky-200">
-              <Stethoscope className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-lg font-black tracking-tight text-slate-900">ScaleMedic</div>
-              <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Escala médica</div>
-            </div>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center items-center p-4">
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-2xl">
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-14 h-14 bg-sky-600 rounded-2xl flex items-center justify-center shadow-lg mb-4">
+            <Activity className="w-7 h-7 text-white" />
           </div>
-
-          <nav className="hidden items-center gap-8 text-sm font-medium text-slate-600 md:flex">
-            <a href="#home" className="transition hover:text-sky-700">Home</a>
-            <a href="#escala-medica" className="transition hover:text-sky-700">Escala</a>
-            <a href="#planos" className="transition hover:text-sky-700">Preços</a>
-            <a href="#contato" className="transition hover:text-sky-700">Contato</a>
-          </nav>
-
-          <Button asChild variant="outline" className="rounded-full border-sky-200 bg-white text-sky-700 hover:bg-sky-50">
-            <Link to="/register">Quero testar</Link>
-          </Button>
+          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">ScaleMedic</h1>
+          <p className="text-sm text-slate-500 font-medium mt-1 text-center">Plataforma Integrada de Gestão Hospitalar</p>
         </div>
-      </header>
 
-      <main className="relative overflow-hidden">
-        <section id="home" className="mx-auto max-w-7xl px-4 pb-16 pt-12 sm:px-6 lg:px-8 lg:pb-24 lg:pt-20">
-          <div className="grid items-center gap-10 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="relative z-10 space-y-8">
-              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
-                <Sparkles className="h-3.5 w-3.5" />
-                Plataforma moderna
-              </div>
-
-              <div className="space-y-5">
-                <h1 className="max-w-xl text-4xl font-black tracking-tight text-slate-900 sm:text-5xl xl:text-6xl">
-                  Organize sua clínica, sua equipe e seu crescimento em um único lugar.
-                </h1>
-                <p className="max-w-xl text-lg leading-8 text-slate-600">
-                  A ScaleMedic centraliza escalas médicas, gestão de profissionais, faturamento e acompanhamento em tempo real para acelerar o dia a dia do seu negócio.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-4">
-                <button onClick={handleAppDownload} className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-200 transition hover:bg-sky-700">
-                  <Download className="h-4 w-4" />
-                  Solicitar demo
-                </button>
-                <button onClick={() => window.open('/mobile-preview', '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-sky-200 hover:text-sky-700">
-                  Ver app no celular <ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="flex flex-wrap gap-3 pt-2 text-sm text-slate-600">
-                <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-                  3.000+ plantões organizados
-                </div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-                  +98% visibilidade
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 pt-2 text-sm text-slate-600">
-                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-                  Android e iPhone
-                </span>
-                <button onClick={handleWhatsAppQuote} className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50">
-                  <MessageCircleMore className="h-3.5 w-3.5" />
-                  Cotação no WhatsApp
-                </button>
-              </div>
-
-              <div className="flex flex-wrap gap-6 pt-4 text-sm text-slate-600">
-                <div>
-                  <div className="text-2xl font-black text-slate-900">24h</div>
-                  <div>Operação contínua</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-black text-slate-900">+98%</div>
-                  <div>Visibilidade da equipe</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-black text-slate-900">1 painel</div>
-                  <div>Todos os processos</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Container do Formulário */}
-            <div className="relative mx-auto w-full max-w-md">
-              <div className="relative overflow-hidden rounded-[28px] border border-sky-100 bg-white p-7 shadow-[0_20px_50px_rgba(14,116,144,0.12)]">
-                <div className="mb-6 flex items-center justify-between">
-                  <div>
-                    <div className="text-xs uppercase tracking-[0.22em] text-slate-400">Portal do Usuário</div>
-                    <h2 className="mt-1 text-2xl font-black text-slate-900">Acesse sua conta</h2>
-                  </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
-                    <LogIn className="h-5 w-5" />
-                  </div>
-                </div>
-
-                {error && (
-                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-700">
-                    {error}
-                  </div>
-                )}
-
-                <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="username" className="text-xs font-semibold text-slate-700">
-                      Nome de Usuário, Apelido ou E-mail
-                    </Label>
-                    <div className="relative">
-                      <UserRound className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                      <Input
-                        id="username"
-                        name="username_field"
-                        type="text"
-                        autoComplete="off"
-                        placeholder="Ex: admin, mdevils ou dr.silva"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10 text-slate-900 placeholder:text-slate-400 focus:bg-white"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="password" className="text-xs font-semibold text-slate-700">Senha</Label>
-                      <Link to="/forgot-password" className="text-xs font-medium text-sky-700 hover:underline">
-                        Esqueci a senha
-                      </Link>
-                    </div>
-                    <div className="relative">
-                      <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                      <Input
-                        id="password"
-                        name="password_field"
-                        type="password"
-                        autoComplete="new-password"
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10 text-slate-900 placeholder:text-slate-400 focus:bg-white"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <Button 
-                    type="submit" 
-                    className="mt-2 h-12 w-full rounded-xl bg-sky-600 text-white font-semibold shadow-lg shadow-sky-200 hover:bg-sky-700" 
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Validando credenciais...
-                      </>
-                    ) : (
-                      "Entrar no Sistema"
-                    )}
-                  </Button>
-                </form>
-
-                <p className="mt-5 text-center text-xs text-slate-500">
-                  Ainda não tem conta?{" "}
-                  <Link to="/register" className="font-semibold text-sky-700 hover:underline">
-                    Criar conta
-                  </Link>
-                </p>
-              </div>
-            </div>
+        {error && (
+          <div className="mb-6 p-4 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+            <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            <p className="text-xs font-bold text-rose-800 dark:text-rose-300 leading-relaxed">{error}</p>
           </div>
-        </section>
+        )}
 
-        {/* Seção Escala Médica */}
-        <section id="escala-medica" className="border-t border-sky-100 bg-white/60 py-20">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="mb-12 text-center">
-              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">
-                <CalendarClock className="h-3.5 w-3.5" />
-                Escala médica
-              </div>
-              <h2 className="mt-5 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
-                Mais controle para cada plantão, equipe e especialidade.
-              </h2>
-            </div>
-
-            <div className="grid gap-6 md:grid-cols-3">
-              {features.map(({ icon: Icon, title, text }) => (
-                <div key={title} className="group rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-2 hover:shadow-xl hover:shadow-sky-100">
-                  <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-700">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <h3 className="text-xl font-bold text-slate-900">{title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">{text}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Seção Como Funciona */}
-        <section className="bg-slate-950 py-20 text-white">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-            <div className="mb-12 text-center">
-              <div className="inline-flex items-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-sky-200">
-                <BarChart3 className="h-3.5 w-3.5" />
-                Como funciona
-              </div>
-              <h2 className="mt-5 text-3xl font-black tracking-tight sm:text-4xl">
-                Tudo o que o gestor precisa em uma única operação.
-              </h2>
-            </div>
-
-            <div className="grid gap-6 md:grid-cols-3">
-              {[
-                { title: '1. Planeje', text: 'Crie escalas com cobertura e especialidade por unidade, setor e turno.' },
-                { title: '2. Confirme', text: 'Profissionais recebem plantões, validam presença e acompanham tudo pelo app.' },
-                { title: '3. Controle', text: 'Acompanhe faturamento, repasses e indicadores em um painel enxuto e claro.' }
-              ].map((item) => (
-                <div key={item.title} className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-sm">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-500/10 text-sky-300 font-black">
-                    {item.title.split('.')[0]}
-                  </div>
-                  <h3 className="text-xl font-black text-white">{item.title}</h3>
-                  <p className="mt-3 text-sm leading-7 text-slate-300">{item.text}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Seção Planos */}
-        <section id="planos" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <div className="mb-12 text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              Modelo de precificação
-            </div>
-            <h2 className="mt-5 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
-              Estrutura simples, com clareza e escala de crescimento.
-            </h2>
+        <form onSubmit={handleLogin} className="space-y-5">
+          <div className="space-y-2">
+            <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">E-mail Corporativo ou Usuário</Label>
+            <Input 
+              type="text" 
+              placeholder="exemplo@hospital.com.br"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="h-11 bg-slate-50 dark:bg-slate-950"
+              disabled={loading}
+            />
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-3">
-            {plans.map((plan) => {
-              const isSelected = selectedPlan === plan.id;
-
-              return (
-                <button
-                  key={plan.id}
-                  type="button"
-                  onClick={() => handleSelectPlan(plan.id)}
-                  className={`w-full rounded-[28px] border p-6 text-left shadow-sm transition duration-200 hover:-translate-y-1 ${
-                    plan.highlight
-                      ? 'border-sky-200 bg-sky-600 text-white shadow-sky-200/60'
-                      : isSelected
-                        ? 'border-sky-300 bg-sky-50 text-slate-900 shadow-md shadow-sky-100'
-                        : 'border-slate-200 bg-white text-slate-900 hover:border-sky-200 hover:shadow-md hover:shadow-sky-100'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <h3 className={`text-xl font-black ${plan.highlight ? 'text-white' : 'text-slate-900'}`}>{plan.name}</h3>
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
-                      plan.highlight ? 'bg-white/15 text-sky-100' : 'bg-sky-100 text-sky-700'
-                    }`}>
-                      {plan.badge}
-                    </span>
-                  </div>
-
-                  <div className="mt-6 flex items-end gap-1">
-                    <span className={`text-4xl font-black ${plan.highlight ? 'text-white' : 'text-slate-900'}`}>{plan.price}</span>
-                    <span className={`pb-1 text-sm ${plan.highlight ? 'text-sky-100' : 'text-slate-500'}`}>{plan.price.includes('Sob') ? '' : '/mês'}</span>
-                  </div>
-
-                  <p className={`mt-4 text-sm leading-6 ${plan.highlight ? 'text-sky-100' : 'text-slate-600'}`}>{plan.description}</p>
-
-                  <ul className={`mt-6 space-y-3 text-sm ${plan.highlight ? 'text-sky-50' : 'text-slate-600'}`}>
-                    {plan.features.map((feature) => (
-                      <li key={feature}>• {feature}</li>
-                    ))}
-                  </ul>
-
-                  <div className={`mt-8 inline-flex h-11 items-center justify-center rounded-xl px-4 text-sm font-semibold ${
-                    plan.highlight ? 'bg-white text-sky-700 hover:bg-sky-50' : 'bg-sky-600 text-white hover:bg-sky-700'
-                  }`}>
-                    {plan.cta}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          <div id="detalhe-plano" className="mt-10 rounded-[28px] border border-slate-200 bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-6 shadow-sm lg:p-8">
-            <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">Plano selecionado</p>
-                <h3 className="mt-3 text-3xl font-black text-slate-900">{activePlan.name}</h3>
-                <p className="mt-3 max-w-xl text-sm leading-7 text-slate-600">{activePlan.info}</p>
-                <div className="mt-5 flex flex-wrap gap-3">
-                  {activePlan.features.map((feature) => (
-                    <span key={feature} className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-sky-700">
-                      {feature}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-[24px] border border-slate-200 bg-slate-950 p-6 text-white shadow-xl shadow-sky-100">
-                <div className="mb-4 flex items-center justify-between">
-                  <span className="text-sm text-slate-300">Estrutura sugerida</span>
-                  <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-200">
-                    {activePlan.badge}
-                  </span>
-                </div>
-                <div className="text-4xl font-black">{activePlan.price}</div>
-                <div className="mt-2 text-sm text-slate-300">{activePlan.description}</div>
-                <div className="mt-6 space-y-3 text-sm text-slate-200">
-                  <div className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2">
-                    <span>Até 3 profissionais</span>
-                    <strong className="text-white">Grátis</strong>
-                  </div>
-                  <div className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2">
-                    <span>4º profissional em diante</span>
-                    <strong className="text-white">R$ 79/mês</strong>
-                  </div>
-                  <div className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2">
-                    <span>Suporte e operação</span>
-                    <strong className="text-white">Incluído</strong>
-                  </div>
-                </div>
-              </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Senha</Label>
+              <Link to="/forgot-password" className="text-[11px] font-bold text-sky-600 hover:underline">Esqueceu a senha?</Link>
             </div>
-          </div>
-        </section>
-
-        {/* Seção Contato */}
-        <section id="contato" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-          <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">
-            <div className="rounded-[28px] border border-sky-100 bg-sky-950 p-8 text-white shadow-[0_20px_60px_rgba(14,116,144,0.25)]">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-sky-100">
-                Fale conosco
-              </div>
-              <h2 className="mt-5 text-3xl font-black tracking-tight">Vamos transformar a sua operação?</h2>
-              <p className="mt-4 text-sm leading-7 text-sky-100/80">
-                Nossa equipe ajuda clínicas, consultórios e grupos médicos a sair do caos operacional e criar uma gestão mais eficiente, previsível e lucrativa.
-              </p>
-
-              <div className="mt-8 space-y-4 text-sm text-sky-50">
-                <div className="flex items-center gap-3">
-                  <Mail className="h-4 w-4 text-sky-300" />
-                  contato@scalemedic.com.br
-                </div>
-                <div className="flex items-center gap-3">
-                  <MapPin className="h-4 w-4 text-sky-300" />
-                  São Paulo · Brasil
-                </div>
-                <div className="flex flex-wrap gap-3 pt-2">
-                  <button onClick={handleAppDownload} className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white hover:bg-white/10">
-                    <Download className="h-3.5 w-3.5" />
-                    Baixar app
-                  </button>
-                  <button onClick={handleWhatsAppQuote} className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200 hover:bg-emerald-500/20">
-                    <MessageCircleMore className="h-3.5 w-3.5" />
-                    WhatsApp
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[28px] border border-slate-200 bg-white p-8 shadow-sm">
-              <div className="mb-6 flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sky-700">
-                  <Building2 className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-[0.22em] text-slate-400">Contato</div>
-                  <h3 className="text-xl font-black text-slate-900">Solicite uma demonstração</h3>
-                </div>
-              </div>
-
-              <div className="grid gap-5 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="nome" className="mb-2 block text-sm font-medium text-slate-700">Nome</Label>
-                  <Input id="nome" placeholder="Seu nome" className="h-12 rounded-xl border-slate-200 bg-slate-50" />
-                </div>
-                <div>
-                  <Label htmlFor="empresa" className="mb-2 block text-sm font-medium text-slate-700">Empresa</Label>
-                  <Input id="empresa" placeholder="Sua empresa" className="h-12 rounded-xl border-slate-200 bg-slate-50" />
-                </div>
-                <div className="sm:col-span-2">
-                  <Label htmlFor="email" className="mb-2 block text-sm font-medium text-slate-700">E-mail</Label>
-                  <Input id="email" type="email" placeholder="nome@empresa.com" className="h-12 rounded-xl border-slate-200 bg-slate-50" />
-                </div>
-                <div className="sm:col-span-2">
-                  <Label htmlFor="mensagem" className="mb-2 block text-sm font-medium text-slate-700">Mensagem</Label>
-                  <textarea id="mensagem" rows={5} placeholder="Conte como você quer evoluir sua operação..." className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-300" />
-                </div>
-              </div>
-
-              <Button className="mt-6 h-12 rounded-xl bg-sky-600 px-6 text-white shadow-lg shadow-sky-200 hover:bg-sky-700">
-                Enviar mensagem
-              </Button>
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <button
-        type="button"
-        onClick={handleWhatsAppQuote}
-        aria-label="Fazer cotação por WhatsApp"
-        className="whatsapp-float"
-      >
-        <MessageCircleMore className="h-6 w-6" />
-      </button>
-
-      {/* MODAL BLOQUEANTE DE TROCA DE SENHA OBRIGATÓRIA NO 1º ACESSO */}
-      <Dialog open={forcePasswordModal} onOpenChange={() => {}}>
-        <DialogContent className="max-w-md [&>button]:hidden">
-          <DialogHeader>
-            <div className="flex items-center gap-2 text-sky-600 mb-1">
-              <KeyRound className="w-5 h-5" />
-              <DialogTitle className="text-lg font-bold">Primeiro Acesso - Troca de Senha</DialogTitle>
-            </div>
-            <DialogDescription className="text-xs text-slate-500">
-              Para a segurança da sua conta, é obrigatório alterar sua senha temporária antes de acessar o sistema.
-            </DialogDescription>
-          </DialogHeader>
-
-          {modalError && (
-            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2 font-medium">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{modalError}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleConfirmNewPassword} className="space-y-3.5 py-1">
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-slate-700">Senha Provisória Anterior</Label>
-              <Input
-                type="password"
-                required
-                placeholder="Digite a senha provisória"
-                value={oldPasswordInput}
-                onChange={(e) => setOldPasswordInput(e.target.value)}
-                className="h-10 text-sm"
+            <div className="relative">
+              <Input 
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="h-11 bg-slate-50 dark:bg-slate-950 pr-10"
+                disabled={loading}
               />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-slate-700">Nova Senha Definitiva</Label>
-              <Input
-                type="password"
-                required
-                placeholder="De 7 a 20 caracteres (formato livre)"
-                value={newPasswordInput}
-                onChange={(e) => setNewPasswordInput(e.target.value)}
-                className="h-10 text-sm"
-              />
-              <p className="text-[11px] text-slate-400">
-                Mínimo 7 e máximo 20 caracteres. Letras maiúsculas, minúsculas, números ou símbolos.
-              </p>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-slate-700">Repetir Nova Senha</Label>
-              <Input
-                type="password"
-                required
-                placeholder="Confirme a nova senha"
-                value={confirmPasswordInput}
-                onChange={(e) => setConfirmPasswordInput(e.target.value)}
-                className="h-10 text-sm"
-              />
-            </div>
-
-            <DialogFooter className="pt-3">
-              <Button
-                type="submit"
-                disabled={savingNewPassword}
-                className="w-full h-11 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-sm"
+              <button 
+                type="button" 
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
-                {savingNewPassword ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Salvando nova senha...
-                  </>
-                ) : (
-                  "Confirmar Nova Senha e Entrar"
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <Button 
+            type="submit" 
+            disabled={loading} 
+            className="w-full h-11 bg-sky-600 hover:bg-sky-700 text-white font-black text-sm rounded-xl shadow-md mt-2"
+          >
+            {loading ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Autenticando...</> : 'Entrar no Sistema'}
+          </Button>
+        </form>
+
+        <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 text-center">
+          <p className="text-xs text-slate-500 font-medium">
+            Novo na plataforma? {' '}
+            <Link to="/register" className="font-bold text-sky-600 hover:underline">Solicite seu credenciamento</Link>
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

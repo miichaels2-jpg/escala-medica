@@ -1,392 +1,243 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { UserPlus, Mail, Lock, Loader2 } from "lucide-react";
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
-import AuthLayout from "@/components/AuthLayout";
-import GoogleIcon from "@/components/GoogleIcon";
-import { toast } from "@/components/ui/use-toast";
-import { safeReturnTo } from "@/lib/authReturnTo";
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { base44 } from '@/api/base44Client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Activity, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export default function Register() {
-  const [fullName, setFullName] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [idade, setIdade] = useState("");
-  const [cbo, setCbo] = useState("");
-  const [accountRole, setAccountRole] = useState("Gestor");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [showOtp, setShowOtp] = useState(false);
-  const [otpCode, setOtpCode] = useState("");
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  // Empresa identificada via DNS/IP
+  const [identifiedCompanyId, setIdentifiedCompanyId] = useState('cmp_principal'); 
+  const [availableUnits, setAvailableUnits] = useState([]);
+
+  // Campos
+  const [formData, setFormData] = useState({
+    fullName: '',
+    cpf: '',
+    email: '',
+    phone: '',
+    documentNumber: '', // CRM/COREN
+    councilState: 'SP',
+    specialty: '',
+    unitId: '',
+    password: '',
+    confirmPassword: ''
+  });
+
+  // Identificação do ambiente e unidades
+  useEffect(() => {
+    const fetchCompanyData = async () => {
+      try {
+        // Em produção real, você pegaria window.location.hostname para buscar a Company correta
+        const comp = await base44.entities.Company.get(identifiedCompanyId).catch(() => null);
+        if (comp && comp.units) {
+          setAvailableUnits(comp.units);
+          if (comp.units.length > 0) setFormData(prev => ({ ...prev, unitId: comp.units[0].id }));
+        }
+      } catch (e) {
+        console.warn('Erro ao mapear unidades da empresa.');
+      }
+    };
+    fetchCompanyData();
+  }, [identifiedCompanyId]);
+
+  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
+    setError('');
 
-    if (password !== confirmPassword) {
-      setError("As senhas não conferem.");
+    if (formData.password !== formData.confirmPassword) {
+      setError('As senhas não coincidem.');
       return;
     }
 
-    if (!fullName.trim()) {
-      setError("Informe o nome completo.");
-      return;
-    }
-
-    if (!cpf.trim()) {
-      setError("Informe o CPF.");
-      return;
-    }
-
-    if (!idade || Number(idade) <= 0) {
-      setError("Informe a idade corretamente.");
-      return;
-    }
-
-    if (!cbo.trim()) {
-      setError("Informe o CBO.");
+    if (!formData.fullName || !formData.cpf || !formData.email || !formData.documentNumber) {
+      setError('Preencha todos os campos obrigatórios (*).');
       return;
     }
 
     setLoading(true);
     try {
-      await base44.auth.register({
-        email,
-        password,
-        full_name: fullName,
-        role: accountRole,
-        accountRole,
-        cpf,
-        idade: Number(idade),
-        cbo,
-      });
-      setShowOtp(true);
-      toast({ title: "Código enviado", description: "Enviamos um código de verificação para o seu e-mail." });
-    } catch (err) {
-      setError(err.message || "Falha ao criar conta.");
-    } finally {
-      setLoading(false);
-    }
-  };
+      // 1. Cria o usuário com status pendente de aprovação
+      const userPayload = {
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password,
+        full_name: formData.fullName.trim(),
+        role: 'user', // Perfil inicial restrito
+        data: {
+          company_id: identifiedCompanyId,
+          selected_unit_id: formData.unitId,
+          status: 'pendente', // REGRA DE OURO
+          phone: formData.phone,
+          document_cpf: formData.cpf,
+        }
+      };
 
-  const handleVerify = async () => {
-    setError("");
-    setLoading(true);
-    try {
-      const result = await base44.auth.verifyOtp({ email, otpCode });
-      if (result?.access_token) {
-        base44.auth.setToken(result.access_token);
+      const newUser = await base44.auth.register(userPayload);
+
+      // 2. Cria o registro profissional atrelado aguardando homologação
+      if (newUser && base44.entities.Professional?.create) {
+        await base44.entities.Professional.create({
+          user_id: newUser.id,
+          company_id: identifiedCompanyId,
+          unit_id: formData.unitId,
+          name: formData.fullName.trim(),
+          cpf: formData.cpf,
+          email: formData.email.trim().toLowerCase(),
+          phone: formData.phone,
+          document: `${formData.documentNumber} - ${formData.councilState}`,
+          specialty: formData.specialty,
+          status: 'pendente', // Não aparece nas escalas até ser ativado
+          remuneration_type: 'hora',
+          hourly_rate: 0
+        });
+
+        // 3. Notifica os administradores
+        if (base44.entities.Notification?.create) {
+          await base44.entities.Notification.create({
+            company_id: identifiedCompanyId,
+            unit_id: formData.unitId,
+            recipient_user_id: 'admin', // Flag para listar no painel de admins
+            title: 'Novo Cadastro de Profissional',
+            message: `Dr(a). ${formData.fullName} solicitou acesso. Aguardando aprovação.`,
+            is_read: false,
+            created_date: new Date().toISOString()
+          });
+        }
       }
-      window.location.href = safeReturnTo();
+
+      setSuccess(true);
     } catch (err) {
-      setError(err.message || "Código de verificação inválido.");
+      setError(err.message || 'Ocorreu um erro no credenciamento. Verifique se o e-mail ou CPF já estão cadastrados.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResend = async () => {
-    setError("");
-    try {
-      await base44.auth.resendOtp(email);
-      toast({
-        title: "Código enviado",
-        description: "Verifique seu e-mail para receber o novo código.",
-      });
-    } catch (err) {
-      setError(err.message || "Falha ao reenviar o código.");
-    }
-  };
-
-  const handleGoogle = () => {
-    base44.auth.loginWithProvider("google", safeReturnTo());
-  };
-
-  if (showOtp) {
+  if (success) {
     return (
-      <AuthLayout
-        icon={Mail}
-        title="Verifique seu e-mail"
-        subtitle={`Enviamos um código para ${email}`}
-      >
-        {error && (
-          <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-            {error}
-          </div>
-        )}
-        <div className="flex justify-center mb-6">
-          <InputOTP
-            maxLength={6}
-            value={otpCode}
-            onChange={setOtpCode}
-            autoFocus
-            autoComplete="one-time-code"
-          >
-            <InputOTPGroup>
-              <InputOTPSlot index={0} />
-              <InputOTPSlot index={1} />
-              <InputOTPSlot index={2} />
-              <InputOTPSlot index={3} />
-              <InputOTPSlot index={4} />
-              <InputOTPSlot index={5} />
-            </InputOTPGroup>
-          </InputOTP>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center items-center p-4">
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/50 rounded-3xl p-8 shadow-2xl text-center">
+          <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Cadastro Solicitado!</h2>
+          <p className="text-sm text-slate-500 mb-6 leading-relaxed">
+            Seus dados foram enviados para a coordenação médica. Você receberá um aviso assim que o seu acesso for validado e aprovado.
+          </p>
+          <Button onClick={() => navigate('/login')} className="w-full h-11 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl">
+            Voltar para o Login
+          </Button>
         </div>
-        <Button
-          className="w-full h-12 font-medium"
-          onClick={handleVerify}
-          disabled={loading || otpCode.length < 6}
-        >
-          {loading ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Verificando...
-            </>
-          ) : (
-            "Verificar"
-          )}
-        </Button>
-        <p className="text-center text-sm text-muted-foreground mt-4">
-          Não recebeu o código?{" "}
-          <button onClick={handleResend} className="text-primary font-medium hover:underline">
-            Reenviar
-          </button>
-        </p>
-      </AuthLayout>
+      </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.16),transparent_35%),linear-gradient(180deg,#f8fbff_0%,#eef6ff_100%)] px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-6xl overflow-hidden rounded-[32px] border border-sky-100 bg-white shadow-[0_30px_80px_rgba(14,116,144,0.12)] lg:grid-cols-[1fr_1.1fr]">
-        <div className="hidden bg-sky-950 p-8 text-white lg:flex lg:flex-col lg:justify-between">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center items-center p-4 py-12">
+      <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-10 shadow-2xl">
+        <div className="flex items-center gap-4 mb-8 border-b border-slate-100 dark:border-slate-800 pb-6">
+          <div className="w-12 h-12 bg-sky-600 rounded-xl flex items-center justify-center shadow-lg shrink-0">
+            <Activity className="w-6 h-6 text-white" />
+          </div>
           <div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-sky-200">
-                <UserPlus className="h-6 w-6" />
-              </div>
-              <div>
-                <div className="text-xl font-black">ScaleMedic</div>
-                <div className="text-[10px] uppercase tracking-[0.22em] text-sky-200/80">Escala médica</div>
-              </div>
-            </div>
-
-            <div className="mt-10">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-200/80">Crie sua conta</p>
-              <h1 className="mt-4 max-w-sm text-4xl font-black leading-tight">Organize a sua operação com inteligência.</h1>
-            </div>
-          </div>
-
-          <div className="space-y-4 rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-sm">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-300">✓</div>
-              <div>
-                <div className="font-semibold">Escala inteligente</div>
-                <div className="text-sm text-sky-100/80">Controle de plantões em tempo real</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-300">✓</div>
-              <div>
-                <div className="font-semibold">Gestão financeira</div>
-                <div className="text-sm text-sky-100/80">Faturamento, repasses e acompanhamento</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/10 text-sky-300">✓</div>
-              <div>
-                <div className="font-semibold">App mobile completo</div>
-                <div className="text-sm text-sky-100/80">Pedindo presença e confirmando escala</div>
-              </div>
-            </div>
+            <h1 className="text-2xl font-black text-slate-900 dark:text-white">Credenciamento Médico</h1>
+            <p className="text-xs text-slate-500 font-medium mt-1">Preencha os dados oficiais para solicitação de acesso à escala.</p>
           </div>
         </div>
 
-        <div className="p-5 sm:p-8 lg:p-10">
-          <div className="mb-8 flex items-center justify-between gap-4">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Cadastro</div>
-              <h2 className="mt-2 text-3xl font-black text-slate-900">Crie sua conta</h2>
+        {error && (
+          <div className="mb-6 p-4 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+            <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            <p className="text-xs font-bold text-rose-800 dark:text-rose-300 leading-relaxed">{error}</p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nome Completo *</Label>
+              <Input name="fullName" value={formData.fullName} onChange={handleChange} placeholder="Seu nome oficial" className="h-10 text-sm" disabled={loading} />
             </div>
-            <div className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
-              Demo
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">CPF *</Label>
+              <Input name="cpf" value={formData.cpf} onChange={handleChange} placeholder="000.000.000-00" className="h-10 text-sm" disabled={loading} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Telefone / WhatsApp *</Label>
+              <Input name="phone" value={formData.phone} onChange={handleChange} placeholder="(00) 00000-0000" className="h-10 text-sm" disabled={loading} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Número do CRM/COREN *</Label>
+              <Input name="documentNumber" value={formData.documentNumber} onChange={handleChange} placeholder="Ex: 123456" className="h-10 text-sm" disabled={loading} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">UF do Conselho *</Label>
+              <Select value={formData.councilState} onValueChange={(val) => setFormData({...formData, councilState: val})} disabled={loading}>
+                <SelectTrigger className="h-10 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {['SP', 'RJ', 'MG', 'PR', 'SC', 'RS', 'BA', 'PE', 'CE'].map(uf => (
+                    <SelectItem key={uf} value={uf}>{uf}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Especialidade Principal *</Label>
+              <Input name="specialty" value={formData.specialty} onChange={handleChange} placeholder="Ex: Clínica Médica, Pediatria, Cirurgia Geral" className="h-10 text-sm" disabled={loading} />
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2 border-t border-slate-100 dark:border-slate-800 pt-4">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Unidade de Lotação (Hospital/Clínica)</Label>
+              <Select value={formData.unitId} onValueChange={(val) => setFormData({...formData, unitId: val})} disabled={loading || availableUnits.length === 0}>
+                <SelectTrigger className="h-10 text-sm font-semibold">
+                  <SelectValue placeholder="Selecione o hospital..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableUnits.map(u => (
+                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                  ))}
+                  {availableUnits.length === 0 && <SelectItem value="default" disabled>Carregando unidades...</SelectItem>}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">E-mail Profissional *</Label>
+              <Input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="medico@hospital.com" className="h-10 text-sm" disabled={loading} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Senha de Acesso *</Label>
+              <Input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Mínimo 6 caracteres" className="h-10 text-sm" disabled={loading} />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Confirme a Senha *</Label>
+              <Input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} placeholder="Repita a senha" className="h-10 text-sm" disabled={loading} />
             </div>
           </div>
 
-          <Button
-            variant="outline"
-            className="mb-6 h-12 w-full rounded-xl border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50"
-            onClick={handleGoogle}
-          >
-            <GoogleIcon className="mr-2 h-5 w-5" />
-            Continuar com Google
-          </Button>
-
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-200" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase tracking-[0.22em] text-slate-400">
-              <span className="bg-white px-3">ou</span>
-            </div>
-          </div>
-
-          {error && (
-            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="fullName" className="text-sm font-medium text-slate-700">Nome completo</Label>
-              <Input
-                id="fullName"
-                type="text"
-                autoComplete="name"
-                autoFocus
-                placeholder="Seu nome completo"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="h-12 rounded-xl border-slate-200 bg-slate-50"
-                required
-              />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="cpf" className="text-sm font-medium text-slate-700">CPF</Label>
-                <Input
-                  id="cpf"
-                  type="text"
-                  placeholder="000.000.000-00"
-                  value={cpf}
-                  onChange={(e) => setCpf(e.target.value)}
-                  className="h-12 rounded-xl border-slate-200 bg-slate-50"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="idade" className="text-sm font-medium text-slate-700">Idade</Label>
-                <Input
-                  id="idade"
-                  type="number"
-                  min="18"
-                  placeholder="30"
-                  value={idade}
-                  onChange={(e) => setIdade(e.target.value)}
-                  className="h-12 rounded-xl border-slate-200 bg-slate-50"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="cbo" className="text-sm font-medium text-slate-700">CBO</Label>
-              <Input
-                id="cbo"
-                type="text"
-                placeholder="Ex.: 2231-05"
-                value={cbo}
-                onChange={(e) => setCbo(e.target.value)}
-                className="h-12 rounded-xl border-slate-200 bg-slate-50"
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="accountRole" className="text-sm font-medium text-slate-700">Permissão da conta</Label>
-              <select
-                id="accountRole"
-                value={accountRole}
-                onChange={(e) => setAccountRole(e.target.value)}
-                className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition focus:border-sky-300"
-              >
-                <option value="Gestor">Gestor</option>
-                <option value="Profissional">Profissional</option>
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium text-slate-700">E-mail</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="voce@exemplo.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium text-slate-700">Senha</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="new-password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirm" className="text-sm font-medium text-slate-700">Repetir senha</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                <Input
-                  id="confirm"
-                  type="password"
-                  autoComplete="new-password"
-                  placeholder="••••••••"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="h-12 rounded-xl border-slate-200 bg-slate-50 pl-10"
-                  required
-                />
-              </div>
-            </div>
-
-            <Button type="submit" className="h-12 w-full rounded-xl bg-sky-600 text-white shadow-lg shadow-sky-200 hover:bg-sky-700" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Criando conta...
-                </>
-              ) : (
-                "Criar conta"
-              )}
-            </Button>
-          </form>
-
-          <p className="mt-6 text-center text-sm text-slate-500">
-            Já tem uma conta?{' '}
-            <Link
-              to={"/login" + (safeReturnTo() !== "/" ? "?returnTo=" + encodeURIComponent(safeReturnTo()) : "")}
-              className="font-semibold text-sky-700 hover:underline"
-            >
-              Entrar
+          <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <Link to="/login" className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors">
+              Já tem cadastro? Voltar ao Login
             </Link>
-          </p>
-        </div>
+            <Button type="submit" disabled={loading} className="w-full sm:w-auto h-11 bg-sky-600 hover:bg-sky-700 text-white font-black text-sm px-8 rounded-xl shadow-md">
+              {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processando...</> : 'Solicitar Credenciamento'}
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );
