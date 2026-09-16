@@ -58,7 +58,7 @@ export default function Faturamento() {
     return {};
   }
 
-  // CÁLCULO DINÂMICO CONFORME PLANTÕES EFETIVAMENTE REALIZADOS
+  // CÁLCULO PROGRESSIVO: VALOR FIXO x PLANTÕES REALIZADOS
   const reportData = useMemo(() => {
     const profsSummary = {};
 
@@ -68,7 +68,7 @@ export default function Faturamento() {
       const st = String(p.status || meta.status || 'ativo').toLowerCase();
       if (st === 'inativo' || st === 'recusado') return;
 
-      const remunType = meta.remuneration_type || p.remuneration_type || 'mensal';
+      const remunType = meta.remuneration_type || p.remuneration_type || 'diaria';
       
       let baseVal = 0;
       if (remunType === 'hora') {
@@ -101,7 +101,6 @@ export default function Faturamento() {
       };
     });
 
-    // Processamento da grade de plantões do mês
     (shifts || []).forEach(shift => {
       if (!shift || !shift.date || !shift.date.startsWith(monthPrefix)) return;
       if (!shift.professional_id || shift.status === 'vago') return;
@@ -135,24 +134,20 @@ export default function Faturamento() {
       }
     });
 
-    // Apuração do Faturamento Realizado vs Futuro
     return Object.values(profsSummary).map(item => {
       let valorBruto = 0;
 
-      if (item.remunType === 'hora') {
-        // Horista: soma somente horas dos plantões já cumpridos
-        valorBruto = item.horasRealizadas * item.baseVal;
-      } else if (item.remunType === 'diaria') {
-        // Plantonista/Diarista: soma somente os plantões já executados
-        valorBruto = item.plantõesRealizados * item.baseVal;
+      if (monthPrefix > todayStr.substring(0, 7)) {
+        // Mês futuro: vem zerado para preencher conforme os plantões ocorrerem
+        valorBruto = 0;
       } else {
-        // Mensalista / Salário Fixo:
-        // No mês atual, se ele tem plantões programados ou executados, apura proporcional ou o piso mensal ativo
-        if (monthPrefix > todayStr.substring(0, 7)) {
-          // Mês futuro: vem zerado para ir alimentando
-          valorBruto = 0;
+        if (item.remunType === 'hora') {
+          valorBruto = item.horasRealizadas * item.baseVal;
+        } else if (item.remunType === 'diaria') {
+          valorBruto = item.plantõesRealizados * item.baseVal;
         } else {
-          valorBruto = item.plantõesRealizados > 0 ? item.baseVal : (item.plantõesFuturos > 0 ? item.baseVal : 0);
+          // Valor fixo cruzado pela quantidade de plantões cumpridos no mês
+          valorBruto = item.plantõesRealizados * item.baseVal;
         }
       }
 
@@ -190,11 +185,11 @@ export default function Faturamento() {
     return { bruto, liquido, plantões, horas };
   }, [reportData]);
 
-  // IMPRESSÃO CONSOLIDADA EM A4 BRANCO DO FATURAMENTO GERAL
+  // IMPRESSÃO CONSOLIDADA DA TABELA GERAL (FOLHA BRANCA A4 PAISAGEM)
   const handlePrintConsolidatedReport = () => {
     const printWindow = window.open('', '_blank', 'width=1100,height=800');
     if (!printWindow) {
-      alert('Permita os pop-ups para abrir a impressão do relatório.');
+      alert('Permita os pop-ups para abrir o relatório.');
       return;
     }
 
@@ -209,7 +204,7 @@ export default function Faturamento() {
           <td style="border: 1px solid #111; padding: 6px 8px; font-weight: bold;">${item.prof.name}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace;">${item.matricula}</td>
           <td style="border: 1px solid #111; padding: 6px 8px;">${item.prof.specialty || 'Geral'}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-transform: uppercase;">${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Mensalista'}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-transform: uppercase;">${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Fixo x Plantão'}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.plantõesRealizados} pl (${item.horasRealizadas}h)</td>
           <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-size: 9.5px;">${formaPagto}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${formatCurrency(item.valorBruto)}</td>
@@ -223,15 +218,15 @@ export default function Faturamento() {
       <html lang="pt-BR">
       <head>
         <meta charset="utf-8">
-        <title>Relatório de Fechamento - ${competencia}</title>
+        <title>Fechamento de Honorários - ${competencia}</title>
         <style>
           @page { size: A4 landscape; margin: 8mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000 !important; padding: 15px; font-size: 11px; }
+          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000000 !important; padding: 15px; font-size: 11px; }
           .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; }
           h1 { font-size: 18px; text-transform: uppercase; }
           table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 20px; font-size: 10px; }
-          th { background: #e5e7eb; border: 1px solid #000; padding: 6px 8px; text-transform: uppercase; font-size: 9px; text-align: left; }
+          th { background: #f3f4f6; border: 1px solid #000; padding: 6px 8px; text-transform: uppercase; font-size: 9px; text-align: left; }
           .totals { display: flex; justify-content: flex-end; gap: 30px; font-size: 12px; margin-top: 10px; font-weight: bold; border-top: 2px solid #000; padding-top: 10px; }
         </style>
       </head>
@@ -255,7 +250,7 @@ export default function Faturamento() {
               <th>Matrícula</th>
               <th>Especialidade</th>
               <th>Regime</th>
-              <th style="text-align: center;">Realizados</th>
+              <th style="text-align: center;">Plantões Realizados</th>
               <th>Dados p/ Pagamento</th>
               <th style="text-align: right;">Bruto Realizado</th>
               <th style="text-align: right;">Líquido a Pagar</th>
@@ -280,7 +275,7 @@ export default function Faturamento() {
     printWindow.document.close();
   };
 
-  // RECIBO OFICIAL EM 2 VIAS (1ª VIA INSTITUIÇÃO / 2ª VIA PROFISSIONAL) - 100% BRANCO
+  // RECIBO OFICIAL EM 2 VIAS ANTIGO (ESTRUTURA RESTAURADA 100% BRANCO)
   const handlePrintIndividualReceipt = (item) => {
     const printWindow = window.open('', '_blank', 'width=900,height=850');
     if (!printWindow) {
@@ -292,19 +287,19 @@ export default function Faturamento() {
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = new Date().toLocaleDateString('pt-BR');
 
-    // Bloco Inteligente de Dados Bancários / PIX
+    // Identificação precisa e limpa dos dados de pagamento
     let dadosPagamentoHtml = '';
     if (item.chavePix && item.banco) {
       dadosPagamentoHtml = `
         <div class="grid"><span>Chave PIX (${item.pixTipo}):</span> <span>${item.chavePix}</span></div>
-        <div class="grid"><span>Dados Bancários:</span> <span>${item.banco}</span></div>
+        <div class="grid"><span>Dados Bancários Físicos:</span> <span>${item.banco}</span></div>
       `;
     } else if (item.chavePix) {
       dadosPagamentoHtml = `<div class="grid"><span>Chave PIX (${item.pixTipo}):</span> <span>${item.chavePix}</span></div>`;
     } else if (item.banco) {
-      dadosPagamentoHtml = `<div class="grid"><span>Dados Bancários:</span> <span>${item.banco}</span></div>`;
+      dadosPagamentoHtml = `<div class="grid"><span>Dados Bancários Físicos:</span> <span>${item.banco}</span></div>`;
     } else {
-      dadosPagamentoHtml = `<div class="grid"><span style="color: #b91c1c; font-weight: bold;">Forma de Pagamento:</span> <span style="color: #b91c1c;">Nenhum dado bancário ou PIX cadastrado</span></div>`;
+      dadosPagamentoHtml = `<div class="grid"><span style="color: #b91c1c; font-weight: bold;">Forma de Pagamento:</span> <span style="color: #b91c1c;">Pendente de cadastro</span></div>`;
     }
 
     const templateVia = (tituloVia) => `
@@ -326,12 +321,12 @@ export default function Faturamento() {
         <div class="section">
           <div class="grid"><span>Profissional:</span> <span>${item.prof.name} (ID: ${item.matricula})</span></div>
           <div class="grid"><span>Documento / Especialidade:</span> <span>${item.prof.document || 'CRM'} • ${item.prof.specialty || 'Geral'}</span></div>
-          <div class="grid"><span>Regime / Base Contratual:</span> <span>${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Mensalista'} (${formatCurrency(item.baseVal)})</span></div>
-          <div class="grid"><span>Produção Efetiva Realizada:</span> <span>${item.totalPlantões} plantões cumpridos (${item.totalHoras} horas computadas)</span></div>
+          <div class="grid"><span>Regime / Valor Unitário:</span> <span>${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Fixo x Plantão'} (${formatCurrency(item.baseVal)})</span></div>
+          <div class="grid"><span>Produção Efetiva Realizada:</span> <span>${item.plantõesRealizados} plantões cumpridos (${item.horasRealizadas} horas)</span></div>
         </div>
 
         <div class="val-box">
-          <div style="display: flex; justify-content: space-between;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
             <span>Valor Bruto Apurado: <b>${formatCurrency(item.valorBruto)}</b></span>
             <span>Retenção/Taxa: <b>- ${formatCurrency(item.valorDesconto)}</b></span>
             <span style="color: #000; font-size: 13px;">LÍQUIDO A RECEBER: <b>${formatCurrency(item.valorLiquido)}</b></span>
@@ -343,7 +338,7 @@ export default function Faturamento() {
         </div>
 
         <p class="termo">
-          Declaro ter recebido da instituição ${hospitalName} a quantia líquida acima discriminada, referente à quitação dos serviços profissionais prestados no período de ${competencia}, dando plena e geral quitação.
+          Declaro ter recebido da instituição ${hospitalName} a quantia líquida discriminada acima, correspondente à quitação integral dos serviços profissionais prestados no período de ${competencia}, dando plena e geral quitação.
         </p>
 
         <div class="signatures">
@@ -368,12 +363,12 @@ export default function Faturamento() {
         <style>
           @page { size: A4 portrait; margin: 8mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000 !important; padding: 5px; font-size: 10px; line-height: 1.35; }
-          .via-box { border: 1.5px solid #000; padding: 14px 18px; border-radius: 4px; height: 47%; display: flex; flex-col; justify-content: space-between; }
+          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000000 !important; padding: 5px; font-size: 10px; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .via-box { border: 1.5px solid #000; padding: 14px 18px; border-radius: 4px; height: 47%; display: flex; flex-direction: column; justify-content: space-between; background: #fff; }
           .header { border-bottom: 1.5px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
           .header h1 { font-size: 15px; text-transform: uppercase; font-weight: 900; }
           .header p { font-size: 9px; font-weight: bold; }
-          .via-tag { border: 1px solid #000; padding: 2px 6px; font-weight: 900; font-size: 8.5px; text-transform: uppercase; background: #eee; }
+          .via-tag { border: 1px solid #000; padding: 2px 6px; font-weight: 900; font-size: 8.5px; text-transform: uppercase; background: #f3f4f6; }
           .section { margin-bottom: 6px; }
           .grid { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 9.5px; }
           .grid span:last-child { font-weight: bold; }
@@ -382,7 +377,7 @@ export default function Faturamento() {
           .signatures { display: flex; justify-content: space-around; margin-top: 24px; text-align: center; }
           .sig-col { width: 220px; }
           .sig-line { border-top: 1px solid #000; margin-bottom: 3px; }
-          .cut-divider { border-top: 1.5px dashed #666; margin: 16px 0; text-align: center; position: relative; height: 12px; }
+          .cut-divider { border-top: 1.5px dashed #666; margin: 14px 0; text-align: center; position: relative; height: 12px; }
           .cut-divider span { position: relative; top: -8px; background: #fff; padding: 0 10px; font-size: 8px; color: #666; text-transform: uppercase; font-weight: bold; }
         </style>
       </head>
@@ -419,9 +414,9 @@ export default function Faturamento() {
       `📊 *Produção Realizada:*`,
       `• Plantões Efetivamente Cumpridos: ${item.plantõesRealizados}`,
       `• Horas Computadas: ${item.horasRealizadas}h`,
-      `• Regime: ${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Mensalista'}\n`,
+      `• Regime: ${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Fixo x Plantão'}\n`,
       `💰 *Valores Apurados:*`,
-      `• Valor Bruto: ${formatCurrency(item.valorBruto)}`,
+      `• Valor Bruto Realizado: ${formatCurrency(item.valorBruto)}`,
       `• Retenção/Impostos: ${formatCurrency(item.valorDesconto)}`,
       `• *VALOR LÍQUIDO A RECEBER:* ${formatCurrency(item.valorLiquido)}\n`,
       `💳 *Forma de Repasse:*`,
@@ -554,7 +549,7 @@ export default function Faturamento() {
 
                       <td className="py-3 px-4">
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                          {item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Fixo Mensal'}
+                          {item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Fixo x Plantão'}
                         </span>
                         <div className="text-[10px] text-slate-400 mt-0.5">{formatCurrency(item.baseVal)} base</div>
                       </td>
@@ -581,7 +576,7 @@ export default function Faturamento() {
 
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          {/* 1. BOTÃO DE RECIBO EM 2 VIAS */}
+                          {/* 1. BOTÃO RECIBO */}
                           <Button 
                             size="sm" 
                             variant="outline" 
@@ -625,7 +620,7 @@ export default function Faturamento() {
         </div>
       </div>
 
-      {/* MODAL DE DETALHAMENTO */}
+      {/* MODAL DE DETALHAMENTO COM O BOTÃO 'IMPRIMIR RECIBO' */}
       <Dialog open={!!selectedProfModal} onOpenChange={() => setSelectedProfModal(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-slate-200 dark:border-slate-800">
           <DialogHeader>
@@ -671,7 +666,7 @@ export default function Faturamento() {
                             <span className="font-bold text-slate-900 dark:text-white">
                               {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
                             </span>
-                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-black uppercase ${p.isRealizado ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase ${p.isRealizado ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
                               {p.isRealizado ? 'Realizado' : 'A Realizar'}
                             </span>
                           </div>
