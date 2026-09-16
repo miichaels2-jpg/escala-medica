@@ -1,17 +1,22 @@
 import React, { Component, useState, useEffect } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
 import { useAppData } from '@/lib/useAppData';
 import { base44 } from '@/api/base44Client';
 import { 
   Activity, LayoutDashboard, CalendarDays, Repeat, 
   DollarSign, Users, Building2, LogOut, Menu, X, 
   AlertTriangle, Sun, Moon, Settings, FileBarChart,
-  ChevronDown
+  Clock, Hospital
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-// Proteção contra tela branca
+const WEEKDAYS_LONG = [
+  'Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 
+  'Quinta-feira', 'Sexta-feira', 'Sábado'
+];
+
+// Proteção contra quebra de tela em módulos
 class LayoutErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -26,7 +31,7 @@ class LayoutErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-8 max-w-xl mx-auto my-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 text-center shadow-2xl">
+        <div className="p-8 max-w-xl mx-auto my-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl text-center shadow-2xl">
           <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
           <h2 className="text-lg font-black text-slate-900 dark:text-white">Instabilidade no Módulo</h2>
           <p className="text-xs text-slate-500 my-3">{this.state.error?.message || 'Erro inesperado na visualização.'}</p>
@@ -44,6 +49,13 @@ export default function AppLayout({ children }) {
   const { user, company, units, selectedUnitId, setSelectedUnitId, isManager } = useAppData();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState('dark');
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+
+  // Relógio ao vivo atualizado a cada segundo
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Gerenciamento do Tema Diurno / Noturno
   useEffect(() => {
@@ -76,7 +88,11 @@ export default function AppLayout({ children }) {
     window.location.href = '/login';
   };
 
-  // Todas as rotas do seu sistema restauradas
+  // Formatação de data em português
+  const dayName = WEEKDAYS_LONG[currentTime.getDay()];
+  const formattedDate = currentTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const formattedTime = currentTime.toLocaleTimeString('pt-BR');
+
   const navItems = [
     { label: 'Painel Geral', path: '/', icon: LayoutDashboard },
     { label: 'Escalas & Plantões', path: '/escalas', icon: CalendarDays },
@@ -96,19 +112,17 @@ export default function AppLayout({ children }) {
       <aside className="hidden md:flex w-64 flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 select-none">
         
         {/* LOGO */}
-        <div className="p-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center text-white shadow-md shrink-0">
-              <Activity className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-base font-black text-slate-900 dark:text-white truncate">ScaleMedic</h1>
-              <p className="text-[10px] text-slate-400 font-bold truncate">{company?.name || 'Hospital Principal'}</p>
-            </div>
+        <div className="p-4 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800">
+          <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center text-white shadow-md shrink-0">
+            <Activity className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-base font-black text-slate-900 dark:text-white truncate">ScaleMedic</h1>
+            <p className="text-[10px] text-slate-400 font-bold truncate">{company?.name || 'Hospital Principal'}</p>
           </div>
         </div>
 
-        {/* NAVEGAÇÃO LATERAL COMPLETA */}
+        {/* NAVEGAÇÃO LATERAL */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
           {navItems.map(item => {
             const Icon = item.icon;
@@ -132,25 +146,8 @@ export default function AppLayout({ children }) {
           })}
         </nav>
 
-        {/* CONTROLES INFERIORES: TEMA E LOGOUT */}
-        <div className="p-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
-          
-          {/* Botão Modo Diurno / Noturno */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors"
-          >
-            <span className="flex items-center gap-2">
-              {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
-              {theme === 'dark' ? 'Modo Diurno' : 'Modo Noturno'}
-            </span>
-            <span className="text-[10px] uppercase opacity-60 font-black">
-              {theme === 'dark' ? 'Claro' : 'Escuro'}
-            </span>
-          </button>
-
-          {/* Perfil & Logout */}
+        {/* PERFIL & LOGOUT NO RODAPÉ DA SIDEBAR */}
+        <div className="p-3 border-t border-slate-200 dark:border-slate-800">
           <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
             <div className="min-w-0 flex-1">
               <span className="text-[11px] font-bold text-slate-900 dark:text-white block truncate">
@@ -160,30 +157,91 @@ export default function AppLayout({ children }) {
                 {isManager ? 'Gestor Master' : 'Profissional'}
               </span>
             </div>
-            <button onClick={handleLogout} title="Sair do sistema" className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg transition-colors">
+            <button 
+              onClick={handleLogout} 
+              title="Sair do sistema" 
+              className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg transition-colors"
+            >
               <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
       </aside>
 
-      {/* ÁREA PRINCIPAL */}
+      {/* ÁREA PRINCIPAL COM HEADER SUPERIOR */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         
-        {/* BARRA SUPERIOR MOBILE / HEADER */}
-        <header className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-3 px-4 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center text-white">
-              <Activity className="w-4 h-4" />
+        {/* HEADER SUPERIOR (DESKTOP & TABLET) */}
+        <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4 shrink-0 shadow-sm">
+          
+          {/* LADO ESQUERDO: SELETOR DE UNIDADE HOSPITALAR OU LOGO NO MOBILE */}
+          <div className="flex items-center gap-3">
+            <div className="md:hidden flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center text-white">
+                <Activity className="w-4 h-4" />
+              </div>
+              <span className="font-black text-sm text-slate-900 dark:text-white">ScaleMedic</span>
             </div>
-            <span className="font-black text-sm text-slate-900 dark:text-white">ScaleMedic</span>
+
+            {/* SELETOR DE UNIDADE (HOSPITAL / FILIAL) */}
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                <Hospital className="w-3.5 h-3.5 text-sky-600" /> Unidade:
+              </span>
+              <Select value={selectedUnitId} onValueChange={setSelectedUnitId}>
+                <SelectTrigger className="h-8 w-48 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-300 dark:border-slate-700 text-sky-600 dark:text-sky-400">
+                  <SelectValue placeholder="Selecione a Unidade..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {units.map(u => (
+                    <SelectItem key={u.id} value={String(u.id)} className="text-xs font-semibold">
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button onClick={toggleTheme} className="p-2 text-slate-600 dark:text-slate-300">
-              {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
+          {/* LADO DIREITO: DATA POR EXTENSO, RELÓGIO AO VIVO E BOTÃO SOL/LUA */}
+          <div className="flex items-center gap-3">
+            
+            {/* DATA & HORA AO VIVO */}
+            <div className="hidden lg:flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-medium">
+              <span className="text-slate-600 dark:text-slate-300 font-semibold">
+                {dayName}, {formattedDate}
+              </span>
+              <span className="text-slate-300 dark:text-slate-700">•</span>
+              <span className="font-mono font-black text-sky-600 dark:text-sky-400 flex items-center gap-1 tracking-wider">
+                <Clock className="w-3.5 h-3.5" />
+                {formattedTime}
+              </span>
+            </div>
+
+            {/* HORA EM DISPOSITIVOS MENORES */}
+            <div className="flex lg:hidden items-center font-mono font-black text-xs text-sky-600 dark:text-sky-400 px-2 py-1 bg-slate-100 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800">
+              {formattedTime}
+            </div>
+
+            {/* BOTÃO DIURNO / NOTURNO (SOL / LUA) */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 transition-all shadow-sm"
+              title={theme === 'dark' ? 'Alternar para Modo Diurno (Claro)' : 'Alternar para Modo Noturno (Escuro)'}
+            >
+              {theme === 'dark' ? (
+                <Sun className="w-4 h-4 text-amber-400 animate-in spin-in-180 duration-300" />
+              ) : (
+                <Moon className="w-4 h-4 text-slate-700 animate-in spin-in-180 duration-300" />
+              )}
             </button>
-            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-slate-600 dark:text-slate-300">
+
+            {/* BOTÃO DO MENU MOBILE */}
+            <button 
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
+              className="md:hidden p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+            >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
@@ -192,6 +250,18 @@ export default function AppLayout({ children }) {
         {/* MENU MOBILE EXPANDIDO */}
         {mobileMenuOpen && (
           <div className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 space-y-2 z-50 shadow-xl overflow-y-auto max-h-[80vh]">
+            <div className="mb-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Unidade Ativa:</span>
+              <Select value={selectedUnitId} onValueChange={(val) => { setSelectedUnitId(val); setMobileMenuOpen(false); }}>
+                <SelectTrigger className="h-9 text-xs font-bold"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {units.map(u => (
+                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             {navItems.map(item => (
               <NavLink
                 key={item.path}
@@ -203,6 +273,7 @@ export default function AppLayout({ children }) {
                 <span>{item.label}</span>
               </NavLink>
             ))}
+
             <div className="pt-2 border-t flex gap-2">
               <Button onClick={handleLogout} variant="outline" className="w-full text-xs text-rose-500 border-rose-200">
                 Sair do Sistema
@@ -211,7 +282,7 @@ export default function AppLayout({ children }) {
           </div>
         )}
 
-        {/* CONTEÚDO DA PÁGINA */}
+        {/* CONTEÚDO PRINCIPAL (PÁGINAS) */}
         <main className="flex-1 overflow-y-auto">
           <LayoutErrorBoundary>
             {children || <Outlet />}
