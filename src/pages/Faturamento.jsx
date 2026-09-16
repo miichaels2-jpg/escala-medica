@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
-  DollarSign, Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer, Building2
+  DollarSign, Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer, PlusCircle
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -58,7 +58,7 @@ export default function Faturamento() {
     return {};
   }
 
-  // CÁLCULO PROPORCIONAL PROGRESSIVO
+  // CÁLCULO EXATO COM DISCRIMINAÇÃO DE BASE + PLANTÕES EXTRAS
   const reportData = useMemo(() => {
     const profsSummary = {};
 
@@ -70,38 +70,35 @@ export default function Faturamento() {
 
       const remunType = meta.remuneration_type || p.remuneration_type || 'mensal';
       
-      const salaryBase = p.monthly_salary !== undefined && p.monthly_salary !== null ? p.monthly_salary : (meta.monthly_salary ?? 5000);
-      const dailyRateInput = p.daily_rate !== undefined && p.daily_rate !== null ? p.daily_rate : (meta.daily_rate ?? 0);
-      const hourlyRateInput = p.hourly_rate !== undefined && p.hourly_rate !== null ? p.hourly_rate : (meta.hourly_rate ?? 0);
+      // Leitura com prioridade absoluta do que foi salvo no Corpo Clínico
+      let salaryBase = 0;
+      if (meta.monthly_salary !== undefined && meta.monthly_salary !== null) {
+        salaryBase = safeNumber(meta.monthly_salary);
+      } else if (p.monthly_salary !== undefined && p.monthly_salary !== null) {
+        salaryBase = safeNumber(p.monthly_salary);
+      } else {
+        salaryBase = 1672;
+      }
 
-      // Regra de divisão das modalidades:
+      let dailyRateInput = meta.daily_rate !== undefined ? safeNumber(meta.daily_rate) : safeNumber(p.daily_rate, 0);
+      let hourlyRateInput = meta.hourly_rate !== undefined ? safeNumber(meta.hourly_rate) : safeNumber(p.hourly_rate, 0);
+
       let valorPorPlantao = 0;
       let valorPorHora = 0;
 
       if (remunType === 'mensal') {
-        // Salário fixo dividido por 20 dias úteis de plantão
-        valorPorPlantao = safeNumber(salaryBase) / 20;
-        valorPorHora = safeNumber(salaryBase) / 220;
+        valorPorPlantao = salaryBase / 20;
+        valorPorHora = salaryBase / 220;
       } else if (remunType === 'diaria') {
-        // Diarista / Plantonista
-        if (dailyRateInput > 0) {
-          valorPorPlantao = safeNumber(dailyRateInput);
-        } else {
-          valorPorPlantao = safeNumber(salaryBase) / 20;
-        }
+        valorPorPlantao = dailyRateInput > 0 ? dailyRateInput : (salaryBase / 20);
         valorPorHora = valorPorPlantao / 12;
       } else {
-        // Horista
-        if (hourlyRateInput > 0) {
-          valorPorHora = safeNumber(hourlyRateInput);
-        } else {
-          valorPorHora = safeNumber(salaryBase) / 220;
-        }
+        valorPorHora = hourlyRateInput > 0 ? hourlyRateInput : (salaryBase / 220);
         valorPorPlantao = valorPorHora * 12;
       }
 
       const taxRate = p.coop_tax_rate ?? meta.coop_tax_rate ?? 0;
-      const matricula = p.registration_id || meta.registration_id || 'MAT-XXXX';
+      const matricula = meta.registration_id || p.registration_id || 'MAT-XXXX';
       const chavePix = (meta.pix_key || p.pix_key || '').trim();
       const pixTipo = meta.pix_type || p.pix_type || 'CPF';
       const banco = (meta.bank_info || p.bank_info || '').trim();
@@ -113,7 +110,7 @@ export default function Faturamento() {
         pixTipo,
         banco,
         remunType,
-        salarioBaseContratual: safeNumber(salaryBase),
+        salarioBaseContratual: salaryBase,
         valorPorPlantao: safeNumber(valorPorPlantao),
         valorPorHora: safeNumber(valorPorHora),
         taxRate: safeNumber(taxRate),
@@ -158,26 +155,42 @@ export default function Faturamento() {
     });
 
     return Object.values(profsSummary).map(item => {
-      let valorBruto = 0;
+      let valorBrutoRegular = 0;
+      let plantõesExtrasQtd = 0;
+      let valorExtras = 0;
+      let valorBrutoTotal = 0;
 
-      // Se for mês futuro, inicia zerado para ir somando conforme os plantões forem realizados
+      // Se for mês futuro, inicia zerado para ir somando conforme a escala for cumprida
       if (monthPrefix > todayStr.substring(0, 7)) {
-        valorBruto = 0;
+        valorBrutoTotal = 0;
       } else {
         if (item.remunType === 'hora') {
-          valorBruto = item.horasRealizadas * item.valorPorHora;
+          valorBrutoTotal = item.horasRealizadas * item.valorPorHora;
+        } else if (item.remunType === 'diaria') {
+          valorBrutoTotal = item.plantõesRealizados * item.valorPorPlantao;
         } else {
-          // Diarista ou Mensalista proporcional: valor do plantão (salário/20) x plantões cumpridos
-          valorBruto = item.plantõesRealizados * item.valorPorPlantao;
+          // MODALIDADE MENSALISTA COM REGRA DE PLANTÕES EXTRAS (COTA DE 20 PLANTÕES)
+          const plantõesNormais = Math.min(item.plantõesRealizados, 20);
+          valorBrutoRegular = plantõesNormais * item.valorPorPlantao;
+
+          if (item.plantõesRealizados > 20) {
+            plantõesExtrasQtd = item.plantõesRealizados - 20;
+            valorExtras = plantõesExtrasQtd * item.valorPorPlantao;
+          }
+
+          valorBrutoTotal = valorBrutoRegular + valorExtras;
         }
       }
 
-      const valorDesconto = (valorBruto * item.taxRate) / 100;
-      const valorLiquido = valorBruto - valorDesconto;
+      const valorDesconto = (valorBrutoTotal * item.taxRate) / 100;
+      const valorLiquido = valorBrutoTotal - valorDesconto;
 
       return {
         ...item,
-        valorBruto,
+        valorBrutoRegular,
+        plantõesExtrasQtd,
+        valorExtras,
+        valorBruto: valorBrutoTotal,
         valorDesconto,
         valorLiquido
       };
@@ -196,17 +209,18 @@ export default function Faturamento() {
   }, [reportData, searchQuery]);
 
   const totals = useMemo(() => {
-    let bruto = 0, liquido = 0, plantões = 0, horas = 0;
+    let bruto = 0, liquido = 0, plantões = 0, horas = 0, extras = 0;
     reportData.forEach(i => {
       bruto += i.valorBruto;
       liquido += i.valorLiquido;
       plantões += i.plantõesRealizados;
       horas += i.horasRealizadas;
+      extras += i.plantõesExtrasQtd;
     });
-    return { bruto, liquido, plantões, horas };
+    return { bruto, liquido, plantões, horas, extras };
   }, [reportData]);
 
-  // IMPRESSÃO CONSOLIDADA DA TABELA GERAL (FOLHA BRANCA A4 PAISAGEM)
+  // IMPRESSÃO GERAL DA TABELA EM A4 BRANCO PAISAGEM
   const handlePrintConsolidatedReport = () => {
     const printWindow = window.open('', '_blank', 'width=1100,height=800');
     if (!printWindow) {
@@ -226,7 +240,7 @@ export default function Faturamento() {
           <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace;">${item.matricula}</td>
           <td style="border: 1px solid #111; padding: 6px 8px;">${item.prof.specialty || 'Geral'}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; font-size: 9px;">${formatCurrency(item.salarioBaseContratual)} (${formatCurrency(item.valorPorPlantao)}/pl)</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.plantõesRealizados} plantões (${item.horasRealizadas}h)</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.plantõesRealizados} plantões ${item.plantõesExtrasQtd > 0 ? `(+${item.plantõesExtrasQtd} extras)` : ''}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-size: 9px;">${formaPagto}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${formatCurrency(item.valorBruto)}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: right; font-weight: bold;">${formatCurrency(item.valorLiquido)}</td>
@@ -243,7 +257,7 @@ export default function Faturamento() {
         <style>
           @page { size: A4 landscape; margin: 8mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000000 !important; padding: 15px; font-size: 11px; }
+          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000 !important; padding: 15px; font-size: 11px; }
           .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; }
           h1 { font-size: 18px; text-transform: uppercase; }
           table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 20px; font-size: 10px; }
@@ -296,7 +310,7 @@ export default function Faturamento() {
     printWindow.document.close();
   };
 
-  // RECIBO OFICIAL EM 2 VIAS ANTIGO (ESTRUTURA RESTAURADA 100% BRANCO)
+  // RECIBO OFICIAL EM 2 VIAS (DISCRIMINANDO SALÁRIO REGULAR + PLANTÕES EXTRAS)
   const handlePrintIndividualReceipt = (item) => {
     const printWindow = window.open('', '_blank', 'width=900,height=850');
     if (!printWindow) {
@@ -308,7 +322,6 @@ export default function Faturamento() {
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = new Date().toLocaleDateString('pt-BR');
 
-    // Identificação dos dados de pagamento
     let dadosPagamentoHtml = '';
     if (item.chavePix && item.banco) {
       dadosPagamentoHtml = `
@@ -342,13 +355,19 @@ export default function Faturamento() {
         <div class="section">
           <div class="grid"><span>Profissional:</span> <span>${item.prof.name} (ID: ${item.matricula})</span></div>
           <div class="grid"><span>Documento / Especialidade:</span> <span>${item.prof.document || 'CRM'} • ${item.prof.specialty || 'Geral'}</span></div>
-          <div class="grid"><span>Base Contratual / Valor Diária:</span> <span>${formatCurrency(item.salarioBaseContratual)} (${formatCurrency(item.valorPorPlantao)}/plantão)</span></div>
-          <div class="grid"><span>Produção Efetiva Realizada:</span> <span>${item.plantõesRealizados} plantões cumpridos (${item.horasRealizadas} horas)</span></div>
+          <div class="grid"><span>Salário Base Contratual:</span> <span>${formatCurrency(item.salarioBaseContratual)} (${formatCurrency(item.valorPorPlantao)} / plantão dia)</span></div>
+          <div class="grid"><span>Plantões Cumpridos no Período:</span> <span>${item.plantõesRealizados} plantões (${item.horasRealizadas}h computadas)</span></div>
+          ${item.plantõesExtrasQtd > 0 ? `
+            <div class="grid" style="color: #166534; font-weight: bold;">
+              <span>• Plantões Extras Efetivados (+${item.plantõesExtrasQtd}):</span>
+              <span>+ ${formatCurrency(item.valorExtras)}</span>
+            </div>
+          ` : ''}
         </div>
 
         <div class="val-box">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span>Valor Bruto Apurado: <b>${formatCurrency(item.valorBruto)}</b></span>
+            <span>Valor Bruto: <b>${formatCurrency(item.valorBruto)}</b></span>
             <span>Retenção/Taxa: <b>- ${formatCurrency(item.valorDesconto)}</b></span>
             <span style="color: #000; font-size: 13px;">LÍQUIDO A RECEBER: <b>${formatCurrency(item.valorLiquido)}</b></span>
           </div>
@@ -432,18 +451,18 @@ export default function Faturamento() {
       `*ScaleMedic - Extrato de Honorários & Repasse* 🏥`,
       `Competência: *${MONTH_NAMES[currentMonth]} / ${currentYear}*`,
       `Profissional: *${item.prof.name}* (ID: ${item.matricula})\n`,
-      `📊 *Produção Realizada:*`,
-      `• Base Contratual: ${formatCurrency(item.salarioBaseContratual)} (${formatCurrency(item.valorPorPlantao)}/plantão)`,
-      `• Plantões Efetivamente Cumpridos: ${item.plantõesRealizados}`,
-      `• Horas Computadas: ${item.horasRealizadas}h\n`,
+      `📊 *Demonstrativo de Produção:*`,
+      `• Salário Base: ${formatCurrency(item.salarioBaseContratual)} (${formatCurrency(item.valorPorPlantao)}/plantão)`,
+      `• Plantões Cumpridos: ${item.plantõesRealizados} plantões`,
+      item.plantõesExtrasQtd > 0 ? `• Plantões Extras (+${item.plantõesExtrasQtd}): ${formatCurrency(item.valorExtras)}\n` : '',
       `💰 *Valores Apurados:*`,
       `• Valor Bruto Realizado: ${formatCurrency(item.valorBruto)}`,
-      `• Retenção/Impostos: ${formatCurrency(item.valorDesconto)}`,
+      `• Retenções/Impostos: ${formatCurrency(item.valorDesconto)}`,
       `• *VALOR LÍQUIDO A RECEBER:* ${formatCurrency(item.valorLiquido)}\n`,
       `💳 *Forma de Repasse:*`,
       `${dadosPgto}\n`,
       `_Por favor, confira seu demonstrativo. Havendo divergência, contate a coordenação médica._`
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
     window.open(`https://api.whatsapp.com/send?phone=${phoneWithDDI}&text=${encodeURIComponent(msg)}`, '_blank');
   };
@@ -459,7 +478,7 @@ export default function Faturamento() {
           </div>
           <h2 className="mt-1 text-2xl sm:text-3xl font-black">Faturamento & Repasse Médico</h2>
           <p className="text-xs text-slate-300">
-            Cálculo progressivo baseado estritamente na execução real dos plantões da escala.
+            Cálculo progressivo baseado no Salário Base (cota de 20 plantões) + adicionais de plantões extras.
           </p>
         </div>
 
@@ -496,28 +515,28 @@ export default function Faturamento() {
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <span className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400">Total Líquido p/ Repasse</span>
           <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(totals.liquido)}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">Valor atual acumulado</span>
+          <span className="text-[10px] text-slate-500 font-semibold">Valor acumulado até hoje</span>
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400">Plantões Cumpridos</span>
           <div className="text-2xl font-black text-sky-600 dark:text-sky-400 mt-1">{totals.plantões}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">{totals.horas} horas realizadas</span>
+          <span className="text-[10px] text-slate-500 font-semibold">{totals.extras > 0 ? `Com ${totals.extras} plantões extras` : `${totals.horas}h realizadas`}</span>
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
           <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400">Equipe na Folha</span>
           <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">{reportData.length}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">Profissionais credenciados</span>
+          <span className="text-[10px] text-slate-500 font-semibold">Profissionais ativos</span>
         </Card>
       </div>
 
-      {/* TABELA DE CONCILIAÇÃO FINANCEIRA */}
+      {/* TABELA DE CONCILIAÇÃO FINANCEIRA COM SALÁRIO REAL E DISCRIMINAÇÃO */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
             <h3 className="text-base font-black text-slate-900 dark:text-white">Espelho de Conciliação e Fechamento Atual</h3>
-            <p className="text-xs text-slate-500">Valores somados conforme a execução diária dos plantões (Base / 20 por plantão).</p>
+            <p className="text-xs text-slate-500">Valores calculados sobre o Salário Base Real do Corpo Clínico (Base / 20 por plantão + Extras).</p>
           </div>
 
           <div className="relative w-full sm:w-72">
@@ -579,6 +598,11 @@ export default function Faturamento() {
 
                       <td className="py-3 px-4 text-center">
                         <span className="font-bold text-slate-900 dark:text-white">{item.plantõesRealizados} plantões</span>
+                        {item.plantõesExtrasQtd > 0 && (
+                          <div className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-0.5">
+                            <PlusCircle className="w-2.5 h-2.5" /> {item.plantõesExtrasQtd} extras ({formatCurrency(item.valorExtras)})
+                          </div>
+                        )}
                         <div className="text-[10px] font-mono text-slate-400">{item.horasRealizadas}h totais</div>
                       </td>
 
@@ -599,7 +623,6 @@ export default function Faturamento() {
 
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          {/* BOTÃO RECIBO */}
                           <Button 
                             size="sm" 
                             variant="outline" 
@@ -610,7 +633,6 @@ export default function Faturamento() {
                             <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Recibo
                           </Button>
 
-                          {/* BOTÃO DETALHAR */}
                           <Button 
                             size="sm" 
                             variant="outline" 
@@ -620,7 +642,6 @@ export default function Faturamento() {
                             <FileText className="w-3.5 h-3.5 text-sky-600" /> Detalhar
                           </Button>
 
-                          {/* BOTÃO WHATSAPP */}
                           {item.prof.phone && (
                             <Button 
                               size="sm" 
@@ -643,7 +664,7 @@ export default function Faturamento() {
         </div>
       </div>
 
-      {/* MODAL DE DETALHAMENTO COM O BOTÃO 'IMPRIMIR RECIBO' */}
+      {/* MODAL DE DETALHAMENTO */}
       <Dialog open={!!selectedProfModal} onOpenChange={() => setSelectedProfModal(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-slate-200 dark:border-slate-800">
           <DialogHeader>
@@ -661,14 +682,15 @@ export default function Faturamento() {
                   <strong className="font-mono text-sm text-indigo-600 dark:text-indigo-400">{selectedProfModal.matricula}</strong>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Forma de Repasse</span>
-                  <strong className="font-mono text-xs text-sky-600 truncate block">
-                    {selectedProfModal.chavePix ? `PIX: ${selectedProfModal.chavePix}` : (selectedProfModal.banco || 'Pendente')}
-                  </strong>
+                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Salário Base Real</span>
+                  <strong className="text-xs text-slate-900 dark:text-white block">{formatCurrency(selectedProfModal.salarioBaseContratual)}</strong>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase font-bold">Plantões Realizados</span>
                   <strong className="text-sm">{selectedProfModal.plantõesRealizados} plantões</strong>
+                  {selectedProfModal.plantõesExtrasQtd > 0 && (
+                    <span className="text-[10px] font-bold text-emerald-600 block">+{selectedProfModal.plantõesExtrasQtd} extras</span>
+                  )}
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase font-bold">Líquido Realizado</span>
