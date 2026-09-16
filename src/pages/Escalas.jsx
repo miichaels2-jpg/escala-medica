@@ -91,6 +91,7 @@ export default function Escalas() {
   const [traySpecialtyFilter, setTraySpecialtyFilter] = useState('todas');
   const [draggingProfId, setDraggingProfId] = useState(null);
 
+  // Relógio ao Vivo otimizado
   const [liveNow, setLiveNow] = useState(() => new Date());
   useEffect(() => { 
     if (activeTab === 'tv' || activeTab === 'dia') {
@@ -102,7 +103,6 @@ export default function Escalas() {
   const [modalOpen, setModalOpen] = useState(false);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [generatorModalOpen, setGeneratorModalOpen] = useState(false);
-  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -125,29 +125,6 @@ export default function Escalas() {
       { id: 'slot_2', specialty: 'Clínica Médica', start_time: '19:00', end_time: '07:00', quantity: 2, shift_type: 'noturno' }
     ]
   });
-
-  const handleAddSlot = () => {
-    setGeneratorConfig(prev => ({
-      ...prev,
-      slots: [...prev.slots, { id: `slot_${Date.now()}`, specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', quantity: 1, shift_type: 'diurno' }]
-    }));
-  };
-
-  const handleRemoveSlot = (slotId) => {
-    setGeneratorConfig(prev => ({ ...prev, slots: prev.slots.filter(s => s.id !== slotId) }));
-  };
-
-  const handleUpdateSlot = (slotId, field, value) => {
-    setGeneratorConfig(prev => ({
-      ...prev,
-      slots: prev.slots.map(s => {
-        if (s.id !== slotId) return s;
-        const updated = { ...s, [field]: value };
-        if (field === 'start_time') updated.shift_type = value >= '18:00' || value < '06:00' ? 'noturno' : 'diurno';
-        return updated;
-      })
-    }));
-  };
 
   const [batchData, setBatchData] = useState({ professional_id: '', sector_id: '', shift_type: 'diurno', start_time: '07:00', end_time: '19:00' });
 
@@ -218,6 +195,7 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
+  // DADOS DA TV CCO & PLANTÃO DO DIA
   const tvData = useMemo(() => {
     const now = liveNow;
     const emAndamento = [];
@@ -255,6 +233,233 @@ export default function Escalas() {
     return { emAndamento, proximoRendimento, tableDayShifts };
   }, [shifts, selectedSectorId, filterTurno, liveNow, professionalMap]);
 
+  // IMPRESSÃO A4 PAISAGEM PROFISSIONAL - ISOLADA DE QUALQUER CSS DA TELA
+  const handlePrintA4Landscape = () => {
+    const printWindow = window.open('', '_blank', 'width=1100,height=800');
+    if (!printWindow) {
+      alert('Por favor, permita pop-ups para abrir a impressão oficial.');
+      return;
+    }
+
+    const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
+    const logoLetter = hospitalName[0] || 'H';
+    const dataVigencia = liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const dataEmissao = liveNow.toLocaleDateString('pt-BR') + ' às ' + liveNow.toLocaleTimeString('pt-BR');
+    const authCode = 'SM-ESC-' + Date.now().toString(36).toUpperCase();
+
+    const tableRowsHtml = tvData.tableDayShifts.length === 0
+      ? `<tr><td colspan="6" style="padding: 20px; text-align: center; color: #666;">Nenhum plantão registrado para a data de hoje.</td></tr>`
+      : tvData.tableDayShifts.map((shift, idx) => {
+          const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+          const sector = sectorMap[String(shift.sector_id)];
+          const isVago = shift.status === 'vago' || !prof;
+          const realSpecialty = extractSpecialty(shift, prof);
+          const bg = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
+          const profNome = isVago ? '<strong style="color: #b91c1c;">⚠️ VAGA EM ABERTO</strong>' : `Dr(a). ${prof?.name}`;
+          const conselho = prof?.document || '—';
+
+          return `
+            <tr style="background-color: ${bg};">
+              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold; text-transform: uppercase;">${sector?.name || 'Setor'}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; font-weight: bold; text-align: center;">${shift.start_time} - ${shift.end_time}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold;">${profNome}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px;">${realSpecialty}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; text-align: center;">${conselho}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; text-align: center; color: #aaa; font-family: monospace;">____________________</td>
+            </tr>
+          `;
+        }).join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8">
+        <title>Escala Oficial - ${hospitalName}</title>
+        <style>
+          @page {
+            size: A4 landscape;
+            margin: 8mm;
+          }
+          * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+          }
+          body {
+            font-family: Arial, Helvetica, sans-serif;
+            background: #ffffff !important;
+            color: #000000 !important;
+            padding: 15px;
+            font-size: 11px;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .header-box {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #000000;
+            padding-bottom: 12px;
+            margin-bottom: 15px;
+          }
+          .logo-badge {
+            width: 55px;
+            height: 55px;
+            border: 2px solid #000000;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: 900;
+            margin-right: 15px;
+          }
+          .header-info h1 {
+            font-size: 19px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: -0.5px;
+          }
+          .header-info p {
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: #333;
+            margin-top: 2px;
+          }
+          .header-info .date {
+            font-size: 10.5px;
+            margin-top: 3px;
+            color: #111;
+          }
+          .audit-box {
+            text-align: right;
+            font-size: 9.5px;
+          }
+          .audit-tag {
+            border: 1px solid #000000;
+            padding: 3px 8px;
+            font-weight: 900;
+            text-transform: uppercase;
+            display: inline-block;
+            margin-bottom: 4px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 2px solid #000000;
+            margin-bottom: 30px;
+          }
+          th {
+            background-color: #e5e7eb !important;
+            color: #000000 !important;
+            border: 1px solid #000000;
+            padding: 8px 10px;
+            text-align: left;
+            font-size: 9.5px;
+            font-weight: 900;
+            text-transform: uppercase;
+          }
+          .signatures-area {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 35px;
+            page-break-inside: avoid;
+          }
+          .sig-box {
+            text-align: center;
+            width: 320px;
+          }
+          .sig-line {
+            border-bottom: 1px solid #000000;
+            margin-bottom: 6px;
+          }
+          .sig-title {
+            font-weight: 900;
+            font-size: 10.5px;
+            text-transform: uppercase;
+          }
+          .sig-sub {
+            font-size: 9px;
+            color: #444;
+          }
+          .footer-note {
+            margin-top: 25px;
+            border-top: 1px solid #ccc;
+            padding-top: 5px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 8px;
+            color: #666;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header-box">
+          <div style="display: flex; align-items: center;">
+            <div class="logo-badge">${logoLetter}</div>
+            <div class="header-info">
+              <h1>${hospitalName}</h1>
+              <p>ESCALA OFICIAL DE PLANTÃO • MURAL HOSPITALAR</p>
+              <div class="date">Vigência: <b>${dataVigencia}</b></div>
+            </div>
+          </div>
+          <div class="audit-box">
+            <span class="audit-tag">DOCUMENTO OFICIAL AUDITÁVEL</span>
+            <div>Emissão: ${dataEmissao}</div>
+            <div style="font-family: monospace; color: #555;">Autenticação: ${authCode}</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 20%;">Seção / Setor</th>
+              <th style="width: 14%; text-align: center;">Horário</th>
+              <th style="width: 28%;">Profissional Escalado</th>
+              <th style="width: 18%;">Especialidade / Atuação</th>
+              <th style="width: 12%; text-align: center;">Conselho</th>
+              <th style="width: 18%; text-align: center;">Rubrica / Presença</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRowsHtml}
+          </tbody>
+        </table>
+
+        <div class="signatures-area">
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-title">Diretoria Clínica / RT Médica</div>
+            <div class="sig-sub">CRM / Carimbo Oficial</div>
+          </div>
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div class="sig-title">Gerência de Enfermagem / RT Assistencial</div>
+            <div class="sig-sub">COREN / Carimbo Oficial</div>
+          </div>
+        </div>
+
+        <div class="footer-note">
+          <span>ScaleMedic Hospital Intelligence • Sistema Homologado para Gestão e Escalas</span>
+          <span>Afixação Obrigatória em Mural Visível • Página 1 de 1</span>
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.print();
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
   const eligibleProfessionalsForModal = useMemo(() => {
     const spec = (formData.target_specialty || '').toLowerCase().trim();
     if (!spec) return (professionals || []).filter(p => p?.status === 'ativo');
@@ -289,7 +494,7 @@ export default function Escalas() {
     if (!profId) return;
 
     const prof = professionalMap[profId];
-    const targetSector = selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || '');
+    const targetSector = selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '');
     if (!targetSector) { alert('Selecione ou cadastre um setor hospitalar.'); return; }
 
     const targetDates = selectedDays.includes(dateStr) && selectedDays.length > 1 ? selectedDays : [dateStr];
@@ -315,6 +520,29 @@ export default function Escalas() {
       }
       setSelectedDays([]); await syncGlobalData();
     } catch (err) { alert('Erro ao alocar: ' + err.message); } finally { setDraggingProfId(null); }
+  };
+
+  const handleAddSlot = () => {
+    setGeneratorConfig(prev => ({
+      ...prev,
+      slots: [...prev.slots, { id: `slot_${Date.now()}`, specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', quantity: 1, shift_type: 'diurno' }]
+    }));
+  };
+
+  const handleRemoveSlot = (slotId) => {
+    setGeneratorConfig(prev => ({ ...prev, slots: prev.slots.filter(s => s.id !== slotId) }));
+  };
+
+  const handleUpdateSlot = (slotId, field, value) => {
+    setGeneratorConfig(prev => ({
+      ...prev,
+      slots: prev.slots.map(s => {
+        if (s.id !== slotId) return s;
+        const updated = { ...s, [field]: value };
+        if (field === 'start_time') updated.shift_type = value >= '18:00' || value < '06:00' ? 'noturno' : 'diurno';
+        return updated;
+      })
+    }));
   };
 
   const handleExecuteGenerator = async (e) => {
@@ -364,33 +592,6 @@ export default function Escalas() {
     alert(nextState ? '✅ Escala Publicada!' : '⚠️ Escala em modo Rascunho.');
   };
 
-  const handleSaveBatch = async (e) => {
-    e.preventDefault();
-    if (!batchData.sector_id || !batchData.professional_id) return;
-    const prof = professionalMap[batchData.professional_id];
-    const spec = prof?.specialty || 'Clínica Médica';
-
-    setSubmitting(true);
-    try {
-      for (const d of selectedDays) {
-        await autoHealingSaveShift(null, {
-          company_id: company?.id || 'cmp_principal',
-          unit_id: selectedUnitId || 'unit_h1',
-          sector_id: batchData.sector_id,
-          professional_id: batchData.professional_id,
-          target_specialty: spec,
-          notes: `[ESP:${spec}]`,
-          date: d,
-          shift_type: batchData.shift_type,
-          start_time: batchData.start_time,
-          end_time: batchData.end_time,
-          status: 'confirmado'
-        });
-      }
-      setBatchModalOpen(false); setSelectedDays([]); await syncGlobalData();
-    } finally { setSubmitting(false); }
-  };
-
   const handleSaveShift = async (e) => {
     e.preventDefault();
     if (!formData.sector_id || !formData.date) return;
@@ -418,6 +619,7 @@ export default function Escalas() {
 
       const saved = await autoHealingSaveShift(editingShiftId, payload);
       if (saved?.id || editingShiftId) try { window.localStorage.setItem(`shift_spec_${saved?.id || editingShiftId}`, finalSpecialty); } catch {}
+
       setModalOpen(false); await syncGlobalData();
     } finally { setSubmitting(false); }
   };
@@ -464,6 +666,7 @@ export default function Escalas() {
               <SlidersHorizontal className="w-4 h-4" /> Configurar & Gerar Escala
             </Button>
           )}
+
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shrink-0">
             <button onClick={() => setFilterTurno('todos')} className={`px-3 py-1 rounded-xl text-xs font-black ${filterTurno === 'todos' ? 'bg-white dark:bg-slate-800 shadow-sm' : 'text-slate-500'}`}>Todos</button>
             <button onClick={() => setFilterTurno('diurno')} className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1 ${filterTurno === 'diurno' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300' : 'text-slate-500'}`}><Sun className="w-3 h-3 text-amber-500" /> Diurno</button>
@@ -526,7 +729,7 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 4. VISÃO MENSAL (COLUNAS DE TURNO E STATUS COLORIDO)                        */}
+      {/* 4. VISÃO MENSAL (COLUNAS DE TURNO E CORES DE STATUS)                       */}
       {/* ========================================================================= */}
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
@@ -644,8 +847,8 @@ export default function Escalas() {
                   Plantões de Hoje ({liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })})
                 </h3>
               </div>
-              <Button onClick={() => setPrintPreviewOpen(true)} className="h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 text-xs font-black px-5 rounded-2xl gap-2 shadow-md">
-                <Printer className="w-4 h-4" /> Imprimir Plantão do Dia (A4)
+              <Button onClick={handlePrintA4Landscape} className="h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 text-xs font-black px-5 rounded-2xl gap-2 shadow-md">
+                <Printer className="w-4 h-4" /> Imprimir Plantão do Dia (A4 Paisagem)
               </Button>
             </div>
 
@@ -751,91 +954,6 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 7. FOLHA DE IMPRESSÃO A4 PAISAGEM BLINDADA (100% BRANCO)                  */}
-      {/* ========================================================================= */}
-      {printPreviewOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-900 flex flex-col">
-          <div className="flex items-center justify-between p-4 bg-slate-800 text-white print:hidden shadow-lg z-10 border-b border-slate-700">
-            <div className="font-black text-sm">Visualização de Impressão A4 Paisagem</div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setPrintPreviewOpen(false)} className="bg-slate-700 text-white border-slate-600 hover:bg-slate-600">Fechar</Button>
-              <Button onClick={() => window.print()} className="bg-sky-600 hover:bg-sky-500 text-white font-black"><Printer className="w-4 h-4 mr-2" /> Imprimir Documento Oficial</Button>
-            </div>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-8 bg-gray-300 print:p-0 print:bg-white flex justify-center">
-            <style>{`
-              @media print {
-                @page { size: A4 landscape; margin: 8mm; }
-                body * { visibility: hidden; }
-                #print-section, #print-section * { visibility: visible; }
-                #print-section { position: absolute; left: 0; top: 0; width: 100%; margin: 0; background: white; }
-                html, body { background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-              }
-            `}</style>
-            
-            <div id="print-section" className="w-full max-w-[297mm] bg-white text-black p-8 shadow-2xl print:shadow-none print:p-0 print:max-w-full font-sans border border-gray-300">
-              <div className="flex items-center justify-between border-b-2 border-black pb-4 mb-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-xl border-2 border-black flex items-center justify-center font-black text-3xl">{company?.name ? company.name[0] : 'H'}</div>
-                  <div>
-                    <h1 className="text-2xl font-black uppercase tracking-tight text-black">{company?.name || 'HOSPITAL PRINCIPAL'}</h1>
-                    <p className="text-sm font-bold text-black uppercase tracking-wider">ESCALA OFICIAL DE PLANTÃO • MURAL HOSPITALAR</p>
-                    <p className="text-xs text-black mt-1">Data de Vigência: <b>{liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</b></p>
-                  </div>
-                </div>
-                <div className="text-right text-xs text-black">
-                  <span className="font-black text-black border border-black px-2 py-1 uppercase block mb-1">DOCUMENTO OFICIAL AUDITÁVEL</span>
-                  <span className="text-[11px] text-black block">Emissão: {liveNow.toLocaleDateString('pt-BR')} às {liveNow.toLocaleTimeString('pt-BR')}</span>
-                </div>
-              </div>
-
-              <table className="w-full border-collapse border-2 border-black text-xs mb-8">
-                <thead className="print-header bg-slate-100 text-black uppercase text-[10px] font-black border-b-2 border-black">
-                  <tr>
-                    <th className="border border-black p-2 text-left w-1/5">Seção / Setor</th>
-                    <th className="border border-black p-2 text-left w-32">Horário</th>
-                    <th className="border border-black p-2 text-left">Profissional Escalado</th>
-                    <th className="border border-black p-2 text-left w-48">Especialidade / Atuação</th>
-                    <th className="border border-black p-2 text-left w-32">Conselho</th>
-                    <th className="border border-black p-2 text-center w-48">Assinatura / Presença</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-black">
-                  {tvData.tableDayShifts.length === 0 ? (
-                    <tr><td colSpan="6" className="p-4 text-center">Nenhum plantão cadastrado para a data de hoje.</td></tr>
-                  ) : (
-                    tvData.tableDayShifts.map((shift, idx) => {
-                      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-                      const sector = sectorMap[String(shift.sector_id)];
-                      const isVago = shift.status === 'vago' || !prof;
-                      const realSpecialty = extractSpecialty(shift, prof);
-
-                      return (
-                        <tr key={shift.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                          <td className="border border-black p-2 font-black text-black uppercase">{sector?.name || 'Setor'}</td>
-                          <td className="border border-black p-2 font-mono font-bold text-black">{shift.start_time} - {shift.end_time}</td>
-                          <td className="border border-black p-2 font-black text-black">{isVago ? <span className="font-black">⚠️ VAGA EM ABERTO</span> : `Dr(a). ${prof?.name}`}</td>
-                          <td className="border border-black p-2 text-black font-semibold">{realSpecialty}</td>
-                          <td className="border border-black p-2 font-mono text-black">{prof?.document || '—'}</td>
-                          <td className="border border-black p-2 text-center text-black font-mono">____________________</td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-
-              <div className="grid grid-cols-2 gap-12 pt-10 text-center text-xs page-break-inside-avoid">
-                <div className="space-y-1"><div className="w-72 border-b border-black mx-auto"></div><span className="font-black text-black block uppercase">Diretoria Clínica / RT Médica</span><span className="text-[10px] text-black">CRM / Carimbo Oficial</span></div>
-                <div className="space-y-1"><div className="w-72 border-b border-black mx-auto"></div><span className="font-black text-black block uppercase">Gerência de Enfermagem / RT Assistencial</span><span className="text-[10px] text-black">COREN / Carimbo Oficial</span></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
       {/* MODAL DE EDIÇÃO LIMPO E INTEGRADO                                         */}
       {/* ========================================================================= */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -895,7 +1013,7 @@ export default function Escalas() {
         </DialogContent>
       </Dialog>
 
-      {/* GERADOR DE ESCALA (BOTÃO CORRIGIDO: handleAddSlot) */}
+      {/* GERADOR DE ESCALA */}
       <Dialog open={generatorModalOpen} onOpenChange={setGeneratorModalOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
           <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2"><SlidersHorizontal className="w-5 h-5 text-indigo-600" /> Configurar & Gerar Escala do Setor</DialogTitle></DialogHeader>
@@ -917,10 +1035,11 @@ export default function Escalas() {
               <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                 {generatorConfig.slots.map(slot => (
                   <div key={slot.id} className="p-3 rounded-2xl bg-white dark:bg-slate-900 border grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
-                    <div className="sm:col-span-4 space-y-1"><Label className="text-[10px]">Especialidade</Label><Input value={slot.specialty} onChange={e => handleUpdateSlot(slot.id, 'specialty', e.target.value)} className="h-8 text-xs font-bold" list="specialties-datalist" /></div>
+                    <div className="sm:col-span-3 space-y-1"><Label className="text-[10px]">Especialidade</Label><Input value={slot.specialty} onChange={e => handleUpdateSlot(slot.id, 'specialty', e.target.value)} className="h-8 text-xs font-bold" list="specialties-datalist" /></div>
+                    <div className="sm:col-span-2 space-y-1"><Label className="text-[10px]">Turno</Label><Select value={slot.shift_type} onValueChange={v => handleUpdateSlot(slot.id, 'shift_type', v)}><SelectTrigger className="h-8"><SelectValue /></SelectTrigger><SelectContent className="bg-white dark:bg-slate-900"><SelectItem value="diurno">Diurno</SelectItem><SelectItem value="noturno">Noturno</SelectItem></SelectContent></Select></div>
                     <div className="sm:col-span-2 space-y-1"><Label className="text-[10px]">Entrada</Label><Input type="time" value={slot.start_time} onChange={e => handleUpdateSlot(slot.id, 'start_time', e.target.value)} className="h-8 text-xs" /></div>
                     <div className="sm:col-span-2 space-y-1"><Label className="text-[10px]">Saída</Label><Input type="time" value={slot.end_time} onChange={e => handleUpdateSlot(slot.id, 'end_time', e.target.value)} className="h-8 text-xs" /></div>
-                    <div className="sm:col-span-3 space-y-1"><Label className="text-[10px]">Qtd. Vagas</Label><Input type="number" min="1" value={slot.quantity} onChange={e => handleUpdateSlot(slot.id, 'quantity', parseInt(e.target.value) || 1)} className="h-8 text-xs" /></div>
+                    <div className="sm:col-span-2 space-y-1"><Label className="text-[10px]">Qtd. Vagas</Label><Input type="number" min="1" value={slot.quantity} onChange={e => handleUpdateSlot(slot.id, 'quantity', parseInt(e.target.value) || 1)} className="h-8 text-xs" /></div>
                     <div className="sm:col-span-1 flex justify-end"><Button type="button" variant="ghost" onClick={() => handleRemoveSlot(slot.id)} className="h-8 w-8 p-0 text-rose-500"><Trash2 className="w-4 h-4" /></Button></div>
                   </div>
                 ))}
