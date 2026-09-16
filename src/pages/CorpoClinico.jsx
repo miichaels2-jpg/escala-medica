@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   Users, UserPlus, Search, CheckCircle2, 
   Clock, DollarSign, Edit3, KeyRound, Send, RefreshCw, Ban, 
-  UserCheck, MessageSquare, Shield, UserCog, BadgeCheck, Eye, EyeOff,
+  UserCheck, MessageSquare, Shield, UserCog, Eye, EyeOff,
   HeartPulse, Plus, CreditCard, Landmark
 } from 'lucide-react';
 
@@ -46,11 +46,8 @@ async function autoHealingSave(id, initialPayload) {
   let payload = { ...initialPayload };
   for (let attempt = 0; attempt < 8; attempt++) {
     try {
-      if (id) {
-        return await base44.entities.Professional.update(id, payload);
-      } else {
-        return await base44.entities.Professional.create(payload);
-      }
+      if (id) return await base44.entities.Professional.update(id, payload);
+      else return await base44.entities.Professional.create(payload);
     } catch (err) {
       const msg = err.message || '';
       const match = msg.match(/Could not find the '([^']+)' column of 'professionals'/i);
@@ -76,32 +73,28 @@ export default function CorpoClinico() {
   const [customCategories, setCustomCategories] = useState(() => {
     try { return JSON.parse(window.localStorage.getItem('scale_custom_cats') || '[]'); } catch { return []; }
   });
-
   const [newCatData, setNewCatData] = useState({ label: '', council: 'Registro' });
 
   const allCategories = useMemo(() => [...DEFAULT_CATEGORIES, ...customCategories], [customCategories]);
 
   const [formData, setFormData] = useState({
     name: '', username: '', category: 'medico', document: '',
-    registration_id: '', main_sector: '', specialty: '', cbo: '',
+    registration_id: '', specialty: '', cbo: '',
     cpf: '', email: '', phone: '', unit_id: '',
-    status: 'ativo', app_role: 'assistencial', remuneration_type: 'hora',
-    hourly_rate: 120, daily_rate: 1500, monthly_salary: 18000,
-    monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
-    pix_key: '', bank_info: '', password: ''
+    status: 'ativo', app_role: 'assistencial', remuneration_type: 'mensal',
+    hourly_rate: 120, daily_rate: 1500, monthly_salary: 5000,
+    coop_tax_rate: 0, pix_type: 'CPF', pix_key: '', bank_info: '', password: ''
   });
 
   const resetForm = () => {
     const generatedMatricula = `MAT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
     setFormData({
       name: '', username: '', category: 'medico', document: '',
-      registration_id: generatedMatricula, main_sector: sectors[0]?.name || 'UTI Geral',
-      specialty: '', cbo: '', cpf: '', email: '', phone: '',
-      unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
-      status: 'ativo', app_role: 'assistencial', remuneration_type: 'hora',
-      hourly_rate: 120, daily_rate: 1500, monthly_salary: 18000,
-      monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
-      pix_key: '', bank_info: '', password: ''
+      registration_id: generatedMatricula, specialty: '', cbo: '',
+      cpf: '', email: '', phone: '', unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
+      status: 'ativo', app_role: 'assistencial', remuneration_type: 'mensal',
+      hourly_rate: 120, daily_rate: 1500, monthly_salary: 5000,
+      coop_tax_rate: 0, pix_type: 'CPF', pix_key: '', bank_info: '', password: ''
     });
     setEditingProf(null);
     setShowPassword(false);
@@ -112,15 +105,15 @@ export default function CorpoClinico() {
   const handleOpenEdit = (prof) => {
     setEditingProf(prof);
     const meta = getProfMeta(prof);
+    const defaultUsername = (prof.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
     const generatedMatricula = meta.registration_id || prof.registration_id || `MAT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
     setFormData({
       name: prof.name || prof.full_name || '',
-      username: meta.username || prof.username || '',
+      username: meta.username || prof.username || defaultUsername,
       category: meta.category || prof.category || 'medico',
       document: prof.document || prof.registration_number || '',
       registration_id: generatedMatricula,
-      main_sector: meta.main_sector || prof.specialty || sectors[0]?.name || 'UTI Geral',
       specialty: prof.specialty || meta.specialty || '',
       cbo: meta.cbo || prof.cbo || '',
       cpf: prof.cpf || '',
@@ -129,11 +122,10 @@ export default function CorpoClinico() {
       unit_id: prof.unit_id || selectedUnitId,
       status: prof.status || 'ativo',
       app_role: meta.app_role || prof.app_role || 'assistencial',
-      remuneration_type: prof.remuneration_type || meta.remuneration_type || 'hora',
+      remuneration_type: prof.remuneration_type || meta.remuneration_type || 'mensal',
       hourly_rate: safeNumber(prof.hourly_rate ?? meta.hourly_rate, 120),
       daily_rate: safeNumber(meta.daily_rate ?? prof.daily_rate, 1500),
-      monthly_salary: safeNumber(meta.monthly_salary ?? prof.monthly_salary, 18000),
-      monthly_work_hours: safeNumber(meta.monthly_work_hours ?? prof.monthly_work_hours, 220),
+      monthly_salary: safeNumber(meta.monthly_salary ?? prof.monthly_salary, 5000),
       coop_tax_rate: safeNumber(meta.coop_tax_rate ?? prof.coop_tax_rate, 0),
       pix_type: meta.pix_type || 'CPF',
       pix_key: meta.pix_key || '',
@@ -159,14 +151,14 @@ export default function CorpoClinico() {
   const handleSendWhatsApp = () => {
     const rawPhone = formData.phone;
     const cleanPhone = String(rawPhone || '').replace(/\D/g, '');
-    if (!cleanPhone) { alert('Preencha o campo Telefone / WhatsApp para enviar a notificação.'); return; }
+    if (!cleanPhone) { alert('Preencha o campo Telefone / WhatsApp para enviar.'); return; }
 
     const phoneWithDDI = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
     const loginUser = formData.username || formData.email || '';
     const pass = formData.password ? formData.password : '(sua senha cadastrada)';
     const siteUrl = window.location.origin;
 
-    const message = `*ScaleMedic - Gestão Hospitalar* 🏥\n\nOlá, *${formData.name}*!\nSeu cadastro profissional foi atualizado.\n\nAcesse sua escala com as credenciais abaixo:\n🌐 *Link:* ${siteUrl}/login\n👤 *Usuário:* ${loginUser}\n🔑 *Senha:* ${pass}\n\n_Ao acessar, verifique sua grade e fique atento às notificações do Mural._`;
+    const message = `*ScaleMedic - Gestão Hospitalar* 🏥\n\nOlá, *${formData.name}*!\nSeu cadastro profissional foi atualizado no sistema.\n\nAcesse sua escala com as credenciais abaixo:\n🌐 *Link:* ${siteUrl}/login\n👤 *Usuário:* ${loginUser}\n🔑 *Senha:* ${pass}\n\n_Ao acessar, verifique sua grade e fique atento às notificações._`;
     window.open(`https://api.whatsapp.com/send?phone=${phoneWithDDI}&text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -176,21 +168,20 @@ export default function CorpoClinico() {
 
     setSubmitting(true);
     try {
-      const cleanUsername = (formData.username || formData.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
+      const cleanUsername = (formData.username || formData.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.');
 
       const richMeta = {
         username: cleanUsername, category: formData.category, app_role: formData.app_role,
-        main_sector: formData.main_sector, specialty: formData.specialty, cbo: formData.cbo,
-        registration_id: formData.registration_id, coop_tax_rate: safeNumber(formData.coop_tax_rate),
-        daily_rate: safeNumber(formData.daily_rate), monthly_salary: safeNumber(formData.monthly_salary),
-        monthly_work_hours: safeNumber(formData.monthly_work_hours), pix_type: formData.pix_type,
+        specialty: formData.specialty, cbo: formData.cbo, registration_id: formData.registration_id,
+        coop_tax_rate: safeNumber(formData.coop_tax_rate), daily_rate: safeNumber(formData.daily_rate),
+        monthly_salary: safeNumber(formData.monthly_salary), pix_type: formData.pix_type,
         pix_key: formData.pix_key.trim(), bank_info: formData.bank_info.trim(),
         remuneration_type: formData.remuneration_type, hourly_rate: safeNumber(formData.hourly_rate)
       };
 
       const profPayload = {
         company_id: company?.id || 'cmp_principal', unit_id: formData.unit_id || selectedUnitId || 'unit_h1',
-        name: formData.name.trim(), document: formData.document.trim(), specialty: formData.specialty.trim() || formData.main_sector,
+        name: formData.name.trim(), document: formData.document.trim(), specialty: formData.specialty.trim(),
         cbo: formData.cbo.trim(), cpf: formData.cpf.trim(), email: formData.email.trim().toLowerCase(),
         phone: formData.phone.trim(), status: formData.status, remuneration_type: formData.remuneration_type,
         hourly_rate: safeNumber(formData.hourly_rate)
@@ -250,7 +241,7 @@ export default function CorpoClinico() {
     <div className="p-4 md:p-8 space-y-6 font-sans">
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-400"><Users className="w-4 h-4" /> Gestão de Pessoal & Matrícula</div>
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-400"><Users className="w-4 h-4" /> Gestão de Pessoal & Matrícula ID</div>
           <h2 className="mt-1 text-2xl sm:text-3xl font-black">Corpo Clínico & Matrículas</h2>
           <p className="text-xs text-slate-300">Cadastro de profissionais, repasse PIX e geração automática de Matrícula ID.</p>
         </div>
@@ -275,12 +266,12 @@ export default function CorpoClinico() {
           const catId = meta.category || prof.category || 'medico';
           const catObj = allCategories.find(c => c.id === catId) || allCategories[0];
           
-          const remunType = prof.remuneration_type || meta.remuneration_type || 'hora';
-          const remunValue = remunType === 'hora' ? (prof.hourly_rate || meta.hourly_rate || 120) : remunType === 'diaria' ? (prof.daily_rate || meta.daily_rate || 1500) : (prof.monthly_salary || meta.monthly_salary || 18000);
+          const remunType = prof.remuneration_type || meta.remuneration_type || 'mensal';
+          const remunValue = remunType === 'hora' ? (prof.hourly_rate || meta.hourly_rate || 120) : remunType === 'diaria' ? (prof.daily_rate || meta.daily_rate || 1500) : (prof.monthly_salary || meta.monthly_salary || 5000);
           const remunLabel = remunType === 'hora' ? '/ Hora' : remunType === 'diaria' ? '/ Plantão' : '/ Mês Fixo';
 
           return (
-            <Card key={prof.id} className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4">
+            <Card key={prof.id} className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4 hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
                   <div>
@@ -297,10 +288,10 @@ export default function CorpoClinico() {
                   <div className="flex justify-between"><span>Chave PIX:</span><strong className="text-sky-600 font-mono truncate max-w-[140px]">{meta.pix_key || 'Não cadastrado'}</strong></div>
                 </div>
 
-                {/* BLOCO DE SALÁRIO EM DESTAQUE REQUERIDO */}
-                <div className="mt-2 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 flex items-center justify-between">
+                {/* BLOCO DE SALÁRIO EM DESTAQUE */}
+                <div className="mt-2 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 flex items-center justify-between shadow-sm">
                   <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                    <DollarSign className="w-3.5 h-3.5" /> Remuneração
+                    <DollarSign className="w-3.5 h-3.5" /> Remuneração Base
                   </span>
                   <span className="font-black text-sm text-emerald-600 dark:text-emerald-300">
                     {formatCurrency(remunValue)} <span className="text-[9px] font-bold opacity-70">{remunLabel}</span>
@@ -309,29 +300,26 @@ export default function CorpoClinico() {
               </div>
 
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => handleOpenEdit(prof)} className="flex-1 text-xs h-9 font-bold gap-1 rounded-xl"><Edit3 className="w-3.5 h-3.5 text-sky-600" /> Editar Perfil</Button>
-                {prof.phone && (<Button size="sm" variant="outline" onClick={() => window.open(`https://wa.me/55${prof.phone.replace(/\D/g, '')}`, '_blank')} className="h-9 px-3 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50"><MessageSquare className="w-4 h-4" /></Button>)}
+                <Button size="sm" variant="outline" onClick={() => handleOpenEdit(prof)} className="flex-1 text-xs h-9 font-bold gap-1 rounded-xl border-slate-200 dark:border-slate-700"><Edit3 className="w-3.5 h-3.5 text-sky-600" /> Editar Perfil</Button>
+                {prof.phone && (<Button size="sm" variant="outline" onClick={() => { setFormData(prev => ({...prev, ...prof, password: meta.password || ''})); handleSendWhatsApp(); }} className="h-9 px-3 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"><MessageSquare className="w-4 h-4" /></Button>)}
               </div>
             </Card>
           );
         })}
       </div>
 
-      {/* MODAL DE CADASTRO/EDIÇÃO (RESTAURADO COMPLETO) */}
+      {/* MODAL DE CADASTRO/EDIÇÃO (FIEL À IMAGEM) */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shadow-2xl">
           <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2 text-slate-900 dark:text-white"><UserCog className="w-5 h-5 text-sky-600" /> {editingProf ? 'Editar Perfil Profissional & Acesso' : 'Cadastrar Novo Profissional'}</DialogTitle></DialogHeader>
 
           <form onSubmit={handleSaveProfessional} className="space-y-5 py-2 text-xs">
             
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <HeartPulse className="w-4 h-4 text-slate-400" />
-                <Label className="text-xs font-black uppercase text-slate-500">Categoria Profissional *</Label>
-              </div>
+              <div className="flex items-center gap-2"><HeartPulse className="w-4 h-4 text-slate-400" /><Label className="text-xs font-black uppercase text-slate-500">Categoria Profissional *</Label></div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {allCategories.map(cat => (
-                  <div key={cat.id} onClick={() => setFormData({ ...formData, category: cat.id })} className={`p-2 rounded-xl border cursor-pointer text-center transition-all ${formData.category === cat.id ? 'border-sky-600 bg-sky-50 dark:bg-sky-900/20 font-black shadow-sm ring-1 ring-sky-600 text-sky-700 dark:text-sky-400' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-white'}`}>
+                  <div key={cat.id} onClick={() => setFormData({ ...formData, category: cat.id })} className={`p-2 rounded-xl border cursor-pointer text-center transition-all ${formData.category === cat.id ? 'border-sky-600 bg-sky-50 dark:bg-sky-900/20 font-black shadow-sm ring-1 ring-sky-600 text-sky-700 dark:text-sky-400' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'}`}>
                     <span className="text-[11px] block truncate">{cat.label}</span>
                     <span className="text-[9px] opacity-60">Conselho: {cat.council}</span>
                   </div>
@@ -343,10 +331,7 @@ export default function CorpoClinico() {
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-slate-400" />
-                <Label className="text-xs font-black uppercase text-slate-500">Perfil de Permissão no Sistema *</Label>
-              </div>
+              <div className="flex items-center gap-2"><Shield className="w-4 h-4 text-slate-400" /><Label className="text-xs font-black uppercase text-slate-500">Perfil de Permissão no Sistema *</Label></div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {ACCESS_ROLES.map(role => (
                   <div key={role.id} onClick={() => setFormData({ ...formData, app_role: role.id })} className={`p-3 rounded-xl border cursor-pointer transition-all ${formData.app_role === role.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 shadow-sm ring-1 ring-indigo-500' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800'}`}>
@@ -407,9 +392,7 @@ export default function CorpoClinico() {
 
             <div className="p-4 rounded-2xl bg-sky-50/60 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/60 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2 font-black text-xs text-sky-900 dark:text-sky-200 uppercase tracking-wider">
-                  <KeyRound className="w-4 h-4 text-sky-600" /> Credenciais de Login & Acesso
-                </div>
+                <div className="flex items-center gap-2 font-black text-xs text-sky-900 dark:text-sky-200 uppercase tracking-wider"><KeyRound className="w-4 h-4 text-sky-600" /> Credenciais de Login & Acesso</div>
                 <div className="flex items-center gap-1.5">
                   <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'Mudar@123'}))} className="h-7 text-[10px] font-bold border-amber-300 text-amber-700 hover:bg-amber-50">Resetar Senha</Button>
                   <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'S@ude'+Math.floor(1000+Math.random()*9000)}))} className="h-7 text-[10px] font-bold border-sky-300 text-sky-600 hover:bg-sky-50"><RefreshCw className="w-3 h-3 mr-1" /> Gerar Aleatória</Button>
@@ -435,26 +418,23 @@ export default function CorpoClinico() {
             </div>
 
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-3">
-              <div className="flex items-center gap-2 font-black text-xs uppercase text-emerald-700 dark:text-emerald-400">
-                <DollarSign className="w-4 h-4" /> Faturamento, PIX & Conta Bancária
-              </div>
-
+              <div className="flex items-center gap-2 font-black text-xs uppercase text-emerald-700 dark:text-emerald-400"><DollarSign className="w-4 h-4" /> Faturamento, PIX & Dados Bancários</div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold">Regime Contratual</Label>
                   <Select value={formData.remuneration_type} onValueChange={v => setFormData({...formData, remuneration_type: v})}>
                     <SelectTrigger className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="hora">Horista (R$ / Hora)</SelectItem>
-                      <SelectItem value="diaria">Plantonista (R$ / Diária)</SelectItem>
                       <SelectItem value="mensal">Fixo Mensal</SelectItem>
+                      <SelectItem value="diaria">Plantonista (R$ / Diária)</SelectItem>
+                      <SelectItem value="hora">Horista (R$ / Hora)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 
                 {formData.remuneration_type === 'hora' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Valor da Hora (R$)</Label><Input type="number" step="0.01" value={formData.hourly_rate} onChange={e => setFormData({...formData, hourly_rate: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
                 {formData.remuneration_type === 'diaria' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Valor do Plantão (R$)</Label><Input type="number" step="0.01" value={formData.daily_rate} onChange={e => setFormData({...formData, daily_rate: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
-                {formData.remuneration_type === 'mensal' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Salário (R$)</Label><Input type="number" step="0.01" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
+                {formData.remuneration_type === 'mensal' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Salário Base (R$)</Label><Input type="number" step="0.01" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
 
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold">Retenção PJ/Coop (%)</Label>
@@ -478,32 +458,20 @@ export default function CorpoClinico() {
                 </div>
                 <div className="space-y-1 sm:col-span-2">
                   <Label className="text-[11px] font-bold">Chave PIX para Repasse</Label>
-                  <Input value={formData.pix_key} onChange={e => setFormData({...formData, pix_key: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono" />
+                  <Input value={formData.pix_key} onChange={e => setFormData({...formData, pix_key: e.target.value})} placeholder="Insira a chave..." className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono" />
                 </div>
               </div>
 
               <div className="space-y-1 pt-1">
-                <Label className="text-[11px] font-bold flex items-center gap-1.5"><Landmark className="w-3.5 h-3.5 text-slate-500" /> Dados Bancários (Caso não receba via PIX)</Label>
-                <Input value={formData.bank_info} onChange={e => setFormData({...formData, bank_info: e.target.value})} placeholder="Ex: Banco Itaú, Agência 0000, Conta Corrente 00000-0" className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                <Label className="text-[11px] font-bold flex items-center gap-1.5"><Landmark className="w-3.5 h-3.5 text-slate-500" /> Dados Bancários Físicos (Para TED/DOC)</Label>
+                <Input value={formData.bank_info} onChange={e => setFormData({...formData, bank_info: e.target.value})} placeholder="Ex: Banco Itaú, Ag: 0000, CC: 00000-0" className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
               </div>
             </div>
 
             <DialogFooter className="pt-4 gap-2">
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-10 border-slate-200 dark:border-slate-700">Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="bg-sky-600 text-white font-black text-xs h-10 px-8 rounded-xl shadow-md">Salvar Perfil Profissional</Button>
+              <Button type="submit" disabled={submitting} className="bg-sky-600 hover:bg-sky-500 text-white font-black text-xs h-10 px-8 rounded-xl shadow-md">Salvar Perfil Profissional</Button>
             </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* MODAL: ADICIONAR NOVA CATEGORIA COM BOTÃO + */}
-      <Dialog open={newCatModalOpen} onOpenChange={setNewCatModalOpen}>
-        <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-          <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2"><Plus className="w-5 h-5 text-sky-600" /> Nova Categoria Profissional</DialogTitle></DialogHeader>
-          <form onSubmit={handleAddCustomCategory} className="space-y-3 py-2 text-xs">
-            <div className="space-y-1"><Label className="text-xs font-bold">Nome da Categoria *</Label><Input value={newCatData.label} onChange={e => setNewCatData({ ...newCatData, label: e.target.value })} placeholder="Ex: Perfusionista" className="h-9" required /></div>
-            <div className="space-y-1"><Label className="text-xs font-bold">Conselho Profissional</Label><Input value={newCatData.council} onChange={e => setNewCatData({ ...newCatData, council: e.target.value })} placeholder="Ex: CRVM" className="h-9 font-mono uppercase" /></div>
-            <DialogFooter className="pt-3 gap-2"><Button type="button" variant="outline" onClick={() => setNewCatModalOpen(false)} className="h-9 text-xs">Cancelar</Button><Button type="submit" className="bg-sky-600 text-white font-bold text-xs h-9 px-5">Adicionar</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
