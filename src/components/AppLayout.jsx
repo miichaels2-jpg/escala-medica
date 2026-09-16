@@ -6,7 +6,7 @@ import {
   Activity, LayoutDashboard, CalendarDays, Repeat, 
   DollarSign, Users, Building2, LogOut, Menu, X, 
   AlertTriangle, Sun, Moon, Settings, FileBarChart,
-  Clock, Hospital, Bell, Flame, CheckCircle2, ChevronRight
+  Clock, Hospital, Bell, Flame, CheckCircle2, ChevronRight, CheckCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -22,17 +22,17 @@ class LayoutErrorBoundary extends Component {
     return { hasError: true, error };
   }
   componentDidCatch(error, errorInfo) {
-    console.error('Erro de renderização no Layout:', error, errorInfo);
+    console.error('Erro no Layout:', error, errorInfo);
   }
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-8 max-w-xl mx-auto my-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl text-center shadow-2xl">
+        <div className="p-8 max-w-xl mx-auto my-12 bg-slate-900 border border-slate-800 rounded-3xl text-center shadow-2xl text-white">
           <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
-          <h2 className="text-lg font-black text-slate-900 dark:text-white">Instabilidade no Módulo</h2>
-          <p className="text-xs text-slate-500 my-3">{this.state.error?.message || 'Erro inesperado na visualização.'}</p>
+          <h2 className="text-lg font-black">Instabilidade no Módulo</h2>
+          <p className="text-xs text-slate-400 my-3">{this.state.error?.message || 'Erro inesperado na visualização.'}</p>
           <Button onClick={() => window.location.reload()} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-10 px-6">
-            Recarregar
+            Recarregar Página
           </Button>
         </div>
       );
@@ -58,6 +58,14 @@ export default function AppLayout({ children }) {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [readNotifIds, setReadNotifIds] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem('scale_read_notifs') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
   const [theme, setTheme] = useState('dark');
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
@@ -94,19 +102,16 @@ export default function AppLayout({ children }) {
     window.location.href = '/login';
   };
 
-  const dayName = WEEKDAYS_LONG[currentTime.getDay()];
-  const formattedDate = currentTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const formattedTime = currentTime.toLocaleTimeString('pt-BR');
-
-  // Notificações reais baseadas em vagas pertinentes no mural
+  // Notificações reais: Vagas ativas no mural que ainda não foram marcadas como lidas
   const userCategory = currentProfessional?.category || (currentProfessional?.specialty?.toLowerCase().includes('enferm') ? 'enfermeiro' : 'medico');
-  
-  const muralNotifications = (shifts || []).filter(s => {
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const rawMuralShifts = (shifts || []).filter(s => {
     const isVago = s.status === 'vago' || s.is_open === true;
     const isCancelado = String(s.status || '').toLowerCase().includes('cancel') || String(s.notes || '').toLowerCase().includes('cancel');
     if (!isVago || isCancelado) return false;
-    
-    // Filtro por categoria do profissional logado
+    if (s.date && s.date < todayStr) return false;
+
     if (!isManager) {
       const targetCat = s.target_category || 'medico';
       if (targetCat !== userCategory) return false;
@@ -114,10 +119,36 @@ export default function AppLayout({ children }) {
     return true;
   });
 
+  // Lista de notificações pendentes (não lidas)
+  const unreadMuralShifts = rawMuralShifts.filter(s => !readNotifIds.includes(s.id));
+
+  const handleMarkAsRead = (shiftId) => {
+    const updated = [...readNotifIds, shiftId];
+    setReadNotifIds(updated);
+    try {
+      window.localStorage.setItem('scale_read_notifs', JSON.stringify(updated));
+    } catch {}
+    setNotifOpen(false);
+    navigate('/trocas');
+  };
+
+  const handleMarkAllAsRead = () => {
+    const allIds = rawMuralShifts.map(s => s.id);
+    const merged = Array.from(new Set([...readNotifIds, ...allIds]));
+    setReadNotifIds(merged);
+    try {
+      window.localStorage.setItem('scale_read_notifs', JSON.stringify(merged));
+    } catch {}
+  };
+
+  const dayName = WEEKDAYS_LONG[currentTime.getDay()];
+  const formattedDate = currentTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const formattedTime = currentTime.toLocaleTimeString('pt-BR');
+
   const navItems = [
     { label: 'Painel Geral', path: '/', icon: LayoutDashboard, visible: true },
     { label: 'Escalas & Plantões', path: '/escalas', icon: CalendarDays, visible: true },
-    { label: 'Trocas & Mural', path: '/trocas', icon: Repeat, visible: true, badge: muralNotifications.length },
+    { label: 'Trocas & Mural', path: '/trocas', icon: Repeat, visible: true, badge: unreadMuralShifts.length },
     { label: 'Minha Escala', path: '/minha-escala', icon: Activity, visible: true },
     { label: 'Corpo Clínico', path: '/corpo-clinico', icon: Users, visible: isManager || isBilling },
     { label: 'Setores & Especialidades', path: '/setores', icon: Building2, visible: isManager },
@@ -135,10 +166,10 @@ export default function AppLayout({ children }) {
   }[userAppRole] || 'Profissional';
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-950 font-sans text-slate-100 transition-colors duration-200">
+    <div className="flex h-screen overflow-hidden bg-slate-950 font-sans text-slate-100">
       
       {/* SIDEBAR DESKTOP */}
-      <aside className="hidden md:flex w-64 flex-col bg-slate-900 border-r border-slate-800 shrink-0 select-none shadow-2xl">
+      <aside className="hidden md:flex w-64 flex-col bg-slate-900 border-r border-slate-800 shrink-0 select-none shadow-2xl print:hidden">
         <div className="p-4 flex items-center gap-3 border-b border-slate-800 bg-slate-950/40">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-sky-500/20 shrink-0 ring-1 ring-white/20">
             <Activity className="w-5 h-5" />
@@ -181,7 +212,6 @@ export default function AppLayout({ children }) {
           })}
         </nav>
 
-        {/* PERFIL E LOGOUT */}
         <div className="p-3 border-t border-slate-800 bg-slate-950/50">
           <div className="p-2.5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-2 shadow-inner">
             <div className="min-w-0 flex-1">
@@ -203,11 +233,11 @@ export default function AppLayout({ children }) {
         </div>
       </aside>
 
-      {/* ÁREA PRINCIPAL COM HEADER EXECUTIVO */}
+      {/* ÁREA PRINCIPAL */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-950">
         
-        {/* BARRA SUPERIOR DE COMANDO */}
-        <header className="bg-slate-900/90 backdrop-blur-xl border-b border-slate-800 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4 shrink-0 shadow-xl z-30">
+        {/* HEADER SUPERIOR */}
+        <header className="bg-slate-900/90 backdrop-blur-xl border-b border-slate-800 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4 shrink-0 shadow-xl z-30 print:hidden">
           
           <div className="flex items-center gap-3">
             <div className="md:hidden flex items-center gap-2">
@@ -217,18 +247,17 @@ export default function AppLayout({ children }) {
               <span className="font-black text-sm text-white">ScaleMedic</span>
             </div>
 
-            {/* SELETOR DE UNIDADE */}
             <div className="hidden sm:flex items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
                 <Hospital className="w-3.5 h-3.5 text-sky-500" /> Unidade:
               </span>
               <Select value={selectedUnitId} onValueChange={setSelectedUnitId}>
-                <SelectTrigger className="h-8 w-52 text-xs font-black bg-slate-950 border-slate-800 text-sky-400 rounded-xl focus:ring-sky-500">
+                <SelectTrigger className="h-8 w-52 text-xs font-black bg-slate-950 border-slate-800 text-sky-400 rounded-xl">
                   <SelectValue placeholder="Unidade..." />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-900 border-slate-800 text-slate-100">
                   {units.map(u => (
-                    <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold focus:bg-slate-800">
+                    <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold">
                       {u.name}
                     </SelectItem>
                   ))}
@@ -239,7 +268,6 @@ export default function AppLayout({ children }) {
 
           <div className="flex items-center gap-3">
             
-            {/* RELÓGIO AO VIVO */}
             <div className="hidden lg:flex items-center gap-2.5 px-3.5 py-1.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs shadow-inner">
               <span className="text-slate-400 font-bold">
                 {dayName}, {formattedDate}
@@ -251,44 +279,52 @@ export default function AppLayout({ children }) {
               </span>
             </div>
 
-            {/* CENTRAL DE NOTIFICAÇÕES (SINO 🔔 COM BADGE) */}
+            {/* SINO DE NOTIFICAÇÕES INTELIGENTE */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setNotifOpen(!notifOpen)}
                 className="p-2.5 rounded-2xl border border-slate-800 bg-slate-950 hover:bg-slate-800/80 text-slate-300 hover:text-white transition-all relative shadow-sm"
-                title="Notificações & Vagas Disponíveis"
+                title="Notificações"
               >
                 <Bell className="w-4 h-4" />
-                {muralNotifications.length > 0 && (
+                {unreadMuralShifts.length > 0 && (
                   <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-500 text-white font-mono font-black text-[10px] flex items-center justify-center animate-bounce shadow-lg shadow-rose-500/50">
-                    {muralNotifications.length}
+                    {unreadMuralShifts.length}
                   </span>
                 )}
               </button>
 
-              {/* DROPDOWN DE NOTIFICAÇÕES */}
               {notifOpen && (
                 <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                     <div className="flex items-center gap-2">
                       <Bell className="w-4 h-4 text-sky-400" />
-                      <span className="text-xs font-black uppercase text-white">Central de Avisos</span>
+                      <span className="text-xs font-black uppercase text-white">Central de Vagas</span>
                     </div>
-                    <span className="text-[10px] font-black bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded-full">
-                      {muralNotifications.length} vagas para você
-                    </span>
+                    {unreadMuralShifts.length > 0 && (
+                      <button 
+                        onClick={handleMarkAllAsRead} 
+                        className="text-[10px] font-bold text-sky-400 hover:text-sky-300 hover:underline flex items-center gap-1"
+                      >
+                        <CheckCheck className="w-3 h-3" /> Limpar todas
+                      </button>
+                    )}
                   </div>
 
                   <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                    {muralNotifications.length === 0 ? (
-                      <p className="text-xs text-slate-400 text-center py-4">Nenhuma notificação nova no momento.</p>
+                    {unreadMuralShifts.length === 0 ? (
+                      <div className="text-center py-6 space-y-1">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto opacity-80" />
+                        <p className="text-xs font-bold text-white">Nenhuma notificação pendente</p>
+                        <p className="text-[11px] text-slate-400">Você já visualizou todas as vagas abertas.</p>
+                      </div>
                     ) : (
-                      muralNotifications.map(shift => (
+                      unreadMuralShifts.map(shift => (
                         <div 
                           key={shift.id} 
-                          onClick={() => { setNotifOpen(false); navigate('/trocas'); }}
-                          className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800 hover:border-amber-500/50 transition-all cursor-pointer space-y-1"
+                          onClick={() => handleMarkAsRead(shift.id)}
+                          className="p-3 rounded-2xl bg-slate-950 border border-slate-800 hover:border-amber-500/50 transition-all cursor-pointer space-y-1 group"
                         >
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-black uppercase text-amber-400 flex items-center gap-1">
@@ -296,8 +332,10 @@ export default function AppLayout({ children }) {
                             </span>
                             <span className="text-[10px] font-mono text-slate-400">{shift.date}</span>
                           </div>
-                          <p className="text-xs font-black text-white">Plantão {shift.shift_type === 'diurno' ? '07h-19h' : '19h-07h'}</p>
-                          <span className="text-[11px] text-slate-400 block">Disponível para sua especialidade no Mural.</span>
+                          <p className="text-xs font-black text-white group-hover:text-sky-400 transition-colors">
+                            Plantão {shift.shift_type === 'diurno' ? '07h às 19h' : '19h às 07h'}
+                          </p>
+                          <span className="text-[10px] text-slate-400 block">Clique para assumir este plantão no Mural.</span>
                         </div>
                       ))
                     )}
@@ -308,13 +346,12 @@ export default function AppLayout({ children }) {
                     onClick={() => { setNotifOpen(false); navigate('/trocas'); }}
                     className="w-full h-8 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl"
                   >
-                    Ver Todas no Mural <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                    Ir para o Mural de Trocas <ChevronRight className="w-3.5 h-3.5 ml-1" />
                   </Button>
                 </div>
               )}
             </div>
 
-            {/* BOTÃO TEMA */}
             <button
               type="button"
               onClick={toggleTheme}
@@ -324,7 +361,6 @@ export default function AppLayout({ children }) {
               {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-300" />}
             </button>
 
-            {/* BOTÃO MENU MOBILE */}
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
               className="md:hidden p-2 text-slate-400 hover:text-white rounded-xl"
@@ -334,9 +370,9 @@ export default function AppLayout({ children }) {
           </div>
         </header>
 
-        {/* MENU MOBILE EXPANDIDO */}
+        {/* MENU MOBILE */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-slate-900 border-b border-slate-800 p-4 space-y-2 z-50 shadow-2xl">
+          <div className="md:hidden bg-slate-900 border-b border-slate-800 p-4 space-y-2 z-50 shadow-2xl print:hidden">
             {navItems.map(item => (
               <NavLink
                 key={item.path}
@@ -358,7 +394,6 @@ export default function AppLayout({ children }) {
           </div>
         )}
 
-        {/* CONTEÚDO PRINCIPAL */}
         <main className="flex-1 overflow-y-auto">
           <LayoutErrorBoundary>
             {children || <Outlet />}
