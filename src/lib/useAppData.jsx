@@ -22,23 +22,29 @@ export function AppDataProvider({ children }) {
     const initAuth = async () => {
       setAuthLoading(true);
       try {
-        const currentUser = await base44.auth.getUser(); 
-        if (currentUser) {
-          setUser(currentUser);
-          const compId = currentUser.data?.company_id || 'cmp_principal';
-          const compData = await base44.entities.Company.get(compId).catch(() => ({ id: compId, name: 'Hospital Principal' }));
-          setCompany(compData);
+        const userId = window.localStorage.getItem('scale_logged_user');
+        
+        if (userId) {
+          // Busca direto na tabela de usuários do banco de dados
+          const currentUser = await base44.entities.User.get(userId); 
           
-          const loadedUnits = Array.isArray(compData?.units) && compData.units.length > 0 
-            ? compData.units 
-            : [{ id: 'unit_h1', name: 'Unidade Matriz' }];
-          setUnits(loadedUnits);
-          
-          const defaultUnit = currentUser.data?.selected_unit_id || loadedUnits[0].id;
-          setSelectedUnitId(defaultUnit);
+          if (currentUser) {
+            setUser(currentUser);
+            const compId = currentUser.data?.company_id || 'cmp_principal';
+            const compData = await base44.entities.Company?.get(compId).catch(() => ({ id: compId, name: 'Hospital Principal' }));
+            setCompany(compData || { id: compId, name: 'Hospital Principal' });
+            
+            const loadedUnits = Array.isArray(compData?.units) && compData.units.length > 0 
+              ? compData.units 
+              : [{ id: 'unit_h1', name: 'Unidade Matriz' }];
+            setUnits(loadedUnits);
+            
+            const defaultUnit = currentUser.data?.selected_unit_id || loadedUnits[0].id;
+            setSelectedUnitId(defaultUnit);
+          }
         }
       } catch (e) {
-        console.warn('Usuário não autenticado.');
+        console.warn('Usuário não autenticado ou sessão expirada.');
       } finally {
         setAuthLoading(false);
       }
@@ -52,7 +58,6 @@ export function AppDataProvider({ children }) {
     setGlobalLoading(true);
     try {
       const query = { company_id: companyId };
-      // ATENÇÃO AQUI: Não bloqueia mais o carregamento se não tiver unidade filtrada
       if (selectedUnitId) {
         query.unit_id = selectedUnitId;
       }
@@ -81,7 +86,6 @@ export function AppDataProvider({ children }) {
     }
   }, [authLoading, user, selectedUnitId, syncGlobalData]);
 
-  // GARANTIA DE PODERES PARA O SEU USUÁRIO
   const isAdmin = user?.role === 'admin' || user?.data?.app_role === 'admin';
   const isManager = isAdmin || user?.data?.app_role === 'manager' || user?.data?.app_role === 'gestor';
   const isApproved = user?.data?.status === 'aprovado' || isAdmin || isManager;

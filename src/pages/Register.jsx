@@ -13,17 +13,15 @@ export default function Register() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  // Empresa identificada via DNS/IP
   const [identifiedCompanyId, setIdentifiedCompanyId] = useState('cmp_principal'); 
   const [availableUnits, setAvailableUnits] = useState([]);
 
-  // Campos
   const [formData, setFormData] = useState({
     fullName: '',
     cpf: '',
     email: '',
     phone: '',
-    documentNumber: '', // CRM/COREN
+    documentNumber: '',
     councilState: 'SP',
     specialty: '',
     unitId: '',
@@ -31,18 +29,16 @@ export default function Register() {
     confirmPassword: ''
   });
 
-  // Identificação do ambiente e unidades
   useEffect(() => {
     const fetchCompanyData = async () => {
       try {
-        // Em produção real, você pegaria window.location.hostname para buscar a Company correta
-        const comp = await base44.entities.Company.get(identifiedCompanyId).catch(() => null);
+        const comp = await base44.entities.Company?.get(identifiedCompanyId).catch(() => null);
         if (comp && comp.units) {
           setAvailableUnits(comp.units);
           if (comp.units.length > 0) setFormData(prev => ({ ...prev, unitId: comp.units[0].id }));
         }
       } catch (e) {
-        console.warn('Erro ao mapear unidades da empresa.');
+        console.warn('Sem unidades da empresa localizadas.');
       }
     };
     fetchCompanyData();
@@ -66,24 +62,30 @@ export default function Register() {
 
     setLoading(true);
     try {
-      // 1. Cria o usuário com status pendente de aprovação
-      const userPayload = {
-        email: formData.email.trim().toLowerCase(),
+      const loginEmail = formData.email.trim().toLowerCase();
+      
+      // Verifica na tabela de Usuários (sem usar base44.auth)
+      const existing = await base44.entities.User.filter({ email: loginEmail });
+      if (existing && existing.length > 0) {
+        throw new Error('Este e-mail já está cadastrado.');
+      }
+
+      // Cria na tabela User (sem auth.register que não existe)
+      const newUser = await base44.entities.User.create({
+        email: loginEmail,
+        username: loginEmail.split('@')[0],
         password: formData.password,
         full_name: formData.fullName.trim(),
-        role: 'user', // Perfil inicial restrito
+        role: 'user', 
         data: {
           company_id: identifiedCompanyId,
           selected_unit_id: formData.unitId,
-          status: 'pendente', // REGRA DE OURO
+          status: 'pendente',
           phone: formData.phone,
           document_cpf: formData.cpf,
         }
-      };
+      });
 
-      const newUser = await base44.auth.register(userPayload);
-
-      // 2. Cria o registro profissional atrelado aguardando homologação
       if (newUser && base44.entities.Professional?.create) {
         await base44.entities.Professional.create({
           user_id: newUser.id,
@@ -91,23 +93,22 @@ export default function Register() {
           unit_id: formData.unitId,
           name: formData.fullName.trim(),
           cpf: formData.cpf,
-          email: formData.email.trim().toLowerCase(),
+          email: loginEmail,
           phone: formData.phone,
           document: `${formData.documentNumber} - ${formData.councilState}`,
           specialty: formData.specialty,
-          status: 'pendente', // Não aparece nas escalas até ser ativado
+          status: 'pendente', 
           remuneration_type: 'hora',
           hourly_rate: 0
         });
 
-        // 3. Notifica os administradores
         if (base44.entities.Notification?.create) {
           await base44.entities.Notification.create({
             company_id: identifiedCompanyId,
             unit_id: formData.unitId,
-            recipient_user_id: 'admin', // Flag para listar no painel de admins
-            title: 'Novo Cadastro de Profissional',
-            message: `Dr(a). ${formData.fullName} solicitou acesso. Aguardando aprovação.`,
+            recipient_user_id: 'admin',
+            title: 'Novo Cadastro Médico',
+            message: `Dr(a). ${formData.fullName} solicitou acesso.`,
             is_read: false,
             created_date: new Date().toISOString()
           });
@@ -116,7 +117,7 @@ export default function Register() {
 
       setSuccess(true);
     } catch (err) {
-      setError(err.message || 'Ocorreu um erro no credenciamento. Verifique se o e-mail ou CPF já estão cadastrados.');
+      setError(err.message || 'Ocorreu um erro no credenciamento.');
     } finally {
       setLoading(false);
     }
@@ -129,7 +130,7 @@ export default function Register() {
           <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
           <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Cadastro Solicitado!</h2>
           <p className="text-sm text-slate-500 mb-6 leading-relaxed">
-            Seus dados foram enviados para a coordenação médica. Você receberá um aviso assim que o seu acesso for validado e aprovado.
+            Seus dados foram enviados para a coordenação. Você será avisado quando for aprovado.
           </p>
           <Button onClick={() => navigate('/login')} className="w-full h-11 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl">
             Voltar para o Login
@@ -148,7 +149,7 @@ export default function Register() {
           </div>
           <div>
             <h1 className="text-2xl font-black text-slate-900 dark:text-white">Credenciamento Médico</h1>
-            <p className="text-xs text-slate-500 font-medium mt-1">Preencha os dados oficiais para solicitação de acesso à escala.</p>
+            <p className="text-xs text-slate-500 font-medium mt-1">Preencha os dados oficiais para solicitação de acesso.</p>
           </div>
         </div>
 
@@ -195,22 +196,7 @@ export default function Register() {
 
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Especialidade Principal *</Label>
-              <Input name="specialty" value={formData.specialty} onChange={handleChange} placeholder="Ex: Clínica Médica, Pediatria, Cirurgia Geral" className="h-10 text-sm" disabled={loading} />
-            </div>
-
-            <div className="space-y-1.5 sm:col-span-2 border-t border-slate-100 dark:border-slate-800 pt-4">
-              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Unidade de Lotação (Hospital/Clínica)</Label>
-              <Select value={formData.unitId} onValueChange={(val) => setFormData({...formData, unitId: val})} disabled={loading || availableUnits.length === 0}>
-                <SelectTrigger className="h-10 text-sm font-semibold">
-                  <SelectValue placeholder="Selecione o hospital..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableUnits.map(u => (
-                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
-                  ))}
-                  {availableUnits.length === 0 && <SelectItem value="default" disabled>Carregando unidades...</SelectItem>}
-                </SelectContent>
-              </Select>
+              <Input name="specialty" value={formData.specialty} onChange={handleChange} placeholder="Ex: Clínica Médica" className="h-10 text-sm" disabled={loading} />
             </div>
 
             <div className="space-y-1.5">

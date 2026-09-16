@@ -8,7 +8,7 @@ import { Activity, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -18,26 +18,75 @@ export default function Login() {
     e.preventDefault();
     setError('');
     
-    if (!email || !password) {
-      setError('Preencha o e-mail/usuário e a senha para continuar.');
+    if (!loginId || !password) {
+      setError('Preencha o usuário e a senha para continuar.');
       return;
     }
 
     setLoading(true);
     try {
-      // Faz o login real e autêntico no seu banco de dados
-      const loginStr = email.trim().toLowerCase();
-      const res = await base44.auth.login(loginStr, password);
-      const userObj = res.user || res;
+      const rawInput = loginId.trim().toLowerCase();
+      let userObj = null;
+
+      // 1. Tenta buscar o usuário no banco (por email ou username)
+      let usersFound = await base44.entities.User.filter({ email: rawInput }).catch(() => []);
+      
+      if (!usersFound || usersFound.length === 0) {
+        usersFound = await base44.entities.User.filter({ username: rawInput }).catch(() => []);
+      }
+
+      // 2. Verifica a senha
+      if (usersFound && usersFound.length > 0) {
+        userObj = usersFound.find(u => String(u.password) === String(password));
+      }
+
+      // 3. AUTO-CRIAÇÃO DO ADMIN MASTER DIRETO NA TABELA USER
+      if (!userObj && rawInput === 'admin' && password === '123456') {
+        try {
+          userObj = await base44.entities.User.create({
+            email: 'admin@admin.com',
+            username: 'admin',
+            password: '123456',
+            full_name: 'Administrador Master',
+            role: 'admin',
+            data: {
+              status: 'aprovado',
+              app_role: 'manager',
+              company_id: 'cmp_principal'
+            }
+          });
+        } catch (createErr) {
+          throw new Error('Falha ao gravar o Admin na tabela User. Verifique a conexão com o banco.');
+        }
+      }
 
       if (!userObj) {
         throw new Error('Credenciais inválidas. Verifique seu usuário e senha.');
       }
 
-      // Login com sucesso, navega para a raiz (Dashboard/Escalas)
+      const status = userObj.data?.status || 'pendente';
+      const role = userObj.role || 'user';
+
+      // Administradores ignoram travas de status
+      if (role !== 'admin') {
+        if (status === 'inativo') {
+          throw new Error('Sua conta foi inativada. Entre em contato com a administração.');
+        }
+        if (status === 'recusado') {
+          throw new Error('Seu cadastro foi recusado. Verifique com a coordenação médica.');
+        }
+        if (status === 'pendente') {
+          navigate('/pending-approval'); 
+          return;
+        }
+      }
+
+      // SUCESSO: Salva a sessão no navegador para o AppDataProvider ler
+      window.localStorage.setItem('scale_logged_user', userObj.id);
       navigate('/'); 
+
     } catch (err) {
-      setError(err.message || 'Falha ao conectar com o servidor. Verifique suas credenciais.');
+      setError(err.message || 'Falha ao conectar com o servidor. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -66,9 +115,9 @@ export default function Login() {
             <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Usuário ou E-mail</Label>
             <Input 
               type="text" 
-              placeholder="Digite seu e-mail ou usuário..."
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Ex: admin ou medico@hospital.com"
+              value={loginId}
+              onChange={(e) => setLoginId(e.target.value)}
               className="h-11 bg-slate-50 dark:bg-slate-950"
               disabled={loading}
             />
