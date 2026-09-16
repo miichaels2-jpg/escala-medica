@@ -11,7 +11,7 @@ import {
   Users, UserPlus, Search, CheckCircle2, 
   DollarSign, Edit3, KeyRound, RefreshCw, Ban, 
   UserCheck, MessageSquare, Shield, UserCog, Eye, EyeOff,
-  HeartPulse, Plus, CreditCard, Landmark, Check
+  HeartPulse, Plus, CreditCard, Landmark, Check, Send
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -58,9 +58,9 @@ async function autoHealingSave(id, initialPayload) {
 }
 
 export default function CorpoClinico() {
-  const { professionals, sectors, units, selectedUnitId, company, isManager, syncGlobalData } = useAppData();
+  const { professionals = [], sectors = [], units = [], selectedUnitId, company, isManager, syncGlobalData } = useAppData();
 
-  const [activeTab, setActiveTab] = useState('ativos'); // 'ativos' | 'pendentes' | 'inativos'
+  const [activeTab, setActiveTab] = useState('ativos'); 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('todas');
   
@@ -101,7 +101,7 @@ export default function CorpoClinico() {
     setFormData({
       name: '', username: '', category: 'medico', document: '',
       registration_id: generatedMatricula, specialty: '', cbo: '',
-      cpf: '', email: '', phone: '', unit_id: selectedUnitId || ((units || [])[0]?.id || 'unit_h1'),
+      cpf: '', email: '', phone: '', unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
       status: 'ativo', app_role: 'assistencial', remuneration_type: 'mensal',
       hourly_rate: 120, daily_rate: 1500, monthly_salary: 5000,
       coop_tax_rate: 0, pix_type: 'CPF', pix_key: '', bank_info: '', password: ''
@@ -312,7 +312,6 @@ export default function CorpoClinico() {
         {isManager && (<Button onClick={handleOpenNew} className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-10 px-5 rounded-xl shadow-lg gap-1.5 shrink-0"><UserPlus className="w-4 h-4" /> Novo Profissional</Button>)}
       </div>
 
-      {/* ABAS COM ATIVOS, PENDENTES E INATIVOS RESTAURADAS */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-3">
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           <button onClick={() => setActiveTab('ativos')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'ativos' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
@@ -376,7 +375,6 @@ export default function CorpoClinico() {
                   <div className="flex justify-between"><span>Chave PIX:</span><strong className="text-sky-600 font-mono truncate max-w-[140px]">{chavePix}</strong></div>
                 </div>
 
-                {/* BLOCO DE SALÁRIO REAL EM DESTAQUE */}
                 <div className="mt-2 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 flex items-center justify-between shadow-sm">
                   <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
                     <DollarSign className="w-3.5 h-3.5" /> Remuneração Base
@@ -392,7 +390,6 @@ export default function CorpoClinico() {
                   <Edit3 className="w-3.5 h-3.5 text-sky-600" /> Editar Perfil
                 </Button>
                 
-                {/* BOTÃO DE INATIVAR / REATIVAR RESTAURADO */}
                 <Button 
                   size="sm" 
                   variant="ghost" 

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
-  DollarSign, Search, Receipt, Send, ChevronLeft, ChevronRight, FileText
+  DollarSign, Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -24,7 +24,7 @@ const MONTH_NAMES = [
 ];
 
 export default function Faturamento() {
-  const { shifts, professionals, sectors } = useAppData();
+  const { shifts = [], professionals = [], sectors = [], company } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [searchQuery, setSearchQuery] = useState('');
@@ -54,7 +54,6 @@ export default function Faturamento() {
   const reportData = useMemo(() => {
     const profsSummary = {};
 
-    // 1. Mapeia TODOS os profissionais ativos cadastrados
     (professionals || []).forEach(p => {
       if (!p) return;
       const meta = getProfMeta(p);
@@ -93,7 +92,6 @@ export default function Faturamento() {
       };
     });
 
-    // 2. Processa plantões do mês na Escala de forma segura
     (shifts || []).forEach(shift => {
       if (!shift || !shift.date || !shift.date.startsWith(monthPrefix)) return;
       if (!shift.professional_id || shift.status === 'vago') return;
@@ -119,7 +117,6 @@ export default function Faturamento() {
       }
     });
 
-    // 3. Calcula Valores Brutos e Líquidos
     return Object.values(profsSummary).map(item => {
       let valorBruto = 0;
 
@@ -128,7 +125,6 @@ export default function Faturamento() {
       } else if (item.remunType === 'diaria') {
         valorBruto = item.totalPlantões * item.baseVal;
       } else {
-        // Mensalista: valor fixo contratual
         valorBruto = item.baseVal;
       }
 
@@ -165,6 +161,193 @@ export default function Faturamento() {
     });
     return { bruto, liquido, plantões, horas };
   }, [reportData]);
+
+  // IMPRESSÃO CONSOLIDADA EM A4 BRANCO DO FATURAMENTO GERAL
+  const handlePrintConsolidatedReport = () => {
+    const printWindow = window.open('', '_blank', 'width=1100,height=800');
+    if (!printWindow) {
+      alert('Permita os pop-ups para abrir a impressão do relatório.');
+      return;
+    }
+
+    const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
+    const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
+    const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR');
+
+    const rowsHtml = filteredReport.map((item, idx) => `
+      <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9fafb'};">
+        <td style="border: 1px solid #111; padding: 6px 8px; font-weight: bold;">${item.prof.name}</td>
+        <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace;">${item.matricula}</td>
+        <td style="border: 1px solid #111; padding: 6px 8px;">${item.prof.specialty || 'Geral'}</td>
+        <td style="border: 1px solid #111; padding: 6px 8px; text-transform: uppercase;">${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Mensalista'}</td>
+        <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.totalPlantões} pl (${item.totalHoras}h)</td>
+        <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace;">${item.chavePix}</td>
+        <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${formatCurrency(item.valorBruto)}</td>
+        <td style="border: 1px solid #111; padding: 6px 8px; text-align: right; font-weight: bold;">${formatCurrency(item.valorLiquido)}</td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8">
+        <title>Relatório de Fechamento - ${competencia}</title>
+        <style>
+          @page { size: A4 landscape; margin: 8mm; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000 !important; padding: 15px; font-size: 11px; }
+          .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; }
+          h1 { font-size: 18px; text-transform: uppercase; }
+          table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 20px; font-size: 10px; }
+          th { background: #e5e7eb; border: 1px solid #000; padding: 6px 8px; text-transform: uppercase; font-size: 9px; text-align: left; }
+          .totals { display: flex; justify-content: flex-end; gap: 30px; font-size: 12px; margin-top: 10px; font-weight: bold; border-top: 2px solid #000; padding-top: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1>${hospitalName}</h1>
+            <p>FECHAMENTO DE HONORÁRIOS E REPASSE MÉDICO/ASSISTENCIAL</p>
+            <p>Competência: <b>${competencia}</b></p>
+          </div>
+          <div style="text-align: right; font-size: 9px;">
+            <p>DOCUMENTO AUDITÁVEL</p>
+            <p>Emissão: ${emissao}</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Profissional</th>
+              <th>Matrícula</th>
+              <th>Especialidade</th>
+              <th>Regime</th>
+              <th style="text-align: center;">Plantões / Horas</th>
+              <th>Chave PIX</th>
+              <th style="text-align: right;">Bruto</th>
+              <th style="text-align: right;">Líquido a Pagar</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+
+        <div class="totals">
+          <span>Total de Plantões: ${totals.plantões}</span>
+          <span>Total Bruto: ${formatCurrency(totals.bruto)}</span>
+          <span style="color: #000;">TOTAL LÍQUIDO A REPASSAR: ${formatCurrency(totals.liquido)}</span>
+        </div>
+
+        <script>window.onload = function() { window.print(); };</script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
+  // IMPRESSÃO INDIVIDUAL DO RECIBO DE PAGAMENTO (100% BRANCO)
+  const handlePrintIndividualReceipt = (item) => {
+    const printWindow = window.open('', '_blank', 'width=900,height=800');
+    if (!printWindow) {
+      alert('Permita os pop-ups para abrir o recibo.');
+      return;
+    }
+
+    const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
+    const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
+    const emissao = new Date().toLocaleDateString('pt-BR');
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8">
+        <title>Recibo de Pagamento - ${item.prof.name}</title>
+        <style>
+          @page { size: A4 portrait; margin: 12mm; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000 !important; padding: 20px; font-size: 12px; line-height: 1.5; }
+          .recibo-box { border: 2px solid #000; padding: 25px; border-radius: 4px; }
+          .header { border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 20px; text-align: center; }
+          .header h1 { font-size: 20px; text-transform: uppercase; font-weight: 900; }
+          .header p { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+          .section { margin-bottom: 20px; }
+          .section-title { font-weight: 900; text-transform: uppercase; font-size: 11px; border-bottom: 1px solid #333; margin-bottom: 8px; padding-bottom: 3px; }
+          .grid { display: flex; justify-content: space-between; margin-bottom: 6px; }
+          .grid span:last-child { font-weight: bold; }
+          .destaque { background: #f3f4f6; border: 1px solid #111; padding: 12px; font-size: 14px; font-weight: 900; text-align: center; margin: 20px 0; }
+          .termo { font-size: 10px; color: #333; text-align: justify; margin: 20px 0; line-height: 1.4; }
+          .signatures { display: flex; justify-content: space-between; margin-top: 50px; text-align: center; font-size: 11px; }
+          .sig-line { width: 230px; border-top: 1px solid #000; padding-top: 5px; }
+        </style>
+      </head>
+      <body>
+        <div class="recibo-box">
+          <div class="header">
+            <h1>${hospitalName}</h1>
+            <p>RECIBO DE PAGAMENTO DE HONORÁRIOS MÉDICOS / ASSISTENCIAIS</p>
+            <p style="font-size: 10px; margin-top: 4px;">Competência: <b>${competencia}</b></p>
+          </div>
+
+          <div class="section">
+            <div class="section-title">1. Dados do Profissional</div>
+            <div class="grid"><span>Nome:</span> <span>${item.prof.name}</span></div>
+            <div class="grid"><span>Matrícula ID:</span> <span>${item.matricula}</span></div>
+            <div class="grid"><span>Documento / Conselho:</span> <span>${item.prof.document || '—'}</span></div>
+            <div class="grid"><span>CPF:</span> <span>${item.prof.cpf || '—'}</span></div>
+            <div class="grid"><span>Especialidade / Atuação:</span> <span>${item.prof.specialty || 'Geral'}</span></div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">2. Demonstração dos Serviços Prestados</div>
+            <div class="grid"><span>Regime de Trabalho:</span> <span>${item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista' : 'Mensalista (Fixo)'}</span></div>
+            <div class="grid"><span>Total de Plantões Computados:</span> <span>${item.totalPlantões} plantões</span></div>
+            <div class="grid"><span>Total de Horas Trabalhadas:</span> <span>${item.totalHoras} horas</span></div>
+            <div class="grid"><span>Valor Bruto Apurado:</span> <span>${formatCurrency(item.valorBruto)}</span></div>
+            <div class="grid"><span>Retenções / Descontos (${item.taxRate}%):</span> <span>- ${formatCurrency(item.valorDesconto)}</span></div>
+          </div>
+
+          <div class="destaque">
+            VALOR LÍQUIDO A REPASSAR: ${formatCurrency(item.valorLiquido)}
+          </div>
+
+          <div class="section">
+            <div class="section-title">3. Forma de Pagamento / Destino do Repasse</div>
+            <div class="grid"><span>Chave PIX (${item.pixTipo}):</span> <span>${item.chavePix}</span></div>
+            <div class="grid"><span>Dados Bancários Físicos:</span> <span>${item.banco}</span></div>
+          </div>
+
+          <p class="termo">
+            Declaro ter recebido da instituição ${hospitalName} a quantia discriminada acima, correspondente à quitação integral dos serviços profissionais prestados no período de vigência acima especificado, não havendo nada mais a reclamar a qualquer título.
+          </p>
+
+          <div class="signatures">
+            <div>
+              <div class="sig-line">Diretoria Financeira / Faturamento</div>
+            </div>
+            <div>
+              <div class="sig-line">Assinatura do Profissional</div>
+            </div>
+          </div>
+
+          <div style="text-align: right; font-size: 9px; color: #777; margin-top: 30px;">
+            Emissão em: ${emissao} • ScaleMedic Hospital Intelligence
+          </div>
+        </div>
+
+        <script>window.onload = function() { window.print(); };</script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
 
   const handleSendStatementWhatsApp = (item) => {
     const cleanPhone = String(item.prof.phone || '').replace(/\D/g, '');
@@ -207,16 +390,25 @@ export default function Faturamento() {
           </p>
         </div>
 
-        <div className="flex items-center bg-slate-900/90 border border-slate-800 p-1.5 rounded-2xl gap-2">
-          <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="text-xs font-black px-2 uppercase">
-            {MONTH_NAMES[currentMonth]} {currentYear}
-          </span>
-          <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white">
-            <ChevronRight className="w-4 h-4" />
-          </button>
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={handlePrintConsolidatedReport}
+            className="h-10 bg-white text-slate-900 hover:bg-slate-100 font-black text-xs px-5 rounded-2xl gap-2 shadow-lg"
+          >
+            <Printer className="w-4 h-4" /> Imprimir Fechamento Geral
+          </Button>
+
+          <div className="flex items-center bg-slate-900/90 border border-slate-800 p-1.5 rounded-2xl gap-2">
+            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-black px-2 uppercase">
+              {MONTH_NAMES[currentMonth]} {currentYear}
+            </span>
+            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -247,7 +439,7 @@ export default function Faturamento() {
         </Card>
       </div>
 
-      {/* TABELA DE REPASSE */}
+      {/* TABELA DE REPASSE COM OS 3 BOTÕES: RECIBO BRANCO, DETALHAR E WHATSAPP */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
@@ -324,6 +516,18 @@ export default function Faturamento() {
 
                     <td className="py-3 px-4 text-center">
                       <div className="flex items-center justify-center gap-1.5">
+                        {/* 1. BOTÃO DE RECIBO INDIVIDUAL EM PAPEL BRANCO */}
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => handlePrintIndividualReceipt(item)}
+                          title="Imprimir Recibo Individual de Pagamento"
+                          className="h-8 text-xs font-bold gap-1 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-white"
+                        >
+                          <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Recibo
+                        </Button>
+
+                        {/* 2. BOTÃO DETALHAR */}
                         <Button 
                           size="sm" 
                           variant="outline" 
@@ -333,6 +537,7 @@ export default function Faturamento() {
                           <FileText className="w-3.5 h-3.5 text-sky-600" /> Detalhar
                         </Button>
 
+                        {/* 3. BOTÃO WHATSAPP */}
                         {item.prof.phone && (
                           <Button 
                             size="sm" 
@@ -354,7 +559,7 @@ export default function Faturamento() {
         </div>
       </div>
 
-      {/* MODAL DE DETALHAMENTO */}
+      {/* MODAL DE DETALHAMENTO COM ATALHO DE RECIBO E WHATSAPP */}
       <Dialog open={!!selectedProfModal} onOpenChange={() => setSelectedProfModal(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-slate-200 dark:border-slate-800">
           <DialogHeader>
@@ -409,11 +614,16 @@ export default function Faturamento() {
               </div>
 
               <div className="pt-2 flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setSelectedProfModal(null)} className="h-9 text-xs">
-                  Fechar
+                <Button 
+                  variant="outline" 
+                  onClick={() => handlePrintIndividualReceipt(selectedProfModal)}
+                  className="h-9 text-xs font-black gap-1.5"
+                >
+                  <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Imprimir Recibo Branco
                 </Button>
+                
                 <Button onClick={() => handleSendStatementWhatsApp(selectedProfModal)} className="h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-5 gap-2">
-                  <Send className="w-3.5 h-3.5" /> Enviar Extrato via WhatsApp
+                  <Send className="w-3.5 h-3.5" /> Enviar WhatsApp
                 </Button>
               </div>
             </div>
