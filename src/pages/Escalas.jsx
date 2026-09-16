@@ -7,11 +7,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
-  CalendarDays, Plus, Search, ChevronLeft, ChevronRight, 
-  Clock, Building2, UserPlus, SlidersHorizontal,
-  Flame, ArrowRight, MonitorPlay, GripVertical, 
-  Printer, Sun, Moon, X, MousePointerClick, HeartPulse, Trash2,
-  CheckCircle2, Calendar as CalendarIcon, Radio
+  CalendarDays, Plus, Search, Tv, ChevronLeft, ChevronRight, 
+  Clock, Building2, User, AlertTriangle, CheckCircle2, 
+  Trash2, Edit3, X, Minimize2, Sparkles, CheckCheck, Send, 
+  MousePointerClick, HeartPulse, UserPlus, Layers, SlidersHorizontal,
+  Flame, Radio, ArrowRight, ShieldAlert, MonitorPlay, GripVertical, 
+  Printer, Sun, Moon, Stethoscope, Columns3
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -91,6 +92,10 @@ export default function Escalas() {
     try { return window.localStorage.getItem(publishStorageKey) === 'true'; } catch { return true; }
   });
 
+  useEffect(() => {
+    try { setScalePublished(window.localStorage.getItem(publishStorageKey) === 'true'); } catch {}
+  }, [publishStorageKey]);
+
   const [selectedDays, setSelectedDays] = useState([]);
   const [traySearch, setTraySearch] = useState('');
   const [traySpecialtyFilter, setTraySpecialtyFilter] = useState('todas');
@@ -152,7 +157,9 @@ export default function Escalas() {
       slots: prev.slots.map(s => {
         if (s.id !== slotId) return s;
         const updated = { ...s, [field]: value };
-        if (field === 'start_time') updated.shift_type = value >= '18:00' || value < '06:00' ? 'noturno' : 'diurno';
+        if (field === 'start_time') {
+          updated.shift_type = value >= '18:00' || value < '06:00' ? 'noturno' : 'diurno';
+        }
         return updated;
       })
     }));
@@ -286,7 +293,7 @@ export default function Escalas() {
     return { emAndamento, proximoRendimento, concluidosRecentes, totalHoje: todayRaw.length };
   }, [shifts, todayLocalStr, yesterdayLocalStr, selectedSectorId, filterTurno, liveNow, professionalMap]);
 
-  // Filtro de profissionais sem quebrar se apagar algo
+  // Filtro de profissionais no Roll
   const filteredTrayProfs = useMemo(() => {
     const term = traySearch.toLowerCase().trim();
     return professionals.filter(p => {
@@ -299,7 +306,7 @@ export default function Escalas() {
     });
   }, [professionals, traySearch, traySpecialtyFilter]);
 
-  // Status visual "Premium" para os Cards da Escala
+  // Design Premium de Status
   const getStatusUI = (shift) => {
     const isVago = shift.status === 'vago' || !shift.professional_id;
     const isPast = shift.date < todayLocalStr;
@@ -542,13 +549,16 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* GRADE MENSAL (CORES HUMANIZADAS E STATUS EXPLÍCITOS) */}
+      {/* GRADE MENSAL */}
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
           {isManager && (
             <aside className="w-full lg:w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5"><HeartPulse className="w-4 h-4 text-sky-600" /> Roll Profissionais</span>
+                <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <HeartPulse className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Roll Profissionais
+                </span>
+                <span className="text-[10px] font-bold text-slate-400">Arraste p/ o dia</span>
               </div>
               <Select value={traySpecialtyFilter} onValueChange={setTraySpecialtyFilter}>
                 <SelectTrigger className="h-8 text-xs font-bold bg-slate-50 dark:bg-slate-950"><SelectValue placeholder="Especialidade..." /></SelectTrigger>
@@ -585,78 +595,47 @@ export default function Escalas() {
                 const dateStr = getLocalDateString(dateObj);
                 const isToday = todayLocalStr === dateStr;
                 const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+                const isSelected = selectedDays.includes(dateStr);
                 const dayShifts = shiftsByDate[dateStr] || [];
 
-                const manhaTarde = dayShifts.filter(s => parseInt((s.start_time || '07:00').split(':')[0]) >= 6 && parseInt((s.start_time || '07:00').split(':')[0]) < 18);
-                const noite = dayShifts.filter(s => parseInt((s.start_time || '07:00').split(':')[0]) >= 18 || parseInt((s.start_time || '07:00').split(':')[0]) < 6);
-
                 return (
-                  <div key={dateStr} onClick={(e) => handleDayClick(dateStr, e)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnDay(e, dateStr)} className={`min-h-[190px] p-2 transition-all flex flex-col justify-between select-none cursor-pointer ${isToday ? 'bg-sky-50/60 dark:bg-sky-950/20' : 'hover:bg-slate-50 dark:hover:bg-slate-850/50'}`}>
-                    <div className={`flex items-center justify-between p-1 px-2 rounded-xl mb-1.5 border shadow-sm ${isToday ? 'bg-gradient-to-r from-sky-600 to-cyan-600 border-sky-400 text-white font-black' : isWeekend ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-200 text-indigo-800 dark:text-indigo-300 font-bold' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 text-slate-800 dark:text-slate-200 font-bold'}`}>
+                  <div key={dateStr} onClick={(e) => handleDayClick(dateStr, e)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnDay(e, dateStr)} className={`min-h-[185px] p-2 transition-all flex flex-col justify-between select-none cursor-pointer ${isSelected ? 'bg-indigo-50 dark:bg-indigo-950/50 ring-2 ring-indigo-500 z-10' : isToday ? 'bg-sky-50/60 dark:bg-sky-950/20' : 'hover:bg-slate-50 dark:hover:bg-slate-850/50'}`}>
+                    <div className={`flex items-center justify-between p-1 px-2.5 rounded-xl mb-1.5 border shadow-sm ${isToday ? 'bg-gradient-to-r from-sky-600 to-cyan-600 border-sky-400 text-white font-black' : isWeekend ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-200 text-indigo-800 dark:text-indigo-300 font-bold' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 text-slate-800 dark:text-slate-200 font-bold'}`}>
                       <span className="text-xs font-black">{dateObj.getDate()}</span>
                       <span className="text-[10px] uppercase font-bold opacity-70">{WEEKDAYS[dateObj.getDay()].short}</span>
                     </div>
 
-                    <div className="space-y-2 flex-1 overflow-y-auto max-h-[220px] pr-0.5">
-                      
-                      {/* TURNO DIURNO */}
-                      {manhaTarde.length > 0 && (
-                        <div className="space-y-1">
-                          <span className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 block px-1">☀️ Diurno</span>
-                          {manhaTarde.map(shift => {
-                            const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-                            const status = getStatusUI(shift);
-                            const realSpec = extractSpecialty(shift, prof);
+                    <div className="space-y-1.5 flex-1 overflow-y-auto max-h-[190px] pr-0.5">
+                      {dayShifts.map(shift => {
+                        const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+                        const sector = sectorMap[String(shift.sector_id)];
+                        const status = getStatusUI(shift);
+                        const realSpecialty = extractSpecialty(shift, prof);
 
-                            return (
-                              <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date, sector_id: shift.sector_id, target_specialty: realSpec, start_time: shift.start_time, end_time: shift.end_time, shift_type: 'diurno', action_type: (!prof) ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '' }); setModalOpen(true); } }} className={`p-2 rounded-xl border border-l-4 shadow-sm transition-all ${status.wrapper}`}>
-                                <div className="flex items-center justify-between text-[9px] font-bold text-slate-500 uppercase mb-0.5">
-                                  <span className="truncate">{sectorMap[shift.sector_id]?.name}</span>
-                                  <span className="font-mono">{shift.start_time}-{shift.end_time}</span>
-                                </div>
-                                <div className="flex items-center gap-1 mb-1">
-                                  {status.icon}
-                                  <span className={`text-[9px] font-black tracking-wider ${status.text}`}>[ {status.label} ]</span>
-                                </div>
-                                <div className="font-black text-xs truncate text-slate-900 dark:text-white">
-                                  {!prof ? 'VAGA ABERTA' : formatFullName(prof?.name)}
-                                </div>
-                                <div className="text-[10px] font-semibold text-slate-500 truncate">{realSpec}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* TURNO NOTURNO */}
-                      {noite.length > 0 && (
-                        <div className="space-y-1">
-                          <span className="text-[9px] font-black uppercase text-indigo-600 dark:text-indigo-400 block px-1">🌙 Noturno</span>
-                          {noite.map(shift => {
-                            const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-                            const status = getStatusUI(shift);
-                            const realSpec = extractSpecialty(shift, prof);
-
-                            return (
-                              <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date, sector_id: shift.sector_id, target_specialty: realSpec, start_time: shift.start_time, end_time: shift.end_time, shift_type: 'noturno', action_type: (!prof) ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '' }); setModalOpen(true); } }} className={`p-2 rounded-xl border border-l-4 shadow-sm transition-all ${status.wrapper}`}>
-                                <div className="flex items-center justify-between text-[9px] font-bold text-slate-500 uppercase mb-0.5">
-                                  <span className="truncate">{sectorMap[shift.sector_id]?.name}</span>
-                                  <span className="font-mono">{shift.start_time}-{shift.end_time}</span>
-                                </div>
-                                <div className="flex items-center gap-1 mb-1">
-                                  {status.icon}
-                                  <span className={`text-[9px] font-black tracking-wider ${status.text}`}>[ {status.label} ]</span>
-                                </div>
-                                <div className="font-black text-xs truncate text-slate-900 dark:text-white">
-                                  {!prof ? 'VAGA ABERTA' : formatFullName(prof?.name)}
-                                </div>
-                                <div className="text-[10px] font-semibold text-slate-500 truncate">{realSpec}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                        return (
+                          <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date || '', sector_id: shift.sector_id || '', target_specialty: realSpecialty, start_time: shift.start_time || '07:00', end_time: shift.end_time || '19:00', shift_type: shift.shift_type || 'diurno', action_type: (!prof || shift.status === 'vago') ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '' }); setModalOpen(true); } }} className={`p-2 rounded-xl border border-l-4 shadow-sm transition-all ${status.wrapper}`}>
+                            <div className="flex items-center justify-between text-[9px] font-bold text-slate-500 uppercase mb-0.5">
+                              <span className="truncate">{sector?.name}</span>
+                              <span className="font-mono">{shift.start_time}-{shift.end_time}</span>
+                            </div>
+                            <div className="flex items-center gap-1 mb-1">
+                              {status.icon}
+                              <span className={`text-[9px] font-black tracking-wider ${status.text}`}>[ {status.label} ]</span>
+                            </div>
+                            <div className="font-black text-xs truncate text-slate-900 dark:text-white">
+                              {(!prof || shift.status === 'vago') ? 'VAGA ABERTA' : formatFullName(prof?.name)}
+                            </div>
+                            <div className="text-[10px] font-semibold text-slate-500 truncate">{realSpecialty}</div>
+                          </div>
+                        );
+                      })}
                     </div>
+
+                    {isManager && (
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setEditingShiftId(null); setFormData({ date: dateStr, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : (sectors[0]?.id || ''), target_specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar', professional_id: '', notes: '' }); setModalOpen(true); }} className="mt-1 w-full py-1 text-[10px] font-bold text-slate-400 hover:text-sky-600 hover:bg-slate-100 rounded-lg transition-all text-center border border-dashed border-slate-200 dark:border-slate-800">
+                        + Adicionar Vaga
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -665,13 +644,13 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* VISÃO: PLANTÃO DO DIA (CABEÇALHO OFICIAL) */}
+      {/* PLANTÃO DO DIA */}
       {activeTab === 'dia' && (
         <div className="space-y-5">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
-                <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400 tracking-wider block">Escala Oficial Diária</span>
+                <span className="text-[10px] font-black uppercase text-sky-600 tracking-wider block">Escala Oficial Diária</span>
                 <h3 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
                   Plantões de Hoje ({liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })})
                 </h3>
@@ -725,7 +704,7 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* MODO TV CCO AO VIVO (BLINDADO E PERFEITO) */}
+      {/* MODO TV CCO */}
       {activeTab === 'tv' && (
         <div className="space-y-6">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -779,7 +758,7 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* IMPRESSO EXECUTIVO A4 PAISAGEM (GARANTIA DE 100% BRANCO) */}
+      {/* IMPRESSO EXECUTIVO A4 PAISAGEM */}
       <Dialog open={printPreviewOpen} onOpenChange={setPrintPreviewOpen}>
         <DialogContent className="sm:max-w-6xl max-h-[92vh] overflow-y-auto bg-white text-black border-none p-8 font-sans shadow-2xl">
           <style>{`
@@ -855,7 +834,7 @@ export default function Escalas() {
         </DialogContent>
       </Dialog>
 
-      {/* GERADOR DE ESCALA (INCLUINDO SELETOR DE TURNO) */}
+      {/* GERADOR DE ESCALA */}
       <Dialog open={generatorModalOpen} onOpenChange={setGeneratorModalOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
           <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2"><SlidersHorizontal className="w-5 h-5 text-indigo-600" /> Gerador de Escala do Setor</DialogTitle></DialogHeader>
