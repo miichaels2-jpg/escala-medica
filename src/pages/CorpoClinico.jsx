@@ -286,13 +286,26 @@ export default function CorpoClinico() {
           const remunLabel = remunType === 'hora' ? '/ Hora' : remunType === 'diaria' ? '/ Plantão' : '/ Mês Fixo';
 
           const expiry = prof.document_expiry || meta.document_expiry || '';
-          const todayMs = new Date().setHours(0,0,0,0);
-          const expiryMs = expiry ? new Date(expiry + 'T00:00:00').getTime() : null;
           
-          const diffDays = expiryMs ? Math.ceil((expiryMs - todayMs) / (1000 * 60 * 60 * 24)) : null;
-          
-          const isExpired = diffDays !== null && diffDays < 0;
-          const isNearExpiry = diffDays !== null && diffDays >= 0 && diffDays <= 30; // Alerta antecipado de 30 dias
+          // CÁLCULO PRECISO DE DIAS RESTANTES (ZERO HORAS / MEIA-NOITE)
+          let diffDays = null;
+          let isExpired = false;
+          let isNearExpiry = false;
+
+          if (expiry) {
+            const todayObj = new Date();
+            todayObj.setHours(0, 0, 0, 0);
+
+            const [exY, exM, exD] = expiry.split('-').map(Number);
+            const expiryObj = new Date(exY, exM - 1, exD);
+            expiryObj.setHours(0, 0, 0, 0);
+
+            const diffTime = expiryObj.getTime() - todayObj.getTime();
+            diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+            isExpired = diffDays < 0;
+            isNearExpiry = diffDays >= 0 && diffDays <= 30; // Alerta 30 dias
+          }
 
           const profStatus = prof.status || meta.status || 'ativo';
 
@@ -322,7 +335,7 @@ export default function CorpoClinico() {
                   <div className="flex justify-between"><span>Conselho:</span><strong>{prof.document || '—'}</strong></div>
                   <div className="flex justify-between"><span>Especialidade:</span><strong className="text-slate-900 dark:text-white truncate max-w-[140px]">{prof.specialty || meta.specialty || 'Geral'}</strong></div>
                   
-                  {/* ALERTA ANTECIPADO DE VALIDADE DE CREDENCIAL */}
+                  {/* ALERTA DINÂMICO DE DIAS RESTANTES */}
                   <div className="flex items-center justify-between">
                     <span>Validade Credencial:</span>
                     <div className="flex items-center gap-1.5">
@@ -330,13 +343,13 @@ export default function CorpoClinico() {
                         {expiry ? expiry.split('-').reverse().join('/') : 'Não informada'}
                       </strong>
                       {isExpired && (
-                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-600 text-white animate-pulse" title="Credencial Vencida!">
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-600 text-white animate-pulse">
                           VENCIDO
                         </span>
                       )}
                       {isNearExpiry && !isExpired && (
-                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-white" title={`Vence em ${diffDays} dias`}>
-                          ⚠️ VENCE EM {diffDays}D
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-white animate-pulse">
+                          {diffDays === 0 ? 'VENCE HOJE' : `VENCE EM ${diffDays}D`}
                         </span>
                       )}
                     </div>
