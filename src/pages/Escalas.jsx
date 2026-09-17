@@ -12,7 +12,7 @@ import {
   MousePointerClick, HeartPulse, UserPlus, SlidersHorizontal,
   Flame, ArrowRight, MonitorPlay, GripVertical, 
   Printer, Sun, Moon, AlertTriangle, CheckCircle2, Radio, Calendar as CalendarIcon,
-  PanelLeftClose, PanelLeftOpen
+  PanelLeftClose, PanelLeftOpen, Filter
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -77,8 +77,9 @@ export default function Escalas() {
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState('mensal'); 
   const [filterTurno, setFilterTurno] = useState('todos'); 
+  const [startDateFilter, setStartDateFilter] = useState(''); // Filtro A PARTIR DE
 
-  // 1. PERSISTÊNCIA DO SETOR SELECIONADO
+  // Persistência do Setor Selecionado
   const [selectedSectorId, setSelectedSectorId] = useState(() => {
     try {
       return window.localStorage.getItem('scale_filter_sector_id') || 'todos';
@@ -94,7 +95,7 @@ export default function Escalas() {
     } catch {}
   };
 
-  // 2. ROLL DE PROFISSIONAIS RECOLHÍVEL
+  // Roll de Profissionais Recolhível
   const [trayCollapsed, setTrayCollapsed] = useState(() => {
     try {
       return window.localStorage.getItem('scale_tray_collapsed') === 'true';
@@ -153,7 +154,7 @@ export default function Escalas() {
   const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if(s) m[String(s.id)] = s; }); return m; }, [sectors]);
   const professionalMap = useMemo(() => { const m = {}; (professionals || []).forEach(p => { if(p) m[String(p.id)] = p; }); return m; }, [professionals]);
 
-  // 3. ABERTURA AUTOMÁTICA DA VAGA CRÍTICA VINDA DO CLIQUE NO DASHBOARD
+  // Abertura automática da vaga crítica vinda do Dashboard
   useEffect(() => {
     const autoOpenId = window.localStorage.getItem('scale_auto_open_shift_id');
     if (autoOpenId && shifts.length > 0) {
@@ -174,7 +175,6 @@ export default function Escalas() {
           notes: targetShift.notes || ''
         });
         setModalOpen(true);
-        // Ajusta o mês do calendário caso o plantão seja de outro mês
         const [sYear, sMonth] = targetShift.date.split('-').map(Number);
         if (sYear && sMonth) {
           setCurrentDate(new Date(sYear, sMonth - 1, 1));
@@ -196,23 +196,34 @@ export default function Escalas() {
 
   const handlePrevMonth = () => setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
-  const handleToday = () => setCurrentDate(new Date());
+  const handleToday = () => {
+    setCurrentDate(new Date());
+    setStartDateFilter('');
+  };
 
-  // 4. SELETOR "IR PARA DATA / APARTIR DE"
-  const handleJumpToDate = (e) => {
+  // Seletor com filtro A PARTIR DE
+  const handleStartDateChange = (e) => {
     const val = e.target.value;
+    setStartDateFilter(val);
     if (val) {
       const [y, m, d] = val.split('-').map(Number);
       setCurrentDate(new Date(y, m - 1, d || 1));
     }
   };
 
+  // Dias a serem renderizados (respeitando "A partir de" quando ativo)
   const daysInMonth = useMemo(() => {
     const date = new Date(currentYear, currentMonth, 1);
     const days = [];
-    while (date.getMonth() === currentMonth) { days.push(new Date(date)); date.setDate(date.getDate() + 1); }
+    while (date.getMonth() === currentMonth) { 
+      const curStr = getLocalDateString(date);
+      if (!startDateFilter || curStr >= startDateFilter) {
+        days.push(new Date(date)); 
+      }
+      date.setDate(date.getDate() + 1); 
+    }
     return days;
-  }, [currentYear, currentMonth]);
+  }, [currentYear, currentMonth, startDateFilter]);
 
   const todayLocalStr = getLocalDateString(new Date());
 
@@ -255,11 +266,12 @@ export default function Escalas() {
     const prefix = `${currentYear}-${monthStr}`;
     return (shifts || []).filter(s => {
       if (!s?.date || !s.date.startsWith(prefix)) return false;
+      if (startDateFilter && s.date < startDateFilter) return false;
       if (selectedSectorId !== 'todos' && String(s.sector_id) !== String(selectedSectorId)) return false;
       if (!isShiftMatchingTurno(s, filterTurno)) return false;
       return true;
     });
-  }, [shifts, currentYear, currentMonth, selectedSectorId, filterTurno]);
+  }, [shifts, currentYear, currentMonth, selectedSectorId, filterTurno, startDateFilter]);
 
   const shiftsByDate = useMemo(() => {
     const map = {};
@@ -267,8 +279,12 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
+  // CÁLCULO MODO TV ALINHADO COM O DASHBOARD (CORRIGIDO PARA SEMPRE ENCONTRAR O PLANTONISTA AO VIVO)
   const tvData = useMemo(() => {
-    const now = liveNow;
+    const nowHour = liveNow.getHours();
+    const nowMin = liveNow.getMinutes();
+    const nowTotalMin = nowHour * 60 + nowMin;
+
     const emAndamento = [];
     const proximoRendimento = [];
     const tableDayShifts = [];
@@ -276,147 +292,60 @@ export default function Escalas() {
     (shifts || []).forEach(shift => {
       if (!shift) return;
       if (selectedSectorId !== 'todos' && String(shift.sector_id) !== String(selectedSectorId)) return;
-      if (!isShiftMatchingTurno(shift, filterTurno)) return;
 
-      const { start, end } = getShiftDates(shift);
-      
-      const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
-      const todayEnd = new Date(now); todayEnd.setHours(23,59,59,999);
-      if (start <= todayEnd && end >= todayStart) {
+      const sDate = (shift.date || '').split('T')[0];
+      if (sDate === todayLocalStr) {
         tableDayShifts.push(shift);
       }
 
       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
       if (shift.status === 'vago' || !prof) return;
 
-      const diffMins = (end - now) / 60000;
-      const startDiffMins = (start - now) / 60000;
+      const [startH, startM] = (shift.start_time || '07:00').split(':').map(Number);
+      const [endH, endM] = (shift.end_time || '19:00').split(':').map(Number);
+      const startMin = startH * 60 + startM;
+      let endMin = endH * 60 + endM;
+      if (endMin <= startMin) endMin += 24 * 60;
 
-      if (now >= start && now < end) {
-        emAndamento.push(shift);
-        if (diffMins <= 120 && diffMins > 0) proximoRendimento.push({ shift, minutesLeft: Math.round(diffMins) });
-      } else if (startDiffMins > 0 && startDiffMins <= 120) {
-        proximoRendimento.push({ shift, startsIn: Math.round(startDiffMins) });
+      let effNow = nowTotalMin;
+      if (endMin > 24 * 60 && nowTotalMin < startMin) effNow += 24 * 60;
+
+      if (sDate === todayLocalStr) {
+        if (effNow >= startMin && effNow < endMin) {
+          const left = endMin - effNow;
+          emAndamento.push({
+            ...shift,
+            detail: `Resta ${Math.floor(left / 60)}h ${left % 60}m`
+          });
+        } else if (startMin > effNow && (startMin - effNow) <= 120) {
+          proximoRendimento.push({
+            shift,
+            startsIn: startMin - effNow
+          });
+        }
+      } else {
+        // Plantão de ontem que virou a noite
+        if (endMin > 24 * 60) {
+          const yesterdayStr = getLocalDateString(new Date(liveNow.getTime() - 86400000));
+          if (sDate === yesterdayStr && nowTotalMin < (endMin - 24 * 60)) {
+            const left = (endMin - 24 * 60) - nowTotalMin;
+            emAndamento.push({
+              ...shift,
+              detail: `Resta ${Math.floor(left / 60)}h ${left % 60}m`
+            });
+          }
+        }
       }
     });
 
     tableDayShifts.sort((a, b) => (a.start_time || '07:00').localeCompare(b.start_time || '07:00'));
     return { emAndamento, proximoRendimento, tableDayShifts };
-  }, [shifts, selectedSectorId, filterTurno, liveNow, professionalMap]);
+  }, [shifts, selectedSectorId, liveNow, todayLocalStr, professionalMap]);
 
-  // IMPRESSÃO A4 PAISAGEM LIMPA EM JANELA PURA
-  const handlePrintA4Landscape = () => {
-    const printWindow = window.open('', '_blank', 'width=1100,height=800');
-    if (!printWindow) {
-      alert('Permita pop-ups para abrir a impressão.');
-      return;
-    }
-
-    const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
-    const logoLetter = hospitalName[0] || 'H';
-    const dataVigencia = liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-    const dataEmissao = liveNow.toLocaleDateString('pt-BR') + ' às ' + liveNow.toLocaleTimeString('pt-BR');
-
-    const tableRowsHtml = tvData.tableDayShifts.length === 0
-      ? `<tr><td colspan="6" style="padding: 20px; text-align: center; color: #666;">Nenhum plantão registrado para a data de hoje.</td></tr>`
-      : tvData.tableDayShifts.map((shift, idx) => {
-          const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-          const sector = sectorMap[String(shift.sector_id)];
-          const isVago = shift.status === 'vago' || !prof;
-          const realSpecialty = extractSpecialty(shift, prof);
-          const bg = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
-          const profNome = isVago ? '<strong style="color: #b91c1c;">⚠️ VAGA EM ABERTO</strong>' : `Dr(a). ${prof?.name}`;
-          const conselho = prof?.document || '—';
-
-          return `
-            <tr style="background-color: ${bg};">
-              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold; text-transform: uppercase;">${sector?.name || 'Setor'}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; font-weight: bold; text-align: center;">${shift.start_time} - ${shift.end_time}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold;">${profNome}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px;">${realSpecialty}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; text-align: center;">${conselho}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px; text-align: center; color: #aaa; font-family: monospace;">____________________</td>
-            </tr>
-          `;
-        }).join('');
-
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="utf-8">
-        <title>Escala Oficial - ${hospitalName}</title>
-        <style>
-          @page { size: A4 landscape; margin: 8mm; }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; background: #fff !important; color: #000 !important; padding: 15px; font-size: 11px; }
-          .header-box { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 15px; }
-          .logo-badge { width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px; }
-          .header-info h1 { font-size: 19px; font-weight: 900; text-transform: uppercase; }
-          table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 30px; }
-          th { background-color: #e5e7eb; border: 1px solid #000; padding: 8px 10px; text-align: left; font-size: 9.5px; font-weight: 900; text-transform: uppercase; }
-          .signatures-area { display: flex; justify-content: space-around; margin-top: 35px; }
-          .sig-box { text-align: center; width: 320px; }
-          .sig-line { border-bottom: 1px solid #000; margin-bottom: 6px; }
-        </style>
-      </head>
-      <body>
-        <div class="header-box">
-          <div style="display: flex; align-items: center;">
-            <div class="logo-badge">${logoLetter}</div>
-            <div class="header-info">
-              <h1>${hospitalName}</h1>
-              <p>ESCALA OFICIAL DE PLANTÃO • MURAL HOSPITALAR</p>
-              <div>Vigência: <b>${dataVigencia}</b></div>
-            </div>
-          </div>
-          <div style="text-align: right; font-size: 9.5px;">
-            <div style="border: 1px solid #000; padding: 3px 8px; font-weight: 900; display: inline-block;">DOCUMENTO OFICIAL AUDITÁVEL</div>
-            <div style="margin-top: 4px;">Emissão: ${dataEmissao}</div>
-          </div>
-        </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 20%;">Seção / Setor</th>
-              <th style="width: 14%; text-align: center;">Horário</th>
-              <th style="width: 28%;">Profissional Escalado</th>
-              <th style="width: 18%;">Especialidade / Atuação</th>
-              <th style="width: 12%; text-align: center;">Conselho</th>
-              <th style="width: 18%; text-align: center;">Rubrica / Presença</th>
-            </tr>
-          </thead>
-          <tbody>${tableRowsHtml}</tbody>
-        </table>
-
-        <div class="signatures-area">
-          <div class="sig-box">
-            <div class="sig-line"></div>
-            <div style="font-weight: 900; text-transform: uppercase;">Diretoria Clínica / RT Médica</div>
-          </div>
-          <div class="sig-box">
-            <div class="sig-line"></div>
-            <div style="font-weight: 900; text-transform: uppercase;">Gerência de Enfermagem / RT Assistencial</div>
-          </div>
-        </div>
-
-        <script>window.onload = function() { window.print(); };</script>
-      </body>
-      </html>
-    `;
-
-    printWindow.document.open();
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-  };
-
-  const eligibleProfessionalsForModal = useMemo(() => {
-    const spec = (formData.target_specialty || '').toLowerCase().trim();
-    if (!spec) return (professionals || []).filter(p => p?.status === 'ativo');
-    const matching = (professionals || []).filter(p => p?.status === 'ativo' && (p.specialty || '').toLowerCase().includes(spec));
-    return matching.length > 0 ? matching : (professionals || []).filter(p => p?.status === 'ativo');
-  }, [professionals, formData.target_specialty]);
+  // Lista de todos os profissionais ativos para o Select do Modal
+  const allActiveProfessionals = useMemo(() => {
+    return (professionals || []).filter(p => p?.status === 'ativo');
+  }, [professionals]);
 
   const filteredTrayProfs = useMemo(() => {
     const term = traySearch.toLowerCase().trim();
@@ -471,76 +400,6 @@ export default function Escalas() {
       }
       setSelectedDays([]); await syncGlobalData();
     } catch (err) { alert('Erro ao alocar: ' + err.message); } finally { setDraggingProfId(null); }
-  };
-
-  const handleAddSlot = () => {
-    setGeneratorConfig(prev => ({
-      ...prev,
-      slots: [...prev.slots, { id: `slot_${Date.now()}`, specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', quantity: 1, shift_type: 'diurno' }]
-    }));
-  };
-
-  const handleRemoveSlot = (slotId) => {
-    setGeneratorConfig(prev => ({ ...prev, slots: prev.slots.filter(s => s.id !== slotId) }));
-  };
-
-  const handleUpdateSlot = (slotId, field, value) => {
-    setGeneratorConfig(prev => ({
-      ...prev,
-      slots: prev.slots.map(s => {
-        if (s.id !== slotId) return s;
-        const updated = { ...s, [field]: value };
-        if (field === 'start_time') updated.shift_type = value >= '18:00' || value < '06:00' ? 'noturno' : 'diurno';
-        return updated;
-      })
-    }));
-  };
-
-  const handleExecuteGenerator = async (e) => {
-    e.preventDefault();
-    if (!generatorConfig.sector_id) { alert('Selecione o setor para a escala.'); return; }
-
-    setSubmitting(true);
-    try {
-      const startDt = new Date(generatorConfig.start_date + 'T12:00:00');
-      const totalDays = parseInt(generatorConfig.duration_days) || 30;
-
-      for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
-        const curDate = new Date(startDt);
-        curDate.setDate(curDate.getDate() + dayOffset);
-        const dateStr = getLocalDateString(curDate);
-
-        for (const slot of generatorConfig.slots) {
-          const qty = parseInt(slot.quantity) || 0;
-          for (let q = 0; q < qty; q++) {
-            const spec = slot.specialty || 'Clínica Médica';
-            const sType = slot.shift_type || (slot.start_time >= '18:00' || slot.start_time < '06:00' ? 'noturno' : 'diurno');
-            const saved = await autoHealingSaveShift(null, {
-              company_id: company?.id || 'cmp_principal',
-              unit_id: selectedUnitId || 'unit_h1',
-              sector_id: generatorConfig.sector_id,
-              target_specialty: spec,
-              notes: `[ESP:${spec}]`,
-              professional_id: null,
-              date: dateStr,
-              shift_type: sType,
-              start_time: slot.start_time,
-              end_time: slot.end_time,
-              status: 'vago'
-            });
-            if (saved?.id) try { window.localStorage.setItem(`shift_spec_${saved.id}`, spec); } catch {}
-          }
-        }
-      }
-      setGeneratorModalOpen(false); await syncGlobalData(); alert('Escala gerada com sucesso!');
-    } catch (err) { alert(err.message); } finally { setSubmitting(false); }
-  };
-
-  const handleTogglePublish = async () => {
-    const nextState = !scalePublished;
-    setScalePublished(nextState);
-    try { window.localStorage.setItem(publishStorageKey, String(nextState)); } catch {}
-    alert(nextState ? '✅ Escala Publicada!' : '⚠️ Escala em modo Rascunho.');
   };
 
   const handleSaveShift = async (e) => {
@@ -626,7 +485,7 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* BARRA DE COMANDO: NAVEGAÇÃO DE MÊS + CALENDÁRIO DIRETO */}
+      {/* BARRA DE COMANDO COM O FILTRO "A PARTIR DE..." */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 rounded-2xl p-1 border border-slate-200 dark:border-slate-800">
@@ -635,15 +494,21 @@ export default function Escalas() {
             <button onClick={handleNextMonth} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
           </div>
 
-          {/* NOVO: CALENDÁRIO COM INPUT DIRETO PARA NAVEGAR A PARTIR DE UMA DATA */}
-          <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-950 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-bold">
-            <CalendarIcon className="w-3.5 h-3.5 text-sky-600" />
-            <span className="text-[11px] text-slate-500">Ir para:</span>
+          {/* NOVO CAMPO: A PARTIR DE... */}
+          <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-950 px-3.5 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-bold">
+            <Filter className="w-3.5 h-3.5 text-sky-600" />
+            <span className="text-[11px] text-slate-500">A partir de:</span>
             <input 
               type="date" 
-              onChange={handleJumpToDate} 
+              value={startDateFilter}
+              onChange={handleStartDateChange} 
               className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer"
             />
+            {startDateFilter && (
+              <button onClick={() => setStartDateFilter('')} className="p-0.5 hover:text-rose-500">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           <div>
@@ -651,14 +516,14 @@ export default function Escalas() {
               <CalendarDays className="w-5 h-5 text-sky-600" /> {MONTH_NAMES[currentMonth]} {currentYear}
             </h2>
             <span className={`text-xs font-bold ${scalePublished ? 'text-emerald-600' : 'text-amber-500'}`}>
-              {scalePublished ? '✓ Escala Publicada (Notificações Ativas)' : '⚠️ Modo Rascunho'}
+              {scalePublished ? '✓ Escala Publicada' : '⚠️ Modo Rascunho'}
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           {isManager && (
-            <Button onClick={handleTogglePublish} variant={scalePublished ? 'outline' : 'default'} className={`h-9 px-4 text-xs font-black rounded-2xl gap-1.5 shadow-sm ${scalePublished ? 'border-emerald-500 text-emerald-600' : 'bg-emerald-600 text-white'}`}>
+            <Button onClick={() => setScalePublished(!scalePublished)} variant={scalePublished ? 'outline' : 'default'} className={`h-9 px-4 text-xs font-black rounded-2xl gap-1.5 shadow-sm ${scalePublished ? 'border-emerald-500 text-emerald-600' : 'bg-emerald-600 text-white'}`}>
               <Send className="w-3.5 h-3.5" /> {scalePublished ? 'Publicada' : 'Publicar Escala'}
             </Button>
           )}
@@ -680,7 +545,7 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* VISÃO MENSAL COM ROLL RECOLHÍVEL */}
+      {/* GRADE MENSAL COM ROLL RECOLHÍVEL */}
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
           {isManager && (
@@ -695,7 +560,7 @@ export default function Escalas() {
                   size="sm" 
                   variant="ghost" 
                   onClick={toggleTray} 
-                  title={trayCollapsed ? "Expandir Roll de Profissionais" : "Recolher Roll para aumentar tela"}
+                  title={trayCollapsed ? "Expandir Roll" : "Recolher Roll para aumentar grade"}
                   className="h-8 w-8 p-0 rounded-xl text-slate-500 hover:text-sky-600"
                 >
                   {trayCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
@@ -731,14 +596,13 @@ export default function Escalas() {
             </aside>
           )}
 
-          {/* GRADE MENSAL DE DIAS (EXPANDE AUTOMATICAMENTE QUANDO O ROLL RECOLHE) */}
           <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
             <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-center py-2.5">
               {WEEKDAYS.map(day => (<div key={day.short} className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400"><span className={day.weekend ? 'text-indigo-600 font-black' : ''}>{day.short}</span></div>))}
             </div>
             
             <div className="grid grid-cols-7 divide-x divide-y divide-slate-200 dark:divide-slate-800">
-              {Array.from({ length: daysInMonth[0].getDay() }).map((_, idx) => (<div key={`empty-${idx}`} className="min-h-[190px] bg-slate-50/60 dark:bg-slate-950/40"></div>))}
+              {Array.from({ length: (daysInMonth[0]?.getDay() || 0) }).map((_, idx) => (<div key={`empty-${idx}`} className="min-h-[190px] bg-slate-50/60 dark:bg-slate-950/40"></div>))}
               
               {daysInMonth.map(dateObj => {
                 const dateStr = getLocalDateString(dateObj);
@@ -805,118 +669,130 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* PLANTÃO DO DIA (Aba Específica) */}
-      {activeTab === 'dia' && (
-        <div className="space-y-5">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-              <div>
-                <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400 tracking-wider block">Escala Oficial Diária</span>
-                <h3 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
-                  Plantões de Hoje ({liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })})
-                </h3>
-              </div>
-              <Button onClick={handlePrintA4Landscape} className="h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 text-xs font-black px-5 rounded-2xl gap-2 shadow-md">
-                <Printer className="w-4 h-4" /> Imprimir Plantão do Dia (A4 Paisagem)
-              </Button>
+      {/* MODO TV COM SINCRONIZAÇÃO EM TEMPO REAL E SEM ESPAÇO VAZIO */}
+      {activeTab === 'tv' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-3"><span className="w-3 h-3 rounded-full bg-rose-500 animate-ping"></span><h2 className="text-xl font-black text-white uppercase tracking-wider">Centro de Comando CCO • Ao Vivo</h2></div>
+            <div className="font-mono text-cyan-400 font-black text-lg">{liveNow.toLocaleTimeString('pt-BR')}</div>
+          </div>
+          
+          <div className="space-y-2">
+            <h3 className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span> Plantões em Andamento (No Posto Neste Momento)
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {tvData.emAndamento.length === 0 ? <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 text-xs">Nenhum profissional em atendimento neste minuto.</div> : tvData.emAndamento.map(shift => {
+                const prof = professionalMap[String(shift.professional_id)];
+                const sector = sectorMap[String(shift.sector_id)];
+                const realSpecialty = extractSpecialty(shift, prof);
+                return (
+                  <div key={shift.id} className="p-4 bg-slate-900 border-2 border-emerald-500/40 rounded-2xl shadow-lg space-y-2">
+                    <div className="flex justify-between items-center text-xs font-black text-emerald-400"><span>{sector?.name}</span><span className="font-mono text-[11px]">{shift.start_time} - {shift.end_time}</span></div>
+                    <div className="text-sm font-black text-white truncate">{formatFullName(prof?.name)}</div>
+                    <div className="text-[11px] text-slate-400">{realSpecialty} • <span className="text-emerald-400 font-mono">{shift.detail}</span></div>
+                  </div>
+                );
+              })}
             </div>
+          </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 uppercase text-[10px] font-black border-b border-slate-200 dark:border-slate-800">
-                  <tr>
-                    <th className="py-3 px-4">Seção / Setor</th>
-                    <th className="py-3 px-4">Horário</th>
-                    <th className="py-3 px-4">Profissional Escalado</th>
-                    <th className="py-3 px-4">Especialidade / Atuação</th>
-                    <th className="py-3 px-4 text-center">Status Atual</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                  {tvData.tableDayShifts.length === 0 ? (
-                    <tr><td colSpan="5" className="py-8 text-center text-slate-400">Nenhum plantão registrado tocando o dia de hoje.</td></tr>
-                  ) : (
-                    tvData.tableDayShifts.map(shift => {
-                      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-                      const sector = sectorMap[String(shift.sector_id)];
-                      const status = getStatusBadge(shift);
-                      const realSpecialty = extractSpecialty(shift, prof);
-
-                      return (
-                        <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
-                          <td className="py-3 px-4 font-black text-slate-900 dark:text-white">{sector?.name || 'Setor'}</td>
-                          <td className="py-3 px-4 font-mono font-bold text-sky-600 dark:text-sky-400">{shift.start_time} às {shift.end_time}</td>
-                          <td className="py-3 px-4 font-black text-slate-900 dark:text-slate-100">
-                            {status.code === 'vaga' || status.code === 'perdida' ? <span className="text-rose-600 dark:text-rose-400">⚠️ {status.label}</span> : formatFullName(prof?.name)}
-                          </td>
-                          <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-semibold">{realSpecialty}</td>
-                          <td className="py-3 px-4 text-center">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-wider ${status.wrapper} ${status.text} border-none`}>
-                              {status.icon} {status.label}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+          <div className="space-y-2">
+            <h3 className="text-xs font-black uppercase text-sky-400 tracking-wider flex items-center gap-2">
+              <ArrowRight className="w-3.5 h-3.5" /> Próxima Rendição (Nas próximas 2 horas)
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {tvData.proximoRendimento.length === 0 ? <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 text-xs">Nenhuma troca de turno programada para as próximas 2 horas.</div> : tvData.proximoRendimento.map(({ shift, startsIn }) => {
+                const prof = professionalMap[String(shift.professional_id)];
+                const sector = sectorMap[String(shift.sector_id)];
+                return (
+                  <div key={shift.id} className="p-3 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400">{sector?.name}</span>
+                      <div className="font-black text-xs text-white">{formatFullName(prof?.name)}</div>
+                      <span className="text-[10px] text-sky-400 font-mono">{shift.start_time} às {shift.end_time}</span>
+                    </div>
+                    <span className="text-[10px] font-black uppercase bg-sky-500/20 text-sky-300 px-2 py-1 rounded-lg">
+                      {`Inicia em ${startsIn}m`}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL DE EDIÇÃO */}
+      {/* MODAL DE EDIÇÃO COM SELECT CORRIGIDO */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-2xl">
-          <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2 text-sky-600">{editingShiftId ? 'Editar Plantão da Escala' : 'Lançar Novo Plantão'}</DialogTitle></DialogHeader>
+        <DialogContent className="sm:max-w-md bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999]">
+          <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2 text-sky-400">{editingShiftId ? 'Editar Plantão da Escala' : 'Lançar Novo Plantão'}</DialogTitle></DialogHeader>
           <form onSubmit={handleSaveShift} className="space-y-4 py-2 text-xs">
+            
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1"><Label className="text-xs font-bold">Data *</Label><Input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800" /></div>
-              <div className="space-y-1"><Label className="text-xs font-bold">Setor / Seção *</Label><Select value={formData.sector_id} onValueChange={v => setFormData({ ...formData, sector_id: v })}><SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent className="bg-white dark:bg-slate-900">{(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-1"><Label className="text-xs font-bold text-slate-300">Data *</Label><Input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white" /></div>
+              <div className="space-y-1"><Label className="text-xs font-bold text-slate-300">Setor / Seção *</Label><Select value={formData.sector_id} onValueChange={v => setFormData({ ...formData, sector_id: v })}><SelectTrigger className="h-10 bg-slate-900 border-slate-700 text-white"><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">{(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent></Select></div>
             </div>
             
             <div className="space-y-1">
-              <Label className="text-xs font-bold">Especialidade Exigida *</Label>
-              <Input placeholder="Ex: Cirurgião Geral, UTI..." value={formData.target_specialty} onChange={e => setFormData({ ...formData, target_specialty: e.target.value })} className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 font-bold text-sky-600 dark:text-sky-400" list="modal-specs" />
+              <Label className="text-xs font-bold text-slate-300">Especialidade Exigida *</Label>
+              <Input placeholder="Ex: Cirurgião Geral, UTI..." value={formData.target_specialty} onChange={e => setFormData({ ...formData, target_specialty: e.target.value })} className="h-10 bg-slate-900 border-slate-700 font-bold text-sky-400" list="modal-specs" />
               <datalist id="modal-specs">{registeredSpecialties.map(spec => <option key={spec} value={spec} />)}</datalist>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1"><Label className="text-xs font-bold">Horário de Início</Label><Input type="time" value={formData.start_time} onChange={e => setFormData({ ...formData, start_time: e.target.value })} className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800" /></div>
-              <div className="space-y-1"><Label className="text-xs font-bold">Horário de Término</Label><Input type="time" value={formData.end_time} onChange={e => setFormData({ ...formData, end_time: e.target.value })} className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800" /></div>
+              <div className="space-y-1"><Label className="text-xs font-bold text-slate-300">Horário de Início</Label><Input type="time" value={formData.start_time} onChange={e => setFormData({ ...formData, start_time: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white" /></div>
+              <div className="space-y-1"><Label className="text-xs font-bold text-slate-300">Horário de Término</Label><Input type="time" value={formData.end_time} onChange={e => setFormData({ ...formData, end_time: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white" /></div>
             </div>
 
-            <div className="p-3.5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
-              <Label className="text-xs font-black uppercase text-slate-500">Destino do Plantão</Label>
+            <div className="p-3.5 bg-slate-900/80 rounded-2xl border border-slate-800 space-y-3">
+              <Label className="text-xs font-black uppercase text-slate-400">Destino do Plantão</Label>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setFormData({ ...formData, action_type: 'alocar' })} className={`p-2.5 rounded-xl border text-xs font-black transition-all ${formData.action_type === 'alocar' ? 'bg-sky-600 border-sky-600 text-white shadow-md' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'}`}>Alocar Pessoal</button>
-                <button type="button" onClick={() => setFormData({ ...formData, action_type: 'mural', professional_id: '' })} className={`p-2.5 rounded-xl border text-xs font-black transition-all flex items-center justify-center gap-1.5 ${formData.action_type === 'mural' ? 'bg-rose-600 border-rose-600 text-white shadow-md' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'}`}><Flame className="w-3.5 h-3.5" /> Vaga no Mural</button>
+                <button type="button" onClick={() => setFormData({ ...formData, action_type: 'alocar' })} className={`p-2.5 rounded-xl border text-xs font-black transition-all ${formData.action_type === 'alocar' ? 'bg-sky-600 border-sky-600 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400'}`}>Alocar Pessoal</button>
+                <button type="button" onClick={() => setFormData({ ...formData, action_type: 'mural', professional_id: '' })} className={`p-2.5 rounded-xl border text-xs font-black transition-all flex items-center justify-center gap-1.5 ${formData.action_type === 'mural' ? 'bg-rose-600 border-rose-600 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400'}`}><Flame className="w-3.5 h-3.5" /> Vaga no Mural</button>
               </div>
               
               {formData.action_type === 'alocar' ? (
                 <div className="space-y-1 pt-1">
-                  <Label className="text-xs font-bold">Profissional Disponível</Label>
-                  <Select value={formData.professional_id} onValueChange={v => { const p = professionalMap[v]; setFormData({ ...formData, professional_id: v, target_specialty: p?.specialty || formData.target_specialty }); }}>
-                    <SelectTrigger className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Selecione o profissional..." /></SelectTrigger>
-                    <SelectContent className="bg-white dark:bg-slate-900 max-h-60">{eligibleProfessionalsForModal.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name} ({p.specialty || 'Geral'})</SelectItem>)}</SelectContent>
+                  <Label className="text-xs font-bold text-slate-300">Profissional Disponível *</Label>
+                  <Select 
+                    value={formData.professional_id || ''} 
+                    onValueChange={v => { 
+                      const p = professionalMap[v]; 
+                      setFormData({ 
+                        ...formData, 
+                        professional_id: v, 
+                        target_specialty: p?.specialty || formData.target_specialty 
+                      }); 
+                    }}
+                  >
+                    <SelectTrigger className="h-11 bg-slate-900 border border-slate-700 text-white font-bold rounded-xl focus:ring-2 focus:ring-sky-500">
+                      <SelectValue placeholder="Selecione o profissional da lista..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-900 border border-slate-700 text-white max-h-60 overflow-y-auto z-[99999] shadow-2xl">
+                      {allActiveProfessionals.map(p => (
+                        <SelectItem key={p.id} value={String(p.id)} className="py-2 text-xs font-medium cursor-pointer hover:bg-slate-800">
+                          {p.name} • <span className="text-sky-400 font-bold">{p.specialty || 'Geral'}</span> ({p.document || 'CRM'})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                 </div>
               ) : (
-                <p className="text-[11px] text-rose-600 bg-rose-50 dark:bg-rose-950/30 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/50 leading-tight">
-                  O plantão será disponibilizado no <b>Mural de Oportunidades</b>.
+                <p className="text-[11px] text-rose-400 bg-rose-950/40 p-2.5 rounded-xl border border-rose-900/60 leading-tight">
+                  O plantão será disponibilizado no <b>Mural de Oportunidades</b> para que os profissionais assumam.
                 </p>
               )}
             </div>
             
-            <DialogFooter className="pt-2 gap-2 border-t border-slate-100 dark:border-slate-800 mt-2">
+            <DialogFooter className="pt-2 gap-2 border-t border-slate-800 mt-2">
               {editingShiftId && (
                 <div className="flex items-center gap-2 mr-auto">
-                  {formData.action_type === 'alocar' && <Button type="button" variant="outline" onClick={handleSendToMuralFromModal} className="h-10 text-xs font-bold border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30">Mandar p/ Mural</Button>}
-                  <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-10 text-xs font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"><Trash2 className="w-4 h-4 mr-1" /> Excluir</Button>
+                  {formData.action_type === 'alocar' && <Button type="button" variant="outline" onClick={handleSendToMuralFromModal} className="h-10 text-xs font-bold border-amber-500/60 text-amber-400 hover:bg-amber-950/30">Mandar p/ Mural</Button>}
+                  <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-10 text-xs font-bold text-rose-400 hover:bg-rose-950/30"><Trash2 className="w-4 h-4 mr-1" /> Excluir</Button>
                 </div>
               )}
-              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="h-10 text-xs font-bold border-slate-200 dark:border-slate-700">Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="h-10 text-xs font-bold border-slate-700 text-slate-300">Cancelar</Button>
               <Button type="submit" disabled={submitting} className="h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-8 rounded-xl shadow-md">Confirmar Plantão</Button>
             </DialogFooter>
           </form>
