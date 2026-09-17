@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
@@ -11,146 +11,601 @@ import {
   CheckCircle2, 
   Loader2, 
   DollarSign,
-  AlertCircle
+  AlertCircle,
+  Radio,
+  Printer,
+  ChevronLeft,
+  ChevronRight,
+  Send,
+  Timer,
+  Sparkles,
+  Flame,
+  ArrowRight,
+  Layers,
+  CalendarCheck
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-function safeArray(val) { return Array.isArray(val) ? val : []; }
+function safeNumber(val, fb = 0) {
+  if (val === null || val === undefined || val === '') return fb;
+  const n = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  return Number.isFinite(n) ? n : fb;
+}
+
+function formatCurrency(val) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(safeNumber(val));
+}
+
 function formatDateBR(dateStr) {
   if (!dateStr) return '—';
   const parts = String(dateStr).trim().split('-');
   return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(dateStr);
 }
 
+function getLocalDateString(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+const MONTH_NAMES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+];
+
 export default function MinhaEscala() {
-  const { user, company, loading: appLoading } = useAppData();
+  const { user, company, professionals = [], sectors = [], loading: appLoading, syncGlobalData } = useAppData();
   const navigate = useNavigate();
+
   const [shifts, setShifts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentDate, setCurrentDate] = useState(() => new Date());
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
   const myProfId = user?.data?.professional_id || user?.id;
 
-  useEffect(() => {
-    async function loadMyShifts() {
-      setLoading(true);
-      try {
-        const query = companyId ? { company_id: companyId } : {};
-        const allShifts = await base44.entities.Shift.filter(query, '-date', 1000);
-        
-        // Filtra os plantões onde este usuário está alocado e ativos
-        const myShifts = safeArray(allShifts).filter(s => 
-          (String(s.professional_id) === String(myProfId) || s.professional_name === user?.full_name) &&
-          s.status !== 'cancelado'
-        );
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth();
+  const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+  const todayStr = useMemo(() => getLocalDateString(now), [now]);
 
-        setShifts(myShifts);
-      } catch (e) {
-        console.error('Erro ao carregar minha escala:', e);
-      } finally {
-        setLoading(false);
-      }
+  // Identificação cadastral do profissional logado
+  const currentProfessional = useMemo(() => {
+    return (professionals || []).find(p => 
+      String(p.id) === String(myProfId) || 
+      (p.name && user?.full_name && p.name.toLowerCase().trim() === user.full_name.toLowerCase().trim())
+    ) || null;
+  }, [professionals, myProfId, user]);
+
+  const sectorMap = useMemo(() => {
+    const m = {};
+    (sectors || []).forEach(s => { if (s) m[String(s.id)] = s; });
+    return m;
+  }, [sectors]);
+
+  // Carga e filtro dos plantões do profissional
+  const loadMyShifts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const query = companyId ? { company_id: companyId } : {};
+      const allShifts = await base44.entities.Shift.filter(query, '-date', 1000);
+      
+      const myShifts = (allShifts || []).filter(s => {
+        if (!s || s.status === 'cancelado') return false;
+        const matchesId = currentProfessional && String(s.professional_id) === String(currentProfessional.id);
+        const matchesUserProf = String(s.professional_id) === String(myProfId);
+        const matchesName = user?.full_name && s.professional_name && s.professional_name.toLowerCase().trim() === user.full_name.toLowerCase().trim();
+        return matchesId || matchesUserProf || matchesName;
+      });
+
+      setShifts(myShifts);
+    } catch (e) {
+      console.error('Erro ao carregar minha escala:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, currentProfessional, myProfId, user]);
+
+  useEffect(() => {
+    if (!appLoading) loadMyShifts();
+  }, [appLoading, loadMyShifts]);
+
+  // Cálculo da Remuneração por Plantão do Profissional
+  const remunConfig = useMemo(() => {
+    if (!currentProfessional) return { valorPorPlantao: 83.60, valorPorHora: 7.60, remunType: 'mensal', salarioBase: 1672 };
+
+    let meta = {};
+    try {
+      const stored = window.localStorage.getItem(`prof_meta_${currentProfessional.id}`);
+      if (stored) meta = JSON.parse(stored);
+    } catch {}
+
+    const remunType = meta.remuneration_type || currentProfessional.remuneration_type || 'mensal';
+    const salaryBase = meta.monthly_salary !== undefined ? safeNumber(meta.monthly_salary) : safeNumber(currentProfessional.monthly_salary, 1672);
+    const daily = meta.daily_rate !== undefined ? safeNumber(meta.daily_rate) : safeNumber(currentProfessional.daily_rate, 0);
+    const hourly = meta.hourly_rate !== undefined ? safeNumber(meta.hourly_rate) : safeNumber(currentProfessional.hourly_rate, 0);
+
+    let valorPorPlantao = 0;
+    let valorPorHora = 0;
+
+    if (remunType === 'mensal') {
+      valorPorPlantao = salaryBase / 20;
+      valorPorHora = salaryBase / 220;
+    } else if (remunType === 'diaria') {
+      valorPorPlantao = daily > 0 ? daily : (salaryBase / 20);
+      valorPorHora = valorPorPlantao / 12;
+    } else {
+      valorPorHora = hourly > 0 ? hourly : (salaryBase / 220);
+      valorPorPlantao = valorPorHora * 12;
     }
 
-    if (!appLoading) loadMyShifts();
-  }, [appLoading, companyId, myProfId, user]);
+    return { valorPorPlantao, valorPorHora, remunType, salarioBase };
+  }, [currentProfessional]);
 
-  const upcomingShifts = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    return shifts.filter(s => String(s.date) >= today).sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  }, [shifts]);
+  // Classificação dos plantões com cálculo temporal
+  const enrichedShifts = useMemo(() => {
+    const nowHour = now.getHours();
+    const nowMin = now.getMinutes();
+    const nowTotalMin = nowHour * 60 + nowMin;
 
-  const pastShifts = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    return shifts.filter(s => String(s.date) < today).sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  }, [shifts]);
+    return shifts.map(s => {
+      const [startH, startM] = (s.start_time || '07:00').split(':').map(Number);
+      const [endH, endM] = (s.end_time || '19:00').split(':').map(Number);
+      const startMin = startH * 60 + startM;
+      let endMin = endH * 60 + endM;
+      if (endMin <= startMin) endMin += 24 * 60;
+
+      let effNow = nowTotalMin;
+      if (endMin > 24 * 60 && nowTotalMin < startMin) effNow += 24 * 60;
+
+      const sDate = (s.date || '').split('T')[0];
+      const isPastDay = sDate < todayStr;
+      const isFutureDay = sDate > todayStr;
+      const isToday = sDate === todayStr;
+
+      let state = 'programado'; // 'ativo' | 'concluido' | 'programado'
+      let timeLeftDesc = '';
+
+      if (isPastDay) {
+        state = 'concluido';
+      } else if (isToday) {
+        if (effNow >= startMin && effNow < endMin) {
+          state = 'ativo';
+          const left = endMin - effNow;
+          timeLeftDesc = `Resta ${Math.floor(left / 60)}h ${left % 60}m`;
+        } else if (effNow >= endMin) {
+          state = 'concluido';
+        } else {
+          state = 'programado';
+          const toStart = startMin - effNow;
+          timeLeftDesc = `Inicia em ${Math.floor(toStart / 60)}h ${toStart % 60}m`;
+        }
+      } else {
+        state = 'programado';
+      }
+
+      let duration = (endH - startH) + (endM - startM) / 60;
+      if (duration <= 0) duration += 24;
+
+      const sectorName = s.sector_name || sectorMap[s.sector_id]?.name || 'Setor Hospitalar';
+
+      return {
+        ...s,
+        sectorName,
+        state,
+        duration: Math.round(duration * 10) / 10,
+        timeLeftDesc
+      };
+    });
+  }, [shifts, now, todayStr, sectorMap]);
+
+  // Plantão Ativo Agora
+  const activeShiftNow = useMemo(() => {
+    return enrichedShifts.find(s => s.state === 'ativo') || null;
+  }, [enrichedShifts]);
+
+  // Próximo Plantão Imediato
+  const nextImmediateShift = useMemo(() => {
+    return enrichedShifts
+      .filter(s => s.state === 'programado')
+      .sort((a, b) => `${a.date} ${a.start_time}`.localeCompare(`${b.date} ${b.start_time}`))[0] || null;
+  }, [enrichedShifts]);
+
+  // Plantões da Competência Selecionada
+  const monthShifts = useMemo(() => {
+    return enrichedShifts.filter(s => (s.date || '').startsWith(monthPrefix));
+  }, [enrichedShifts, monthPrefix]);
+
+  // Métricas do Mês (Progresso Real de Escala)
+  const monthMetrics = useMemo(() => {
+    let cumpridos = 0;
+    let futuros = 0;
+    let horas = 0;
+
+    monthShifts.forEach(s => {
+      if (s.state === 'concluido' || s.state === 'ativo') {
+        cumpridos += 1;
+        horas += s.duration;
+      } else {
+        futuros += 1;
+      }
+    });
+
+    const valorBruto = cumpridos * remunConfig.valorPorPlantao;
+    const extrasQtd = Math.max(0, cumpridos - 20);
+
+    return {
+      cumpridos,
+      futuros,
+      horas,
+      valorBruto,
+      extrasQtd,
+      totalMes: monthShifts.length
+    };
+  }, [monthShifts, remunConfig]);
+
+  // Lançar no Mural de Oportunidades (Passar Plantão)
+  const handlePassShiftToMural = async (shift) => {
+    if (!confirm(`Deseja disponibilizar seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) no Mural de Oportunidades?`)) return;
+
+    try {
+      await base44.entities.Shift.update(shift.id, {
+        professional_id: null,
+        status: 'vago',
+        notes: `[DISPONIBILIZADO POR: ${currentProfessional?.name || user?.full_name}]`
+      });
+      alert('Plantão disponibilizado com sucesso no Mural de Oportunidades!');
+      await syncGlobalData();
+      await loadMyShifts();
+    } catch (e) {
+      alert('Erro ao passar plantão: ' + e.message);
+    }
+  };
+
+  // Impressão Oficial do Espelho de Plantões Pessoal
+  const handlePrintMyStatement = () => {
+    const printWindow = window.open('', '_blank', 'width=1000,height=800');
+    if (!printWindow) {
+      alert('Permita pop-ups para imprimir o comprovante.');
+      return;
+    }
+
+    const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
+    const profNome = currentProfessional?.name || user?.full_name || 'Profissional';
+    const matricula = currentProfessional?.registration_id || currentProfessional?.document || 'MAT-XXXX';
+    const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
+    const emissao = now.toLocaleDateString('pt-BR') + ' às ' + now.toLocaleTimeString('pt-BR');
+
+    const rowsHtml = monthShifts.map((s, idx) => `
+      <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
+        <td style="border: 1px solid #000; padding: 6px 8px; font-weight: bold;">${formatDateBR(s.date)}</td>
+        <td style="border: 1px solid #000; padding: 6px 8px; text-transform: uppercase;">${s.sectorName}</td>
+        <td style="border: 1px solid #000; padding: 6px 8px; font-family: monospace; text-align: center;">${s.start_time} às ${s.end_time}</td>
+        <td style="border: 1px solid #000; padding: 6px 8px; text-align: center;">${s.duration}h</td>
+        <td style="border: 1px solid #000; padding: 6px 8px; text-align: center; font-weight: bold;">
+          ${s.state === 'concluido' ? 'CONCLUÍDO' : s.state === 'ativo' ? 'EM ATENDIMENTO' : 'PROGRAMADO'}
+        </td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8">
+        <title>Espelho de Plantões - ${profNome}</title>
+        <style>
+          @page { size: A4 portrait; margin: 10mm; }
+          body { font-family: Arial, sans-serif; background: #fff; color: #000; padding: 15px; font-size: 11px; }
+          .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; }
+          table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-top: 15px; }
+          th { background: #e2e8f0; border: 1px solid #000; padding: 6px 8px; text-transform: uppercase; font-size: 9.5px; }
+          .summary { margin-top: 20px; border-top: 2px solid #000; padding-top: 10px; display: flex; justify-content: space-between; font-size: 12px; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1 style="font-size: 18px; text-transform: uppercase; margin: 0;">${hospitalName}</h1>
+            <p style="margin: 3px 0;">ESPELHO INDIVIDUAL DE PLANTÕES • PRESTAÇÃO DE CONTAS</p>
+            <p style="margin: 3px 0;">Profissional: <b>${profNome}</b> (ID: ${matricula})</p>
+          </div>
+          <div style="text-align: right; font-size: 9.5px;">
+            <p style="margin: 0;">Competência: <b>${competencia}</b></p>
+            <p style="margin: 3px 0;">Emissão: ${emissao}</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 15%;">Data</th>
+              <th style="width: 35%;">Setor / Posto</th>
+              <th style="width: 20%; text-align: center;">Horário</th>
+              <th style="width: 15%; text-align: center;">Duração</th>
+              <th style="width: 15%; text-align: center;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml.length > 0 ? rowsHtml : '<tr><td colspan="5" style="padding: 15px; text-align: center;">Nenhum plantão registrado nesta competência.</td></tr>'}
+          </tbody>
+        </table>
+
+        <div class="summary">
+          <span>Plantões Cumpridos: ${monthMetrics.cumpridos} de ${monthMetrics.totalMes}</span>
+          <span>Horas Efetivadas: ${monthMetrics.horas}h</span>
+          <span>Produção Apurada: ${formatCurrency(monthMetrics.valorBruto)}</span>
+        </div>
+
+        <div style="margin-top: 50px; display: flex; justify-content: space-around; text-align: center; font-size: 10px;">
+          <div style="width: 220px; border-top: 1px solid #000; padding-top: 4px;">Assinatura do Profissional</div>
+          <div style="width: 220px; border-top: 1px solid #000; padding-top: 4px;">Coordenação de Escala</div>
+        </div>
+
+        <script>window.onload = function() { window.print(); };</script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
 
   return (
-    <div className="p-4 md:p-8 space-y-6">
-      {/* CABEÇALHO */}
-      <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 text-white shadow-xl">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-sky-400">
-              <CalendarDays className="w-4 h-4" /> Minha Agenda de Plantões
+    <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
+      
+      {/* 1. HERO BANNER COM IDENTIFICAÇÃO E ATALHOS */}
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 md:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.25em] text-sky-400">
+            <CalendarDays className="w-4 h-4" /> Painel Assistencial do Profissional
+          </div>
+          <h1 className="text-3xl md:text-4xl font-black tracking-tight">
+            Olá, {currentProfessional?.name ? `Dr(a). ${currentProfessional.name.split(' ')[0]}` : user?.full_name || 'Profissional'}!
+          </h1>
+          <p className="text-xs md:text-sm text-slate-300 font-medium">
+            Gerencie sua agenda de plantões, acompanhe seu repasse e solicite trocas rápidas.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button 
+            onClick={handlePrintMyStatement} 
+            className="h-11 bg-white hover:bg-slate-100 text-slate-900 font-black text-xs px-5 rounded-2xl shadow-lg gap-2"
+          >
+            <Printer className="w-4 h-4 text-sky-600" /> Imprimir Espelho
+          </Button>
+
+          <Button 
+            onClick={() => navigate('/mural')} 
+            className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-5 rounded-2xl shadow-lg gap-2"
+          >
+            <Flame className="w-4 h-4" /> Mural de Oportunidades
+          </Button>
+        </div>
+      </div>
+
+      {/* 2. CARD DE PLANTÃO AO VIVO (SE ESTIVER EM JORNADA AGORA) */}
+      {activeShiftNow && (
+        <div className="p-5 rounded-3xl bg-emerald-500/10 border-2 border-emerald-500/50 shadow-lg text-emerald-950 dark:text-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+          <div className="flex items-center gap-3.5">
+            <div className="p-3 rounded-2xl bg-emerald-600 text-white font-bold shadow-md animate-pulse shrink-0">
+              <Radio className="w-6 h-6" />
             </div>
-            <h2 className="mt-2 text-3xl font-black tracking-tight">Meus Plantões Escalados</h2>
-            <p className="mt-1 max-w-2xl text-sm text-slate-300">
-              Consulte seus próximos plantões, solicite trocas e acompanhe os turnos já realizados.
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-600 text-white">
+                  ● Plantão em Andamento
+                </span>
+                <span className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                  {activeShiftNow.timeLeftDesc}
+                </span>
+              </div>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white mt-1">
+                {activeShiftNow.sectorName} • {activeShiftNow.start_time} às {activeShiftNow.end_time}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
+                Jornada de {activeShiftNow.duration}h computada no fechamento deste mês.
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right shrink-0">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block">Diária Apurada</span>
+            <div className="text-xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+              {formatCurrency(remunConfig.valorPorPlantao)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. BARÔMETRO DE PRODUÇÃO & METAS DO MÊS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black uppercase tracking-wider text-slate-400">Plantões Cumpridos</span>
+            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
+            {monthMetrics.cumpridos} <span className="text-xs font-bold text-slate-400">/ 20 meta</span>
+          </div>
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-semibold">
+            {monthMetrics.extrasQtd > 0 ? `+${monthMetrics.extrasQtd} plantões extras` : `${20 - monthMetrics.cumpridos} para atingir a meta`}
+          </p>
+        </Card>
+
+        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black uppercase tracking-wider text-slate-400">Horas Realizadas</span>
+            <div className="p-2 rounded-xl bg-sky-50 dark:bg-sky-950 text-sky-600">
+              <Clock className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
+            {monthMetrics.horas}h <span className="text-xs font-bold text-slate-400">computadas</span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1 font-semibold">
+            Em {monthMetrics.cumpridos} turnos finalizados
+          </p>
+        </Card>
+
+        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black uppercase tracking-wider text-slate-400">Repasse Acumulado</span>
+            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600">
+              <DollarSign className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-3 font-mono">
+            {formatCurrency(monthMetrics.valorBruto)}
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1 font-semibold">
+            {formatCurrency(remunConfig.valorPorPlantao)} por plantão dia
+          </p>
+        </Card>
+
+        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black uppercase tracking-wider text-slate-400">Plantões a Realizar</span>
+            <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600">
+              <CalendarCheck className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
+            {monthMetrics.futuros} <span className="text-xs font-bold text-slate-400">turnos</span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1 font-semibold">
+            Programados na grade do mês
+          </p>
+        </Card>
+      </div>
+
+      {/* 4. SELETOR DE COMPETÊNCIA & RELAÇÃO DE PLANTÕES */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+          <div>
+            <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <CalendarDays className="w-5 h-5 text-sky-600" />
+              Minha Grade • {MONTH_NAMES[currentMonth]} {currentYear}
+            </h2>
+            <p className="text-xs text-slate-500 font-medium">
+              Listagem de todos os seus turnos programados e executados nesta competência.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Button onClick={() => navigate('/trocas')} className="bg-sky-600 hover:bg-sky-500 text-white font-bold gap-2 text-xs h-10 px-5 rounded-xl shadow-lg">
-              <Repeat className="w-4 h-4" /> Pedir Troca ou Ver Mural
-            </Button>
+          <div className="flex items-center bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-1 rounded-2xl gap-2">
+            <button 
+              onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} 
+              className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-black px-2 uppercase font-mono">
+              {MONTH_NAMES[currentMonth]} {currentYear}
+            </span>
+            <button 
+              onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} 
+              className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
-      </div>
 
-      {/* PRÓXIMOS PLANTÕES */}
-      <div className="space-y-3">
-        <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
-          <Clock className="w-4 h-4 text-sky-600" /> Próximos Plantões ({upcomingShifts.length})
-        </h3>
-
+        {/* LISTAGEM DOS PLANTÕES */}
         {loading ? (
-          <div className="py-12 text-center text-slate-400">
-            <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-sky-600" />
-            Carregando sua escala...
+          <div className="py-16 text-center text-slate-400">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-sky-600" />
+            Carregando sua grade pessoal de plantões...
           </div>
-        ) : upcomingShifts.length === 0 ? (
-          <Card className="p-12 text-center bg-white dark:bg-slate-900 border-dashed border-slate-200 dark:border-slate-800 text-slate-400 text-xs">
-            Você não possui plantões futuros agendados no momento. Acesse o Mural de Oportunidades para assumir turnos.
-          </Card>
+        ) : monthShifts.length === 0 ? (
+          <div className="py-16 text-center text-slate-400 text-xs border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl p-8">
+            <CalendarDays className="w-8 h-8 mx-auto mb-2 opacity-30 text-sky-600" />
+            Você não possui plantões agendados para {MONTH_NAMES[currentMonth]} de {currentYear}.<br />
+            Acesse o <b>Mural de Oportunidades</b> para assumir turnos disponíveis.
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {upcomingShifts.map(s => (
-              <Card key={s.id} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs font-bold">
-                    <span className="text-sky-600">{formatDateBR(s.date)}</span>
-                    <span className="font-mono text-slate-500">{s.start_time} às {s.end_time}</span>
-                  </div>
-                  <div className="text-sm font-black text-slate-900 dark:text-white">
-                    {s.sector_name || 'Setor Geral'}
-                  </div>
-                  <div className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
-                    <DollarSign className="w-3.5 h-3.5" />
-                    Valor Estimado: R$ {Number(s.total_amount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </div>
-                </div>
+            {monthShifts.map(shift => {
+              const isConcluido = shift.state === 'concluido';
+              const isAtivo = shift.state === 'ativo';
 
-                <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
-                  <Button size="sm" variant="outline" onClick={() => navigate('/trocas')} className="text-xs h-8 text-sky-600 border-sky-300 hover:bg-sky-50">
-                    <Repeat className="w-3 h-3 mr-1" /> Passar Plantão
-                  </Button>
+              return (
+                <div 
+                  key={shift.id} 
+                  className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
+                    isAtivo 
+                      ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-md ring-1 ring-emerald-500/40' 
+                      : isConcluido
+                      ? 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 opacity-75'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:border-sky-300'
+                  }`}
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black font-mono text-slate-900 dark:text-white">
+                          {formatDateBR(shift.date)}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-500">
+                          ({new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' })})
+                        </span>
+                      </div>
+
+                      <span className={`text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                        isAtivo 
+                          ? 'bg-emerald-600 text-white animate-pulse' 
+                          : isConcluido
+                          ? 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                          : 'bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300'
+                      }`}>
+                        {isAtivo ? '● Ao Vivo' : isConcluido ? '✓ Concluído' : 'Programado'}
+                      </span>
+                    </div>
+
+                    <div className="text-sm font-black text-slate-900 dark:text-white truncate">
+                      {shift.sectorName}
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-slate-500 font-mono">
+                      <span>Horário: <b>{shift.start_time} às {shift.end_time}</b></span>
+                      <span>{shift.duration}h</span>
+                    </div>
+
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 pt-1 border-t border-slate-100 dark:border-slate-800">
+                      <DollarSign className="w-3.5 h-3.5" />
+                      Valor: {formatCurrency(remunConfig.valorPorPlantao)}
+                    </div>
+                  </div>
+
+                  {/* AÇÕES: PASSAR PLANTÃO (APENAS SE FOR PROGRAMADO E NÃO CONCLUÍDO) */}
+                  {!isConcluido && !isAtivo && (
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => handlePassShiftToMural(shift)}
+                        className="h-8 text-[11px] font-bold border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl gap-1.5"
+                      >
+                        <Flame className="w-3.5 h-3.5" /> Passar no Mural
+                      </Button>
+                    </div>
+                  )}
                 </div>
-              </Card>
-            ))}
+              );
+            })}
           </div>
         )}
-      </div>
-
-      {/* PLANTÕES ANTERIORES */}
-      <div className="space-y-3 pt-6 border-t border-slate-200 dark:border-slate-800">
-        <h3 className="text-sm font-black text-slate-700 dark:text-slate-300 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Plantões Concluídos ({pastShifts.length})
-        </h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 opacity-80">
-          {pastShifts.slice(0, 8).map(s => (
-            <div key={s.id} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-xs flex justify-between items-center">
-              <div>
-                <strong className="block text-slate-800 dark:text-slate-200">{formatDateBR(s.date)}</strong>
-                <span className="text-[10px] text-slate-400">{s.sector_name} ({s.start_time} - {s.end_time})</span>
-              </div>
-              <span className="text-[10px] bg-emerald-500/10 text-emerald-600 font-bold px-2 py-0.5 rounded-full">
-                Realizado
-              </span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
