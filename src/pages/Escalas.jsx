@@ -13,7 +13,7 @@ import {
   Flame, ArrowRight, MonitorPlay, GripVertical, 
   Printer, Sun, Moon, AlertTriangle, CheckCircle2, Radio, Calendar as CalendarIcon,
   PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight, Minimize2, Target, ShieldAlert,
-  UserX
+  BellRing, Check, Layers
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -86,6 +86,7 @@ export default function Escalas() {
   const [filterTurno, setFilterTurno] = useState('todos'); 
   const [startDateFilter, setStartDateFilter] = useState('');
 
+  // Persistência do Setor Selecionado
   const [selectedSectorId, setSelectedSectorId] = useState(() => {
     try {
       return window.localStorage.getItem('scale_filter_sector_id') || 'todos';
@@ -144,11 +145,138 @@ export default function Escalas() {
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
-  const publishStorageKey = `scale_pub_${currentYear}_${currentMonth + 1}_${selectedUnitId}`;
 
-  const [scalePublished, setScalePublished] = useState(() => {
-    try { return window.localStorage.getItem(publishStorageKey) === 'true'; } catch { return true; }
+  // Controle de Publicação por Setor
+  const getSectorPublishKey = (secId) => `scale_pub_${currentYear}_${currentMonth + 1}_${selectedUnitId}_${secId}`;
+
+  const [publishedVersion, setPublishedVersion] = useState(0);
+
+  const isCurrentSectorPublished = useMemo(() => {
+    if (selectedSectorId === 'todos') {
+      return (sectors || []).length > 0 && (sectors || []).every(s => {
+        return window.localStorage.getItem(getSectorPublishKey(s.id)) === 'true';
+      });
+    }
+    return window.localStorage.getItem(getSectorPublishKey(selectedSectorId)) === 'true';
+  }, [selectedSectorId, sectors, currentYear, currentMonth, selectedUnitId, publishedVersion]);
+
+  // Setores pendentes de publicação nesta competência
+  const unsubmittedSectors = useMemo(() => {
+    return (sectors || []).filter(s => {
+      return window.localStorage.getItem(getSectorPublishKey(s.id)) !== 'true';
+    });
+  }, [sectors, currentYear, currentMonth, selectedUnitId, publishedVersion]);
+
+  // Modal de Publicação Granular por Setor & Intervalo de Datas
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [publishConfig, setPublishConfig] = useState({
+    sector_id: '',
+    start_date: getLocalDateString(),
+    end_date: getLocalDateString(new Date(Date.now() + 14 * 86400000))
   });
+
+  const openPublishModal = () => {
+    const defaultSec = selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '');
+    const firstDayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+    const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const lastDayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+
+    setPublishConfig({
+      sector_id: defaultSec,
+      start_date: firstDayStr,
+      end_date: lastDayStr
+    });
+    setPublishModalOpen(true);
+  };
+
+  const handleApplyQuickRange = (type) => {
+    const start = new Date(publishConfig.start_date + 'T12:00:00');
+    let end = new Date(start);
+
+    if (type === '7days') {
+      end.setDate(start.getDate() + 6);
+    } else if (type === '15days') {
+      end.setDate(start.getDate() + 14);
+    } else if (type === 'month') {
+      const lastDay = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+      end = new Date(start.getFullYear(), start.getMonth(), lastDay);
+    }
+
+    setPublishConfig(prev => ({
+      ...prev,
+      end_date: getLocalDateString(end)
+    }));
+  };
+
+  // Plantões impactados pela publicação selecionada
+  const publishTargetShifts = useMemo(() => {
+    if (!publishConfig.sector_id || !publishConfig.start_date || !publishConfig.end_date) return [];
+    return (shifts || []).filter(s => {
+      if (!s || s.status === 'cancelado') return false;
+      if (String(s.sector_id) !== String(publishConfig.sector_id)) return false;
+      return s.date >= publishConfig.start_date && s.date <= publishConfig.end_date;
+    });
+  }, [shifts, publishConfig]);
+
+  // Quantidade de profissionais que serão notificados
+  const publishImpactedProfessionalsCount = useMemo(() => {
+    const set = new Set();
+    publishTargetShifts.forEach(s => {
+      if (s.professional_id) set.add(String(s.professional_id));
+    });
+    return set.size;
+  }, [publishTargetShifts]);
+
+  // Executar a Publicação Oficial do Setor
+  const handleExecutePublishSector = async () => {
+    if (!publishConfig.sector_id) {
+      alert('Selecione o setor a ser publicado.');
+      return;
+    }
+    if (publishConfig.start_date > publishConfig.end_date) {
+      alert('A data de término não pode ser anterior à data de início.');
+      return;
+    }
+
+    const secName = sectorMap[String(publishConfig.sector_id)]?.name || 'Setor Hospitalar';
+
+    setSubmitting(true);
+    try {
+      // Salva marcação oficial da escala para o setor
+      window.localStorage.setItem(getSectorPublishKey(publishConfig.sector_id), 'true');
+      
+      // Salva metadados de auditoria nos plantões abrangidos
+      for (const shift of publishTargetShifts) {
+        const currNotes = String(shift.notes || '');
+        if (!currNotes.includes('[ESCALA_PUBLICADA]')) {
+          await autoHealingSaveShift(shift.id, {
+            notes: `${currNotes} [ESCALA_PUBLICADA] [VIGENCIA:${publishConfig.start_date}_A_${publishConfig.end_date}]`.trim()
+          });
+        }
+      }
+
+      setPublishedVersion(v => v + 1);
+      setPublishModalOpen(false);
+      await syncGlobalData();
+
+      alert(`✓ Escala de "${secName}" publicada com sucesso!\n\nPeríodo: ${publishConfig.start_date.split('-').reverse().join('/')} até ${publishConfig.end_date.split('-').reverse().join('/')}\n${publishImpactedProfessionalsCount} profissional(is) notificado(s) e ${publishTargetShifts.length} plantão(ões) oficializado(s).`);
+    } catch (err) {
+      alert('Erro ao publicar escala: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUnpublishSector = () => {
+    const secId = selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '');
+    const secName = sectorMap[String(secId)]?.name || 'Setor';
+
+    if (!confirm(`Reverter escala de "${secName}" para Modo Rascunho?`)) return;
+
+    window.localStorage.removeItem(getSectorPublishKey(secId));
+    setPublishedVersion(v => v + 1);
+    alert(`A escala de "${secName}" agora está em Modo Rascunho.`);
+  };
 
   const [selectedDays, setSelectedDays] = useState([]);
   const [traySearch, setTraySearch] = useState('');
@@ -663,7 +791,7 @@ export default function Escalas() {
         {sidebarHidden ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
 
-      {/* BANNER DE ALERTA SE HOUVER CONFLITO EXISTENTE NA BASE */}
+      {/* BANNER 1: ALERTA DE CONFLITO EXISTENTE NA BASE */}
       {allScaleConflicts.length > 0 && isManager && (
         <div className="p-4 rounded-3xl bg-rose-500/15 border-2 border-rose-500/60 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
           <div className="flex items-center gap-3">
@@ -695,6 +823,41 @@ export default function Escalas() {
         </div>
       )}
 
+      {/* BANNER 2: RADAR DE SETORES PENDENTES DE PUBLICAÇÃO */}
+      {unsubmittedSectors.length > 0 && isManager && (
+        <div className="p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-amber-500 text-white shrink-0 shadow-sm">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <strong className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-300 block">
+                {unsubmittedSectors.length} Setor(es) Pendente(s) de Publicação em {MONTH_NAMES[currentMonth]}
+              </strong>
+              <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                <span className="text-[11px] text-slate-600 dark:text-slate-300">Setores não oficializados:</span>
+                {unsubmittedSectors.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => handleSelectSector(String(s.id))}
+                    className="text-[10px] font-black uppercase px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-800 dark:text-amber-200 hover:bg-amber-500/30 transition-all cursor-pointer border border-amber-500/30"
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <Button 
+            onClick={openPublishModal}
+            className="h-9 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs px-4 rounded-xl shadow-md shrink-0 cursor-pointer gap-1.5"
+          >
+            <Send className="w-3.5 h-3.5" /> Publicar Setor
+          </Button>
+        </div>
+      )}
+
       {/* SELETOR DE SEÇÕES COM PERSISTÊNCIA & CONFIGURADOR */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 print:hidden">
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -722,9 +885,9 @@ export default function Escalas() {
           )}
 
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shrink-0">
-            <button onClick={() => setFilterTurno('todos')} className={`px-3 py-1 rounded-xl text-xs font-black ${filterTurno === 'todos' ? 'bg-white dark:bg-slate-800 shadow-sm' : 'text-slate-500'}`}>Todos</button>
-            <button onClick={() => setFilterTurno('diurno')} className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1 ${filterTurno === 'diurno' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300' : 'text-slate-500'}`}><Sun className="w-3 h-3 text-amber-500" /> Diurno</button>
-            <button onClick={() => setFilterTurno('noturno')} className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1 ${filterTurno === 'noturno' ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300' : 'text-slate-500'}`}><Moon className="w-3 h-3 text-indigo-500" /> Noturno</button>
+            <button onClick={() => setFilterTurno('todos')} className={`px-3 py-1 rounded-xl text-xs font-black cursor-pointer ${filterTurno === 'todos' ? 'bg-white dark:bg-slate-800 shadow-sm' : 'text-slate-500'}`}>Todos</button>
+            <button onClick={() => setFilterTurno('diurno')} className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer ${filterTurno === 'diurno' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300' : 'text-slate-500'}`}><Sun className="w-3 h-3 text-amber-500" /> Diurno</button>
+            <button onClick={() => setFilterTurno('noturno')} className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer ${filterTurno === 'noturno' ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300' : 'text-slate-500'}`}><Moon className="w-3 h-3 text-indigo-500" /> Noturno</button>
           </div>
         </div>
       </div>
@@ -748,7 +911,7 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* BARRA DE COMANDO */}
+      {/* BARRA DE COMANDO COM O PUBLICAR POR SETOR */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 rounded-2xl p-1 border border-slate-200 dark:border-slate-800">
@@ -782,17 +945,34 @@ export default function Escalas() {
                 </span>
               )}
             </h2>
-            <span className={`text-xs font-bold ${scalePublished ? 'text-emerald-600' : 'text-amber-500'}`}>
-              {scalePublished ? '✓ Escala Publicada' : '⚠️ Modo Rascunho'}
+            <span className={`text-xs font-bold ${isCurrentSectorPublished ? 'text-emerald-600' : 'text-amber-500'}`}>
+              {isCurrentSectorPublished ? '✓ Escala Publicada' : '⚠️ Modo Rascunho (Não Publicada)'}
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* BOTÃO DE PUBLICAR POR SETOR / DATA CUSTOMIZADA */}
           {isManager && (
-            <Button onClick={() => setScalePublished(!scalePublished)} variant={scalePublished ? 'outline' : 'default'} className={`h-9 px-4 text-xs font-black rounded-2xl gap-1.5 shadow-sm cursor-pointer ${scalePublished ? 'border-emerald-500 text-emerald-600' : 'bg-emerald-600 text-white'}`}>
-              <Send className="w-3.5 h-3.5" /> {scalePublished ? 'Publicada' : 'Publicar Escala'}
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button 
+                onClick={openPublishModal}
+                className="h-9 px-4 text-xs font-black rounded-2xl gap-1.5 shadow-md bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" /> Publicar Escala
+              </Button>
+
+              {isCurrentSectorPublished && (
+                <Button 
+                  onClick={handleUnpublishSector}
+                  variant="outline"
+                  title="Voltar setor selecionado para rascunho"
+                  className="h-9 px-3 text-xs font-bold rounded-2xl border-slate-300 dark:border-slate-700 text-slate-500 hover:text-rose-600 cursor-pointer"
+                >
+                  Rascunho
+                </Button>
+              )}
+            </div>
           )}
 
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -941,7 +1121,123 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* MODAL 100% RESPONSIVO PARA MOBILE E COM SELEÇÃO INTELIGENTE DE PROFISSIONAIS */}
+      {/* MODAL EXECUTIVO: PUBLICAR ESCALA POR SETOR & INTERVALO CUSTOMIZADO */}
+      <Dialog open={publishModalOpen} onOpenChange={setPublishModalOpen}>
+        <DialogContent className="w-[95vw] sm:max-w-lg bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-5 sm:p-6 rounded-3xl">
+          <DialogHeader className="border-b border-slate-800 pb-3">
+            <DialogTitle className="text-base font-black flex items-center gap-2 text-emerald-400">
+              <Send className="w-5 h-5 text-emerald-400" /> Publicar Escala por Setor
+            </DialogTitle>
+            <p className="text-xs text-slate-400 mt-1 font-medium">
+              Defina o setor e o período para oficializar a escala e notificar os profissionais.
+            </p>
+          </DialogHeader>
+
+          <div className="space-y-4 py-3 text-xs">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-300">Setor a Publicar *</Label>
+              <Select value={publishConfig.sector_id} onValueChange={v => setPublishConfig({ ...publishConfig, sector_id: v })}>
+                <SelectTrigger className="h-11 bg-slate-900 border-slate-700 text-white rounded-xl font-bold">
+                  <SelectValue placeholder="Selecione o setor..." />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
+                  {(sectors || []).map(s => (
+                    <SelectItem key={s.id} value={String(s.id)} className="text-xs font-bold py-2">
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="p-4 bg-slate-900/90 rounded-2xl border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+                  Janela de Vigência da Escala
+                </span>
+                <div className="flex items-center gap-1">
+                  <button 
+                    type="button" 
+                    onClick={() => handleApplyQuickRange('7days')}
+                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 cursor-pointer"
+                  >
+                    7 Dias
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => handleApplyQuickRange('15days')}
+                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 cursor-pointer"
+                  >
+                    15 Dias
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => handleApplyQuickRange('month')}
+                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 cursor-pointer"
+                  >
+                    Mês Todo
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] text-slate-400 font-bold">Data Inicial</Label>
+                  <Input 
+                    type="date" 
+                    value={publishConfig.start_date} 
+                    onChange={e => setPublishConfig({ ...publishConfig, start_date: e.target.value })}
+                    className="h-10 bg-slate-950 border-slate-700 text-white font-mono text-xs rounded-xl"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] text-slate-400 font-bold">Data Final</Label>
+                  <Input 
+                    type="date" 
+                    value={publishConfig.end_date} 
+                    onChange={e => setPublishConfig({ ...publishConfig, end_date: e.target.value })}
+                    className="h-10 bg-slate-950 border-slate-700 text-white font-mono text-xs rounded-xl"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* IMPACTO ESTIMADO DA PUBLICAÇÃO */}
+            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 space-y-2">
+              <div className="flex items-center justify-between font-black text-xs">
+                <span className="flex items-center gap-1.5">
+                  <BellRing className="w-4 h-4 text-emerald-400" /> Impacto da Publicação:
+                </span>
+                <span className="font-mono text-emerald-400">{publishTargetShifts.length} plantões</span>
+              </div>
+              <p className="text-[11px] opacity-90 leading-tight">
+                <b>{publishImpactedProfessionalsCount} profissional(is) único(s)</b> terão seus plantões oficializados nesta vigência e receberão a confirmação em seus painéis de escala.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-2 flex flex-row items-center justify-between border-t border-slate-800 mt-2 gap-2">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => setPublishModalOpen(false)}
+              className="h-10 text-xs font-bold border-slate-700 text-slate-300 rounded-xl px-4 cursor-pointer"
+            >
+              Cancelar
+            </Button>
+            <Button 
+              type="button" 
+              disabled={submitting || publishTargetShifts.length === 0}
+              onClick={handleExecutePublishSector}
+              className="h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-6 rounded-xl shadow-md cursor-pointer gap-1.5"
+            >
+              <Send className="w-3.5 h-3.5" /> Confirmar & Publicar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL DE EDIÇÃO DE PLANTÃO COM SELECT INTELIGENTE */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="w-[95vw] sm:max-w-lg max-h-[92vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-4 sm:p-6 rounded-3xl">
           <DialogHeader className="flex flex-row items-center justify-between pb-2 border-b border-slate-800">
@@ -1030,7 +1326,6 @@ export default function Escalas() {
                     >
                       <option value="">Selecione o profissional...</option>
                       
-                      {/* GRUPO 1: PROFISSIONAIS DISPONÍVEIS */}
                       <optgroup label="🟢 PROFISSIONAIS DISPONÍVEIS (Sem Conflito de Horário)">
                         {categorizedProfessionalsForModal.available.map(p => (
                           <option key={p.id} value={String(p.id)} className="bg-slate-900 text-white py-1.5">
@@ -1039,7 +1334,6 @@ export default function Escalas() {
                         ))}
                       </optgroup>
 
-                      {/* GRUPO 2: PROFISSIONAIS COM CHOQUE DE HORÁRIO (DESABILITADOS) */}
                       {categorizedProfessionalsForModal.unavailable.length > 0 && (
                         <optgroup label="⛔ INDISPONÍVEIS (Já possuem plantão neste horário)">
                           {categorizedProfessionalsForModal.unavailable.map(p => (
@@ -1056,7 +1350,7 @@ export default function Escalas() {
                   </div>
 
                   <p className="text-[10px] text-slate-400 leading-tight pt-0.5">
-                    Os médicos com choque de horário em outros setores aparecem desabilitados para prevenir duplicidade de escala.
+                    Profissionais em choque de horário aparecem desabilitados para prevenir duplicidade de escala.
                   </p>
                 </div>
               ) : (
@@ -1066,7 +1360,6 @@ export default function Escalas() {
               )}
             </div>
             
-            {/* RODAPÉ DO MODAL TOTALMENTE ADAPTÁVEL PARA MOBILE */}
             <DialogFooter className="pt-3 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between border-t border-slate-800 mt-2 gap-2">
               <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
                 {editingShiftId && (
