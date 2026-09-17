@@ -12,7 +12,7 @@ import {
   MousePointerClick, HeartPulse, UserPlus, SlidersHorizontal,
   Flame, ArrowRight, MonitorPlay, GripVertical, 
   Printer, Sun, Moon, AlertTriangle, CheckCircle2, Radio, Calendar as CalendarIcon,
-  PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight, Minimize2
+  PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight, Minimize2, Target, Eye
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -88,6 +88,11 @@ export default function Escalas() {
     } catch {}
   };
 
+  const selectedSectorObj = useMemo(() => {
+    if (selectedSectorId === 'todos') return null;
+    return (sectors || []).find(s => String(s.id) === String(selectedSectorId));
+  }, [sectors, selectedSectorId]);
+
   // Roll de Profissionais Recolhível
   const [trayCollapsed, setTrayCollapsed] = useState(() => {
     try {
@@ -105,7 +110,7 @@ export default function Escalas() {
     });
   };
 
-  // BOTÃO LATERAL FIXADO EXATAMENTE NO QUADRADO VERMELHO (NA ALTURA DE RELATÓRIOS)
+  // BOTÃO LATERAL FIXADO EXATAMENTE NO MEIO / ALTURA DE RELATÓRIOS
   const [sidebarHidden, setSidebarHidden] = useState(() => {
     try {
       return window.localStorage.getItem('scale_main_sidebar_hidden') === 'true';
@@ -165,7 +170,6 @@ export default function Escalas() {
   const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if(s) m[String(s.id)] = s; }); return m; }, [sectors]);
   const professionalMap = useMemo(() => { const m = {}; (professionals || []).forEach(p => { if(p) m[String(p.id)] = p; }); return m; }, [professionals]);
 
-  // Abertura automática da vaga crítica vinda do Dashboard
   useEffect(() => {
     const autoOpenId = window.localStorage.getItem('scale_auto_open_shift_id');
     if (autoOpenId && shifts.length > 0) {
@@ -361,7 +365,7 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // CÁLCULO MODO TV & PLANTÃO DO DIA (GARANTINDO TODOS OS PLANTÕES ATIVOS E DO DIA)
+  // CÁLCULO MODO TV & PLANTÃO DO DIA
   const tvData = useMemo(() => {
     const nowHour = liveNow.getHours();
     const nowMin = liveNow.getMinutes();
@@ -385,7 +389,6 @@ export default function Escalas() {
       let effNow = nowTotalMin;
       if (endMin > 24 * 60 && nowTotalMin < startMin) effNow += 24 * 60;
 
-      // PLANTÕES DE HOJE (P/ TABELA PLANTÃO DO DIA)
       if (sDate === todayLocalStr) {
         tableDayShifts.push(shift);
       } else if (endMin > 24 * 60) {
@@ -398,7 +401,6 @@ export default function Escalas() {
       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
       if (shift.status === 'vago' || !prof) return;
 
-      // ATIVOS AGORA
       if (sDate === todayLocalStr && effNow >= startMin && effNow < endMin) {
         const left = endMin - effNow;
         emAndamento.push({
@@ -416,7 +418,6 @@ export default function Escalas() {
         }
       }
 
-      // PRÓXIMA RENDIÇÃO
       if (sDate === todayLocalStr && startMin > effNow && (startMin - effNow) <= 120) {
         proximoRendimento.push({
           shift,
@@ -642,7 +643,7 @@ export default function Escalas() {
   };
 
   // =========================================================================
-  // 1. MODO TV CCO EM TELA CHEIA ISOLADA (100% DA TELA SEM MENU OU TOPO)
+  // 1. MODO TV CCO EM TELA CHEIA ISOLADA
   // =========================================================================
   if (activeTab === 'tv') {
     return (
@@ -685,9 +686,7 @@ export default function Escalas() {
           </div>
         </div>
 
-        {/* CORPO DO MODO TV */}
         <div className="flex-1 my-6 grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-hidden">
-          {/* ATIVOS NO MOMENTO */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
@@ -724,7 +723,6 @@ export default function Escalas() {
             </div>
           </div>
 
-          {/* PRÓXIMAS RENDIÇÕES */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
@@ -777,7 +775,7 @@ export default function Escalas() {
   return (
     <div className="relative p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
-      {/* BOTÃO LATERAL FIXADO EXATAMENTE NO QUADRADO VERMELHO DO SEU PRINT 3 (NA ALTURA DE RELATÓRIOS) */}
+      {/* BOTÃO LATERAL FIXADO NA BORDA EXATA ONDE VOCÊ APONTOU A SETA (ALTURA DE RELATÓRIOS) */}
       <button
         onClick={toggleMainSidebar}
         title={sidebarHidden ? "Expandir Menu Lateral Principal" : "Recolher Menu Lateral"}
@@ -821,6 +819,27 @@ export default function Escalas() {
         </div>
       </div>
 
+      {/* ========================================================================= */}
+      {/* ⚠️ SISTEMA ANTI-ERRO VISUAL: ALERTA SE UM SETOR ESTIVER FILTRADO          */}
+      {/* ========================================================================= */}
+      {selectedSectorObj && (
+        <div className="p-3 px-4 rounded-2xl bg-gradient-to-r from-sky-950/70 via-indigo-950/70 to-slate-900 border border-sky-500/50 shadow-md flex items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2.5 text-xs font-black text-sky-300">
+            <Target className="w-4 h-4 text-sky-400 animate-pulse shrink-0" />
+            <span>
+              VISÃO FILTRADA POR SETOR: <strong className="text-white uppercase tracking-wider text-sm ml-1 underline decoration-sky-400 underline-offset-4">{selectedSectorObj.name}</strong>
+            </span>
+          </div>
+          <button 
+            onClick={() => handleSelectSector('todos')}
+            className="text-[11px] font-bold text-sky-300 hover:text-white bg-sky-500/20 hover:bg-sky-500/40 px-3 py-1 rounded-xl border border-sky-500/40 transition-all flex items-center gap-1 cursor-pointer"
+          >
+            <span>Ver Todos os Setores</span>
+            <X className="w-3.5 h-3.5 ml-0.5" />
+          </button>
+        </div>
+      )}
+
       {/* BARRA DE COMANDO COM O FILTRO "A PARTIR DE..." */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-3 flex-wrap">
@@ -849,6 +868,11 @@ export default function Escalas() {
           <div>
             <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
               <CalendarDays className="w-5 h-5 text-sky-600" /> {MONTH_NAMES[currentMonth]} {currentYear}
+              {selectedSectorObj && (
+                <span className="text-xs px-2.5 py-0.5 rounded-lg bg-sky-500/20 text-sky-400 font-mono font-bold border border-sky-500/30">
+                  {selectedSectorObj.name}
+                </span>
+              )}
             </h2>
             <span className={`text-xs font-bold ${scalePublished ? 'text-emerald-600' : 'text-amber-500'}`}>
               {scalePublished ? '✓ Escala Publicada' : '⚠️ Modo Rascunho'}
@@ -964,7 +988,13 @@ export default function Escalas() {
                       <div className="font-black truncate leading-tight text-slate-900 dark:text-white">
                         {status.code === 'vaga' || status.code === 'perdida' ? `⚠️ ${status.label}` : formatFullName(prof?.name)}
                       </div>
-                      <div className="text-[9px] font-semibold opacity-70 truncate">{realSpec}</div>
+                      <div className="text-[9px] font-semibold opacity-70 truncate flex items-center justify-between">
+                        <span>{realSpec}</span>
+                        {/* Indicador sutil de setor caso esteja em todos os setores */}
+                        {!selectedSectorObj && (
+                          <span className="text-[8px] font-mono text-slate-400 opacity-60 truncate max-w-[60px]">{sectorMap[shift.sector_id]?.name}</span>
+                        )}
+                      </div>
                     </div>
                   );
                 };
