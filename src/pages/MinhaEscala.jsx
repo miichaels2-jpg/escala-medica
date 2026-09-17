@@ -117,20 +117,27 @@ export default function MinhaEscala() {
     if (!appLoading) loadMyShifts();
   }, [appLoading, loadMyShifts]);
 
-  // Cálculo da Remuneração por Plantão do Profissional
+  // Cálculo blindado da Remuneração do Profissional
   const remunConfig = useMemo(() => {
-    if (!currentProfessional) return { valorPorPlantao: 83.60, valorPorHora: 7.60, remunType: 'mensal', salarioBase: 1672 };
-
     let meta = {};
-    try {
-      const stored = window.localStorage.getItem(`prof_meta_${currentProfessional.id}`);
-      if (stored) meta = JSON.parse(stored);
-    } catch {}
+    if (currentProfessional?.id) {
+      try {
+        const stored = window.localStorage.getItem(`prof_meta_${currentProfessional.id}`);
+        if (stored) meta = JSON.parse(stored);
+      } catch {}
+    }
 
-    const remunType = meta.remuneration_type || currentProfessional.remuneration_type || 'mensal';
-    const salaryBase = meta.monthly_salary !== undefined ? safeNumber(meta.monthly_salary) : safeNumber(currentProfessional.monthly_salary, 1672);
-    const daily = meta.daily_rate !== undefined ? safeNumber(meta.daily_rate) : safeNumber(currentProfessional.daily_rate, 0);
-    const hourly = meta.hourly_rate !== undefined ? safeNumber(meta.hourly_rate) : safeNumber(currentProfessional.hourly_rate, 0);
+    const remunType = meta.remuneration_type || currentProfessional?.remuneration_type || 'mensal';
+    
+    let salaryBase = 1672;
+    if (meta.monthly_salary !== undefined && meta.monthly_salary !== null) {
+      salaryBase = safeNumber(meta.monthly_salary, 1672);
+    } else if (currentProfessional?.monthly_salary !== undefined && currentProfessional?.monthly_salary !== null) {
+      salaryBase = safeNumber(currentProfessional.monthly_salary, 1672);
+    }
+
+    let dailyRate = meta.daily_rate !== undefined ? safeNumber(meta.daily_rate) : safeNumber(currentProfessional?.daily_rate, 0);
+    let hourlyRate = meta.hourly_rate !== undefined ? safeNumber(meta.hourly_rate) : safeNumber(currentProfessional?.hourly_rate, 0);
 
     let valorPorPlantao = 0;
     let valorPorHora = 0;
@@ -139,14 +146,19 @@ export default function MinhaEscala() {
       valorPorPlantao = salaryBase / 20;
       valorPorHora = salaryBase / 220;
     } else if (remunType === 'diaria') {
-      valorPorPlantao = daily > 0 ? daily : (salaryBase / 20);
+      valorPorPlantao = dailyRate > 0 ? dailyRate : (salaryBase / 20);
       valorPorHora = valorPorPlantao / 12;
     } else {
-      valorPorHora = hourly > 0 ? hourly : (salaryBase / 220);
+      valorPorHora = hourlyRate > 0 ? hourlyRate : (salaryBase / 220);
       valorPorPlantao = valorPorHora * 12;
     }
 
-    return { valorPorPlantao, valorPorHora, remunType, salarioBase };
+    return { 
+      valorPorPlantao: safeNumber(valorPorPlantao, 83.6), 
+      valorPorHora: safeNumber(valorPorHora, 7.6), 
+      remunType, 
+      salarioBase 
+    };
   }, [currentProfessional]);
 
   // Classificação dos plantões com cálculo temporal
@@ -155,11 +167,11 @@ export default function MinhaEscala() {
     const nowMin = now.getMinutes();
     const nowTotalMin = nowHour * 60 + nowMin;
 
-    return shifts.map(s => {
+    return (shifts || []).map(s => {
       const [startH, startM] = (s.start_time || '07:00').split(':').map(Number);
       const [endH, endM] = (s.end_time || '19:00').split(':').map(Number);
-      const startMin = startH * 60 + startM;
-      let endMin = endH * 60 + endM;
+      const startMin = (startH || 7) * 60 + (startM || 0);
+      let endMin = (endH || 19) * 60 + (endM || 0);
       if (endMin <= startMin) endMin += 24 * 60;
 
       let effNow = nowTotalMin;
@@ -167,7 +179,6 @@ export default function MinhaEscala() {
 
       const sDate = (s.date || '').split('T')[0];
       const isPastDay = sDate < todayStr;
-      const isFutureDay = sDate > todayStr;
       const isToday = sDate === todayStr;
 
       let state = 'programado'; // 'ativo' | 'concluido' | 'programado'
@@ -211,13 +222,6 @@ export default function MinhaEscala() {
     return enrichedShifts.find(s => s.state === 'ativo') || null;
   }, [enrichedShifts]);
 
-  // Próximo Plantão Imediato
-  const nextImmediateShift = useMemo(() => {
-    return enrichedShifts
-      .filter(s => s.state === 'programado')
-      .sort((a, b) => `${a.date} ${a.start_time}`.localeCompare(`${b.date} ${b.start_time}`))[0] || null;
-  }, [enrichedShifts]);
-
   // Plantões da Competência Selecionada
   const monthShifts = useMemo(() => {
     return enrichedShifts.filter(s => (s.date || '').startsWith(monthPrefix));
@@ -244,7 +248,7 @@ export default function MinhaEscala() {
     return {
       cumpridos,
       futuros,
-      horas,
+      horas: Math.round(horas * 10) / 10,
       valorBruto,
       extrasQtd,
       totalMes: monthShifts.length
@@ -262,7 +266,7 @@ export default function MinhaEscala() {
         notes: `[DISPONIBILIZADO POR: ${currentProfessional?.name || user?.full_name}]`
       });
       alert('Plantão disponibilizado com sucesso no Mural de Oportunidades!');
-      await syncGlobalData();
+      if (typeof syncGlobalData === 'function') await syncGlobalData();
       await loadMyShifts();
     } catch (e) {
       alert('Erro ao passar plantão: ' + e.message);
@@ -440,7 +444,7 @@ export default function MinhaEscala() {
             {monthMetrics.cumpridos} <span className="text-xs font-bold text-slate-400">/ 20 meta</span>
           </div>
           <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-semibold">
-            {monthMetrics.extrasQtd > 0 ? `+${monthMetrics.extrasQtd} plantões extras` : `${20 - monthMetrics.cumpridos} para atingir a meta`}
+            {monthMetrics.extrasQtd > 0 ? `+${monthMetrics.extrasQtd} plantões extras` : `${Math.max(0, 20 - monthMetrics.cumpridos)} para atingir a meta`}
           </p>
         </Card>
 
