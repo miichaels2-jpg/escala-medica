@@ -1,15 +1,16 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  BarChart3, TrendingUp, TrendingDown, Users, DollarSign, Building2,
-  CalendarDays, Download, FileText, ShieldAlert, CheckCircle2,
-  Activity, Clock, Printer, ArrowUpRight, ArrowDownRight,
-  AlertTriangle, Stethoscope, FileSpreadsheet, RefreshCw, Search,
-  Filter, ChevronDown, ChevronUp, CircleDollarSign, CalendarX,
-  History, Settings2, X, ShieldCheck, FileSearch, Gauge
+  BarChart3, Users, DollarSign, Building2,
+  CalendarDays, ShieldAlert, CheckCircle2,
+  Activity, Clock, Printer as PrinterIcon, ArrowUpRight,
+  AlertTriangle, Stethoscope, FileSpreadsheet,
+  Filter, Check, Target, ShieldCheck
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -26,24 +27,19 @@ const STATUS_LABELS = {
   realizado: 'Realizado',
   em_andamento: 'Em andamento',
   cancelado: 'Cancelado',
-  vago: 'Vago',
-  rollback: 'Rollback',
+  vago: 'Vago'
 };
 
 const STATUS_COLORS = {
-  programado: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
-  confirmado: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-  pendente: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
-  concluida: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-  concluído: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-  realizado: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-  em_andamento: 'bg-sky-500/20 text-sky-400 border border-sky-500/30',
-  cancelado: 'bg-rose-500/20 text-rose-400 border border-rose-500/30',
-  vago: 'bg-rose-500/20 text-rose-400 border border-rose-500/30 font-black animate-pulse',
-  rollback: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
+  programado: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+  confirmado: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  pendente: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+  concluida: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  realizado: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  cancelado: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+  vago: 'bg-rose-500/10 text-rose-400 border-rose-500/30 font-black animate-pulse'
 };
 
-// Funções Auxiliares (Helper Functions) idênticas à arquitetura solicitada
 function safeNumber(value, fallback = 0) {
   if (value === null || value === undefined || value === '') return fallback;
   const number = typeof value === 'number' ? value : parseFloat(String(value).replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.'));
@@ -60,35 +56,29 @@ function formatNumber(value) {
 
 function formatDate(value) {
   if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
-}
-
-function formatDateTime(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString('pt-BR');
+  const clean = String(value).split('T')[0];
+  const parts = clean.split('-');
+  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  return clean;
 }
 
 function normalize(value) {
   return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
-function titleCase(value) {
+function toTitleCase(value) {
   if (!value) return '';
   return String(value).toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 }
 
 function getShiftName(shift) {
-  return shift.professional_name || shift.professional?.name || shift.professionalName || 'Plantão sem profissional';
+  return shift.professional_name || shift.professional?.name || shift.professionalName || '';
 }
 
 function getSectorName(shift, sectors) {
-  if (shift.sector_name) return shift.sector_name;
+  if (shift.sector_name && normalize(shift.sector_name) !== 'setor geral' && normalize(shift.sector_name) !== 'setor') return shift.sector_name;
   const sector = sectors.find(item => String(item.id) === String(shift.sector_id));
-  return sector?.name || 'Setor Geral';
+  return sector?.name || '';
 }
 
 function isVacant(shift) {
@@ -141,77 +131,54 @@ function getProfessionalCost(professional, hours) {
   return safeNumber(meta.monthly_salary ?? meta.monthlySalary ?? meta.salary ?? meta.salario, 0) / 20;
 }
 
-function downloadFile(content, fileName, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
 function csvCell(value) {
   return `"${String(value ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
-}
-
-function exportCSV(rows, fileName) {
-  if (!rows.length) return;
-  const headers = Object.keys(rows[0]);
-  const content = [
-    headers.map(csvCell).join(';'),
-    ...rows.map(row => headers.map(header => csvCell(row[header])).join(';')),
-  ].join('\n');
-  downloadFile('\uFEFF' + content, fileName, 'text/csv;charset=utf-8;');
 }
 
 function StatusBadge({ status }) {
   const key = normalize(status);
   return (
-    <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${STATUS_COLORS[key] || 'bg-slate-800 text-slate-300 border border-slate-700'}`}>
+    <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider border ${STATUS_COLORS[key] || 'bg-slate-800 text-slate-300 border-slate-700'}`}>
       {STATUS_LABELS[key] || status || 'Sem status'}
     </span>
   );
 }
 
 export default function Relatorios() {
-  const {
-    shifts = [], sectors = [], professionals = [], company, selectedUnitId,
-    units = [], auditLogs = [], refresh
-  } = useAppData();
+  const { shifts = [], sectors = [], professionals = [], company, selectedUnitId, units = [] } = useAppData();
 
   const [activeTab, setActiveTab] = useState('executivo');
   const [selectedMonth, setSelectedMonth] = useState(() => String(new Date().getMonth() + 1));
   const [selectedYear, setSelectedYear] = useState(() => String(new Date().getFullYear()));
   const [selectedSector, setSelectedSector] = useState('todos');
-  const [selectedProfessional, setSelectedProfessional] = useState('todos');
-  const [selectedStatus, setSelectedStatus] = useState('todos');
-  const [search, setSearch] = useState('');
-  const [dateStart, setDateStart] = useState('');
-  const [dateEnd, setDateEnd] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [detailMode, setDetailMode] = useState('todos');
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(new Date());
-  const [auditSearch, setAuditSearch] = useState('');
-  const [auditType, setAuditType] = useState('todos');
-  const [reportNotice, setReportNotice] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const currentYear = Number(selectedYear);
+  // Estados cruciais para o carregamento sob demanda corrigidos!
+  const [hasSearched, setHasSearched] = useState(false);
+  const [appliedFilters, setAppliedFilters] = useState({
+    month: String(new Date().getMonth() + 1),
+    year: String(new Date().getFullYear()),
+    sector: 'todos',
+    search: ''
+  });
 
-  const selectedUnit = useMemo(() => {
-    return units.find(unit => String(unit.id) === String(selectedUnitId));
-  }, [units, selectedUnitId]);
+  const handleApplyFilters = () => {
+    setAppliedFilters({
+      month: selectedMonth,
+      year: selectedYear,
+      sector: selectedSector,
+      search: searchQuery
+    });
+    setHasSearched(true);
+  };
 
   const profMap = useMemo(() => {
     const map = {};
-    professionals.forEach(professional => {
-      const meta = getProfessionalMeta(professional);
-      const merged = { ...professional, ...meta };
-      if (professional.id) map[String(professional.id)] = merged;
-      if (professional.name) map[normalize(professional.name)] = merged;
+    professionals.forEach(p => {
+      const meta = getProfessionalMeta(p);
+      const merged = { ...p, ...meta };
+      if (p.id) map[String(p.id)] = merged;
+      if (p.name) map[normalize(p.name)] = merged;
     });
     return map;
   }, [professionals]);
@@ -221,88 +188,110 @@ export default function Relatorios() {
   }, [profMap]);
 
   const filteredShifts = useMemo(() => {
+    if (!hasSearched) return [];
+    
+    const mStr = String(appliedFilters.month).padStart(2, '0');
+    const yStr = appliedFilters.year;
+    const term = normalize(appliedFilters.search);
+
     return shifts.filter(shift => {
       if (!shift) return false;
       if (normalize(shift.status) === 'cancelado') return false;
 
-      // Retira lixo do banco (setores orfãos ou vazios)
-      const secName = normalize(getSectorName(shift, sectors));
-      if (!secName || secName === 'setor') return false;
+      // EXTERMINA FANTASMAS E SETOR GERAL
+      const rawSecName = getSectorName(shift, sectors);
+      const secName = normalize(rawSecName);
+      if (!secName || secName === 'setor' || secName.includes('setor geral')) return false;
+
+      if (appliedFilters.sector !== 'todos' && String(shift.sector_id) !== String(appliedFilters.sector)) return false;
 
       const shiftDate = String(shift.date || shift.start_date || shift.data || '').slice(0, 10);
-      if (dateStart && shiftDate < dateStart) return false;
-      if (dateEnd && shiftDate > dateEnd) return false;
-      if (!dateStart && !dateEnd) {
-        if (shiftDate) {
-          const [year, month] = shiftDate.split('-').map(Number);
-          if (year !== currentYear || month !== Number(selectedMonth)) return false;
-        }
+      if (shiftDate) {
+        if (!shiftDate.includes(`${yStr}-${mStr}`)) return false;
       }
 
-      if (selectedSector !== 'todos' && String(shift.sector_id) !== String(selectedSector)) return false;
-      if (selectedProfessional !== 'todos' && String(shift.professional_id) !== String(selectedProfessional)) return false;
-      if (selectedStatus !== 'todos' && normalize(shift.status) !== normalize(selectedStatus)) return false;
-
-      const searchText = normalize(search);
-      if (searchText) {
-        const content = normalize([
-          getShiftName(shift), getSectorName(shift, sectors), shift.date, shift.start_time, shift.status
-        ].join(' '));
-        if (!content.includes(searchText)) return false;
+      if (term) {
+        const profName = normalize(getShiftName(shift));
+        if (!profName.includes(term) && !secName.includes(term)) return false;
       }
-
-      if (detailMode === 'vagos' && !isVacant(shift)) return false;
-      if (detailMode === 'preenchidos' && isVacant(shift)) return false;
 
       return true;
     });
-  }, [shifts, sectors, selectedMonth, currentYear, selectedSector, selectedProfessional, selectedStatus, search, dateStart, dateEnd, detailMode]);
+  }, [shifts, sectors, appliedFilters, hasSearched]);
 
-  const vacantShifts = useMemo(() => filteredShifts.filter(isVacant), [filteredShifts]);
-  const filledShifts = useMemo(() => filteredShifts.filter(shift => !isVacant(shift)), [filteredShifts]);
-  const totalHours = useMemo(() => filteredShifts.reduce((total, shift) => total + getShiftHours(shift), 0), [filteredShifts]);
+  const { totalShiftsCount, filledShiftsCount, vacantShiftsCount, vacantShiftItems } = useMemo(() => {
+    let filled = 0;
+    let vacantItems = [];
 
-  const coverageRate = useMemo(() => {
-    if (!filteredShifts.length) return 100;
-    return Math.round((filledShifts.length / filteredShifts.length) * 100);
-  }, [filteredShifts, filledShifts]);
+    filteredShifts.forEach(s => {
+      if (!isVacant(s)) {
+        filled++;
+      } else {
+        vacantItems.push(s);
+      }
+    });
+
+    return { 
+      totalShiftsCount: filteredShifts.length, 
+      filledShiftsCount: filled, 
+      vacantShiftsCount: filteredShifts.length - filled, 
+      vacantShiftItems: vacantItems 
+    };
+  }, [filteredShifts]);
+
+  const coverageRate = totalShiftsCount > 0 ? Math.round((filledShiftsCount / totalShiftsCount) * 100) : 100;
 
   const financialSummary = useMemo(() => {
-    let totalCost = 0, executedCost = 0, pendingCost = 0, vacantCost = 0;
+    let totalCost = 0, executedCost = 0, pendingCost = 0, vacantCost = 0, totalHours = 0;
+
     filteredShifts.forEach(shift => {
       const hours = getShiftHours(shift);
+      totalHours += hours;
       const professional = getProf(shift);
+      
       const cost = safeNumber(shift.total_cost ?? shift.cost ?? shift.valor_total, 0) || getProfessionalCost(professional, hours);
 
-      if (isVacant(shift)) vacantCost += cost;
-      else totalCost += cost;
-
-      const status = normalize(shift.status);
-      if (status === 'concluida' || status === 'concluido' || status === 'realizado') executedCost += cost;
-      else if (status === 'pendente') pendingCost += cost;
+      if (isVacant(shift)) {
+        vacantCost += cost;
+      } else {
+        totalCost += cost;
+        const status = normalize(shift.status);
+        if (status === 'concluida' || status === 'concluido' || status === 'realizado') {
+          executedCost += cost;
+        } else {
+          pendingCost += cost;
+        }
+      }
     });
+
     return { totalCost, executedCost, pendingCost, vacantCost, hours: totalHours };
-  }, [filteredShifts, getProf, totalHours]);
+  }, [filteredShifts, getProf]);
 
   const sectorMetrics = useMemo(() => {
     const map = {};
     sectors.forEach(sector => {
       const n = normalize(sector.name);
-      if (n && n !== 'setor') {
+      // Ignora setor fantasma da lista de metricas base
+      if (n && n !== 'setor' && !n.includes('setor geral')) {
         map[String(sector.id)] = { id: sector.id, name: titleCase(sector.name), total: 0, filled: 0, vacant: 0, hours: 0, cost: 0 };
       }
     });
 
     filteredShifts.forEach(shift => {
-      const id = String(shift.sector_id || 'geral');
+      const id = String(shift.sector_id || 'unmapped');
+      const sName = getSectorName(shift, sectors);
+      
       if (!map[id]) {
-        map[id] = { id, name: titleCase(getSectorName(shift, sectors)), total: 0, filled: 0, vacant: 0, hours: 0, cost: 0 };
+        map[id] = { id, name: titleCase(sName), total: 0, filled: 0, vacant: 0, hours: 0, cost: 0 };
       }
+      
       const item = map[id];
       item.total += 1;
       item.hours += getShiftHours(shift);
+      
       if (isVacant(shift)) item.vacant += 1;
       else item.filled += 1;
+      
       item.cost += getProfessionalCost(getProf(shift), getShiftHours(shift));
     });
 
@@ -313,17 +302,24 @@ export default function Relatorios() {
     const map = {};
     filteredShifts.forEach(shift => {
       if (isVacant(shift)) return;
+      
       const name = getShiftName(shift);
       const key = String(shift.professional_id || normalize(name));
+      
       if (!map[key]) {
-        map[key] = { id: shift.professional_id || key, name, shifts: 0, hours: 0, sectors: new Set(), cost: 0 };
+        map[key] = { id: shift.professional_id || key, name: titleCase(name), shifts: 0, hours: 0, sectors: new Set(), cost: 0 };
       }
+      
       const item = map[key];
       item.shifts += 1;
       item.hours += getShiftHours(shift);
-      item.sectors.add(titleCase(getSectorName(shift, sectors)));
+      
+      const sName = getSectorName(shift, sectors);
+      if (sName) item.sectors.add(titleCase(sName));
+      
       item.cost += getProfessionalCost(getProf(shift), getShiftHours(shift));
     });
+
     return Object.values(map).map(item => ({ ...item, sectors: Array.from(item.sectors).join(', ') })).sort((a, b) => b.shifts - a.shifts);
   }, [filteredShifts, sectors, getProf]);
 
@@ -335,11 +331,14 @@ export default function Relatorios() {
     professionals.forEach(professional => {
       const meta = getProfessionalMeta(professional);
       const expiry = meta.document_expiry || meta.documentExpiry || meta.valid_until || '';
+      
       if (!expiry) { missing += 1; return; }
       const expiryDate = new Date(expiry);
       if (Number.isNaN(expiryDate.getTime())) { missing += 1; return; }
+      
       expiryDate.setHours(0, 0, 0, 0);
       const diffDays = Math.round((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      
       if (diffDays < 0) expired += 1;
       else if (diffDays <= 30) nearExpiry += 1;
       else valid += 1;
@@ -348,220 +347,43 @@ export default function Relatorios() {
     return { valid, expired, nearExpiry, missing, total: professionals.length };
   }, [professionals]);
 
-  const auditRows = useMemo(() => {
-    const rows = [...(auditLogs || [])];
-    return rows.filter(row => {
-      const text = normalize([row.action, row.event, row.type, row.user_name, row.description].join(' '));
-      const searchMatch = !auditSearch || text.includes(normalize(auditSearch));
-      const typeMatch = auditType === 'todos' || normalize(row.action || row.event || row.type) === normalize(auditType);
-      return searchMatch && typeMatch;
-    }).sort((a, b) => new Date(b.created_at || b.createdAt || b.date || 0).getTime() - new Date(a.created_at || a.createdAt || a.date || 0).getTime());
-  }, [auditLogs, auditSearch, auditType]);
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      if (typeof refresh === 'function') await refresh();
-      setLastUpdated(new Date());
-    } finally {
-      setRefreshing(false);
+  const exportCSV = (rows, fileName) => {
+    if (!rows.length) {
+      alert('Nenhum dado para exportar com os filtros atuais.');
+      return;
     }
-  }, [refresh]);
+    const headers = Object.keys(rows[0]);
+    const content = [
+      headers.map(csvCell).join(';'),
+      ...rows.map(row => headers.map(header => csvCell(row[header])).join(';')),
+    ].join('\n');
 
-  useEffect(() => {
-    const interval = setInterval(() => setLastUpdated(new Date()), 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const handlePrint = () => window.print();
-
-  const exportShifts = () => {
-    const rows = filteredShifts.map(shift => ({
-      Data: formatDate(shift.date),
-      Setor: getSectorName(shift, sectors),
-      Profissional: getShiftName(shift),
-      Inicio: shift.start_time || '',
-      Fim: shift.end_time || '',
-      Horas: getShiftHours(shift),
-      Status: STATUS_LABELS[normalize(shift.status)] || shift.status || '',
-      Preenchido: isVacant(shift) ? 'Não' : 'Sim',
-      Valor: getProfessionalCost(getProf(shift), getShiftHours(shift)),
-    }));
-    exportCSV(rows, `relatorio-plantoes-${selectedYear}-${selectedMonth}.csv`);
-    setReportNotice('Relatório de plantões exportado.');
+    const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
-  const exportProfessionals = () => {
-    const rows = professionalMetrics.map(item => ({
-      Profissional: item.name, Plantões: item.shifts, Horas: item.hours, Setores: item.sectors, Custo: item.cost,
-    }));
-    exportCSV(rows, `produtividade-${selectedYear}-${selectedMonth}.csv`);
-    setReportNotice('Produtividade exportada.');
+  const handlePrint = () => {
+    if (!hasSearched) {
+      alert('Atenção: Aplique os filtros para renderizar a telemetria antes de gerar o PDF.');
+      return;
+    }
+    window.print();
   };
 
-  const exportSectors = () => {
-    const rows = sectorMetrics.map(item => ({
-      Setor: item.name, Total: item.total, Preenchidos: item.filled, Vagos: item.vacant,
-      Cobertura: item.total ? `${Math.round((item.filled / item.total) * 100)}%` : '100%',
-      Horas: item.hours, Custo: item.cost,
-    }));
-    exportCSV(rows, `setores-${selectedYear}-${selectedMonth}.csv`);
-    setReportNotice('Relatório de setores exportado.');
-  };
-
-  const exportFinancial = () => {
-    const rows = [
-      { Indicador: 'Custo total previsto', Valor: financialSummary.totalCost },
-      { Indicador: 'Custo realizado', Valor: financialSummary.executedCost },
-      { Indicador: 'Custo pendente', Valor: financialSummary.pendingCost },
-      { Indicador: 'Custo de vagas', Valor: financialSummary.vacantCost },
-      { Indicador: 'Total de horas', Valor: financialSummary.hours },
-    ];
-    exportCSV(rows, `financeiro-${selectedYear}-${selectedMonth}.csv`);
-    setReportNotice('Relatório financeiro exportado.');
-  };
-
-  const clearFilters = () => {
-    setSelectedSector('todos');
-    setSelectedProfessional('todos');
-    setSelectedStatus('todos');
-    setSearch('');
-    setDateStart('');
-    setDateEnd('');
-    setDetailMode('todos');
-  };
-
-  const periodLabel = dateStart || dateEnd ? `${dateStart ? formatDate(dateStart) : 'Início'} até ${dateEnd ? formatDate(dateEnd) : 'Fim'}` : `${MONTH_NAMES[Number(selectedMonth) - 1]} ${selectedYear}`;
+  const periodLabel = `${MONTH_NAMES[Number(appliedFilters.month) - 1]} ${appliedFilters.year}`;
 
   // ==========================================
-  // RENDER: FILTROS
-  // ==========================================
-  const renderFilters = () => (
-    <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-5 shadow-lg print:hidden">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-700/50 pb-4">
-        <div className="flex items-center gap-3">
-          <Filter className="h-5 w-5 text-teal-400" />
-          <span className="text-xs font-black uppercase tracking-widest text-teal-400">Filtros de Análise Analítica</span>
-          <span className="rounded-full bg-slate-800 border border-slate-700 px-3 py-1 text-[10px] font-bold text-slate-300">
-            Aplicando sobre {shifts.length} registros brutos
-          </span>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="rounded-xl bg-slate-800 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700 gap-2 text-xs">
-            <Settings2 className="h-3.5 w-3.5" /> {showFilters ? 'Ocultar Filtros' : 'Busca Avançada'}
-            {showFilters ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </Button>
-          <Button variant="outline" size="sm" onClick={clearFilters} className="rounded-xl bg-rose-500/10 border-rose-500/30 text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 gap-2 text-xs">
-            <X className="h-3.5 w-3.5" /> Limpar
-          </Button>
-        </div>
-      </div>
-
-      <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Mês</label>
-          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="h-11 rounded-xl bg-slate-900 border-slate-700 text-slate-200 text-xs font-bold">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-slate-800 border-slate-700 text-white z-[99999]">
-              {MONTH_NAMES.map((name, index) => (<SelectItem key={index + 1} value={String(index + 1)}>{name}</SelectItem>))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ano</label>
-          <Select value={selectedYear} onValueChange={setSelectedYear}>
-            <SelectTrigger className="h-11 rounded-xl bg-slate-900 border-slate-700 text-slate-200 text-xs font-bold">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-slate-800 border-slate-700 text-white z-[99999]">
-              {[2025, 2026, 2027, 2028].map(year => (<SelectItem key={year} value={String(year)}>{year}</SelectItem>))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Setor</label>
-          <Select value={selectedSector} onValueChange={setSelectedSector}>
-            <SelectTrigger className="h-11 rounded-xl bg-slate-900 border-slate-700 text-slate-200 text-xs font-bold">
-              <SelectValue placeholder="Todos os setores" />
-            </SelectTrigger>
-            <SelectContent className="bg-slate-800 border-slate-700 text-white z-[99999]">
-              <SelectItem value="todos">Todos os setores</SelectItem>
-              {sectors.filter(s => normalize(s.name) && normalize(s.name) !== 'setor').map(sector => (
-                <SelectItem key={sector.id} value={String(sector.id)}>{sector.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Busca Rápida</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-            <input
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              placeholder="Profissional ou setor..."
-              className="h-11 w-full rounded-xl border border-slate-700 bg-slate-900 pl-9 pr-3 text-xs text-white outline-none focus:border-teal-500"
-            />
-          </div>
-        </div>
-      </div>
-
-      {showFilters && (
-        <div className="mt-5 grid grid-cols-1 gap-4 border-t border-slate-700/50 pt-5 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Data Inicial</label>
-            <input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="h-11 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs text-slate-300 style-date" />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Data Final</label>
-            <input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)} className="h-11 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs text-slate-300 style-date" />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Profissional</label>
-            <Select value={selectedProfessional} onValueChange={setSelectedProfessional}>
-              <SelectTrigger className="h-11 rounded-xl bg-slate-900 border-slate-700 text-slate-200 text-xs font-bold">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-700 text-white z-[99999] max-h-60">
-                <SelectItem value="todos">Todos os profissionais</SelectItem>
-                {professionals.map(professional => (
-                  <SelectItem key={professional.id} value={String(professional.id)}>{professional.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status</label>
-            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger className="h-11 rounded-xl bg-slate-900 border-slate-700 text-slate-200 text-xs font-bold">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-700 text-white z-[99999]">
-                <SelectItem value="todos">Todos os status</SelectItem>
-                {Object.keys(STATUS_LABELS).map(status => (
-                  <SelectItem key={status} value={status}>{STATUS_LABELS[status]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-
-  // ==========================================
-  // RENDER: ABA EXECUTIVO (DASHBOARD MEDITECH STYLE)
+  // RENDERIZAÇÃO DAS ABAS CORPORATIVAS
   // ==========================================
   const renderExecutive = () => (
     <div className="space-y-6">
-      
-      {/* 4 CARDS NO TOPO */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* CARD 1 */}
         <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-5 shadow-lg relative overflow-hidden group print:border-slate-300 print:bg-white print:text-black print:shadow-none">
@@ -570,12 +392,11 @@ export default function Relatorios() {
           </div>
           <div className="relative">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 print:text-slate-600">Total de Plantões</p>
-            <p className="mt-2 text-3xl font-black text-white font-mono tracking-tight print:text-black">{formatNumber(filteredShifts.length)}</p>
+            <p className="mt-2 text-3xl font-black text-white font-mono tracking-tight print:text-black">{formatNumber(totalShiftsCount)}</p>
             <div className="mt-3 text-xs text-slate-400 font-bold flex items-center gap-2">
-              <span className="text-teal-400">{filledShifts.length} Preenchidos</span>
-              {vacantShifts.length > 0 && <span className="text-rose-400 px-2 py-0.5 bg-rose-500/10 rounded-full">{vacantShifts.length} Vagos</span>}
+              <span className="text-teal-400">{filledShiftsCount} Preenchidos</span>
+              {vacantShiftsCount > 0 && <span className="text-rose-400 px-2 py-0.5 bg-rose-500/10 rounded-full">{vacantShiftsCount} Vagos</span>}
             </div>
-            {/* Sparkline SVG Falso para dar aquele visual corporativo */}
             <div className="mt-4 h-6 w-full">
                <svg viewBox="0 0 100 20" className="w-full h-full stroke-teal-500 fill-none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                  <polyline points="0,15 20,5 40,10 60,2 80,12 100,5" />
@@ -594,7 +415,7 @@ export default function Relatorios() {
             <p className={`mt-2 text-3xl font-black font-mono tracking-tight ${coverageRate >= 98 ? 'text-emerald-400' : coverageRate >= 90 ? 'text-amber-400' : 'text-rose-400'} print:text-black`}>
               {coverageRate}%
             </p>
-            <div className="mt-3 text-xs text-slate-400 font-bold">Meta: &gt; 98%</div>
+            <div className="mt-3 text-xs text-slate-400 font-bold">Meta Hospitalar: &gt; 98%</div>
             <div className="mt-4 h-6 w-full">
                <svg viewBox="0 0 100 20" className="w-full h-full stroke-emerald-500 fill-none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                  <polyline points="0,18 20,15 40,8 60,5 80,2 100,0" />
@@ -609,9 +430,9 @@ export default function Relatorios() {
              <DollarSign className="w-24 h-24 -mt-4 -mr-4 text-amber-500" />
           </div>
           <div className="relative">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 print:text-slate-600">Custo Previsto</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 print:text-slate-600">Custo Projetado</p>
             <p className="mt-2 text-3xl font-black text-amber-400 font-mono tracking-tight print:text-black">{formatCurrency(financialSummary.totalCost)}</p>
-            <div className="mt-3 text-xs text-slate-400 font-bold">{formatNumber(totalHours)} Horas Assistenciais</div>
+            <div className="mt-3 text-xs text-slate-400 font-bold">{formatNumber(financialSummary.hours)} Horas Assistenciais</div>
             <div className="mt-4 h-6 w-full">
                <svg viewBox="0 0 100 20" className="w-full h-full stroke-amber-500 fill-none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                  <polyline points="0,15 20,18 40,12 60,8 80,10 100,2" />
@@ -626,7 +447,7 @@ export default function Relatorios() {
              <ShieldAlert className="w-24 h-24 -mt-4 -mr-4 text-rose-500" />
           </div>
           <div className="relative">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 print:text-slate-600">Compliance</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 print:text-slate-600">Compliance Doc</p>
             <p className="mt-2 text-3xl font-black text-white font-mono tracking-tight print:text-black">
                {Math.round(((credentialAudit.valid + credentialAudit.nearExpiry) / Math.max(1, credentialAudit.total)) * 100)}%
             </p>
@@ -638,33 +459,15 @@ export default function Relatorios() {
         </Card>
       </div>
 
-      {/* BLOCO CENTRAL MEDITECH: DONUT CHART + BARRAS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 print:block">
-        
-        {/* DONUT CHART (BED CAPACITY OVERVIEW STYLE) */}
+        {/* DONUT CHART */}
         <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 shadow-lg flex flex-col items-center justify-center print:border-slate-300 print:bg-white print:shadow-none print:break-inside-avoid">
           <h3 className="w-full text-left text-xs font-black uppercase tracking-widest text-slate-400 mb-6 print:text-slate-600">Visão Geral de Capacidade</h3>
           
           <div className="relative w-48 h-48">
             <svg viewBox="0 0 36 36" className="w-full h-full">
-              {/* Círculo Fundo (Vagos / Falta) */}
-              <path
-                className="text-slate-800 print:text-slate-200"
-                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3.5"
-              />
-              {/* Círculo Preenchido (Verde Teal) */}
-              <path
-                className={`${coverageRate === 100 ? 'text-teal-400' : 'text-teal-500'} print:text-slate-800`}
-                strokeDasharray={`${coverageRate}, 100`}
-                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3.5"
-                strokeLinecap="round"
-              />
+              <path className="text-slate-800 print:text-slate-200" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3.5" />
+              <path className={`${coverageRate === 100 ? 'text-teal-400' : 'text-teal-500'} print:text-slate-800`} strokeDasharray={`${coverageRate}, 100`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest print:text-slate-600">Total Turnos</span>
@@ -712,7 +515,7 @@ export default function Relatorios() {
                       ></div>
                    </div>
                    <div className="text-[9px] font-black uppercase text-slate-300 text-center leading-tight truncate w-full print:text-slate-700" title={sec.name}>
-                     {sec.name.split(' ')[0]} {/* Pega a primeira palavra pra caber */}
+                     {sec.name.split(' ')[0]}
                    </div>
                 </div>
               );
@@ -724,7 +527,6 @@ export default function Relatorios() {
         </Card>
       </div>
 
-      {/* ALERTAS CRÍTICOS E DETALHAMENTO DE VAGAS NA TELA INICIAL */}
       {vacantShiftItems.length > 0 && (
         <Card className="rounded-3xl border border-rose-500/30 bg-rose-950/20 p-6 shadow-lg print:border-rose-300 print:bg-white print:shadow-none print:break-inside-avoid">
           <div className="flex items-center gap-3 border-b border-rose-500/20 pb-4">
@@ -752,13 +554,9 @@ export default function Relatorios() {
           </div>
         </Card>
       )}
-
     </div>
   );
 
-  // ==========================================
-  // RENDER: ABA ESCALAS
-  // ==========================================
   const renderScales = () => (
     <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 shadow-lg space-y-4 print:border-slate-300 print:bg-white print:shadow-none">
       <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
@@ -805,9 +603,6 @@ export default function Relatorios() {
     </Card>
   );
 
-  // ==========================================
-  // RENDER: ABA PROFISSIONAIS
-  // ==========================================
   const renderProfessionals = () => (
     <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 shadow-lg space-y-4 print:border-slate-300 print:bg-white print:shadow-none">
       <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
@@ -849,9 +644,6 @@ export default function Relatorios() {
     </Card>
   );
 
-  // ==========================================
-  // RENDER: ABA FINANCEIRO
-  // ==========================================
   const renderFinancial = () => (
     <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 shadow-lg space-y-4 print:border-slate-300 print:bg-white print:shadow-none">
       <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
@@ -905,14 +697,11 @@ export default function Relatorios() {
     </Card>
   );
 
-  // ==========================================
-  // RENDER: ABA GOVERNANÇA E CRM
-  // ==========================================
   const renderGovernance = () => (
     <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 shadow-lg space-y-4 print:border-slate-300 print:bg-white print:shadow-none">
       <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
         <h3 className="font-black text-sm uppercase tracking-widest text-indigo-400 print:text-slate-700 flex items-center gap-2">
-          <ShieldCheck className="w-5 h-5" /> Conformidade de Credenciais e Documentação
+          <ShieldPass className="w-5 h-5" /> Conformidade de Credenciais e Documentação
         </h3>
       </div>
 
@@ -954,7 +743,7 @@ export default function Relatorios() {
   );
 
   return (
-    <div className="min-h-screen bg-[#0B1120] text-slate-100 p-4 md:p-8 space-y-6 font-sans print:bg-white print:text-slate-900 print:p-0">
+    <div className="min-h-screen bg-[#0B1120] text-slate-100 p-4 md:p-8 space-y-6 font-sans print:bg-white print:text-slate-900 print:p-0 print:m-0">
       
       {/* TOPO EXECUTIVO PREMIUM MEDITECH */}
       <div className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 md:p-8 text-white shadow-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-6 print:hidden">
@@ -972,21 +761,21 @@ export default function Relatorios() {
 
         <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
           <Button 
-            onClick={() => handleExportCSV(filteredShifts.map(s => ({
-              Data: formatDate(s.date), Setor: getSectorName(s, sectors), Profissional: s.professional_name || 'Vago',
+            onClick={() => exportCSV(filteredShifts.map(s => ({
+              Data: formatDate(s.date), Setor: getSectorName(s, sectors), Profissional: getShiftName(s),
               Inicio: s.start_time || '', Fim: s.end_time || '', Status: s.status || 'Ativo', Horas: getShiftHours(s)
             })), `dossie_executivo_${appliedFilters.month}_${appliedFilters.year}.csv`)}
             variant="outline" disabled={!hasSearched}
             className="w-full sm:w-auto h-11 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 rounded-2xl border-slate-700 gap-2 cursor-pointer disabled:opacity-50 shadow-md"
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Exportar Planilha (.csv)
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Exportar Excel (.csv)
           </Button>
 
           <Button 
             onClick={handlePrint} disabled={!hasSearched}
             className="w-full sm:w-auto h-11 bg-teal-600 hover:bg-teal-500 text-white font-black text-xs px-6 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105 disabled:opacity-50 border border-teal-500"
           >
-            <PrinterIcon className="w-4 h-4" /> Dossiê Executivo (PDF)
+            <PrinterIcon className="w-4 h-4" /> Imprimir Dossiê (PDF)
           </Button>
         </div>
       </div>
@@ -1007,7 +796,7 @@ export default function Relatorios() {
           <span className="text-xs font-black uppercase tracking-wider text-teal-400 flex items-center gap-2">
             <Filter className="w-4 h-4 text-teal-400" /> Parâmetros Analíticos
           </span>
-          <span className="text-[10px] text-amber-400 font-bold bg-amber-500/10 px-3 py-1 rounded-md border border-amber-500/30">
+          <span className="text-[11px] text-amber-400 font-bold bg-amber-500/10 px-3 py-1 rounded-md border border-amber-500/30">
             ⚠️ Aplique os filtros para renderizar a telemetria
           </span>
         </div>
@@ -1047,7 +836,7 @@ export default function Relatorios() {
                 <SelectItem value="todos">🏥 Todos (Consolidado)</SelectItem>
                 {(sectors || []).map(s => {
                   const sName = (s.name || '').trim();
-                  if (!sName || sName.toLowerCase() === 'setor') return null;
+                  if (!sName || sName.toLowerCase() === 'setor' || sName.toLowerCase() === 'setor geral') return null;
                   return <SelectItem key={s.id} value={String(s.id)}>{sName}</SelectItem>;
                 })}
               </SelectContent>
