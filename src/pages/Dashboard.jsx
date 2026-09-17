@@ -156,7 +156,6 @@ export default function Painel() {
     return { profById: byId, profByName: byName };
   }, [professionals]);
 
-  // Ciclo de vida dos plantões com cálculo de horas restantes
   const todayShifts = useMemo(() => {
     const nowHour = currentTime.getHours();
     const nowMin = currentTime.getMinutes();
@@ -204,7 +203,7 @@ export default function Painel() {
   const upcomingList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'upcoming'), [todayShifts]);
   const concludedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'concluded'), [todayShifts]);
 
-  // Vagas críticas com navegação direta
+  // Vagas críticas
   const vacantShifts = useMemo(() => {
     return (shifts || [])
       .filter((s) => {
@@ -220,7 +219,7 @@ export default function Painel() {
       }));
   }, [shifts, todayStr, currentTime, sectors]);
 
-  // Custo Operacional Realizado
+  // Custo Operacional
   const todayFinancials = useMemo(() => {
     let executedValue = 0;
     let plannedValue = 0;
@@ -258,7 +257,7 @@ export default function Painel() {
     return { executedValue, plannedValue, totalToday: plannedValue };
   }, [todayShifts, profById, profByName]);
 
-  // Capacidade dos Setores
+  // Setores com contagem real
   const sectorsCoverage = useMemo(() => {
     const map = {};
     (sectors || []).forEach((sec) => {
@@ -314,7 +313,7 @@ export default function Painel() {
     return Math.max(0, Math.min(100, Math.round((filled / todayShifts.length) * 100)));
   }, [todayShifts, vacantShifts, todayStr]);
 
-  // Curva de Demanda 24h (Gráfico de Distribuição dos Plantões ao Longo do Dia)
+  // Curva 24h
   const hourlyCurveData = useMemo(() => {
     const buckets = [
       { label: '06h', count: 0 }, { label: '08h', count: 0 }, { label: '10h', count: 0 },
@@ -333,10 +332,13 @@ export default function Painel() {
     return buckets.map(b => ({ ...b, height: Math.round((b.count / max) * 100) }));
   }, [todayShifts]);
 
-  // Ação Cirúrgica: Clicar no alerta crítico e ir direto com o setor filtrado
+  // CLIQUE DIRETO NA VAGA DO ALERTA: Salva o ID da vaga para abrir o modal direto na Escala
   const handleResolveAlert = (vs) => {
     if (vs?.sector_id) {
       window.localStorage.setItem('scale_filter_sector_id', String(vs.sector_id));
+    }
+    if (vs?.id) {
+      window.localStorage.setItem('scale_auto_open_shift_id', String(vs.id));
     }
     navigate('/escalas');
   };
@@ -351,18 +353,18 @@ export default function Painel() {
     if (document.fullscreenElement) await document.exitFullscreen?.();
   };
 
-  // ==========================================
-  // MODO TV CCO
-  // ==========================================
+  // =========================================================================
+  // MODO TV CCO (SEM ESPAÇO VAZIO: 100% DA ALTURA PREENCHIDA)
+  // =========================================================================
   if (tvMode) {
     return (
-      <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col justify-between p-6 lg:p-8 select-none overflow-hidden font-sans">
+      <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col justify-between p-5 lg:p-7 select-none overflow-hidden font-sans">
         
-        {/* TOPO TV CCO */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-5 shrink-0">
+        {/* TOPO TV */}
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4 shrink-0">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-2xl ring-1 ring-white/20">
-              <Radio className="w-8 h-8 animate-pulse text-white" />
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-2xl">
+              <Radio className="w-7 h-7 animate-pulse text-white" />
             </div>
             <div>
               <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.25em] text-sky-400">
@@ -370,56 +372,56 @@ export default function Painel() {
                 <span>•</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /> CCO AO VIVO</span>
               </div>
-              <h1 className="text-3xl lg:text-5xl font-black tracking-tight text-white mt-1">
+              <h1 className="text-2xl lg:text-4xl font-black tracking-tight text-white mt-0.5">
                 Centro de Comando & Situação
               </h1>
-              <p className="text-xs text-slate-400 font-bold mt-0.5">
+              <p className="text-xs text-slate-400 font-bold">
                 {fmtDateLong(currentTime)}, {fmtDate(todayStr)} · Telemetria em Tempo Real
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-5">
-            <div className={`px-5 py-3 rounded-2xl border flex items-center gap-3 ${
+            <div className={`px-4 py-2.5 rounded-2xl border flex items-center gap-3 ${
               vacantShifts.length > 0 
                 ? 'bg-rose-500/10 border-rose-500/40 text-rose-300' 
                 : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
             }`}>
-              <div className={`w-3.5 h-3.5 rounded-full ${vacantShifts.length > 0 ? 'bg-rose-500 animate-ping' : 'bg-emerald-400'}`} />
+              <div className={`w-3 h-3 rounded-full ${vacantShifts.length > 0 ? 'bg-rose-500 animate-ping' : 'bg-emerald-400'}`} />
               <div>
                 <div className="text-xs font-black uppercase tracking-wider">
                   {vacantShifts.length > 0 ? 'Alerta Assistencial' : 'Operação 100% Estável'}
                 </div>
-                <div className="text-[11px] font-bold opacity-80">
+                <div className="text-[10px] font-bold opacity-80">
                   {vacantShifts.length > 0 ? `${vacantShifts.length} vaga(s) desocupada(s)` : 'Todos os postos cobertos'}
                 </div>
               </div>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 px-6 py-3 rounded-2xl text-right">
-              <div className="text-3xl lg:text-5xl font-black font-mono tracking-tight text-cyan-400">
+            <div className="bg-slate-900 border border-slate-800 px-5 py-2.5 rounded-2xl text-right">
+              <div className="text-2xl lg:text-4xl font-black font-mono tracking-tight text-cyan-400">
                 {currentTime.toLocaleTimeString('pt-BR')}
               </div>
-              <div className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Horário Oficial CCO</div>
+              <div className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Horário Oficial CCO</div>
             </div>
 
             <button 
               title="Sair da tela cheia" 
               onClick={closeTvMode} 
-              className="p-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors"
+              className="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors"
             >
-              <Minimize2 className="h-6 w-6" />
+              <Minimize2 className="h-5 w-5" />
             </button>
           </div>
         </div>
 
-        {/* CORPO CENTRAL PREENCHIDO E IMPACTANTE */}
-        <div className="flex-1 my-6 grid grid-cols-1 lg:grid-cols-4 gap-6 overflow-hidden">
+        {/* CORPO CENTRAL 100% PREENCHIDO (SEM ESPAÇOS EM BRANCO) */}
+        <div className="flex-1 my-4 grid grid-cols-1 lg:grid-cols-4 gap-5 overflow-hidden">
           
-          {/* COLUNA 1 & 2: MONITOR DE TODOS OS SETORES */}
-          <div className="lg:col-span-2 flex flex-col justify-between rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl backdrop-blur-md">
-            <div>
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+          {/* COLUNA 1 & 2: CAPACIDADE E COBERTURA DOS SETORES (FLEX-1 AUTO AJUSTÁVEL) */}
+          <div className="lg:col-span-2 flex flex-col justify-between rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-2xl backdrop-blur-md overflow-hidden">
+            <div className="flex flex-col h-full overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0">
                 <div className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-sky-400">
                   <Building2 className="w-5 h-5" /> Capacidade e Cobertura dos Setores
                 </div>
@@ -428,7 +430,8 @@ export default function Painel() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-h-[500px] overflow-y-auto pr-1">
+              {/* Grid que expande até o final da tela */}
+              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto pr-1 pb-1">
                 {sectorsCoverage.map((sec) => {
                   const hasShifts = sec.total > 0;
                   const percent = hasShifts ? Math.round((sec.active / sec.total) * 100) : 0;
@@ -437,76 +440,80 @@ export default function Painel() {
                   return (
                     <div 
                       key={sec.id}
-                      className={`p-4 rounded-2xl border transition-all ${
+                      className={`p-3.5 rounded-2xl border flex flex-col justify-between transition-all ${
                         hasVacant
                           ? 'border-rose-500/80 bg-rose-950/30 shadow-lg'
                           : sec.active > 0
                           ? 'border-emerald-500/50 bg-emerald-950/20'
-                          : 'border-slate-800 bg-slate-900/40 opacity-70'
+                          : 'border-slate-800/80 bg-slate-900/40'
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-black text-base text-white truncate">{sec.name}</h3>
-                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase ${
-                          hasVacant 
-                            ? 'bg-rose-500 text-white font-black animate-pulse' 
-                            : sec.active > 0 
-                            ? 'bg-emerald-500/20 text-emerald-300' 
-                            : 'bg-slate-800 text-slate-500'
-                        }`}>
-                          {hasShifts ? `${sec.active} ativo(s)` : 'Sem plantão'}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between text-xs text-slate-400 mt-2 font-medium">
-                        <span>Ocupação do posto</span>
-                        <strong className="text-white font-mono">{sec.active} / {sec.total} turnos</strong>
-                      </div>
-
-                      <div className="w-full h-2 bg-slate-800 rounded-full mt-2 overflow-hidden">
-                        <div 
-                          className={`h-full transition-all duration-500 ${hasVacant ? 'bg-rose-500' : sec.active > 0 ? 'bg-emerald-400' : 'bg-transparent'}`}
-                          style={{ width: `${hasShifts ? Math.min(100, Math.max(6, percent)) : 0}%` }}
-                        />
-                      </div>
-
-                      {hasVacant ? (
-                        <div className="text-[11px] text-rose-400 font-black mt-2 flex items-center gap-1">
-                          <AlertTriangle className="w-3.5 h-3.5" /> {sec.vacant} vaga(s) com desfalque médico
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-black text-sm text-white truncate max-w-[150px]">{sec.name}</h3>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${
+                            hasVacant 
+                              ? 'bg-rose-500 text-white font-black animate-pulse' 
+                              : sec.active > 0 
+                              ? 'bg-emerald-500/20 text-emerald-300' 
+                              : 'bg-slate-800 text-slate-400'
+                          }`}>
+                            {hasShifts ? `${sec.active} ativo(s)` : 'Sem plantão'}
+                          </span>
                         </div>
-                      ) : (
-                        <div className="text-[11px] text-slate-400 mt-2 font-semibold">
-                          {hasShifts ? `${sec.upcoming} plantonista(s) a assumir a seguir` : 'Nenhum plantão agendado para hoje'}
+
+                        <div className="flex items-center justify-between text-xs text-slate-400 mt-2 font-medium">
+                          <span>Ocupação do posto</span>
+                          <strong className="text-white font-mono">{sec.active} / {sec.total} turnos</strong>
                         </div>
-                      )}
+
+                        <div className="w-full h-2 bg-slate-800 rounded-full mt-2 overflow-hidden">
+                          <div 
+                            className={`h-full transition-all duration-500 ${hasVacant ? 'bg-rose-500' : sec.active > 0 ? 'bg-emerald-400' : 'bg-transparent'}`}
+                            style={{ width: `${hasShifts ? Math.min(100, Math.max(6, percent)) : 0}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="pt-2">
+                        {hasVacant ? (
+                          <div className="text-[11px] text-rose-400 font-black flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5" /> {sec.vacant} vaga(s) com desfalque médico
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-slate-400 font-semibold">
+                            {hasShifts ? `${sec.upcoming} plantonista(s) a assumir a seguir` : 'Nenhum plantão agendado para hoje'}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
               </div>
-            </div>
 
-            <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 font-bold">
-              <span>Taxa de Cobertura Global da Unidade: <b className="text-white font-mono text-sm">{globalFillRate}%</b></span>
-              <span className="text-sky-400">Auditoria Automática Contínua</span>
+              <div className="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 font-bold shrink-0">
+                <span>Taxa de Cobertura Global da Unidade: <b className="text-white font-mono text-sm">{globalFillRate}%</b></span>
+                <span className="text-sky-400">Auditoria Automática Contínua</span>
+              </div>
             </div>
           </div>
 
-          {/* COLUNA 3: QUEM ESTÁ ATIVO NO POSTO NESTE MOMENTO */}
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+          {/* COLUNA 3: ATIVOS NO POSTO AGORA */}
+          <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-2xl flex flex-col justify-between overflow-hidden">
+            <div className="flex flex-col h-full overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0">
                 <span className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" /> Ativos no Posto Agora ({activeNowList.length})
                 </span>
                 <span className="text-[10px] font-mono text-slate-400">EM ATENDIMENTO</span>
               </div>
 
-              <div className="space-y-2.5 max-h-[480px] overflow-y-auto pr-1">
+              <div className="flex-1 space-y-2.5 overflow-y-auto pr-1 pb-1">
                 {activeNowList.length === 0 ? (
-                  <div className="py-16 text-center text-xs text-slate-500">Nenhum plantonista em atendimento neste minuto.</div>
+                  <div className="py-20 text-center text-xs text-slate-500">Nenhum plantonista em atendimento neste minuto.</div>
                 ) : (
                   activeNowList.map(s => (
-                    <div key={s.id} className="p-3.5 rounded-2xl bg-slate-950 border border-emerald-500/30 flex items-center justify-between shadow-md">
+                    <div key={s.id} className="p-3 rounded-2xl bg-slate-950 border border-emerald-500/30 flex items-center justify-between shadow-md">
                       <div className="min-w-0 pr-2">
                         <span className="text-[10px] text-emerald-400 font-mono font-bold block uppercase">{toTitleCase(s.sector_name)}</span>
                         <div className="font-black text-sm text-white truncate">{toTitleCase(s.professional_name)}</div>
@@ -519,71 +526,73 @@ export default function Painel() {
                   ))
                 )}
               </div>
-            </div>
 
-            <div className="pt-3 border-t border-slate-800 text-[10px] text-slate-500 flex justify-between font-mono">
-              <span>Sincronização biométrica</span>
-              <span className="text-emerald-400">Presença validada</span>
+              <div className="pt-2 border-t border-slate-800 text-[10px] text-slate-500 flex justify-between font-mono shrink-0">
+                <span>Sincronização biométrica</span>
+                <span className="text-emerald-400">Presença validada</span>
+              </div>
             </div>
           </div>
 
-          {/* COLUNA 4: PRÓXIMA RENDIÇÃO E CUSTO DIÁRIO */}
-          <div className="flex flex-col justify-between gap-5">
-            <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-2xl flex-1 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+          {/* COLUNA 4: PRÓXIMA PASSAGEM & CUSTO DIÁRIO */}
+          <div className="flex flex-col justify-between gap-4 overflow-hidden">
+            <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-2xl flex-1 flex flex-col justify-between overflow-hidden">
+              <div className="flex flex-col h-full overflow-hidden">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-2.5 shrink-0">
                   <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-sky-400">
                     <ArrowRightLeft className="w-4 h-4" /> Próxima Passagem
                   </div>
                   {nextHandover && (
-                    <span className="text-xs font-mono font-black px-2.5 py-1 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                    <span className="text-xs font-mono font-black px-2 py-0.5 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-500/30">
                       {nextHandover.targetTime}
                     </span>
                   )}
                 </div>
 
-                {nextHandover ? (
-                  <div className="space-y-3">
-                    <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
-                      <span className="text-[10px] uppercase font-bold text-emerald-400 block mb-1">
-                        Equipe que Assume ({nextHandover.incoming.length})
-                      </span>
-                      {nextHandover.incoming.slice(0, 3).map((s) => (
-                        <div key={s.id} className="text-xs flex items-center justify-between py-0.5">
-                          <span className="font-bold text-white truncate max-w-[130px]">{toTitleCase(s.professional_name) || 'Vaga Aberta'}</span>
-                          <span className="text-[10px] text-slate-400">{toTitleCase(s.sector_name)}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
-                        Equipe que Entrega ({nextHandover.outgoing.length})
-                      </span>
-                      {nextHandover.outgoing.length === 0 ? (
-                        <span className="text-xs text-slate-500 italic">Nenhum plantão encerrando às {nextHandover.targetTime}.</span>
-                      ) : (
-                        nextHandover.outgoing.slice(0, 3).map((s) => (
+                <div className="flex-1 overflow-y-auto pr-1">
+                  {nextHandover ? (
+                    <div className="space-y-2.5">
+                      <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
+                        <span className="text-[10px] uppercase font-bold text-emerald-400 block mb-1">
+                          Equipe que Assume ({nextHandover.incoming.length})
+                        </span>
+                        {nextHandover.incoming.slice(0, 4).map((s) => (
                           <div key={s.id} className="text-xs flex items-center justify-between py-0.5">
-                            <span className="font-medium text-slate-300 truncate max-w-[130px]">{toTitleCase(s.professional_name)}</span>
-                            <span className="text-[10px] text-slate-500">{toTitleCase(s.sector_name)}</span>
+                            <span className="font-bold text-white truncate max-w-[130px]">{toTitleCase(s.professional_name) || 'Vaga Aberta'}</span>
+                            <span className="text-[10px] text-slate-400">{toTitleCase(s.sector_name)}</span>
                           </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="py-8 text-center text-xs text-slate-500">Nenhuma troca prevista nas próximas 2h.</div>
-                )}
-              </div>
+                        ))}
+                      </div>
 
-              <div className="text-[10px] text-slate-500 pt-2 border-t border-slate-800 flex items-center justify-between">
-                <span>Rendimento auditado</span>
-                <span className="text-sky-400 font-mono">CCO Inteligente</span>
+                      <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">
+                          Equipe que Entrega ({nextHandover.outgoing.length})
+                        </span>
+                        {nextHandover.outgoing.length === 0 ? (
+                          <span className="text-xs text-slate-500 italic">Nenhum plantão encerrando às {nextHandover.targetTime}.</span>
+                        ) : (
+                          nextHandover.outgoing.slice(0, 4).map((s) => (
+                            <div key={s.id} className="text-xs flex items-center justify-between py-0.5">
+                              <span className="font-medium text-slate-300 truncate max-w-[130px]">{toTitleCase(s.professional_name)}</span>
+                              <span className="text-[10px] text-slate-500">{toTitleCase(s.sector_name)}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="py-10 text-center text-xs text-slate-500">Nenhuma troca prevista nas próximas 2h.</div>
+                  )}
+                </div>
+
+                <div className="text-[10px] text-slate-500 pt-2 border-t border-slate-800 flex items-center justify-between shrink-0">
+                  <span>Rendimento auditado</span>
+                  <span className="text-sky-400 font-mono">CCO Inteligente</span>
+                </div>
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-5 shadow-2xl space-y-2">
+            <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-4 shadow-2xl space-y-1.5 shrink-0">
               <span className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
                 <DollarSign className="w-4 h-4" /> Custo Operacional Hoje
               </span>
@@ -598,7 +607,7 @@ export default function Painel() {
           </div>
         </div>
 
-        {/* RODAPÉ TV CCO */}
+        {/* RODAPÉ TV */}
         <div className="border-t border-slate-800 pt-3 shrink-0 flex items-center justify-between text-xs text-slate-400 font-bold">
           <div className="flex items-center gap-6">
             <span className="flex items-center gap-2 text-white">
@@ -620,13 +629,13 @@ export default function Painel() {
     );
   }
 
-  // ==========================================
-  // DASHBOARD PRINCIPAL
-  // ==========================================
+  // =========================================================================
+  // DASHBOARD PRINCIPAL EXECUTIVO
+  // =========================================================================
   return (
-    <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
+    <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-900/40 min-h-screen text-slate-900 dark:text-slate-100">
       
-      {/* 1. HEADER IMPACTANTE SEM BOTÕES REDUNDANTES */}
+      {/* 1. HEADER EXECUTIVO COM ATIVAÇÃO DO MODO TV */}
       <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white p-6 md:p-8 rounded-3xl border border-slate-800 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-sky-400 font-black">
@@ -640,7 +649,6 @@ export default function Painel() {
           </p>
         </div>
 
-        {/* APENAS O BOTÃO HERO DO MODO TV */}
         <Button 
           onClick={openTvMode} 
           className="bg-sky-600 hover:bg-sky-500 text-white font-black text-xs h-12 px-6 rounded-2xl shadow-xl gap-2.5 transition-all hover:scale-105 shrink-0"
@@ -649,7 +657,7 @@ export default function Painel() {
         </Button>
       </div>
 
-      {/* 2. ALERTA CRÍTICO COM CLIQUE DIRETO NA SEÇÃO DO PROBLEMA */}
+      {/* 2. ALERTA CRÍTICO COM CLIQUE DIRETO NA VAGA ESPECÍFICA */}
       {vacantShifts.length > 0 ? (
         <div className="p-5 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-900 dark:text-rose-200 shadow-lg space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -662,13 +670,12 @@ export default function Painel() {
                   Alerta Crítico: {vacantShifts.length} vaga(s) sem plantonista hoje/amanhã
                 </strong>
                 <span className="text-xs text-rose-700 dark:text-rose-300">
-                  Clique no posto abaixo para abrir a escala diretamente na seção com desfalque:
+                  Clique na vaga abaixo para abrir a escala e preencher imediatamente:
                 </span>
               </div>
             </div>
           </div>
 
-          {/* CHIPS COM LINK DIRETO PARA A SEÇÃO */}
           <div className="flex flex-wrap gap-2 pt-2 border-t border-rose-200 dark:border-rose-900/50">
             {vacantShifts.map((vs) => (
               <button 
@@ -771,10 +778,10 @@ export default function Painel() {
         </Card>
       </div>
 
-      {/* 4. BLOCO DE GRÁFICOS VISUAIS: OCUPAÇÃO REAL E RADIAL DE EFICIÊNCIA */}
+      {/* 4. BLOCO DE GRÁFICOS VISUAIS: OCUPAÇÃO REAL COM PALETA CLEAN E RADIAL */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* GRÁFICO 1: OCUPAÇÃO REAL DOS SETORES (0/0 CORRIGIDO) */}
+        {/* GRÁFICO 1: OCUPAÇÃO REAL COM CORES SOFISTICADAS */}
         <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm lg:col-span-2 space-y-5">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
             <div>
@@ -799,10 +806,10 @@ export default function Painel() {
                   key={sec.id}
                   className={`p-4 rounded-2xl border transition-all ${
                     hasVacant
-                      ? 'border-rose-300 bg-rose-50/40 dark:border-rose-900/60 dark:bg-rose-950/20 shadow-sm'
+                      ? 'border-rose-300 bg-rose-50/50 dark:border-rose-900/60 dark:bg-rose-950/20 shadow-sm'
                       : sec.active > 0
-                      ? 'border-emerald-300 bg-emerald-50/30 dark:border-emerald-900/60 dark:bg-emerald-950/20'
-                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40 opacity-75'
+                      ? 'border-emerald-200 bg-emerald-50/30 dark:border-emerald-900/50 dark:bg-emerald-950/20'
+                      : 'border-slate-200 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40'
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -827,7 +834,6 @@ export default function Painel() {
                     </span>
                   </div>
 
-                  {/* BARRA CALIBRADA: 0% real se não tiver plantão, sem barras verdes falsas */}
                   <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full mt-2 overflow-hidden">
                     <div 
                       className={`h-full transition-all duration-500 ${hasVacant ? 'bg-rose-500' : sec.active > 0 ? 'bg-emerald-500' : 'bg-transparent'}`}
@@ -866,7 +872,6 @@ export default function Painel() {
               </span>
             </div>
 
-            {/* RADIAL SVG LIMPO */}
             <div className="py-6 flex flex-col items-center justify-center relative">
               <svg className="w-44 h-44 transform -rotate-90" viewBox="0 0 120 120">
                 <circle 
@@ -911,7 +916,6 @@ export default function Painel() {
             </div>
           </div>
 
-          {/* CURVA DE DEMANDA 24H (BARRAS DE GRADIENTE) */}
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-2">
               Distribuição da Carga Horária 24h
@@ -932,7 +936,7 @@ export default function Painel() {
         </Card>
       </div>
 
-      {/* 5. PLANTÕES EM ATENDIMENTO HOJE */}
+      {/* 5. LISTA DE PLANTÕES DE HOJE */}
       <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div>
