@@ -27,6 +27,16 @@ function getInitials(name) {
   return (p[0][0] + p[p.length - 1][0]).toUpperCase();
 }
 
+function getProfMeta(prof) {
+  if (!prof) return {};
+  try {
+    const stored = window.localStorage.getItem(`prof_meta_${prof.id}`);
+    if (stored) return JSON.parse(stored);
+  } catch {}
+  if (prof.data && typeof prof.data === 'object') return prof.data;
+  return {};
+}
+
 async function autoHealingSaveProfessional(id, initialPayload) {
   let payload = { ...initialPayload };
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -100,8 +110,8 @@ export default function CorpoClinico() {
 
   const handleOpenEdit = (prof) => {
     setEditingProfId(prof.id);
-    let expiry = prof.document_expiry || '';
-    if (!expiry && prof.data && typeof prof.data === 'object') expiry = prof.data.document_expiry || '';
+    const meta = getProfMeta(prof);
+    let expiry = prof.document_expiry || meta.document_expiry || '';
 
     setFormData({
       name: prof.name || '',
@@ -109,7 +119,7 @@ export default function CorpoClinico() {
       phone: prof.phone || '',
       specialty: prof.specialty || 'Clínica Médica',
       document: prof.document || '',
-      rqe: prof.rqe || (prof.data?.rqe || ''),
+      rqe: prof.rqe || (meta.rqe || ''),
       document_expiry: expiry || new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0],
       status: prof.status || 'ativo',
       remuneration_type: prof.remuneration_type || 'mensal',
