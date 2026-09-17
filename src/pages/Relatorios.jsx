@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { 
   BarChart3, TrendingUp, Users, DollarSign, Building2, 
   CalendarDays, Download, FileText, ShieldAlert, CheckCircle2, 
-  Activity, Clock, Award, Printer
+  Activity, Clock, Award, Printer, PieChart, Layers, ArrowUpRight
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -32,6 +32,16 @@ export default function Relatorios() {
   const [selectedMonth, setSelectedMonth] = useState(() => String(new Date().getMonth() + 1));
   const [selectedSector, setSelectedSector] = useState('todos');
 
+  function getProfMeta(prof) {
+    if (!prof) return {};
+    try {
+      const stored = window.localStorage.getItem(`prof_meta_${prof.id}`);
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    if (prof.data && typeof prof.data === 'object') return prof.data;
+    return {};
+  }
+
   const filteredShifts = useMemo(() => {
     const mStr = String(selectedMonth).padStart(2, '0');
     return (shifts || []).filter(s => {
@@ -44,37 +54,92 @@ export default function Relatorios() {
   }, [shifts, selectedMonth, selectedSector]);
 
   const totalShiftsCount = filteredShifts.length;
-  const filledShiftsCount = filteredShifts.filter(s => s.professional_id && s.status !== 'vago').length;
+  const filledShiftsCount = filteredShifts.filter(s => s.professional_id && s.status !== 'vago' && !(s.professional_name || '').toLowerCase().includes('vaga')).length;
   const vacantShiftsCount = totalShiftsCount - filledShiftsCount;
   const coverageRate = totalShiftsCount > 0 ? Math.round((filledShiftsCount / totalShiftsCount) * 100) : 100;
 
-  const totalCost = useMemo(() => {
-    let sum = 0;
-    filteredShifts.forEach(s => {
-      if (!s.professional_id) return;
-      const hours = Number(s.duration_hours) || 12;
-      sum += hours * 120; // Custo médio base por hora padrão
+  // Cálculo financeiro preciso cruzando com o cadastro do profissional
+  const financialSummary = useMemo(() => {
+    let executedCost = 0;
+    let totalCost = 0;
+    const profMap = {};
+    (professionals || []).forEach(p => {
+      const meta = getProfMeta(p);
+      profMap[p.id] = { ...p, ...meta };
+      if (p.name) profMap[p.name.toLowerCase().trim()] = { ...p, ...meta };
     });
-    return sum;
-  }, [filteredShifts]);
+
+    filteredShifts.forEach(s => {
+      const prof = profMap[s.professional_id] || profMap[(s.professional_name || '').toLowerCase().trim()];
+      let cost = 0;
+      if (prof) {
+        const type = prof.remuneration_type || 'mensal';
+        if (type === 'hora') {
+          const hours = Number(s.duration_hours) || 12;
+          cost = hours * safeNumber(prof.hourly_rate, 120);
+        } else if (type === 'diaria') {
+          cost = safeNumber(prof.daily_rate, 1500);
+        } else {
+          cost = safeNumber(prof.monthly_salary, 1672) / 20; // Custo proporcional por plantão do fixo
+        }
+      } else if (s.professional_id && s.status !== 'vago') {
+        cost = 1672 / 20;
+      }
+
+      totalCost += cost;
+      if (s.status === 'concluida' || s.status === 'realizado' || new Date(s.date) <= new Date()) {
+        executedCost += cost;
+      }
+    });
+
+    return { executedCost, totalCost };
+  }, [filteredShifts, professionals]);
 
   const sectorMetrics = useMemo(() => {
     const map = {};
     (sectors || []).forEach(sec => {
-      map[sec.id] = { name: toTitleCase(sec.name), total: 0, filled: 0 };
+      map[sec.id] = { name: toTitleCase(sec.name), total: 0, filled: 0, vacant: 0 };
     });
 
     filteredShifts.forEach(s => {
-      const secId = s.sector_id;
+      const secId = s.sector_id || 'geral';
       if (!map[secId]) {
-        map[secId] = { name: toTitleCase(s.sector_name || 'Setor Geral'), total: 0, filled: 0 };
+        map[secId] = { name: toTitleCase(s.sector_name || 'Setor Geral'), total: 0, filled: 0, vacant: 0 };
       }
       map[secId].total += 1;
-      if (s.professional_id && s.status !== 'vago') map[secId].filled += 1;
+      const isFilled = s.professional_id && s.status !== 'vago' && !(s.professional_name || '').toLowerCase().includes('vaga');
+      if (isFilled) map[secId].filled += 1;
+      else map[secId].vacant += 1;
     });
 
     return Object.values(map);
   }, [sectors, filteredShifts]);
+
+  // Auditoria de Vencimento de Credenciais do Corpo Clínico
+  const credentialAudit = useMemo(() => {
+    let valid = 0;
+    let expired = 0;
+    let nearExpiry = 0;
+    const todayMs = new Date().setHours(0,0,0,0);
+
+    (professionals || []).forEach(p => {
+      const meta = getProfMeta(p);
+      const expiry = p.document_expiry || meta.document_expiry || '';
+      if (!expiry) {
+        valid++;
+        return;
+      }
+      const [exY, exM, exD] = expiry.split('-').map(Number);
+      const expiryMs = new Date(exY, exM - 1, exD).getTime();
+      const diffDays = Math.round((expiryMs - todayMs) / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 0) expired++;
+      else if (diffDays <= 30) nearExpiry++;
+      else valid++;
+    });
+
+    return { valid, expired, nearExpiry, total: (professionals || []).length };
+  }, [professionals]);
 
   const handlePrintReport = () => {
     window.print();
@@ -83,32 +148,34 @@ export default function Relatorios() {
   return (
     <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
       
-      {/* HEADER EXECUTIVO */}
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-r from-slate-900 via-slate-950 to-indigo-950 p-6 md:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6 print:hidden">
+      {/* HEADER EXECUTIVO DE ALTO PADRÃO */}
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 md:p-8 text-white shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 print:hidden">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-sky-400">
-            <BarChart3 className="w-4 h-4" /> Inteligência Hospitalar & BI
+            <BarChart3 className="w-4 h-4" /> Inteligência Corporativa & BI Hospitalar
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Relatórios Gerenciais Avançados</h1>
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Painel Executivo de Relatórios</h1>
           <p className="text-xs text-slate-400 max-w-2xl">
-            Consolidação de carga horária, custos assistenciais, taxas de ocupação e auditoria do corpo clínico.
+            Indicadores de desempenho assistencial, controle financeiro de honorários, auditoria de credenciais e conformidade de plantões.
           </p>
         </div>
 
-        <Button 
-          onClick={handlePrintReport} 
-          className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105 shrink-0"
-        >
-          <Printer className="w-4 h-4" /> Imprimir / Exportar Relatório
-        </Button>
+        <div className="flex items-center gap-3 shrink-0">
+          <Button 
+            onClick={handlePrintReport} 
+            className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105"
+          >
+            <Printer className="w-4 h-4" /> Exportar / Imprimir Dossiê
+          </Button>
+        </div>
       </div>
 
-      {/* FILTROS DE BI */}
+      {/* BARRA DE FILTROS EXECUTIVA */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-3">
-          <span className="text-xs font-bold text-slate-500 uppercase">Mês de Referência:</span>
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Período de Análise:</span>
           <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="h-10 w-44 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-2xl">
+            <SelectTrigger className="h-10 w-48 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-2xl">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-white dark:bg-slate-900 z-[99999]">
@@ -120,76 +187,148 @@ export default function Relatorios() {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-xs font-bold text-slate-500 uppercase">Setor:</span>
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Filtro por Setor:</span>
           <Select value={selectedSector} onValueChange={setSelectedSector}>
-            <SelectTrigger className="h-10 w-52 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-2xl">
+            <SelectTrigger className="h-10 w-56 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-2xl">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-white dark:bg-slate-900 z-[99999]">
-              <SelectItem value="todos">🏥 Todos os Setores</SelectItem>
+              <SelectItem value="todos">🏥 Todos os Setores (Consolidado)</SelectItem>
               {(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      {/* CARDS DE KPI EXECUTIVOS */}
+      {/* KPIs EXECUTIVOS PRINCIPAIS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
-          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Total de Plantões no Mês</span>
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-[10px] font-black uppercase tracking-wider">Volume de Plantões</span>
+            <CalendarDays className="w-4 h-4 text-sky-500" />
+          </div>
           <div className="text-3xl font-black text-slate-900 dark:text-white font-mono">{totalShiftsCount}</div>
-          <p className="text-[11px] text-emerald-600 font-semibold"><b>{filledShiftsCount}</b> preenchidos · <b>{vacantShiftsCount}</b> vagos</p>
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+            <b>{filledShiftsCount}</b> preenchidos · <span className="text-rose-500"><b>{vacantShiftsCount}</b> vagos</span>
+          </p>
         </Card>
 
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
-          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Taxa Média de Cobertura</span>
-          <div className="text-3xl font-black text-sky-600 dark:text-sky-400 font-mono">{coverageRate}%</div>
-          <p className="text-[11px] text-slate-500 font-medium">Conformidade da escala assistencial</p>
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-[10px] font-black uppercase tracking-wider">Taxa de Cobertura Global</span>
+            <TrendingUp className="w-4 h-4 text-emerald-500" />
+          </div>
+          <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">{coverageRate}%</div>
+          <p className="text-[11px] text-slate-500 font-medium">Meta hospitalar: &gt; 98%</p>
         </Card>
 
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
-          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Custo Operacional Previsto</span>
-          <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">{formatCurrency(totalCost)}</div>
-          <p className="text-[11px] text-slate-500 font-medium">Honorários e plantões consolidados</p>
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-[10px] font-black uppercase tracking-wider">Custo Orçamentário Total</span>
+            <DollarSign className="w-4 h-4 text-amber-500" />
+          </div>
+          <div className="text-3xl font-black text-slate-900 dark:text-white font-mono">{formatCurrency(financialSummary.totalCost)}</div>
+          <p className="text-[11px] text-slate-500 font-medium">Honorários estimados do mês</p>
         </Card>
 
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
-          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Corpo Clínico Vinculado</span>
-          <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400 font-mono">{professionals.length}</div>
-          <p className="text-[11px] text-slate-500 font-medium">Profissionais ativos na unidade</p>
+          <div className="flex items-center justify-between text-slate-400">
+            <span className="text-[10px] font-black uppercase tracking-wider">Compliance de Credenciais</span>
+            <ShieldAlert className="w-4 h-4 text-indigo-500" />
+          </div>
+          <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400 font-mono">
+            {Math.round(((credentialAudit.valid + credentialAudit.nearExpiry) / Math.max(1, credentialAudit.total)) * 100)}%
+          </div>
+          <p className="text-[11px] text-slate-500 font-medium">
+            <b>{credentialAudit.expired}</b> vencido(s) · <b>{credentialAudit.nearExpiry}</b> prestes a vencer
+          </p>
         </Card>
       </div>
 
-      {/* DESEMPENHO POR SETOR */}
-      <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-          <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-sky-600" /> Cobertura por Setor ({MONTH_NAMES[Number(selectedMonth) - 1]})
-          </h3>
-          <span className="text-xs font-mono font-bold text-slate-500">{sectorMetrics.length} setores auditados</span>
-        </div>
+      {/* PAINEL DE DESEMPENHO POR SETOR & COMPLIANCE */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* SETORES */}
+        <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm lg:col-span-2 space-y-5">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div>
+              <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-sky-600" /> Desempenho Operacional por Setor
+              </h3>
+              <p className="text-xs text-slate-500">Volume de turnos e alocação médica em {MONTH_NAMES[Number(selectedMonth) - 1]}</p>
+            </div>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sectorMetrics.map((sec, idx) => {
-            const pct = sec.total > 0 ? Math.round((sec.filled / sec.total) * 100) : 100;
-            return (
-              <div key={idx} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <strong className="text-sm font-black text-slate-900 dark:text-white">{sec.name}</strong>
-                  <span className="text-xs font-mono font-bold text-sky-600 dark:text-sky-400">{pct}%</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {sectorMetrics.map((sec, idx) => {
+              const pct = sec.total > 0 ? Math.round((sec.filled / sec.total) * 100) : 100;
+              return (
+                <div key={idx} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <strong className="text-sm font-black text-slate-900 dark:text-white truncate">{sec.name}</strong>
+                    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                      pct >= 90 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                    }`}>
+                      {pct}% Cobertura
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-sky-600 transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-500 font-medium">
+                    <span>Alocados: <b>{sec.filled}</b></span>
+                    <span>Vagos: <b className={sec.vacant > 0 ? 'text-rose-500' : ''}>{sec.vacant}</b></span>
+                    <span>Total: <b>{sec.total}</b></span>
+                  </div>
                 </div>
-                <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-sky-600 transition-all" style={{ width: `${pct}%` }} />
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* AUDITORIA DE DOCUMENTOS E CREDENCIAIS */}
+        <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4">
+          <div>
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-indigo-600" /> Governança de Credenciais
+              </h3>
+            </div>
+
+            <div className="py-4 space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                  <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">Documentos Válidos</span>
                 </div>
-                <div className="flex justify-between text-[11px] text-slate-500 font-medium">
-                  <span>Preenchidos: <b>{sec.filled}</b></span>
-                  <span>Total Turnos: <b>{sec.total}</b></span>
-                </div>
+                <strong className="font-mono text-emerald-700 dark:text-emerald-300">{credentialAudit.valid}</strong>
               </div>
-            );
-          })}
-        </div>
-      </Card>
+
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-3 h-3 rounded-full bg-amber-500" />
+                  <span className="text-xs font-bold text-amber-900 dark:text-amber-200">Vencem em até 30 dias</span>
+                </div>
+                <strong className="font-mono text-amber-700 dark:text-amber-300">{credentialAudit.nearExpiry}</strong>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
+                  <span className="text-xs font-bold text-rose-900 dark:text-rose-200">Credenciais Vencidas</span>
+                </div>
+                <strong className="font-mono text-rose-600 dark:text-rose-400 font-black">{credentialAudit.expired}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 space-y-1">
+            <strong className="text-slate-900 dark:text-white block font-black">Auditoria Automática CCO</strong>
+            <p>Profissionais com credenciais vencidas recebem restrição automática de alocação nas escalas ativas.</p>
+          </div>
+        </Card>
+
+      </div>
     </div>
   );
 }

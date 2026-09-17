@@ -85,13 +85,23 @@ export default function CorpoClinico() {
     name: '', username: '', category: 'medico', document: '',
     registration_id: '', main_sector: '', specialty: '', cbo: '',
     cpf: '', email: '', phone: '', unit_id: '',
-    status: 'ativo', app_role: 'assistencial', remuneration_type: 'hora',
-    hourly_rate: 120, daily_rate: 1500, monthly_salary: 18000,
+    status: 'ativo', app_role: 'assistencial', remuneration_type: 'mensal',
+    hourly_rate: 120, daily_rate: 1500, monthly_salary: 1672,
     monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
     pix_key: '', bank_info: '', password: '',
     document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
     authorized_sectors: []
   });
+
+  function getProfMeta(prof) {
+    if (!prof) return {};
+    try {
+      const stored = window.localStorage.getItem(`prof_meta_${prof.id}`);
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    if (prof.data && typeof prof.data === 'object') return prof.data;
+    return {};
+  }
 
   const resetForm = () => {
     const generatedMatricula = `MAT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -100,8 +110,8 @@ export default function CorpoClinico() {
       registration_id: generatedMatricula, main_sector: sectors[0]?.name || 'UTI Geral',
       specialty: '', cbo: '', cpf: '', email: '', phone: '',
       unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
-      status: 'ativo', app_role: 'assistencial', remuneration_type: 'hora',
-      hourly_rate: 120, daily_rate: 1500, monthly_salary: 18000,
+      status: 'ativo', app_role: 'assistencial', remuneration_type: 'mensal',
+      hourly_rate: 120, daily_rate: 1500, monthly_salary: 1672,
       monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
       pix_key: '', bank_info: '', password: '',
       document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
@@ -121,6 +131,11 @@ export default function CorpoClinico() {
     const authSectors = meta.authorized_sectors || (sectors || []).map(s => String(s.id));
     const profStatus = prof.status || meta.status || 'ativo';
 
+    const remunType = prof.remuneration_type || meta.remuneration_type || 'mensal';
+    const sal = prof.monthly_salary !== undefined ? prof.monthly_salary : (meta.monthly_salary !== undefined ? meta.monthly_salary : 1672);
+    const hourly = prof.hourly_rate !== undefined ? prof.hourly_rate : (meta.hourly_rate !== undefined ? meta.hourly_rate : 120);
+    const daily = prof.daily_rate !== undefined ? prof.daily_rate : (meta.daily_rate !== undefined ? meta.daily_rate : 1500);
+
     setFormData({
       name: prof.name || prof.full_name || '',
       username: meta.username || prof.username || '',
@@ -136,10 +151,10 @@ export default function CorpoClinico() {
       unit_id: prof.unit_id || selectedUnitId,
       status: profStatus,
       app_role: meta.app_role || prof.app_role || 'assistencial',
-      remuneration_type: prof.remuneration_type || meta.remuneration_type || 'hora',
-      hourly_rate: safeNumber(prof.hourly_rate ?? meta.hourly_rate, 120),
-      daily_rate: safeNumber(meta.daily_rate ?? prof.daily_rate, 1500),
-      monthly_salary: safeNumber(meta.monthly_salary ?? prof.monthly_salary, 18000),
+      remuneration_type: remunType,
+      hourly_rate: safeNumber(hourly, 120),
+      daily_rate: safeNumber(daily, 1500),
+      monthly_salary: safeNumber(sal, 1672),
       monthly_work_hours: safeNumber(meta.monthly_work_hours ?? prof.monthly_work_hours, 220),
       coop_tax_rate: safeNumber(meta.coop_tax_rate ?? prof.coop_tax_rate, 0),
       pix_type: meta.pix_type || 'CPF',
@@ -233,7 +248,8 @@ export default function CorpoClinico() {
         name: formData.name.trim(), document: formData.document.trim(), specialty: formData.specialty.trim() || formData.main_sector,
         cbo: formData.cbo.trim(), cpf: formData.cpf.trim(), email: formData.email.trim().toLowerCase(),
         phone: formData.phone.trim(), status: formData.status, remuneration_type: formData.remuneration_type,
-        hourly_rate: safeNumber(formData.hourly_rate), document_expiry: formData.document_expiry
+        hourly_rate: safeNumber(formData.hourly_rate), monthly_salary: safeNumber(formData.monthly_salary),
+        daily_rate: safeNumber(formData.daily_rate), document_expiry: formData.document_expiry
       };
 
       let savedProf = await autoHealingSave(editingProf?.id, profPayload);
@@ -246,13 +262,6 @@ export default function CorpoClinico() {
       setModalOpen(false); resetForm(); await syncGlobalData(); alert('Profissional e matriz de permissões salvos com sucesso!');
     } catch (err) { alert('Erro ao salvar: ' + err.message); } finally { setSubmitting(false); }
   };
-
-  function getProfMeta(prof) {
-    if (!prof) return {};
-    try { const stored = window.localStorage.getItem(`prof_meta_${prof.id}`); if (stored) return JSON.parse(stored); } catch {}
-    if (prof.data && typeof prof.data === 'object') return prof.data;
-    return {};
-  }
 
   const counts = useMemo(() => {
     let ativos = 0, pendentes = 0, inativos = 0;
@@ -316,9 +325,20 @@ export default function CorpoClinico() {
           const catId = meta.category || prof.category || 'medico';
           const catObj = allCategories.find(c => c.id === catId) || allCategories[0];
           
-          const remunType = prof.remuneration_type || meta.remuneration_type || 'hora';
-          const remunValue = remunType === 'hora' ? (prof.hourly_rate || meta.hourly_rate || 120) : remunType === 'diaria' ? (prof.daily_rate || meta.daily_rate || 1500) : (prof.monthly_salary || meta.monthly_salary || 18000);
-          const remunLabel = remunType === 'hora' ? '/ Hora' : remunType === 'diaria' ? '/ Plantão' : '/ Mês Fixo';
+          const remunType = prof.remuneration_type || meta.remuneration_type || 'mensal';
+          let remunValue = 1672;
+          let remunLabel = '/ Mês Fixo';
+
+          if (remunType === 'hora') {
+            remunValue = safeNumber(prof.hourly_rate !== undefined ? prof.hourly_rate : meta.hourly_rate, 120);
+            remunLabel = '/ Hora';
+          } else if (remunType === 'diaria') {
+            remunValue = safeNumber(prof.daily_rate !== undefined ? prof.daily_rate : meta.daily_rate, 1500);
+            remunLabel = '/ Plantão';
+          } else {
+            remunValue = safeNumber(prof.monthly_salary !== undefined ? prof.monthly_salary : meta.monthly_salary, 1672);
+            remunLabel = '/ Mês Fixo';
+          }
 
           const expiry = prof.document_expiry || meta.document_expiry || '';
           
@@ -401,19 +421,17 @@ export default function CorpoClinico() {
                   <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
                     <DollarSign className="w-3.5 h-3.5" /> Remuneração
                   </span>
-                  <span className="font-black text-sm text-emerald-600 dark:text-emerald-300">
+                  <span className="font-black text-sm text-emerald-600 dark:text-emerald-300 font-mono">
                     {formatCurrency(remunValue)} <span className="text-[9px] font-bold opacity-70">{remunLabel}</span>
                   </span>
                 </div>
               </div>
 
-              {/* BOTÕES NO LADO DE FORA (RODAPÉ DO CARD): EDITAR, STATUS RÁPIDO E WHATSAPP */}
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
                 <Button size="sm" variant="outline" onClick={() => handleOpenEdit(prof)} className="flex-1 text-xs h-9 font-bold gap-1 rounded-xl cursor-pointer">
                   <Edit3 className="w-3.5 h-3.5 text-sky-600" /> Editar Perfil
                 </Button>
 
-                {/* Botão de Alternância Rápida Ativo / Inativo com 1 clique */}
                 {isManager && (
                   <Button 
                     size="sm" 
@@ -485,7 +503,6 @@ export default function CorpoClinico() {
               </div>
             </div>
 
-            {/* MATRIZ DE HABILITAÇÃO POR SETOR */}
             <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 font-black text-xs uppercase text-slate-700 dark:text-slate-300">
@@ -669,18 +686,6 @@ export default function CorpoClinico() {
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-10 border-slate-200 dark:border-slate-700 cursor-pointer">Cancelar</Button>
               <Button type="submit" disabled={submitting} className="bg-sky-600 text-white font-black text-xs h-10 px-8 rounded-xl shadow-md cursor-pointer">Salvar Perfil Profissional</Button>
             </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* MODAL: ADICIONAR NOVA CATEGORIA */}
-      <Dialog open={newCatModalOpen} onOpenChange={setNewCatModalOpen}>
-        <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-          <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2"><Plus className="w-5 h-5 text-sky-600" /> Nova Categoria Profissional</DialogTitle></DialogHeader>
-          <form onSubmit={handleAddCustomCategory} className="space-y-3 py-2 text-xs">
-            <div className="space-y-1"><Label className="text-xs font-bold">Nome da Categoria *</Label><Input value={newCatData.label} onChange={e => setNewCatData({ ...newCatData, label: e.target.value })} placeholder="Ex: Perfusionista" className="h-9" required /></div>
-            <div className="space-y-1"><Label className="text-xs font-bold">Conselho Profissional</Label><Input value={newCatData.council} onChange={e => setNewCatData({ ...newCatData, council: e.target.value })} placeholder="Ex: CRVM" className="h-9 font-mono uppercase" /></div>
-            <DialogFooter className="pt-3 gap-2"><Button type="button" variant="outline" onClick={() => setNewCatModalOpen(false)} className="h-9 text-xs cursor-pointer">Cancelar</Button><Button type="submit" className="bg-sky-600 text-white font-bold text-xs h-9 px-5 cursor-pointer">Adicionar</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
