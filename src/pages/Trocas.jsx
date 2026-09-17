@@ -7,7 +7,7 @@ import {
   Flame, Calendar, Clock, Building2, User, 
   CheckCircle2, Check, AlertCircle, ShieldAlert, Trash2, 
   Repeat, ArrowRightLeft, Stethoscope, Filter, XCircle,
-  Clock3, ShieldCheck, History, UserCheck, AlertTriangle
+  Clock3, ShieldCheck, History, UserCheck, AlertTriangle, ArrowRight
 } from 'lucide-react';
 
 function formatFullName(name) {
@@ -43,7 +43,7 @@ function timeToMinutes(timeStr, isEnd = false) {
 function getShiftInterval(shift) {
   const startMin = timeToMinutes(shift?.start_time || '07:00');
   let endMin = timeToMinutes(shift?.end_time || '19:00', true);
-  if (endMin <= startMin) endMin += 24 * 60; // Plantão noturno que vira a madrugada
+  if (endMin <= startMin) endMin += 24 * 60;
   return { startMin, endMin };
 }
 
@@ -121,7 +121,7 @@ export default function Trocas() {
   const [selectedSpecialtyFilter, setSelectedSpecialtyFilter] = useState('todas');
   const [submitting, setSubmitting] = useState(false);
 
-  // Identificação do profissional atual
+  // Identificação infalível do profissional atual
   const myProf = useMemo(() => {
     return currentProfessional || (professionals || []).find(p => 
       (p.id && String(p.id) === String(user?.data?.professional_id || user?.id)) ||
@@ -135,11 +135,11 @@ export default function Trocas() {
     return m;
   }, [sectors]);
 
-  // TODOS os plantões ativos do profissional (qualquer status diferente de cancelado ou vago)
+  // TODOS os plantões ativos que o profissional possui (em qualquer setor)
   const myAllocatedShifts = useMemo(() => {
     if (!myProf?.id && !user?.full_name) return [];
     return (shifts || []).filter(s => {
-      if (!s || s.status === 'cancelado' || s.status === 'vago') return false;
+      if (!s || s.status === 'cancelado' || s.status === 'vago' || !s.professional_id) return false;
       const matchId = myProf?.id && String(s.professional_id) === String(myProf.id);
       const matchUserId = user?.data?.professional_id && String(s.professional_id) === String(user.data.professional_id);
       const matchName = user?.full_name && s.professional_name && s.professional_name.toLowerCase().trim() === user.full_name.toLowerCase().trim();
@@ -147,7 +147,7 @@ export default function Trocas() {
     });
   }, [shifts, myProf, user]);
 
-  // CHECAGEM MATEMÁTICA RÍGIDA DE CHOQUE DE HORÁRIO
+  // CHECAGEM MATEMÁTICA DE CHOQUE DE HORÁRIO
   const checkTimeConflict = (shiftCandidate) => {
     if (!shiftCandidate || !shiftCandidate.date) return { hasConflict: false };
 
@@ -158,8 +158,6 @@ export default function Trocas() {
       if (myShift.date !== shiftCandidate.date) continue;
 
       const myInt = getShiftInterval(myShift);
-
-      // Sobreposição real no mesmo dia: início de um antes do término do outro
       const overlaps = Math.max(myInt.startMin, candInt.startMin) < Math.min(myInt.endMin, candInt.endMin);
 
       if (overlaps) {
@@ -238,6 +236,7 @@ export default function Trocas() {
   const myUpcomingShifts = useMemo(() => {
     if (!myProf?.id && !user?.full_name) return [];
     return (shifts || []).filter(s => {
+      if (!s || s.status === 'vago' || !s.professional_id) return false;
       const isMine = (myProf?.id && String(s.professional_id) === String(myProf.id)) || 
                      (s.professional_name && myProf?.name && s.professional_name.toLowerCase().trim() === myProf.name.toLowerCase().trim()) ||
                      (s.professional_name && user?.full_name && s.professional_name.toLowerCase().trim() === user.full_name.toLowerCase().trim());
@@ -249,8 +248,8 @@ export default function Trocas() {
   const transferHistory = useMemo(() => {
     return (shifts || []).filter(s => {
       if (!s) return false;
-      const audit = parseShiftAudit(s);
-      return audit.transferText !== '' || (audit.transferFrom && audit.transferTo);
+      const notes = String(s.notes || '');
+      return notes.includes('[TRANSFERENCIA:') || notes.includes('[ORIGEM_MURAL:');
     }).sort((a, b) => (b?.date || '').localeCompare(a?.date || ''));
   }, [shifts]);
 
@@ -282,6 +281,7 @@ export default function Trocas() {
     }
   };
 
+  // AUTORIZAÇÃO DO GESTOR: DESVINCULA TOTALMENTE O PROFISSIONAL DE ORIGEM
   const handleApproveMuralPost = async (shift) => {
     const audit = parseShiftAudit(shift);
     const originName = audit.offeredByName || formatFullName(shift.professional_name) || 'Colega';
@@ -297,6 +297,7 @@ export default function Trocas() {
       await safeUpdateShift(shift.id, {
         status: 'vago',
         professional_id: null,
+        professional_name: null,
         notes: updatedNotes
       });
 
@@ -335,24 +336,23 @@ export default function Trocas() {
     }
   };
 
-  // ASSUMIR PLANTÃO COM TRAVA DEFINITIVA
+  // ASSUMIR PLANTÃO COM TRAVA TOTAL
   const handleClaimShift = async (shift) => {
     if (!myProf?.id) {
       alert('Seu perfil profissional não foi localizado no sistema.');
       return;
     }
 
-    // Validação rígida e intransponível de choque
     const conflictCheck = checkTimeConflict(shift);
     if (conflictCheck.hasConflict) {
-      alert(`⛔ AÇÃO BLOQUEADA PELO SISTEMA:\n\n${conflictCheck.message}\n\nÉ estritamente proibido assumir múltiplos plantões com horários sobrepostos em setores diferentes.`);
+      alert(`⛔ AÇÃO BLOQUEADA PELO SISTEMA:\n\n${conflictCheck.message}\n\nVocê não pode assumir dois plantões no mesmo horário.`);
       return;
     }
 
     const sectorName = sectorMap[String(shift.sector_id)]?.name || 'Setor Hospitalar';
     const audit = parseShiftAudit(shift);
     const originName = audit.transferFrom || audit.offeredByName || null;
-    const originMsg = originName ? `\n(Repasse cedido por: ${originName})` : '';
+    const originMsg = originName ? `\n(Cedido por: ${originName})` : '';
 
     if (!confirm(`Confirmar assunção do plantão?${originMsg}\n\nSetor: ${sectorName}\nData: ${shift.date} (${shift.start_time || '07:00'} às ${shift.end_time || '19:00'})`)) {
       return;
@@ -405,7 +405,7 @@ export default function Trocas() {
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Mural de Vagas & Repasses</h1>
           <p className="text-xs text-slate-400 max-w-2xl">
-            Ambiente auditado de repasses assistenciais com validação rígida de choques de horário.
+            Ambiente auditado com trava matemática contra duplicidade e choques de horário.
           </p>
         </div>
 
@@ -424,7 +424,6 @@ export default function Trocas() {
         </div>
       </div>
 
-      {/* AVISO DE SOLICITAÇÃO PRÓPRIA PENDENTE */}
       {myPendingShifts.length > 0 && !isManager && (
         <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
@@ -518,7 +517,7 @@ export default function Trocas() {
         )}
       </div>
 
-      {/* 3. VAGAS NO MURAL (COM TRAVA DE BOTÃO E MENSAGEM CLARA) */}
+      {/* 3. VAGAS NO MURAL (COM BOTÃO BLOQUEADO QUANDO HÁ CHOQUE) */}
       {activeTab === 'vagas' && (
         <>
           {openShifts.length === 0 ? (
@@ -543,7 +542,7 @@ export default function Trocas() {
                     key={shift.id} 
                     className={`p-5 rounded-3xl border-2 transition-all flex flex-col justify-between space-y-4 shadow-sm ${
                       conflictInfo.hasConflict 
-                        ? 'border-rose-300 dark:border-rose-900/60 bg-rose-50/20 dark:bg-rose-950/10' 
+                        ? 'border-rose-300 dark:border-rose-900/60 bg-rose-50/30 dark:bg-rose-950/20' 
                         : 'border-amber-300 dark:border-amber-500/40 bg-white dark:bg-slate-900 hover:shadow-md'
                     }`}
                   >
@@ -585,7 +584,6 @@ export default function Trocas() {
                         )}
                       </div>
 
-                      {/* ALERTA DE CHOQUE VISÍVEL NO CARD */}
                       {conflictInfo.hasConflict && (
                         <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 space-y-1">
                           <div className="font-black flex items-center gap-1.5 uppercase text-[10px]">
@@ -630,7 +628,7 @@ export default function Trocas() {
         </>
       )}
 
-      {/* 4. APROVAÇÕES PENDENTES DA COORDENAÇÃO (EXCLUSIVO GESTOR) */}
+      {/* 4. APROVAÇÕES PENDENTES */}
       {activeTab === 'pendentes' && isManager && (
         <div className="space-y-4">
           <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 text-xs text-indigo-900 dark:text-indigo-200 flex items-center justify-between">
@@ -720,7 +718,7 @@ export default function Trocas() {
         </div>
       )}
 
-      {/* 5. MEUS PLANTÕES / PASSAR PLANTÃO P/ MURAL */}
+      {/* 5. MEUS PLANTÕES / PASSAR P/ MURAL */}
       {activeTab === 'trocas' && (
         <div className="space-y-4">
           <div className="p-4 rounded-2xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 text-xs text-sky-900 dark:text-sky-200 flex items-center justify-between">
@@ -783,7 +781,7 @@ export default function Trocas() {
         </div>
       )}
 
-      {/* 6. HISTÓRICO DE REPASSES AUDITADO */}
+      {/* 6. HISTÓRICO DE REPASSES (BLINDADO E FORMATADO) */}
       {activeTab === 'historico' && (
         <div className="space-y-4">
           <div className="p-4 rounded-2xl bg-slate-900 text-white text-xs flex items-center justify-between border border-slate-800">
@@ -818,11 +816,13 @@ export default function Trocas() {
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {transferHistory.map(shift => {
                       const sector = sectorMap[String(shift.sector_id)];
-                      const audit = parseShiftAudit(shift);
-                      
-                      const deQuem = audit.transferFrom || audit.offeredByName || 'Profissional Cedente';
-                      const paraQuem = audit.transferTo || shift.professional_name || 'Profissional que Assumiu';
-                      const autorizador = audit.authorizedBy || 'Gestão Geral';
+                      const notes = String(shift.notes || '');
+
+                      // Parsing blindado de origem, destino e autorizador
+                      const matchTransfer = notes.match(/\[TRANSFERENCIA:\s*([^\]->]+)\s*->\s*([^\]]+)\]/i);
+                      const deQuem = matchTransfer?.[1]?.trim() || (notes.match(/\[ORIGEM_MURAL:\s*([^\]]+)\]/i)?.[1]) || 'Profissional Cedente';
+                      const paraQuem = matchTransfer?.[2]?.trim() || shift.professional_name || (shift.professional_id ? 'Assumido' : 'No Mural');
+                      const autorizador = (notes.match(/\[AUTORIZADO_POR:\s*([^\]]+)\]/i)?.[1]) || 'Gestão Geral';
 
                       return (
                         <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
@@ -845,7 +845,7 @@ export default function Trocas() {
                           </td>
                           <td className="py-3 px-4 text-center">
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
-                              <CheckCircle2 className="w-3 h-3" /> Concluído
+                              <CheckCircle2 className="w-3 h-3" /> {shift.status === 'confirmado' ? 'Efetivado' : 'Disponível'}
                             </span>
                           </td>
                         </tr>
