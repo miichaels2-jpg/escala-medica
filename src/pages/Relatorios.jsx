@@ -15,27 +15,6 @@ import {
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-const STATUS_LABELS = {
-  programado: 'Programado',
-  confirmado: 'Confirmado',
-  pendente: 'Pendente',
-  concluida: 'Concluído',
-  concluído: 'Concluído',
-  realizado: 'Realizado',
-  cancelado: 'Cancelado',
-  vago: 'Vago'
-};
-
-const STATUS_COLORS = {
-  programado: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
-  confirmado: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-  pendente: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-  concluida: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-  realizado: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-  cancelado: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
-  vago: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
-};
-
 function safeNumber(val, fb = 0) {
   if (val === null || val === undefined || val === '') return fb;
   const n = typeof val === 'number' ? val : parseFloat(String(val).replace(/\./g, '').replace(',', '.'));
@@ -106,7 +85,6 @@ export default function Relatorios() {
     return {};
   }
 
-  // Mapeamento de profissionais para cálculo de custo
   const profMap = useMemo(() => {
     const map = {};
     (professionals || []).forEach(p => {
@@ -118,7 +96,6 @@ export default function Relatorios() {
     return map;
   }, [professionals]);
 
-  // Filtragem rigorosa sem registros órfãos ou "Setor" genérico
   const filteredShifts = useMemo(() => {
     const mStr = String(appliedFilters.month).padStart(2, '0');
     const yStr = appliedFilters.year;
@@ -148,7 +125,6 @@ export default function Relatorios() {
     });
   }, [shifts, sectors, appliedFilters]);
 
-  // Indicadores de Plantões
   const { totalShiftsCount, filledShiftsCount, vacantShiftsCount, vacantShiftItems } = useMemo(() => {
     let total = filteredShifts.length;
     let filled = 0;
@@ -172,7 +148,6 @@ export default function Relatorios() {
 
   const coverageRate = totalShiftsCount > 0 ? Math.round((filledShiftsCount / totalShiftsCount) * 100) : 100;
 
-  // Custos e Horas
   const financialSummary = useMemo(() => {
     let totalCost = 0;
     let executedCost = 0;
@@ -216,7 +191,6 @@ export default function Relatorios() {
     return { totalCost, executedCost, pendingCost, vacantCost, totalHours };
   }, [filteredShifts, profMap, vacantShiftItems]);
 
-  // Setores
   const sectorMetrics = useMemo(() => {
     const map = {};
     (sectors || []).forEach(sec => {
@@ -262,7 +236,6 @@ export default function Relatorios() {
     return Object.values(map).sort((a, b) => b.total - a.total);
   }, [sectors, filteredShifts, profMap]);
 
-  // Profissionais (Produtividade)
   const professionalMetrics = useMemo(() => {
     const map = {};
     filteredShifts.forEach(s => {
@@ -305,7 +278,6 @@ export default function Relatorios() {
     })).sort((a, b) => b.shifts - a.shifts);
   }, [filteredShifts, sectors, profMap]);
 
-  // Governança de Credenciais
   const credentialAudit = useMemo(() => {
     let valid = 0;
     let expired = 0;
@@ -332,7 +304,6 @@ export default function Relatorios() {
     return { valid, expired, nearExpiry, missing, total: (professionals || []).length };
   }, [professionals]);
 
-  // Exportar CSV
   const handleExportCSV = (rows, filename) => {
     if (!rows.length) {
       alert('Nenhum dado para exportar com os filtros atuais.');
@@ -382,7 +353,7 @@ export default function Relatorios() {
           <Button 
             onClick={() => handleExportCSV(filteredShifts.map(s => ({
               Data: formatDate(s.date),
-              Setor: getSectorName(s, sectors),
+              Setor: s.sector_name || 'Setor',
               Profissional: s.professional_name || 'Vago',
               Inicio: s.start_time || '',
               Fim: s.end_time || '',
@@ -487,7 +458,7 @@ export default function Relatorios() {
             </Button>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* ABAS DE NAVEGAÇÃO ENTRE OS RELATÓRIOS */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 print:hidden">
@@ -606,7 +577,7 @@ export default function Relatorios() {
                 variant="outline"
                 onClick={() => handleExportCSV(filteredShifts.map(s => ({
                   Data: formatDate(s.date),
-                  Setor: getSectorName(s, sectors),
+                  Setor: s.sector_name || 'Setor',
                   Profissional: s.professional_name || 'Vago',
                   Inicio: s.start_time || '',
                   Fim: s.end_time || '',
@@ -635,7 +606,7 @@ export default function Relatorios() {
                     return (
                       <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900">
                         <td className="py-3 px-3 font-bold font-mono">{formatDate(s.date)}</td>
-                        <td className="py-3 px-3">{getSectorName(s, sectors)}</td>
+                        <td className="py-3 px-3">{s.sector_name || 'Setor Geral'}</td>
                         <td className={`py-3 px-3 font-black ${isVago ? 'text-rose-600 animate-pulse' : 'text-slate-900 dark:text-white'}`}>
                           {isVago ? '⚠️ VAGA EM ABERTO' : toTitleCase(s.professional_name)}
                         </td>
