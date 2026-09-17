@@ -286,12 +286,23 @@ export default function CorpoClinico() {
           const remunLabel = remunType === 'hora' ? '/ Hora' : remunType === 'diaria' ? '/ Plantão' : '/ Mês Fixo';
 
           const expiry = prof.document_expiry || meta.document_expiry || '';
-          const isExpired = expiry && expiry < new Date().toISOString().split('T')[0];
+          const todayMs = new Date().setHours(0,0,0,0);
+          const expiryMs = expiry ? new Date(expiry + 'T00:00:00').getTime() : null;
+          
+          const diffDays = expiryMs ? Math.ceil((expiryMs - todayMs) / (1000 * 60 * 60 * 24)) : null;
+          
+          const isExpired = diffDays !== null && diffDays < 0;
+          const isNearExpiry = diffDays !== null && diffDays >= 0 && diffDays <= 30; // Alerta antecipado de 30 dias
+
           const profStatus = prof.status || meta.status || 'ativo';
 
           return (
             <Card key={prof.id} className={`p-5 rounded-3xl border-2 transition-all flex flex-col justify-between space-y-4 shadow-sm bg-white dark:bg-slate-900 ${
-              isExpired ? 'border-rose-300 dark:border-rose-900/60' : 'border-slate-200 dark:border-slate-800'
+              isExpired 
+                ? 'border-rose-400 bg-rose-50/40 dark:bg-rose-950/20' 
+                : isNearExpiry 
+                ? 'border-amber-400 bg-amber-50/40 dark:bg-amber-950/20' 
+                : 'border-slate-200 dark:border-slate-800'
             }`}>
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -310,12 +321,27 @@ export default function CorpoClinico() {
                 <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
                   <div className="flex justify-between"><span>Conselho:</span><strong>{prof.document || '—'}</strong></div>
                   <div className="flex justify-between"><span>Especialidade:</span><strong className="text-slate-900 dark:text-white truncate max-w-[140px]">{prof.specialty || meta.specialty || 'Geral'}</strong></div>
-                  <div className="flex justify-between">
+                  
+                  {/* ALERTA ANTECIPADO DE VALIDADE DE CREDENCIAL */}
+                  <div className="flex items-center justify-between">
                     <span>Validade Credencial:</span>
-                    <strong className={`font-mono ${isExpired ? 'text-rose-500 font-black' : 'text-slate-700 dark:text-slate-300'}`}>
-                      {expiry ? expiry.split('-').reverse().join('/') : 'Não informada'} {isExpired && '⚠️'}
-                    </strong>
+                    <div className="flex items-center gap-1.5">
+                      <strong className={`font-mono ${isExpired ? 'text-rose-600 font-black' : isNearExpiry ? 'text-amber-600 dark:text-amber-400 font-black' : 'text-slate-700 dark:text-slate-300'}`}>
+                        {expiry ? expiry.split('-').reverse().join('/') : 'Não informada'}
+                      </strong>
+                      {isExpired && (
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-600 text-white animate-pulse" title="Credencial Vencida!">
+                          VENCIDO
+                        </span>
+                      )}
+                      {isNearExpiry && !isExpired && (
+                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-white" title={`Vence em ${diffDays} dias`}>
+                          ⚠️ VENCE EM {diffDays}D
+                        </span>
+                      )}
+                    </div>
                   </div>
+
                   <div className="flex justify-between"><span>Chave PIX:</span><strong className="text-sky-600 font-mono truncate max-w-[140px]">{meta.pix_key || 'Não cadastrado'}</strong></div>
                 </div>
 
