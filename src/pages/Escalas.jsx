@@ -13,7 +13,7 @@ import {
   Flame, ArrowRight, MonitorPlay, GripVertical, 
   Printer, Sun, Moon, AlertTriangle, CheckCircle2, Radio, Calendar as CalendarIcon,
   PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight, Minimize2, Target, ShieldAlert,
-  BellRing, Check, Layers, History
+  BellRing, Check, Layers, History, ArrowRightLeft
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -45,47 +45,71 @@ function getShiftInterval(startStr, endStr) {
   return { startMin, endMin };
 }
 
-function computeShiftLiveStatus(shift, liveNowDate) {
+// MOTOR RIGOROSO DE CICLO DE VIDA HOSPITALAR (CONSIDERA VIRADA NOTURNA E PASSAGEM DE PLANTÃO)
+function computeShiftHospitalLifecycle(shift, liveNowDate) {
   if (!shift || !shift.date) {
-    return { isLive: false, isConcluded: false, isProgrammed: true };
+    return { isLive: false, isConcluded: false, isProgrammed: true, isHandover: false, statusText: 'PROGRAMADO', detail: '' };
   }
 
   const [sYear, sMonth, sDay] = String(shift.date).split('-').map(Number);
   const [startH, startM] = String(shift.start_time || '07:00').split(':').map(Number);
   const [endH, endM] = String(shift.end_time || '19:00').split(':').map(Number);
 
-  const startDate = new Date(sYear, sMonth - 1, sDay, startH || 0, startM || 0, 0);
-  let endDate = new Date(sYear, sMonth - 1, sDay, endH || 0, endM || 0, 0);
+  const startExact = new Date(sYear, sMonth - 1, sDay, startH || 0, startM || 0, 0);
+  let endExact = new Date(sYear, sMonth - 1, sDay, endH || 0, endM || 0, 0);
 
-  if (endDate.getTime() <= startDate.getTime()) {
-    endDate.setDate(endDate.getDate() + 1);
+  // Se o horário de término for menor ou igual ao de início, vira a noite para o dia seguinte
+  if (endExact.getTime() <= startExact.getTime()) {
+    endExact.setDate(endExact.getDate() + 1);
   }
 
   const nowMs = liveNowDate.getTime();
-  const startMs = startDate.getTime();
-  const endMs = endDate.getTime();
+  const startMs = startExact.getTime();
+  const endMs = endExact.getTime();
 
+  // 1. REGRA ABSOLUTA: Só é CONCLUÍDO depois que o relógio ultrapassar o horário final exato!
+  if (nowMs >= endMs) {
+    return {
+      isLive: false,
+      isConcluded: true,
+      isProgrammed: false,
+      isHandover: false,
+      statusText: 'CONCLUÍDO',
+      detail: `Finalizado às ${shift.end_time}`
+    };
+  }
+
+  // 2. REGRA AO VIVO / EM ANDAMENTO
   if (nowMs >= startMs && nowMs < endMs) {
-    const diffMin = Math.round((endMs - nowMs) / 60000);
+    const remainingMs = endMs - nowMs;
+    const remainingMin = Math.max(1, Math.round(remainingMs / 60000));
+    
+    // Se estiver nos últimos 60 minutos do plantão, entra na janela de PASSAGEM DE PLANTÃO
+    const isHandover = remainingMin <= 60;
+
     return {
       isLive: true,
       isConcluded: false,
       isProgrammed: false,
-      remainingMinutes: diffMin,
-      remainingDesc: `Resta ${Math.floor(diffMin / 60)}h ${diffMin % 60}m`
+      isHandover,
+      statusText: isHandover ? 'PASSAGEM DE PLANTÃO' : 'EM ANDAMENTO',
+      remainingMinutes: remainingMin,
+      detail: isHandover ? `Passagem: resta ${remainingMin}m` : `Resta ${Math.floor(remainingMin / 60)}h ${remainingMin % 60}m`
     };
   }
 
-  if (nowMs >= endMs) {
-    return { isLive: false, isConcluded: true, isProgrammed: false };
-  }
-
+  // 3. PROGRAMADO (AINDA NÃO INICIOU)
   const toStartMin = Math.round((startMs - nowMs) / 60000);
+  const isIncomingHandover = toStartMin <= 60 && toStartMin > 0;
+
   return {
     isLive: false,
     isConcluded: false,
     isProgrammed: true,
-    startsInMinutes: toStartMin
+    isHandover: isIncomingHandover,
+    statusText: isIncomingHandover ? 'ASSUMINDO POSTO' : 'PROGRAMADO',
+    startsInMinutes: toStartMin,
+    detail: isIncomingHandover ? `Assume em ${toStartMin}m` : `Inicia às ${shift.start_time}`
   };
 }
 
@@ -345,7 +369,7 @@ export default function Escalas() {
   const todayLocalStr = useMemo(() => getLocalDateString(liveNow), [liveNow]);
 
   // =========================================================================
-  // DEFINIÇÃO CENTRAL E ANTECIPADA DE TVDATA E IMPRESSÃO (SEM ERRO DE ESCOPO)
+  // MOTOR COMPARTILHADO: MODO TV CCO E PLANTÃO DO DIA (100% SINCRONIZADOS)
   // =========================================================================
   const tvData = useMemo(() => {
     const emAndamento = [];
@@ -356,36 +380,49 @@ export default function Escalas() {
       if (!shift || shift.status === 'cancelado') return;
       if (selectedSectorId !== 'todos' && String(shift.sector_id) !== String(selectedSectorId)) return;
 
-      const liveStatus = computeShiftLiveStatus(shift, liveNow);
+      const lifecycle = computeShiftHospitalLifecycle(shift, liveNow);
 
-      // Tabela do dia de hoje: plantões cadastrados na data de hoje OU plantões que viraram a noite de ontem e ainda estão ativos
+      // Pertence à grade do dia se: é da data de hoje OU se iniciou ontem e ainda está em andamento nesta madrugada
       const sDate = (shift.date || '').split('T')[0];
-      if (sDate === todayLocalStr || liveStatus.isLive) {
+      if (sDate === todayLocalStr || lifecycle.isLive) {
         tableDayShifts.push(shift);
       }
 
       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
       if (shift.status === 'vago' || !prof) return;
 
-      if (liveStatus.isLive) {
+      // Se está ao vivo agora (inclusive virando a noite): entra nos plantões ativos
+      if (lifecycle.isLive) {
         emAndamento.push({
           ...shift,
-          detail: liveStatus.remainingDesc
+          lifecycle,
+          detail: lifecycle.detail
         });
       }
 
-      if (liveStatus.isProgrammed && liveStatus.startsInMinutes > 0 && liveStatus.startsInMinutes <= 120) {
+      // Rendição / Próxima Passagem: plantões que assumirão nos próximos 120 minutos
+      if (lifecycle.isProgrammed && lifecycle.startsInMinutes > 0 && lifecycle.startsInMinutes <= 120) {
         proximoRendimento.push({
           shift,
-          startsIn: liveStatus.startsInMinutes
+          lifecycle,
+          startsIn: lifecycle.startsInMinutes
         });
       }
     });
 
-    tableDayShifts.sort((a, b) => (a.start_time || '07:00').localeCompare(b.start_time || '07:00'));
+    // Ordenação: ativos no topo, seguidos pelos próximos turnos
+    tableDayShifts.sort((a, b) => {
+      const aLife = computeShiftHospitalLifecycle(a, liveNow);
+      const bLife = computeShiftHospitalLifecycle(b, liveNow);
+      if (aLife.isLive && !bLife.isLive) return -1;
+      if (!aLife.isLive && bLife.isLive) return 1;
+      return (a.start_time || '07:00').localeCompare(b.start_time || '07:00');
+    });
+
     return { emAndamento, proximoRendimento, tableDayShifts };
   }, [shifts, selectedSectorId, liveNow, todayLocalStr, professionalMap]);
 
+  // IMPRESSÃO A4 PAISAGEM LIMPA DO PLANTÃO DO DIA
   const handlePrintA4Landscape = () => {
     const printWindow = window.open('', '_blank', 'width=1100,height=800');
     if (!printWindow) {
@@ -404,7 +441,7 @@ export default function Escalas() {
     });
 
     const tableRowsHtml = activeShiftsOnly.length === 0
-      ? `<tr><td colspan="6" style="padding: 24px; text-align: center; color: #666; font-size: 11px;">Nenhum profissional com plantão confirmado para esta data.</td></tr>`
+      ? `<tr><td colspan="6" style="padding: 24px; text-align: center; color: #666; font-size: 11px;">Nenhum profissional com plantão ativo para esta data.</td></tr>`
       : activeShiftsOnly.map((shift, idx) => {
           const prof = professionalMap[String(shift.professional_id)];
           const sector = sectorMap[String(shift.sector_id)];
@@ -416,11 +453,11 @@ export default function Escalas() {
           const [sYear, sMonth, sDay] = (shift.date || '').split('-');
           const formattedDate = sDay && sMonth ? `${sDay}/${sMonth}/${sYear}` : shift.date;
 
-          const liveStatus = computeShiftLiveStatus(shift, liveNow);
+          const life = computeShiftHospitalLifecycle(shift, liveNow);
 
-          const statusHtml = liveStatus.isLive
+          const statusHtml = life.isLive
             ? `<span style="font-weight: bold; color: #0369a1; background-color: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-size: 9px;">● EM ANDAMENTO</span>`
-            : liveStatus.isConcluded
+            : life.isConcluded
             ? `<span style="font-weight: bold; color: #166534; background-color: #dcfce7; padding: 2px 6px; border-radius: 4px; font-size: 9px;">✓ CONCLUÍDO</span>`
             : `<span style="color: #475569; background-color: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 9px;">PROGRAMADO</span>`;
 
@@ -696,26 +733,46 @@ export default function Escalas() {
     return days;
   }, [currentYear, currentMonth, startDateFilter]);
 
+  // STATUS COM O MOTOR HOSPITALAR COMPLETO
   const getStatusBadge = (shift) => {
     const isVago = shift.status === 'vago' || !shift.professional_id;
-    const liveStatus = computeShiftLiveStatus(shift, liveNow);
+    const life = computeShiftHospitalLifecycle(shift, liveNow);
 
     if (isVago) {
-      if (liveStatus.isConcluded) {
+      if (life.isConcluded) {
         return { dot: 'bg-slate-400', label: 'VAGA PERDIDA', text: 'text-slate-500', wrapper: 'border-l-slate-400 bg-slate-100 dark:bg-slate-900/50 opacity-60 grayscale hover:grayscale-0', icon: <AlertTriangle className="w-3 h-3 text-slate-500" /> };
       }
       return { dot: 'bg-rose-500 animate-pulse', label: 'VAGA ABERTA', text: 'text-rose-600 dark:text-rose-400', wrapper: 'border-l-rose-500 bg-rose-50 dark:bg-rose-950/30', icon: <Flame className="w-3 h-3 text-rose-500 animate-pulse" /> };
     }
     
-    if (liveStatus.isLive) {
-      return { dot: 'bg-emerald-500 animate-ping', label: 'EM ANDAMENTO', text: 'text-emerald-600 dark:text-emerald-400', wrapper: 'border-l-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 ring-1 ring-emerald-500/50', icon: <Radio className="w-3 h-3 text-emerald-500 animate-ping" /> };
+    // Plantão ativo ou na passagem
+    if (life.isLive) {
+      return { 
+        dot: 'bg-emerald-500 animate-ping', 
+        label: life.statusText, 
+        text: 'text-emerald-600 dark:text-emerald-400', 
+        wrapper: 'border-l-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 ring-1 ring-emerald-500/50', 
+        icon: <Radio className="w-3 h-3 text-emerald-500 animate-ping" /> 
+      };
     }
 
-    if (liveStatus.isConcluded) {
-      return { dot: 'bg-slate-400', label: 'CONCLUÍDO', text: 'text-slate-500 dark:text-slate-400', wrapper: 'border-l-slate-300 bg-slate-100 dark:bg-slate-800/40 opacity-70 grayscale hover:grayscale-0', icon: <CheckCircle2 className="w-3 h-3 text-slate-400" /> };
+    if (life.isConcluded) {
+      return { 
+        dot: 'bg-slate-400', 
+        label: 'CONCLUÍDO', 
+        text: 'text-slate-500 dark:text-slate-400', 
+        wrapper: 'border-l-slate-300 bg-slate-100 dark:bg-slate-800/40 opacity-70 grayscale hover:grayscale-0', 
+        icon: <CheckCircle2 className="w-3 h-3 text-slate-400" /> 
+      };
     }
 
-    return { dot: 'bg-sky-500', label: 'PROGRAMADO', text: 'text-sky-600 dark:text-sky-400', wrapper: 'border-l-sky-400 bg-sky-50 dark:bg-sky-900/10', icon: <CalendarIcon className="w-3 h-3 text-sky-500" /> };
+    return { 
+      dot: 'bg-sky-500', 
+      label: life.statusText, 
+      text: 'text-sky-600 dark:text-sky-400', 
+      wrapper: 'border-l-sky-400 bg-sky-50 dark:bg-sky-900/10', 
+      icon: <CalendarIcon className="w-3 h-3 text-sky-500" /> 
+    };
   };
 
   const isShiftMatchingTurno = (shift, filter) => {
@@ -874,7 +931,7 @@ export default function Escalas() {
   };
 
   // =========================================================================
-  // 1. MODO TV CCO EM TELA CHEIA ISOLADA
+  // 1. MODO TV CCO EM TELA CHEIA ISOLADA (TOTALMENTE OPERACIONAL)
   // =========================================================================
   if (activeTab === 'tv') {
     return (
@@ -918,13 +975,14 @@ export default function Escalas() {
         </div>
 
         <div className="flex-1 my-6 grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-hidden">
+          {/* ATIVOS NO MOMENTO (INCLUSIVE NOTURNOS QUE VIRARAM A NOITE) */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
                 <span className="text-sm font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" /> Plantões em Andamento (No Posto Neste Momento)
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" /> Plantões em Atendimento no Posto ({tvData.emAndamento.length})
                 </span>
-                <span className="text-xs font-mono font-bold text-slate-400">{tvData.emAndamento.length} ativo(s)</span>
+                <span className="text-xs font-mono font-bold text-slate-400">AO VIVO</span>
               </div>
 
               <div className="flex-1 space-y-3 overflow-y-auto pr-1">
@@ -939,8 +997,15 @@ export default function Escalas() {
                     return (
                       <div key={shift.id} className="p-4 bg-slate-950 border border-emerald-500/40 rounded-2xl shadow-lg flex items-center justify-between">
                         <div>
-                          <span className="text-xs font-black text-emerald-400 uppercase">{sector?.name}</span>
-                          <div className="text-base font-black text-white">{formatFullName(prof?.name)}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-emerald-400 uppercase">{sector?.name}</span>
+                            {shift.lifecycle.isHandover && (
+                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                                Passagem de Turno
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-base font-black text-white mt-0.5">{formatFullName(prof?.name)}</div>
                           <span className="text-xs text-slate-400">{realSpecialty} • {shift.start_time} às {shift.end_time}</span>
                         </div>
                         <span className="text-xs font-mono font-black text-emerald-300 bg-emerald-500/20 px-3 py-1.5 rounded-xl">
@@ -954,11 +1019,12 @@ export default function Escalas() {
             </div>
           </div>
 
+          {/* PRÓXIMAS RENDIÇÕES E TROCAS */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
                 <span className="text-sm font-black uppercase text-sky-400 tracking-wider flex items-center gap-2">
-                  <ArrowRight className="w-4 h-4" /> Próxima Rendição (Próximas 2 Horas)
+                  <ArrowRightLeft className="w-4 h-4" /> Próxima Rendição & Passagem (Próximas 2 Horas)
                 </span>
                 <span className="text-xs font-mono font-bold text-slate-400">{tvData.proximoRendimento.length} programado(s)</span>
               </div>
@@ -979,7 +1045,7 @@ export default function Escalas() {
                           <span className="text-xs text-sky-400 font-mono">{shift.start_time} às {shift.end_time}</span>
                         </div>
                         <span className="text-xs font-black uppercase bg-sky-500/20 text-sky-300 px-3 py-1.5 rounded-xl font-mono">
-                          Inicia em {startsIn}m
+                          Assume em {startsIn}m
                         </span>
                       </div>
                     );
@@ -1177,6 +1243,7 @@ export default function Escalas() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* BOTÃO DE PUBLICAR POR SETOR */}
           {isManager && (
             <div className="flex items-center gap-1.5">
               <Button 
@@ -1216,7 +1283,9 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* 3. ABA 1: GRADE MENSAL COM BADGE VISUAL DE PUBLICADO */}
+      {/* ========================================================================= */}
+      {/* 3. ABA 1: GRADE MENSAL COM BADGE VISUAL DE PUBLICADO                      */}
+      {/* ========================================================================= */}
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
           {isManager && (
@@ -1358,7 +1427,9 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* 4. ABA 2: PLANTÃO DO DIA */}
+      {/* ========================================================================= */}
+      {/* 4. ABA 2: PLANTÃO DO DIA (RESTAURADA E OPERACIONAL)                        */}
+      {/* ========================================================================= */}
       {activeTab === 'dia' && (
         <div className="space-y-5 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
@@ -1425,7 +1496,9 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* 5. MODAL EXECUTIVO: PUBLICAR ESCALA */}
+      {/* ========================================================================= */}
+      {/* 5. MODAL EXECUTIVO: PUBLICAR ESCALA POR SETOR & INTERVALO CUSTOMIZADO     */}
+      {/* ========================================================================= */}
       <Dialog open={publishModalOpen} onOpenChange={setPublishModalOpen}>
         <DialogContent className="w-[95vw] sm:max-w-lg bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-5 sm:p-6 rounded-3xl">
           <DialogHeader className="border-b border-slate-800 pb-3">
