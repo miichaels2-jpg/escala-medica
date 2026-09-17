@@ -43,6 +43,68 @@ function getShiftInterval(shift) {
   return { startMin, endMin };
 }
 
+// Extração segura de metadados gravados em notes
+function parseShiftAudit(shift) {
+  const notes = String(shift?.notes || '');
+  const offeredByName = notes.match(/\[SOLICITADO_POR:\s*([^\]]+)\]/i)?.[1] || '';
+  const offeredById = notes.match(/\[SOLICITADO_ID:\s*([^\]]+)\]/i)?.[1] || '';
+  const transferFrom = notes.match(/\[ORIGEM_MURAL:\s*([^\]]+)\]/i)?.[1] || '';
+  const transferTo = notes.match(/\[TRANSFER_TO:\s*([^\]]+)\]/i)?.[1] || '';
+  const transferText = notes.match(/\[TRANSFERENCIA:\s*([^\]]+)\]/i)?.[1] || '';
+  const authorizedBy = notes.match(/\[AUTORIZADO_POR:\s*([^\]]+)\]/i)?.[1] || '';
+  const isAguardandoGestor = shift?.status === 'aguardando_aprovacao_gestor' || notes.includes('[AGUARDANDO_GESTOR]');
+
+  return { offeredByName, offeredById, transferFrom, transferTo, transferText, authorizedBy, isAguardandoGestor };
+}
+
+// Salva de forma resiliente removendo automaticamente qualquer coluna inexistente
+async function autoHealingSaveShift(id, initialPayload) {
+  let payload = { ...initialPayload };
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      if (id) return await base44.entities.Shift.update(id, payload);
+      else return await base44.entities.Shift.create(payload);
+    } catch (err) {
+      const msg = err.message || '';
+      const match = msg.match(/Could not find the '([^']+)' column/i);
+      if (match && match[1]) { 
+        delete payload[match[1]]; 
+        continue; 
+      }
+      throw err;
+    }
+  }
+}
+
+// Salva higienizado e converte status se o banco usar enums rígidos
+async function safeUpdateShift(id, payload) {
+  const cleanPayload = { ...payload };
+  delete cleanPayload.offered_by_id;
+  delete cleanPayload.offered_by_name;
+  delete cleanPayload.transfer_from_id;
+  delete cleanPayload.transfer_from_name;
+  delete cleanPayload.transfer_to_id;
+  delete cleanPayload.transfer_to_name;
+  delete cleanPayload.authorized_by_manager;
+
+  try {
+    return await autoHealingSaveShift(id, cleanPayload);
+  } catch (err) {
+    const msg = err.message || '';
+    if (msg.includes('status') || msg.includes('enum') || msg.includes('check constraint')) {
+      if (cleanPayload.status === 'aguardando_aprovacao_gestor') {
+        cleanPayload.status = 'confirmado';
+        cleanPayload.notes = `${cleanPayload.notes || ''} [AGUARDANDO_GESTOR]`.trim();
+      } else if (cleanPayload.status === 'disponivel_mural') {
+        cleanPayload.status = 'vago';
+        cleanPayload.notes = `${cleanPayload.notes || ''} [DISPONIVEL_MURAL]`.trim();
+      }
+      return await autoHealingSaveShift(id, cleanPayload);
+    }
+    throw err;
+  }
+}
+
 export default function Trocas() {
   const { 
     shifts = [], 
@@ -72,7 +134,7 @@ export default function Trocas() {
     return m;
   }, [sectors]);
 
-  // Plantões confirmados do usuário para validação de conflito de horário intersetorial
+  // Plantões confirmados do usuário para validação de conflito intersetorial
   const myConfirmedShifts = useMemo(() => {
     if (!myProf?.id) return [];
     return (shifts || []).filter(s => {
@@ -124,18 +186,20 @@ export default function Trocas() {
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  // 1. VAGAS DISPONÍVEIS NO MURAL (Aprovadas ou vagas diretas)
+  // 1. VAGAS DISPONÍVEIS NO MURAL (Sem aguardar gestor e sem médico vinculado)
   const openShifts = useMemo(() => {
     return (shifts || []).filter(s => {
       if (!s) return false;
       const st = String(s.status || '').toLowerCase();
-      if (st.includes('cancel') || st.includes('inativ')) return false;
+      const audit = parseShiftAudit(s);
 
-      // Disponíveis: vagas oficiais ou aprovadas pelo gestor
-      const isMuralApproved = st === 'vago' || st === 'disponivel_mural';
+      if (st.includes('cancel') || st.includes('inativ')) return false;
+      if (audit.isAguardandoGestor) return false;
+
+      const isMuralApproved = st === 'vago' || st === 'disponivel_mural' || audit.transferFrom !== '';
       if (!isMuralApproved) return false;
-      if (s.professional_id) return false; // Sem médico vinculado
-      if (s.date && s.date < todayStr) return false; // Não exibe passado
+      if (s.professional_id) return false;
+      if (s.date && s.date < todayStr) return false;
 
       if (selectedSpecialtyFilter !== 'todas') {
         const spec = extractSpecialty(s, null);
@@ -146,32 +210,33 @@ export default function Trocas() {
     }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
   }, [shifts, selectedSpecialtyFilter, todayStr]);
 
-  // 2. SOLICITAÇÕES PENDENTES DE APROVAÇÃO DO GESTOR
+  // 2. SOLICITAÇÕES PENDENTES DE AVALIAÇÃO DO GESTOR
   const pendingApprovalShifts = useMemo(() => {
     return (shifts || []).filter(s => {
       if (!s) return false;
-      const st = String(s.status || '').toLowerCase();
-      return st === 'aguardando_aprovacao_gestor';
+      const audit = parseShiftAudit(s);
+      return audit.isAguardandoGestor;
     }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
   }, [shifts]);
 
-  // Minhas solicitações aguardando o gestor
+  // Minhas solicitações aguardando aprovação
   const myPendingShifts = useMemo(() => {
     if (!myProf?.id) return [];
-    return pendingApprovalShifts.filter(s => 
-      String(s.professional_id) === String(myProf.id) ||
-      String(s.offered_by_id) === String(myProf.id) ||
-      (s.offered_by_name && myProf.name && s.offered_by_name.toLowerCase().trim() === myProf.name.toLowerCase().trim())
-    );
+    return pendingApprovalShifts.filter(s => {
+      const audit = parseShiftAudit(s);
+      return String(s.professional_id) === String(myProf.id) ||
+             String(audit.offeredById) === String(myProf.id) ||
+             (audit.offeredByName && myProf.name && audit.offeredByName.toLowerCase().trim() === myProf.name.toLowerCase().trim());
+    });
   }, [pendingApprovalShifts, myProf]);
 
-  // 3. MEUS PLANTÕES FUTUROS (Que posso pedir para passar pro mural)
+  // 3. MEUS PLANTÕES FUTUROS (Que posso passar para o mural)
   const myUpcomingShifts = useMemo(() => {
     if (!myProf?.id) return [];
     return (shifts || []).filter(s => {
       const isMine = String(s.professional_id) === String(myProf.id) || 
                      (s.professional_name && myProf.name && s.professional_name.toLowerCase().trim() === myProf.name.toLowerCase().trim());
-      return isMine && s.date >= todayStr && s.status === 'confirmado';
+      return isMine && s.date >= todayStr && s.status !== 'cancelado';
     }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
   }, [shifts, myProf, todayStr]);
 
@@ -179,12 +244,12 @@ export default function Trocas() {
   const transferHistory = useMemo(() => {
     return (shifts || []).filter(s => {
       if (!s) return false;
-      const notes = String(s.notes || '');
-      return notes.includes('[TRANSFERENCIA:') || s.transfer_from_name;
+      const audit = parseShiftAudit(s);
+      return audit.transferText !== '' || (audit.transferFrom && audit.transferTo);
     }).sort((a, b) => (b?.date || '').localeCompare(a?.date || ''));
   }, [shifts]);
 
-  // AÇÃO: Profissional solicita passar o plantão (Entra na fila do Gestor)
+  // AÇÃO: Profissional solicita passar plantão (Entra na mesa do Gestor)
   const handleRequestSendToMural = async (shift) => {
     const requesterName = myProf?.name || user?.full_name || 'Profissional';
     const requesterId = myProf?.id || user?.id || '';
@@ -195,18 +260,17 @@ export default function Trocas() {
 
     setSubmitting(true);
     try {
-      const currentNotes = shift.notes || '';
-      const cleanNotes = currentNotes.replace(/\[SOLICITADO_POR:[^\]]+\]/g, '').trim();
+      const currentNotes = String(shift.notes || '');
+      const cleanNotes = currentNotes.replace(/\[SOLICITADO_POR:[^\]]+\]/gi, '').replace(/\[AGUARDANDO_GESTOR\]/gi, '').trim();
+      const updatedNotes = `${cleanNotes} [SOLICITADO_POR: ${requesterName}] [SOLICITADO_ID: ${requesterId}] [AGUARDANDO_GESTOR]`.trim();
 
-      await base44.entities.Shift.update(shift.id, {
+      await safeUpdateShift(shift.id, {
         status: 'aguardando_aprovacao_gestor',
-        offered_by_id: requesterId,
-        offered_by_name: requesterName,
-        notes: `${cleanNotes} [SOLICITADO_POR: ${requesterName}]`.trim()
+        notes: updatedNotes
       });
 
       await syncGlobalData();
-      alert('Solicitação enviada com sucesso! O plantão está em análise pela coordenação.');
+      alert('Solicitação enviada com sucesso! O plantão está aguardando a avaliação da coordenação.');
     } catch (err) {
       alert('Erro ao solicitar envio: ' + err.message);
     } finally {
@@ -216,24 +280,25 @@ export default function Trocas() {
 
   // AÇÃO DO GESTOR: Autorizar que o plantão vá ao Mural
   const handleApproveMuralPost = async (shift) => {
-    const originName = shift.offered_by_name || formatFullName(shift.professional_name) || 'Colega';
+    const audit = parseShiftAudit(shift);
+    const originName = audit.offeredByName || formatFullName(shift.professional_name) || 'Colega';
 
     if (!confirm(`Autorizar a abertura do plantão de ${shift.date} no Mural?\nOrigem: ${originName}`)) return;
 
     setSubmitting(true);
     try {
-      const currentNotes = shift.notes || '';
-      await base44.entities.Shift.update(shift.id, {
-        status: 'disponivel_mural',
+      const currentNotes = String(shift.notes || '');
+      const cleanNotes = currentNotes.replace(/\[AGUARDANDO_GESTOR\]/gi, '').trim();
+      const updatedNotes = `${cleanNotes} [ORIGEM_MURAL: ${originName}] [AUTORIZADO_POR: ${user?.full_name || 'Gestor Geral'}] [DISPONIVEL_MURAL]`.trim();
+
+      await safeUpdateShift(shift.id, {
+        status: 'vago',
         professional_id: null,
-        transfer_from_id: shift.offered_by_id || shift.professional_id,
-        transfer_from_name: originName,
-        authorized_by_manager: user?.full_name || 'Gestor Geral',
-        notes: `${currentNotes} [ORIGEM_MURAL: ${originName}] [AUTORIZADO_POR: ${user?.full_name || 'Gestão'}]`.trim()
+        notes: updatedNotes
       });
 
       await syncGlobalData();
-      alert('Plantão autorizado e publicado no Mural de Oportunidades!');
+      alert('Plantão autorizado e publicado com sucesso no Mural de Oportunidades!');
     } catch (err) {
       alert('Erro ao autorizar: ' + err.message);
     } finally {
@@ -241,22 +306,26 @@ export default function Trocas() {
     }
   };
 
-  // AÇÃO DO GESTOR: Recusar e devolver o plantão ao profissional de origem
+  // AÇÃO DO GESTOR: Recusar e devolver o plantão ao profissional
   const handleRejectMuralPost = async (shift) => {
-    const originName = shift.offered_by_name || formatFullName(shift.professional_name) || 'o profissional';
+    const audit = parseShiftAudit(shift);
+    const originName = audit.offeredByName || formatFullName(shift.professional_name) || 'o profissional';
 
-    if (!confirm(`Recusar a liberação no Mural? O plantão permanecerá sob a responsabilidade de ${originName}.`)) return;
+    if (!confirm(`Recusar a liberação no Mural? O plantão permanecerá sob a titularidade de ${originName}.`)) return;
 
     setSubmitting(true);
     try {
-      const currentNotes = shift.notes || '';
-      await base44.entities.Shift.update(shift.id, {
+      const currentNotes = String(shift.notes || '');
+      const cleanNotes = currentNotes.replace(/\[AGUARDANDO_GESTOR\]/gi, '').trim();
+      const updatedNotes = `${cleanNotes} [RECUSADO_EM: ${new Date().toLocaleDateString('pt-BR')}]`.trim();
+
+      await safeUpdateShift(shift.id, {
         status: 'confirmado',
-        notes: `${currentNotes} [RECUSADO_COORDENACAO_EM: ${new Date().toLocaleDateString('pt-BR')}]`.trim()
+        notes: updatedNotes
       });
 
       await syncGlobalData();
-      alert(`Solicitação cancelada. O plantão foi devolvido a ${originName}.`);
+      alert(`Solicitação cancelada. O plantão permanece com ${originName}.`);
     } catch (err) {
       alert('Erro ao recusar: ' + err.message);
     } finally {
@@ -279,7 +348,8 @@ export default function Trocas() {
     }
 
     const sectorName = sectorMap[String(shift.sector_id)]?.name || 'Setor Hospitalar';
-    const originName = shift.transfer_from_name || (shift.notes?.match(/\[ORIGEM_MURAL:\s*([^\]]+)\]/i)?.[1]) || null;
+    const audit = parseShiftAudit(shift);
+    const originName = audit.transferFrom || audit.offeredByName || null;
     const originMsg = originName ? `\n(Repasse cedido por: ${originName})` : '';
 
     if (!confirm(`Confirmar assunção do plantão?${originMsg}\n\nSetor: ${sectorName}\nData: ${shift.date} (${shift.start_time || '07:00'} às ${shift.end_time || '19:00'})`)) {
@@ -288,18 +358,19 @@ export default function Trocas() {
 
     setSubmitting(true);
     try {
-      const currentNotes = shift.notes || '';
+      const currentNotes = String(shift.notes || '');
+      const cleanNotes = currentNotes.replace(/\[DISPONIVEL_MURAL\]/gi, '').trim();
       const transferAudit = originName 
-        ? `[TRANSFERENCIA: ${originName} -> ${myProf.name}] [DATA: ${new Date().toLocaleDateString('pt-BR')}]` 
+        ? `[TRANSFERENCIA: ${originName} -> ${myProf.name}] [TRANSFER_TO: ${myProf.name}] [DATA: ${new Date().toLocaleDateString('pt-BR')}]` 
         : `[ASSUNCAO_DIRETA: ${myProf.name}]`;
 
-      await base44.entities.Shift.update(shift.id, {
+      const updatedNotes = `${cleanNotes} ${transferAudit}`.trim();
+
+      await safeUpdateShift(shift.id, {
         professional_id: myProf.id,
         professional_name: myProf.name,
         status: 'confirmado',
-        transfer_to_id: myProf.id,
-        transfer_to_name: myProf.name,
-        notes: `${currentNotes} ${transferAudit}`.trim()
+        notes: updatedNotes
       });
 
       await syncGlobalData();
@@ -465,9 +536,8 @@ export default function Trocas() {
                 const sector = sectorMap[String(shift.sector_id)];
                 const realSpecialty = extractSpecialty(shift, null);
                 const conflictInfo = checkTimeConflict(shift);
-                
-                // Identifica se a vaga veio de um colega
-                const originName = shift.transfer_from_name || (shift.notes?.match(/\[ORIGEM_MURAL:\s*([^\]]+)\]/i)?.[1]) || null;
+                const audit = parseShiftAudit(shift);
+                const originName = audit.transferFrom || audit.offeredByName || null;
 
                 return (
                   <Card 
@@ -588,7 +658,8 @@ export default function Trocas() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {pendingApprovalShifts.map(shift => {
                 const sector = sectorMap[String(shift.sector_id)];
-                const requesterName = shift.offered_by_name || formatFullName(shift.professional_name) || 'Profissional';
+                const audit = parseShiftAudit(shift);
+                const requesterName = audit.offeredByName || formatFullName(shift.professional_name) || 'Profissional';
                 const realSpecialty = extractSpecialty(shift, null);
 
                 return (
@@ -674,6 +745,9 @@ export default function Trocas() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {myUpcomingShifts.map(shift => {
                 const sector = sectorMap[String(shift.sector_id)];
+                const audit = parseShiftAudit(shift);
+                const isPending = audit.isAguardandoGestor;
+
                 return (
                   <Card key={shift.id} className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-3">
                     <div>
@@ -690,13 +764,20 @@ export default function Trocas() {
                       </div>
                     </div>
 
-                    <Button 
-                      onClick={() => handleRequestSendToMural(shift)} 
-                      disabled={submitting} 
-                      className="w-full h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl gap-2 shadow-sm cursor-pointer"
-                    >
-                      <Flame className="w-3.5 h-3.5" /> Passar para o Mural
-                    </Button>
+                    {isPending ? (
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] font-bold text-amber-700 dark:text-amber-300 text-center flex items-center justify-center gap-1.5">
+                        <Clock3 className="w-3.5 h-3.5 animate-pulse" />
+                        Aguardando autorização do gestor
+                      </div>
+                    ) : (
+                      <Button 
+                        onClick={() => handleRequestSendToMural(shift)} 
+                        disabled={submitting} 
+                        className="w-full h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl gap-2 shadow-sm cursor-pointer"
+                      >
+                        <Flame className="w-3.5 h-3.5" /> Passar para o Mural
+                      </Button>
+                    )}
                   </Card>
                 );
               })}
@@ -742,11 +823,11 @@ export default function Trocas() {
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {transferHistory.map(shift => {
                       const sector = sectorMap[String(shift.sector_id)];
+                      const audit = parseShiftAudit(shift);
                       
-                      // Extração de auditoria
-                      const deQuem = shift.transfer_from_name || (shift.notes?.match(/\[ORIGEM_MURAL:\s*([^\]]+)\]/i)?.[1]) || 'Profissional Cedente';
-                      const paraQuem = shift.transfer_to_name || shift.professional_name || 'Profissional que Assumiu';
-                      const autorizador = shift.authorized_by_manager || (shift.notes?.match(/\[AUTORIZADO_POR:\s*([^\]]+)\]/i)?.[1]) || 'Gestão Geral';
+                      const deQuem = audit.transferFrom || audit.offeredByName || 'Profissional Cedente';
+                      const paraQuem = audit.transferTo || shift.professional_name || 'Profissional que Assumiu';
+                      const autorizador = audit.authorizedBy || 'Gestão Geral';
 
                       return (
                         <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
