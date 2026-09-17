@@ -11,7 +11,7 @@ import {
   Users, UserPlus, Search, CheckCircle2, 
   Clock, DollarSign, Edit3, KeyRound, Send, RefreshCw, Ban, 
   UserCheck, MessageSquare, Shield, UserCog, BadgeCheck, Eye, EyeOff,
-  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle, Building2, Check, ToggleLeft, ToggleRight
+  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle, Building2, Check, ToggleLeft, ToggleRight, Power
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -359,28 +359,11 @@ export default function CorpoClinico() {
                     <h3 className="font-black text-sm text-slate-900 dark:text-white mt-1.5">{prof.name}</h3>
                     <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400">ID: {meta.registration_id || prof.registration_id || 'MAT-XXXX'}</span>
                   </div>
-
-                  {/* BOTÃO DE ALTERNÂNCIA RÁPIDA ATIVO / INATIVO */}
-                  {isManager ? (
-                    <button 
-                      onClick={() => handleToggleStatusQuick(prof)}
-                      title="Clique para alternar entre Ativo e Inativo"
-                      className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase border cursor-pointer transition-all flex items-center gap-1 ${
-                        profStatus === 'ativo' 
-                          ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20' 
-                          : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300'
-                      }`}
-                    >
-                      {profStatus === 'ativo' ? <ToggleRight className="w-3.5 h-3.5 text-emerald-600" /> : <ToggleLeft className="w-3.5 h-3.5 text-slate-500" />}
-                      {profStatus}
-                    </button>
-                  ) : (
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
-                      profStatus === 'ativo' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : 'bg-slate-200 text-slate-600'
-                    }`}>
-                      {profStatus}
-                    </span>
-                  )}
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
+                    profStatus === 'ativo' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : 'bg-slate-200 text-slate-600'
+                  }`}>
+                    {profStatus}
+                  </span>
                 </div>
                 
                 <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
@@ -424,9 +407,35 @@ export default function CorpoClinico() {
                 </div>
               </div>
 
+              {/* BOTÕES NO LADO DE FORA (RODAPÉ DO CARD): EDITAR, STATUS RÁPIDO E WHATSAPP */}
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => handleOpenEdit(prof)} className="flex-1 text-xs h-9 font-bold gap-1 rounded-xl cursor-pointer"><Edit3 className="w-3.5 h-3.5 text-sky-600" /> Editar Perfil</Button>
-                {prof.phone && (<Button size="sm" variant="outline" onClick={() => window.open(`https://wa.me/55${prof.phone.replace(/\D/g, '')}`, '_blank')} className="h-9 px-3 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50 cursor-pointer"><MessageSquare className="w-4 h-4" /></Button>)}
+                <Button size="sm" variant="outline" onClick={() => handleOpenEdit(prof)} className="flex-1 text-xs h-9 font-bold gap-1 rounded-xl cursor-pointer">
+                  <Edit3 className="w-3.5 h-3.5 text-sky-600" /> Editar Perfil
+                </Button>
+
+                {/* Botão de Alternância Rápida Ativo / Inativo com 1 clique */}
+                {isManager && (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => handleToggleStatusQuick(prof)}
+                    title={profStatus === 'ativo' ? 'Desativar profissional' : 'Ativar profissional'}
+                    className={`h-9 px-3 text-xs font-bold rounded-xl cursor-pointer gap-1 ${
+                      profStatus === 'ativo' 
+                        ? 'border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30' 
+                        : 'border-slate-300 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <Power className="w-3.5 h-3.5" />
+                    {profStatus === 'ativo' ? 'Desativar' : 'Ativar'}
+                  </Button>
+                )}
+
+                {prof.phone && (
+                  <Button size="sm" variant="outline" onClick={() => window.open(`https://wa.me/55${prof.phone.replace(/\D/g, '')}`, '_blank')} className="h-9 px-3 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50 cursor-pointer">
+                    <MessageSquare className="w-4 h-4" />
+                  </Button>
+                )}
               </div>
             </Card>
           );
