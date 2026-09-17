@@ -321,7 +321,7 @@ export default function Relatorios() {
           </div>
 
           <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 space-y-1">
-            <strong className="text-slate-900 dark:text-white block font-black">Auditoria Automática CCO - Miguel Deivid</strong>
+            <strong className="text-slate-900 dark:text-white block font-black">Auditoria Automática CCO</strong>
             <p>Profissionais com credenciais vencidas recebem restrição automática de alocação nas escalas ativas.</p>
           </div>
         </Card>
