@@ -430,7 +430,7 @@ export default function Escalas() {
     return { emAndamento, proximoRendimento, tableDayShifts };
   }, [shifts, selectedSectorId, liveNow, todayLocalStr, professionalMap]);
 
-  // IMPRESSÃO A4 PAISAGEM LIMPA EM JANELA PURA
+  /// IMPRESSÃO A4 PAISAGEM LIMPA EM JANELA PURA (SEM VAGAS EM ABERTO, COM DATA+HORA E STATUS CONCLUÍDO PRECISO)
   const handlePrintA4Landscape = () => {
     const printWindow = window.open('', '_blank', 'width=1100,height=800');
     if (!printWindow) {
@@ -443,25 +443,62 @@ export default function Escalas() {
     const dataVigencia = liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
     const dataEmissao = liveNow.toLocaleDateString('pt-BR') + ' às ' + liveNow.toLocaleTimeString('pt-BR');
 
-    const tableRowsHtml = tvData.tableDayShifts.length === 0
-      ? `<tr><td colspan="6" style="padding: 20px; text-align: center; color: #666;">Nenhum plantão registrado para a data de hoje.</td></tr>`
-      : tvData.tableDayShifts.map((shift, idx) => {
-          const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+    // FILTRO RIGOROSO: Apenas plantões com profissionais alocados (NÃO SAI VAGA EM ABERTO)
+    const activeShiftsOnly = tvData.tableDayShifts.filter(shift => {
+      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+      return shift.status !== 'vago' && prof && !shift.professional_name?.toLowerCase().includes('vaga');
+    });
+
+    const now = liveNow;
+    const nowHour = now.getHours();
+    const nowMin = now.getMinutes();
+    const nowTotalMin = nowHour * 60 + nowMin;
+
+    const tableRowsHtml = activeShiftsOnly.length === 0
+      ? `<tr><td colspan="6" style="padding: 24px; text-align: center; color: #666; font-size: 11px;">Nenhum profissional com plantão confirmado para esta data.</td></tr>`
+      : activeShiftsOnly.map((shift, idx) => {
+          const prof = professionalMap[String(shift.professional_id)];
           const sector = sectorMap[String(shift.sector_id)];
-          const isVago = shift.status === 'vago' || !prof;
           const realSpecialty = extractSpecialty(shift, prof);
           const bg = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
-          const profNome = isVago ? '<strong style="color: #b91c1c;">⚠️ VAGA EM ABERTO</strong>' : `Dr(a). ${prof?.name}`;
+          const profNome = `Dr(a). ${prof?.name || shift.professional_name}`;
           const conselho = prof?.document || '—';
+
+          // Formatação da Data do Plantão
+          const [sYear, sMonth, sDay] = (shift.date || '').split('-');
+          const formattedDate = sDay && sMonth ? `${sDay}/${sMonth}/${sYear}` : shift.date;
+
+          // Cálculo exato de conclusão
+          const [startH, startM] = (shift.start_time || '07:00').split(':').map(Number);
+          const [endH, endM] = (shift.end_time || '19:00').split(':').map(Number);
+          const startMin = startH * 60 + startM;
+          let endMin = endH * 60 + endM;
+          if (endMin <= startMin) endMin += 24 * 60;
+
+          let effNow = nowTotalMin;
+          if (endMin > 24 * 60 && nowTotalMin < startMin) effNow += 24 * 60;
+
+          const isShiftDatePast = shift.date < todayLocalStr;
+          const isShiftDateToday = shift.date === todayLocalStr;
+          const isConcluded = isShiftDatePast || (isShiftDateToday && effNow >= endMin);
+          const isActiveNow = isShiftDateToday && effNow >= startMin && effNow < endMin;
+
+          const statusHtml = isConcluded
+            ? `<span style="font-weight: bold; color: #166534; background-color: #dcfce7; padding: 2px 6px; border-radius: 4px; font-size: 9px;">✓ CONCLUÍDO</span>`
+            : isActiveNow
+            ? `<span style="font-weight: bold; color: #0369a1; background-color: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-size: 9px;">● EM ANDAMENTO</span>`
+            : `<span style="color: #475569; background-color: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 9px;">PROGRAMADO</span>`;
 
           return `
             <tr style="background-color: ${bg};">
               <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold; text-transform: uppercase;">${sector?.name || 'Setor'}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; font-weight: bold; text-align: center;">${shift.start_time} - ${shift.end_time}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; font-weight: bold; text-align: center; white-space: nowrap;">
+                ${formattedDate}<br><span style="color: #334155; font-size: 10px;">${shift.start_time} às ${shift.end_time}</span>
+              </td>
               <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold;">${profNome}</td>
               <td style="border: 1px solid #111; padding: 7px 10px;">${realSpecialty}</td>
               <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; text-align: center;">${conselho}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px; text-align: center; color: #aaa; font-family: monospace;">____________________</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; text-align: center;">${statusHtml}</td>
             </tr>
           `;
         }).join('');
@@ -506,11 +543,11 @@ export default function Escalas() {
           <thead>
             <tr>
               <th style="width: 20%;">Seção / Setor</th>
-              <th style="width: 14%; text-align: center;">Horário</th>
-              <th style="width: 28%;">Profissional Escalado</th>
+              <th style="width: 18%; text-align: center;">Data & Horário</th>
+              <th style="width: 26%;">Profissional Escalado</th>
               <th style="width: 18%;">Especialidade / Atuação</th>
-              <th style="width: 12%; text-align: center;">Conselho</th>
-              <th style="width: 18%; text-align: center;">Rubrica / Presença</th>
+              <th style="width: 10%; text-align: center;">Conselho</th>
+              <th style="width: 14%; text-align: center;">Situação / Status</th>
             </tr>
           </thead>
           <tbody>${tableRowsHtml}</tbody>
@@ -535,111 +572,6 @@ export default function Escalas() {
     printWindow.document.open();
     printWindow.document.write(htmlContent);
     printWindow.document.close();
-  };
-
-  const allActiveProfessionals = useMemo(() => {
-    return (professionals || []).filter(p => p?.status === 'ativo');
-  }, [professionals]);
-
-  const filteredTrayProfs = useMemo(() => {
-    const term = traySearch.toLowerCase().trim();
-    return (professionals || []).filter(p => {
-      if (p?.status !== 'ativo') return false;
-      if (traySpecialtyFilter !== 'todas' && (p.specialty || '').toLowerCase() !== traySpecialtyFilter.toLowerCase()) return false;
-      if (!term) return true;
-      return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowerCase().includes(term);
-    });
-  }, [professionals, traySearch, traySpecialtyFilter]);
-
-  const handleDayClick = (dateStr, e) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      setSelectedDays(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
-    } else {
-      if (selectedDays.length > 0) setSelectedDays([]);
-    }
-  };
-
-  const handleDragStart = (e, profId) => { setDraggingProfId(profId); e.dataTransfer.setData('text/plain', profId); };
-
-  const handleDropOnDay = async (e, dateStr) => {
-    e.preventDefault();
-    const profId = e.dataTransfer.getData('text/plain') || draggingProfId;
-    if (!profId) return;
-
-    const prof = professionalMap[profId];
-    const targetSector = selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '');
-    if (!targetSector) { alert('Selecione ou cadastre um setor hospitalar.'); return; }
-
-    const targetDates = selectedDays.includes(dateStr) && selectedDays.length > 1 ? selectedDays : [dateStr];
-    if (!confirm(`Alocar ${prof?.name} para ${targetDates.length} dia(s)?`)) { setDraggingProfId(null); return; }
-
-    try {
-      for (const d of targetDates) {
-        const spec = prof?.specialty || 'Clínica Médica';
-        const saved = await autoHealingSaveShift(null, {
-          company_id: company?.id || 'cmp_principal',
-          unit_id: selectedUnitId || 'unit_h1',
-          sector_id: targetSector,
-          professional_id: profId,
-          target_specialty: spec,
-          notes: `[ESP:${spec}]`,
-          date: d,
-          shift_type: 'diurno',
-          start_time: '07:00',
-          end_time: '19:00',
-          status: 'confirmado'
-        });
-        if (saved?.id) try { window.localStorage.setItem(`shift_spec_${saved.id}`, spec); } catch {}
-      }
-      setSelectedDays([]); await syncGlobalData();
-    } catch (err) { alert('Erro ao alocar: ' + err.message); } finally { setDraggingProfId(null); }
-  };
-
-  const handleSaveShift = async (e) => {
-    e.preventDefault();
-    if (!formData.sector_id || !formData.date) return;
-
-    const isMural = formData.action_type === 'mural';
-    setSubmitting(true);
-    try {
-      const prof = formData.professional_id ? professionalMap[formData.professional_id] : null;
-      const finalSpecialty = (formData.target_specialty || prof?.specialty || 'Clínica Médica').trim();
-      const sType = formData.start_time >= '18:00' || formData.start_time < '06:00' ? 'noturno' : 'diurno';
-
-      const payload = {
-        company_id: company?.id || 'cmp_principal',
-        unit_id: selectedUnitId || 'unit_h1',
-        sector_id: formData.sector_id,
-        target_specialty: finalSpecialty,
-        professional_id: isMural ? null : formData.professional_id,
-        date: formData.date,
-        shift_type: sType,
-        start_time: formData.start_time,
-        end_time: formData.end_time,
-        status: isMural ? 'vago' : 'confirmado',
-        notes: `[ESP:${finalSpecialty}]`
-      };
-
-      const saved = await autoHealingSaveShift(editingShiftId, payload);
-      if (saved?.id || editingShiftId) try { window.localStorage.setItem(`shift_spec_${saved?.id || editingShiftId}`, finalSpecialty); } catch {}
-
-      setModalOpen(false); await syncGlobalData();
-    } finally { setSubmitting(false); }
-  };
-
-  const handleSendToMuralFromModal = async () => {
-    if (!editingShiftId) return;
-    if (!confirm('Disponibilizar no Mural?')) return;
-    try {
-      await autoHealingSaveShift(editingShiftId, { professional_id: null, status: 'vago' });
-      setModalOpen(false); await syncGlobalData();
-    } catch (err) { alert(err.message); }
-  };
-
-  const handleDeleteShift = async (shiftId) => {
-    if (!confirm('Excluir plantão?')) return;
-    try { await base44.entities.Shift.delete(shiftId); setModalOpen(false); await syncGlobalData(); } catch (err) { alert(err.message); }
   };
 
   // =========================================================================
