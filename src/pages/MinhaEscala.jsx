@@ -10,22 +10,23 @@ import {
   Repeat, 
   CheckCircle2, 
   Loader2, 
-  DollarSign,
-  AlertCircle,
-  Radio,
-  Printer,
-  ChevronLeft,
-  ChevronRight,
-  Send,
-  Timer,
-  Sparkles,
-  Flame,
-  ArrowRight,
-  Layers,
-  CalendarCheck,
-  Zap,
-  ChevronDown,
-  ChevronUp
+  DollarSign, 
+  AlertCircle, 
+  Radio, 
+  Printer, 
+  ChevronLeft, 
+  ChevronRight, 
+  Send, 
+  Timer, 
+  Sparkles, 
+  Flame, 
+  ArrowRight, 
+  Layers, 
+  CalendarCheck, 
+  Zap, 
+  ChevronDown, 
+  ChevronUp, 
+  Clock3 
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -57,6 +58,24 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
 
+async function autoHealingSaveShift(id, initialPayload) {
+  let payload = { ...initialPayload };
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      if (id) return await base44.entities.Shift.update(id, payload);
+      else return await base44.entities.Shift.create(payload);
+    } catch (err) {
+      const msg = err.message || '';
+      const match = msg.match(/Could not find the '([^']+)' column/i);
+      if (match && match[1]) { 
+        delete payload[match[1]]; 
+        continue; 
+      }
+      throw err;
+    }
+  }
+}
+
 export default function MinhaEscala() {
   const { user, company, professionals = [], sectors = [], loading: appLoading, syncGlobalData } = useAppData();
   const navigate = useNavigate();
@@ -66,6 +85,7 @@ export default function MinhaEscala() {
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [now, setNow] = useState(() => new Date());
   const [showPastShifts, setShowPastShifts] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -80,7 +100,7 @@ export default function MinhaEscala() {
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
   const todayStr = useMemo(() => getLocalDateString(now), [now]);
 
-  // Identificação cadastral do profissional logado
+  // Identificação do profissional logado
   const currentProfessional = useMemo(() => {
     return (professionals || []).find(p => 
       String(p.id) === String(myProfId) || 
@@ -106,7 +126,8 @@ export default function MinhaEscala() {
         const matchesId = currentProfessional && String(s.professional_id) === String(currentProfessional.id);
         const matchesUserProf = String(s.professional_id) === String(myProfId);
         const matchesName = user?.full_name && s.professional_name && s.professional_name.toLowerCase().trim() === user.full_name.toLowerCase().trim();
-        return matchesId || matchesUserProf || matchesName;
+        const matchesOfferedBy = (s.notes || '').includes(`[SOLICITADO_POR: ${currentProfessional?.name || user?.full_name}]`);
+        return matchesId || matchesUserProf || matchesName || matchesOfferedBy;
       });
 
       setShifts(myShifts);
@@ -165,7 +186,7 @@ export default function MinhaEscala() {
     };
   }, [currentProfessional]);
 
-  // Classificação temporal
+  // Classificação temporal e de status
   const enrichedShifts = useMemo(() => {
     const nowHour = now.getHours();
     const nowMin = now.getMinutes();
@@ -184,6 +205,9 @@ export default function MinhaEscala() {
       const sDate = (s.date || '').split('T')[0];
       const isPastDay = sDate < todayStr;
       const isToday = sDate === todayStr;
+
+      const notesStr = String(s.notes || '');
+      const isPendingApproval = s.status === 'aguardando_aprovacao_gestor' || notesStr.includes('[AGUARDANDO_GESTOR]');
 
       let state = 'programado'; // 'ativo' | 'concluido' | 'programado'
       let timeLeftDesc = '';
@@ -222,6 +246,7 @@ export default function MinhaEscala() {
         ...s,
         sectorName,
         state,
+        isPendingApproval,
         duration: Math.round(duration * 10) / 10,
         timeLeftDesc,
         startDateTime
@@ -246,7 +271,7 @@ export default function MinhaEscala() {
     return enrichedShifts.filter(s => (s.date || '').startsWith(monthPrefix));
   }, [enrichedShifts, monthPrefix]);
 
-  // PLANTÕES QUE FALTAM FAZER: Começam a partir da data atual em diante (crescente)
+  // PLANTÕES QUE FALTAM FAZER: A partir de hoje (crescente)
   const upcomingMonthShifts = useMemo(() => {
     return monthShifts
       .filter(s => s.state === 'programado' || s.state === 'ativo')
@@ -257,7 +282,7 @@ export default function MinhaEscala() {
       });
   }, [monthShifts]);
 
-  // PLANTÕES CONCLUÍDOS: Ficam na parte inferior (ordenados por data decrescente dos mais recentes para os mais antigos)
+  // PLANTÕES CONCLUÍDOS
   const completedMonthShifts = useMemo(() => {
     return monthShifts
       .filter(s => s.state === 'concluido')
@@ -296,21 +321,34 @@ export default function MinhaEscala() {
     };
   }, [monthShifts, remunConfig]);
 
-  // Passar Plantão para o Mural
+  // CORRIGIDO: O plantão NÃO vai direto para vaga. Entra para aprovação do gestor!
   const handlePassShiftToMural = async (shift) => {
-    if (!confirm(`Deseja disponibilizar seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) no Mural de Oportunidades?`)) return;
+    const requesterName = currentProfessional?.name || user?.full_name || 'Profissional';
+    const requesterId = currentProfessional?.id || user?.id || '';
 
+    if (!confirm(`Deseja solicitar a liberação do seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) no Mural de Oportunidades?\n\nO pedido será enviado para aprovação da coordenação antes de ser liberado.`)) {
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      await base44.entities.Shift.update(shift.id, {
-        professional_id: null,
-        status: 'vago',
-        notes: `[DISPONIBILIZADO POR: ${currentProfessional?.name || user?.full_name}]`
+      const currentNotes = String(shift.notes || '');
+      const cleanNotes = currentNotes.replace(/\[SOLICITADO_POR:[^\]]+\]/gi, '').replace(/\[AGUARDANDO_GESTOR\]/gi, '').trim();
+      const updatedNotes = `${cleanNotes} [SOLICITADO_POR: ${requesterName}] [SOLICITADO_ID: ${requesterId}] [AGUARDANDO_GESTOR]`.trim();
+
+      // Envia para o status de aprovação do gestor mantendo o titular até que seja aprovado
+      await autoHealingSaveShift(shift.id, {
+        status: 'aguardando_aprovacao_gestor',
+        notes: updatedNotes
       });
-      alert('Plantão disponibilizado com sucesso no Mural de Oportunidades!');
+
+      alert('Solicitação enviada com sucesso! O plantão está aguardando a aprovação do gestor para entrar no Mural.');
       if (typeof syncGlobalData === 'function') await syncGlobalData();
       await loadMyShifts();
     } catch (e) {
-      alert('Erro ao passar plantão: ' + e.message);
+      alert('Erro ao solicitar envio ao mural: ' + e.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -328,7 +366,6 @@ export default function MinhaEscala() {
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = now.toLocaleDateString('pt-BR') + ' às ' + now.toLocaleTimeString('pt-BR');
 
-    // Ordem cronológica pura para o documento impresso
     const allOrdered = [...monthShifts].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
     const rowsHtml = allOrdered.map((s, idx) => `
@@ -420,7 +457,7 @@ export default function MinhaEscala() {
             Olá, {currentProfessional?.name ? `Dr(a). ${currentProfessional.name.split(' ')[0]}` : user?.full_name || 'Profissional'}!
           </h1>
           <p className="text-xs md:text-sm text-slate-300 font-medium">
-            Gerencie sua agenda de plantões, acompanhe seu repasse e passe turnos no Mural.
+            Gerencie sua agenda de plantões, acompanhe seu repasse e solicite trocas à coordenação.
           </p>
         </div>
 
@@ -441,7 +478,7 @@ export default function MinhaEscala() {
         </div>
       </div>
 
-      {/* 2. CARD DE PLANTÃO AO VIVO (SE ESTIVER EM JORNADA NESTE MOMENTO) */}
+      {/* 2. CARD DE PLANTÃO AO VIVO */}
       {activeShiftNow && (
         <div className="p-6 rounded-3xl bg-emerald-500/10 border-2 border-emerald-500/60 shadow-xl text-emerald-950 dark:text-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
           <div className="flex items-center gap-4">
@@ -512,13 +549,21 @@ export default function MinhaEscala() {
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
-            <Button 
-              onClick={() => handlePassShiftToMural(nextHighlightedShift)}
-              variant="outline"
-              className="h-10 text-xs font-black rounded-xl border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 gap-1.5 cursor-pointer"
-            >
-              <Flame className="w-4 h-4" /> Passar no Mural
-            </Button>
+            {nextHighlightedShift.isPendingApproval ? (
+              <div className="px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-black flex items-center gap-1.5">
+                <Clock3 className="w-4 h-4 animate-pulse" />
+                Aguardando autorização da gestão
+              </div>
+            ) : (
+              <Button 
+                onClick={() => handlePassShiftToMural(nextHighlightedShift)}
+                disabled={submitting}
+                variant="outline"
+                className="h-10 text-xs font-black rounded-xl border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 gap-1.5 cursor-pointer"
+              >
+                <Flame className="w-4 h-4" /> Passar no Mural
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -586,7 +631,7 @@ export default function MinhaEscala() {
         </Card>
       </div>
 
-      {/* 5. SEÇÃO PRINCIPAL: PLANTÕES QUE FALTAM FAZER (A PARTIR DE HOJE EM DIANTE) */}
+      {/* 5. SEÇÃO PRINCIPAL: PLANTÕES QUE FALTAM FAZER (CRESCENTE) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div>
@@ -620,7 +665,6 @@ export default function MinhaEscala() {
           </div>
         </div>
 
-        {/* LISTA CRESCENTE DOS PLANTÕES A REALIZAR */}
         {loading ? (
           <div className="py-16 text-center text-slate-400">
             <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-sky-600" />
@@ -636,6 +680,7 @@ export default function MinhaEscala() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {upcomingMonthShifts.map(shift => {
               const isAtivo = shift.state === 'ativo';
+              const isPending = shift.isPendingApproval;
 
               return (
                 <div 
@@ -643,6 +688,8 @@ export default function MinhaEscala() {
                   className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
                     isAtivo 
                       ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-md ring-1 ring-emerald-500/40' 
+                      : isPending
+                      ? 'border-amber-300 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/20'
                       : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:border-sky-400'
                   }`}
                 >
@@ -660,9 +707,11 @@ export default function MinhaEscala() {
                       <span className={`text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full ${
                         isAtivo 
                           ? 'bg-emerald-600 text-white animate-pulse' 
+                          : isPending
+                          ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
                           : 'bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300'
                       }`}>
-                        {isAtivo ? '● Ao Vivo' : 'Programado'}
+                        {isAtivo ? '● Ao Vivo' : isPending ? '⏳ Em Análise' : 'Programado'}
                       </span>
                     </div>
 
@@ -683,14 +732,21 @@ export default function MinhaEscala() {
 
                   {!isAtivo && (
                     <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={() => handlePassShiftToMural(shift)}
-                        className="h-8 text-[11px] font-bold border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl gap-1.5 cursor-pointer"
-                      >
-                        <Flame className="w-3.5 h-3.5" /> Passar no Mural
-                      </Button>
+                      {isPending ? (
+                        <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                          <Clock3 className="w-3.5 h-3.5 animate-pulse" /> Aguardando Gestão
+                        </span>
+                      ) : (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => handlePassShiftToMural(shift)}
+                          disabled={submitting}
+                          className="h-8 text-[11px] font-bold border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl gap-1.5 cursor-pointer"
+                        >
+                          <Flame className="w-3.5 h-3.5" /> Passar no Mural
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -700,7 +756,7 @@ export default function MinhaEscala() {
         )}
       </div>
 
-      {/* 6. SEÇÃO INFERIOR: HISTÓRICO DE PLANTÕES JÁ CONCLUÍDOS */}
+      {/* 6. SEÇÃO INFERIOR: HISTÓRICO DE PLANTÕES CONCLUÍDOS */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
@@ -714,7 +770,7 @@ export default function MinhaEscala() {
             variant="ghost" 
             size="sm" 
             onClick={() => setShowPastShifts(!showPastShifts)}
-            className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white"
+            className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer"
           >
             {showPastShifts ? (
               <span className="flex items-center gap-1">Ocultar <ChevronUp className="w-3.5 h-3.5" /></span>
