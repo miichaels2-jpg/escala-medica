@@ -148,7 +148,6 @@ export default function Escalas() {
   }, [activeTab]);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [generatorModalOpen, setGeneratorModalOpen] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -168,6 +167,7 @@ export default function Escalas() {
   const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if(s) m[String(s.id)] = s; }); return m; }, [sectors]);
   const professionalMap = useMemo(() => { const m = {}; (professionals || []).forEach(p => { if(p) m[String(p.id)] = p; }); return m; }, [professionals]);
 
+  // Abertura automática da vaga crítica vinda do Dashboard
   useEffect(() => {
     const autoOpenId = window.localStorage.getItem('scale_auto_open_shift_id');
     if (autoOpenId && shifts.length > 0) {
@@ -205,7 +205,80 @@ export default function Escalas() {
     ]
   });
 
-  const [batchData, setBatchData] = useState({ professional_id: '', sector_id: '', shift_type: 'diurno', start_time: '07:00', end_time: '19:00' });
+  const handleAddSlot = () => {
+    setGeneratorConfig(prev => ({
+      ...prev,
+      slots: [
+        ...prev.slots,
+        { id: `slot_${Date.now()}`, specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', quantity: 1, shift_type: 'diurno' }
+      ]
+    }));
+  };
+
+  const handleRemoveSlot = (slotId) => {
+    setGeneratorConfig(prev => ({
+      ...prev,
+      slots: prev.slots.filter(s => s.id !== slotId)
+    }));
+  };
+
+  const handleUpdateSlot = (slotId, field, value) => {
+    setGeneratorConfig(prev => ({
+      ...prev,
+      slots: prev.slots.map(s => {
+        if (s.id !== slotId) return s;
+        const updated = { ...s, [field]: value };
+        if (field === 'start_time') updated.shift_type = value >= '18:00' || value < '06:00' ? 'noturno' : 'diurno';
+        return updated;
+      })
+    }));
+  };
+
+  const handleExecuteGenerator = async (e) => {
+    e.preventDefault();
+    if (!generatorConfig.sector_id) { alert('Selecione o setor para a escala.'); return; }
+
+    setSubmitting(true);
+    try {
+      const startDt = new Date(generatorConfig.start_date + 'T12:00:00');
+      const totalDays = parseInt(generatorConfig.duration_days) || 30;
+
+      for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
+        const curDate = new Date(startDt);
+        curDate.setDate(curDate.getDate() + dayOffset);
+        const dateStr = getLocalDateString(curDate);
+
+        for (const slot of generatorConfig.slots) {
+          const qty = parseInt(slot.quantity) || 0;
+          for (let q = 0; q < qty; q++) {
+            const spec = slot.specialty || 'Clínica Médica';
+            const sType = slot.shift_type || (slot.start_time >= '18:00' || slot.start_time < '06:00' ? 'noturno' : 'diurno');
+            const saved = await autoHealingSaveShift(null, {
+              company_id: company?.id || 'cmp_principal',
+              unit_id: selectedUnitId || 'unit_h1',
+              sector_id: generatorConfig.sector_id,
+              target_specialty: spec,
+              notes: `[ESP:${spec}]`,
+              professional_id: null,
+              date: dateStr,
+              shift_type: sType,
+              start_time: slot.start_time,
+              end_time: slot.end_time,
+              status: 'vago'
+            });
+            if (saved?.id) try { window.localStorage.setItem(`shift_spec_${saved.id}`, spec); } catch {}
+          }
+        }
+      }
+      setGeneratorModalOpen(false); 
+      await syncGlobalData(); 
+      alert('Vagas geradas com sucesso!');
+    } catch (err) { 
+      alert(err.message); 
+    } finally { 
+      setSubmitting(false); 
+    }
+  };
 
   const handlePrevMonth = () => setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
@@ -290,6 +363,7 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
+  // CÁLCULO MODO TV 100% BLINDADO
   const tvData = useMemo(() => {
     const nowHour = liveNow.getHours();
     const nowMin = liveNow.getMinutes();
@@ -459,11 +533,11 @@ export default function Escalas() {
   return (
     <div className={`relative p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200 ${activeTab === 'tv' ? 'fixed inset-0 z-50 bg-slate-950 text-white overflow-y-auto p-6 md:p-8' : ''}`}>
       
-      {/* BOTÃO LATERAL FIXADO NA BORDA ESQUERDA (EXATAMENTE ONDE INDICOU A SETA) */}
+      {/* BOTÃO LATERAL FIXADO NA BORDA EXATA ONDE VOCÊ APONTOU A SETA */}
       <button
         onClick={toggleMainSidebar}
         title={sidebarHidden ? "Expandir Menu Lateral Principal" : "Recolher Menu Lateral"}
-        className="fixed left-0 top-1/2 -translate-y-1/2 z-[40] bg-slate-900 border border-slate-700 text-sky-400 hover:text-white hover:bg-sky-600 shadow-2xl px-1.5 py-3 rounded-r-xl transition-all duration-200 flex items-center justify-center group"
+        className="fixed left-0 top-[280px] z-[50] bg-slate-900 border border-slate-700 text-sky-400 hover:text-white hover:bg-sky-600 shadow-2xl px-1.5 py-3 rounded-r-xl transition-all duration-200 flex items-center justify-center cursor-pointer"
       >
         {sidebarHidden ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
@@ -685,11 +759,65 @@ export default function Escalas() {
         </div>
       )}
 
+      {/* MODO TV COM SINCRONIZAÇÃO AO VIVO */}
+      {activeTab === 'tv' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-3"><span className="w-3 h-3 rounded-full bg-rose-500 animate-ping"></span><h2 className="text-xl font-black text-white uppercase tracking-wider">Centro de Comando CCO • Ao Vivo</h2></div>
+            <div className="font-mono text-cyan-400 font-black text-lg">{liveNow.toLocaleTimeString('pt-BR')}</div>
+          </div>
+          
+          <div className="space-y-2">
+            <h3 className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span> Plantões em Andamento (No Posto Neste Momento)
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {tvData.emAndamento.length === 0 ? <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 text-xs">Nenhum profissional em atendimento neste minuto.</div> : tvData.emAndamento.map(shift => {
+                const prof = professionalMap[String(shift.professional_id)];
+                const sector = sectorMap[String(shift.sector_id)];
+                const realSpecialty = extractSpecialty(shift, prof);
+                return (
+                  <div key={shift.id} className="p-4 bg-slate-900 border-2 border-emerald-500/40 rounded-2xl shadow-lg space-y-2">
+                    <div className="flex justify-between items-center text-xs font-black text-emerald-400"><span>{sector?.name}</span><span className="font-mono text-[11px]">{shift.start_time} - {shift.end_time}</span></div>
+                    <div className="text-sm font-black text-white truncate">{formatFullName(prof?.name)}</div>
+                    <div className="text-[11px] text-slate-400">{realSpecialty} • <span className="text-emerald-400 font-mono">{shift.detail}</span></div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-xs font-black uppercase text-sky-400 tracking-wider flex items-center gap-2">
+              <ArrowRight className="w-3.5 h-3.5" /> Próxima Rendição (Nas próximas 2 horas)
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {tvData.proximoRendimento.length === 0 ? <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 text-xs">Nenhuma troca de turno programada para as próximas 2 horas.</div> : tvData.proximoRendimento.map(({ shift, startsIn }) => {
+                const prof = professionalMap[String(shift.professional_id)];
+                const sector = sectorMap[String(shift.sector_id)];
+                return (
+                  <div key={shift.id} className="p-3 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400">{sector?.name}</span>
+                      <div className="font-black text-xs text-white">{formatFullName(prof?.name)}</div>
+                      <span className="text-[10px] text-sky-400 font-mono">{shift.start_time} às {shift.end_time}</span>
+                    </div>
+                    <span className="text-[10px] font-black uppercase bg-sky-500/20 text-sky-300 px-2 py-1 rounded-lg">
+                      {`Inicia em ${startsIn}m`}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ========================================================================= */}
-      {/* MODAL DE EDIÇÃO COM LAYOUT DE ENCAIXE EXATO (IDÊNTICO AO PRINT 3)         */}
+      {/* MODAL DE EDIÇÃO COM ENCAIXE E BOTÕES SIMÉTRICOS                           */}
       {/* ========================================================================= */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-md w-full max-w-[95vw] bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-6 rounded-3xl overflow-hidden">
+        <DialogContent className="sm:max-w-xl w-full bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-6 rounded-3xl overflow-hidden">
           <DialogHeader className="flex flex-row items-center justify-between pb-2">
             <DialogTitle className="text-base font-black text-sky-400">
               {editingShiftId ? 'Editar Plantão da Escala' : 'Lançar Novo Plantão'}
@@ -732,8 +860,7 @@ export default function Escalas() {
               </div>
             </div>
 
-            {/* CONTAINER DESTINO DO PLANTÃO (ESTILIZADO IGUAL AO PRINT 3) */}
-            <div className="p-3.5 bg-slate-900/80 rounded-2xl border border-slate-800 space-y-3">
+            <div className="p-4 bg-slate-900/80 rounded-2xl border border-slate-800 space-y-3">
               <Label className="text-xs font-black uppercase text-slate-400">Destino do Plantão</Label>
               <div className="grid grid-cols-2 gap-2">
                 <button 
@@ -753,7 +880,7 @@ export default function Escalas() {
               </div>
               
               {formData.action_type === 'alocar' ? (
-                <div className="space-y-1 pt-1">
+                <div className="space-y-1.5 pt-1 w-full">
                   <Label className="text-xs font-bold text-slate-300">Profissional Disponível *</Label>
                   <div className="relative w-full">
                     <select
@@ -767,7 +894,7 @@ export default function Escalas() {
                           target_specialty: p?.specialty || formData.target_specialty
                         });
                       }}
-                      className="w-full h-11 px-3 py-2 bg-slate-900 border border-slate-700 text-white text-xs font-bold rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none appearance-none truncate pr-8 cursor-pointer"
+                      className="w-full h-11 px-3.5 py-2 bg-slate-900 border border-slate-700 text-white text-xs font-bold rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none appearance-none truncate pr-9 cursor-pointer"
                     >
                       <option value="">Selecione o profissional da lista...</option>
                       {allActiveProfessionals.map(p => (
@@ -776,20 +903,20 @@ export default function Escalas() {
                         </option>
                       ))}
                     </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
                       ▼
                     </div>
                   </div>
                 </div>
               ) : (
-                <p className="text-[11px] text-rose-400 bg-rose-950/40 p-2.5 rounded-xl border border-rose-900/60 leading-tight">
+                <p className="text-[11px] text-rose-400 bg-rose-950/40 p-3 rounded-xl border border-rose-900/60 leading-tight">
                   O plantão será disponibilizado no <b>Mural de Oportunidades</b> para que os profissionais assumam.
                 </p>
               )}
             </div>
             
-            {/* RODAPÉ SIMÉTRICO E ALINHADO: MESMO ENCAIXE DO PRINT 3 */}
-            <DialogFooter className="pt-2 flex flex-row items-center justify-between border-t border-slate-800 mt-2 gap-2">
+            {/* RODAPÉ DO MODAL ALINHADO E SIMÉTRICO */}
+            <DialogFooter className="pt-2 flex flex-row items-center justify-between border-t border-slate-800 mt-3 gap-2">
               <div className="flex items-center gap-2">
                 {editingShiftId && (
                   <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-10 text-xs font-bold text-rose-400 hover:bg-rose-950/30 rounded-xl px-3">
@@ -811,6 +938,99 @@ export default function Escalas() {
                   Confirmar Plantão
                 </Button>
               </div>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* MODAL CONFIGURAR & GERAR ESCALA (RESTAURADO E ATIVO)                       */}
+      {/* ========================================================================= */}
+      <Dialog open={generatorModalOpen} onOpenChange={setGeneratorModalOpen}>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white rounded-3xl p-6 shadow-2xl z-[9999]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black flex items-center gap-2 text-indigo-400">
+              <SlidersHorizontal className="w-5 h-5 text-indigo-400" /> Configurar & Gerar Escala do Setor
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleExecuteGenerator} className="space-y-4 py-2 text-xs">
+            <div className="p-3.5 bg-slate-900 rounded-2xl border border-slate-800 space-y-3">
+              <span className="text-xs font-black uppercase text-slate-400 block">1. Setor & Período</span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-300">Setor *</Label>
+                  <Select value={generatorConfig.sector_id} onValueChange={v => setGeneratorConfig({ ...generatorConfig, sector_id: v })}>
+                    <SelectTrigger className="h-9 bg-slate-950 border-slate-700 text-white rounded-xl"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">{(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-300">Início *</Label>
+                  <Input type="date" value={generatorConfig.start_date} onChange={e => setGeneratorConfig({ ...generatorConfig, start_date: e.target.value })} className="h-9 bg-slate-950 border-slate-700 text-white rounded-xl" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-300">Dias</Label>
+                  <Select value={String(generatorConfig.duration_days)} onValueChange={v => setGeneratorConfig({ ...generatorConfig, duration_days: parseInt(v) })}>
+                    <SelectTrigger className="h-9 bg-slate-950 border-slate-700 text-white rounded-xl"><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
+                      <SelectItem value="7">7 Dias</SelectItem>
+                      <SelectItem value="15">15 Dias</SelectItem>
+                      <SelectItem value="30">30 Dias</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-900 rounded-2xl border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase text-slate-200">2. Especialidades & Vagas</span>
+                <Button type="button" size="sm" onClick={handleAddSlot} className="h-8 bg-sky-600 text-white font-black text-xs px-3 rounded-xl gap-1">
+                  <Plus className="w-3.5 h-3.5" /> Adicionar
+                </Button>
+              </div>
+
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                {generatorConfig.slots.map(slot => (
+                  <div key={slot.id} className="p-3 rounded-2xl bg-slate-950 border border-slate-800 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                    <div className="sm:col-span-3 space-y-1">
+                      <Label className="text-[10px] text-slate-400">Especialidade</Label>
+                      <Input value={slot.specialty} onChange={e => handleUpdateSlot(slot.id, 'specialty', e.target.value)} className="h-8 text-xs font-bold bg-slate-900 border-slate-700 text-white" list="specialties-datalist" />
+                    </div>
+                    <div className="sm:col-span-2 space-y-1">
+                      <Label className="text-[10px] text-slate-400">Turno</Label>
+                      <Select value={slot.shift_type} onValueChange={v => handleUpdateSlot(slot.id, 'shift_type', v)}>
+                        <SelectTrigger className="h-8 bg-slate-900 border-slate-700 text-white"><SelectValue /></SelectTrigger>
+                        <SelectContent className="bg-slate-900 border-slate-800 text-white"><SelectItem value="diurno">Diurno</SelectItem><SelectItem value="noturno">Noturno</SelectItem></SelectContent>
+                      </Select>
+                    </div>
+                    <div className="sm:col-span-2 space-y-1">
+                      <Label className="text-[10px] text-slate-400">Entrada</Label>
+                      <Input type="time" value={slot.start_time} onChange={e => handleUpdateSlot(slot.id, 'start_time', e.target.value)} className="h-8 text-xs bg-slate-900 border-slate-700 text-white" />
+                    </div>
+                    <div className="sm:col-span-2 space-y-1">
+                      <Label className="text-[10px] text-slate-400">Saída</Label>
+                      <Input type="time" value={slot.end_time} onChange={e => handleUpdateSlot(slot.id, 'end_time', e.target.value)} className="h-8 text-xs bg-slate-900 border-slate-700 text-white" />
+                    </div>
+                    <div className="sm:col-span-2 space-y-1">
+                      <Label className="text-[10px] text-slate-400">Qtd. Vagas</Label>
+                      <Input type="number" min="1" value={slot.quantity} onChange={e => handleUpdateSlot(slot.id, 'quantity', parseInt(e.target.value) || 1)} className="h-8 text-xs bg-slate-900 border-slate-700 text-white" />
+                    </div>
+                    <div className="sm:col-span-1 flex justify-end">
+                      <Button type="button" variant="ghost" onClick={() => handleRemoveSlot(slot.id)} className="h-8 w-8 p-0 text-rose-500 hover:bg-rose-950/30">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <datalist id="specialties-datalist">{registeredSpecialties.map(spec => <option key={spec} value={spec} />)}</datalist>
+            </div>
+
+            <DialogFooter className="pt-2 gap-2 border-t border-slate-800">
+              <Button type="button" variant="outline" onClick={() => setGeneratorModalOpen(false)} className="h-9 text-xs border-slate-700 text-slate-300">Cancelar</Button>
+              <Button type="submit" disabled={submitting} className="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-6 rounded-xl shadow-md">Gerar Vagas</Button>
             </DialogFooter>
           </form>
         </DialogContent>
