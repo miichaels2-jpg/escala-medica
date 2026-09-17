@@ -34,16 +34,19 @@ function extractSpecialty(shift, prof) {
   return prof?.specialty || shift?.target_specialty || 'Clínica Médica';
 }
 
+function timeToMinutes(timeStr, isEnd = false) {
+  if (!timeStr) return isEnd ? 19 * 60 : 7 * 60;
+  const [h, m] = String(timeStr).split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
 function getShiftInterval(shift) {
-  const [startH, startM] = (shift?.start_time || '07:00').split(':').map(Number);
-  const [endH, endM] = (shift?.end_time || '19:00').split(':').map(Number);
-  const startMin = (startH || 7) * 60 + (startM || 0);
-  let endMin = (endH || 19) * 60 + (endM || 0);
-  if (endMin <= startMin) endMin += 24 * 60; // Virada de noite
+  const startMin = timeToMinutes(shift?.start_time || '07:00');
+  let endMin = timeToMinutes(shift?.end_time || '19:00', true);
+  if (endMin <= startMin) endMin += 24 * 60; // Plantão noturno que vira a madrugada
   return { startMin, endMin };
 }
 
-// Extração segura de metadados gravados em notes
 function parseShiftAudit(shift) {
   const notes = String(shift?.notes || '');
   const offeredByName = notes.match(/\[SOLICITADO_POR:\s*([^\]]+)\]/i)?.[1] || '';
@@ -57,7 +60,6 @@ function parseShiftAudit(shift) {
   return { offeredByName, offeredById, transferFrom, transferTo, transferText, authorizedBy, isAguardandoGestor };
 }
 
-// Salva de forma resiliente removendo automaticamente qualquer coluna inexistente
 async function autoHealingSaveShift(id, initialPayload) {
   let payload = { ...initialPayload };
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -76,7 +78,6 @@ async function autoHealingSaveShift(id, initialPayload) {
   }
 }
 
-// Salva higienizado e converte status se o banco usar enums rígidos
 async function safeUpdateShift(id, payload) {
   const cleanPayload = { ...payload };
   delete cleanPayload.offered_by_id;
@@ -116,7 +117,7 @@ export default function Trocas() {
     syncGlobalData 
   } = useAppData();
 
-  const [activeTab, setActiveTab] = useState('vagas'); // 'vagas' | 'pendentes' | 'trocas' | 'historico'
+  const [activeTab, setActiveTab] = useState('vagas');
   const [selectedSpecialtyFilter, setSelectedSpecialtyFilter] = useState('todas');
   const [submitting, setSubmitting] = useState(false);
 
@@ -134,27 +135,31 @@ export default function Trocas() {
     return m;
   }, [sectors]);
 
-  // Plantões confirmados do usuário para validação de conflito intersetorial
-  const myConfirmedShifts = useMemo(() => {
-    if (!myProf?.id) return [];
+  // TODOS os plantões ativos do profissional (qualquer status diferente de cancelado ou vago)
+  const myAllocatedShifts = useMemo(() => {
+    if (!myProf?.id && !user?.full_name) return [];
     return (shifts || []).filter(s => {
-      const isMine = String(s.professional_id) === String(myProf.id) || 
-                     (s.professional_name && myProf.name && s.professional_name.toLowerCase().trim() === myProf.name.toLowerCase().trim());
-      return isMine && s.status === 'confirmado';
+      if (!s || s.status === 'cancelado' || s.status === 'vago') return false;
+      const matchId = myProf?.id && String(s.professional_id) === String(myProf.id);
+      const matchUserId = user?.data?.professional_id && String(s.professional_id) === String(user.data.professional_id);
+      const matchName = user?.full_name && s.professional_name && s.professional_name.toLowerCase().trim() === user.full_name.toLowerCase().trim();
+      return matchId || matchUserId || matchName;
     });
-  }, [shifts, myProf]);
+  }, [shifts, myProf, user]);
 
-  // VALIDAÇÃO RIGOROSA: Detecta sobreposição de horários em qualquer setor
+  // CHECAGEM MATEMÁTICA RÍGIDA DE CHOQUE DE HORÁRIO
   const checkTimeConflict = (shiftCandidate) => {
-    if (!myProf?.id) return { hasConflict: false };
+    if (!shiftCandidate || !shiftCandidate.date) return { hasConflict: false };
 
     const candInt = getShiftInterval(shiftCandidate);
 
-    for (const myShift of myConfirmedShifts) {
-      if (myShift.id === shiftCandidate.id) continue;
+    for (const myShift of myAllocatedShifts) {
+      if (String(myShift.id) === String(shiftCandidate.id)) continue;
       if (myShift.date !== shiftCandidate.date) continue;
 
       const myInt = getShiftInterval(myShift);
+
+      // Sobreposição real no mesmo dia: início de um antes do término do outro
       const overlaps = Math.max(myInt.startMin, candInt.startMin) < Math.min(myInt.endMin, candInt.endMin);
 
       if (overlaps) {
@@ -162,7 +167,7 @@ export default function Trocas() {
         return {
           hasConflict: true,
           conflictShift: myShift,
-          message: `Choque de Horário: Você já está alocado em "${sectorConflict}" (${myShift.start_time} às ${myShift.end_time}) nesta data.`
+          message: `Choque de Horário: Você já está alocado em "${sectorConflict}" (${myShift.start_time} às ${myShift.end_time}) no dia ${shiftCandidate.date}.`
         };
       }
     }
@@ -186,7 +191,7 @@ export default function Trocas() {
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  // 1. VAGAS DISPONÍVEIS NO MURAL (Sem aguardar gestor e sem médico vinculado)
+  // 1. VAGAS DISPONÍVEIS NO MURAL
   const openShifts = useMemo(() => {
     return (shifts || []).filter(s => {
       if (!s) return false;
@@ -210,7 +215,7 @@ export default function Trocas() {
     }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
   }, [shifts, selectedSpecialtyFilter, todayStr]);
 
-  // 2. SOLICITAÇÕES PENDENTES DE AVALIAÇÃO DO GESTOR
+  // 2. SOLICITAÇÕES PENDENTES DE APROVAÇÃO
   const pendingApprovalShifts = useMemo(() => {
     return (shifts || []).filter(s => {
       if (!s) return false;
@@ -219,7 +224,6 @@ export default function Trocas() {
     }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
   }, [shifts]);
 
-  // Minhas solicitações aguardando aprovação
   const myPendingShifts = useMemo(() => {
     if (!myProf?.id) return [];
     return pendingApprovalShifts.filter(s => {
@@ -230,17 +234,18 @@ export default function Trocas() {
     });
   }, [pendingApprovalShifts, myProf]);
 
-  // 3. MEUS PLANTÕES FUTUROS (Que posso passar para o mural)
+  // 3. MEUS PLANTÕES FUTUROS
   const myUpcomingShifts = useMemo(() => {
-    if (!myProf?.id) return [];
+    if (!myProf?.id && !user?.full_name) return [];
     return (shifts || []).filter(s => {
-      const isMine = String(s.professional_id) === String(myProf.id) || 
-                     (s.professional_name && myProf.name && s.professional_name.toLowerCase().trim() === myProf.name.toLowerCase().trim());
+      const isMine = (myProf?.id && String(s.professional_id) === String(myProf.id)) || 
+                     (s.professional_name && myProf?.name && s.professional_name.toLowerCase().trim() === myProf.name.toLowerCase().trim()) ||
+                     (s.professional_name && user?.full_name && s.professional_name.toLowerCase().trim() === user.full_name.toLowerCase().trim());
       return isMine && s.date >= todayStr && s.status !== 'cancelado';
     }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-  }, [shifts, myProf, todayStr]);
+  }, [shifts, myProf, user, todayStr]);
 
-  // 4. HISTÓRICO DE REPASSES ("FULANO PARA CICLANO")
+  // 4. HISTÓRICO DE REPASSES
   const transferHistory = useMemo(() => {
     return (shifts || []).filter(s => {
       if (!s) return false;
@@ -249,7 +254,6 @@ export default function Trocas() {
     }).sort((a, b) => (b?.date || '').localeCompare(a?.date || ''));
   }, [shifts]);
 
-  // AÇÃO: Profissional solicita passar plantão (Entra na mesa do Gestor)
   const handleRequestSendToMural = async (shift) => {
     const requesterName = myProf?.name || user?.full_name || 'Profissional';
     const requesterId = myProf?.id || user?.id || '';
@@ -278,7 +282,6 @@ export default function Trocas() {
     }
   };
 
-  // AÇÃO DO GESTOR: Autorizar que o plantão vá ao Mural
   const handleApproveMuralPost = async (shift) => {
     const audit = parseShiftAudit(shift);
     const originName = audit.offeredByName || formatFullName(shift.professional_name) || 'Colega';
@@ -306,7 +309,6 @@ export default function Trocas() {
     }
   };
 
-  // AÇÃO DO GESTOR: Recusar e devolver o plantão ao profissional
   const handleRejectMuralPost = async (shift) => {
     const audit = parseShiftAudit(shift);
     const originName = audit.offeredByName || formatFullName(shift.professional_name) || 'o profissional';
@@ -333,17 +335,17 @@ export default function Trocas() {
     }
   };
 
-  // AÇÃO: Assumir Vaga do Mural (com validação anti-duplicidade e registro Fulano -> Ciclano)
+  // ASSUMIR PLANTÃO COM TRAVA DEFINITIVA
   const handleClaimShift = async (shift) => {
     if (!myProf?.id) {
       alert('Seu perfil profissional não foi localizado no sistema.');
       return;
     }
 
-    // Validação de choque de horário
+    // Validação rígida e intransponível de choque
     const conflictCheck = checkTimeConflict(shift);
     if (conflictCheck.hasConflict) {
-      alert(`⛔ ${conflictCheck.message}\n\nVocê não pode assumir dois plantões no mesmo horário em setores diferentes.`);
+      alert(`⛔ AÇÃO BLOQUEADA PELO SISTEMA:\n\n${conflictCheck.message}\n\nÉ estritamente proibido assumir múltiplos plantões com horários sobrepostos em setores diferentes.`);
       return;
     }
 
@@ -374,7 +376,7 @@ export default function Trocas() {
       });
 
       await syncGlobalData();
-      alert(`Parabéns! Plantão confirmado com sucesso para ${myProf.name}. O registro de transferência foi gravado para auditoria.`);
+      alert(`Plantão confirmado com sucesso para ${myProf.name}!`);
     } catch (err) {
       alert('Erro ao assumir plantão: ' + err.message);
     } finally {
@@ -403,7 +405,7 @@ export default function Trocas() {
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Mural de Vagas & Repasses</h1>
           <p className="text-xs text-slate-400 max-w-2xl">
-            Ambiente auditado de repasses assistenciais com validação de choques de horário e governança de coordenação.
+            Ambiente auditado de repasses assistenciais com validação rígida de choques de horário.
           </p>
         </div>
 
@@ -488,7 +490,6 @@ export default function Trocas() {
           </button>
         </div>
 
-        {/* FILTRO DE ESPECIALIDADE (NA ABA VAGAS) */}
         {activeTab === 'vagas' && (
           <div className="flex items-center gap-1.5 overflow-x-auto shrink-0 pb-1">
             <span className="text-[10px] font-black uppercase text-slate-400 mr-1 flex items-center gap-1">
@@ -517,9 +518,7 @@ export default function Trocas() {
         )}
       </div>
 
-      {/* ========================================================================= */}
-      {/* 3. ABA 1: VAGAS NO MURAL                                                  */}
-      {/* ========================================================================= */}
+      {/* 3. VAGAS NO MURAL (COM TRAVA DE BOTÃO E MENSAGEM CLARA) */}
       {activeTab === 'vagas' && (
         <>
           {openShifts.length === 0 ? (
@@ -544,7 +543,7 @@ export default function Trocas() {
                     key={shift.id} 
                     className={`p-5 rounded-3xl border-2 transition-all flex flex-col justify-between space-y-4 shadow-sm ${
                       conflictInfo.hasConflict 
-                        ? 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 opacity-75' 
+                        ? 'border-rose-300 dark:border-rose-900/60 bg-rose-50/20 dark:bg-rose-950/10' 
                         : 'border-amber-300 dark:border-amber-500/40 bg-white dark:bg-slate-900 hover:shadow-md'
                     }`}
                   >
@@ -574,24 +573,26 @@ export default function Trocas() {
                           <span>Exigência: <b>{realSpecialty}</b></span>
                         </div>
 
-                        {/* CARIMBO DO CEDENTE (QUEM MANDOU PRO MURAL) */}
                         {originName ? (
                           <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-[11px] flex items-center gap-2">
                             <ArrowRightLeft className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
-                            <span className="truncate">Disponibilizado por: <b className="text-sky-700 dark:text-sky-300">{originName}</b></span>
+                            <span className="truncate">Cedido por: <b className="text-sky-700 dark:text-sky-300">{originName}</b></span>
                           </div>
                         ) : (
                           <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-500">
-                            Vaga institucional de escala aberta
+                            Vaga institucional aberta
                           </div>
                         )}
                       </div>
 
-                      {/* ALERTA VISUAL DE CONFLITO */}
+                      {/* ALERTA DE CHOQUE VISÍVEL NO CARD */}
                       {conflictInfo.hasConflict && (
-                        <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 text-[11px] text-rose-700 dark:text-rose-400 flex items-start gap-2">
-                          <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
-                          <span>{conflictInfo.message}</span>
+                        <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 space-y-1">
+                          <div className="font-black flex items-center gap-1.5 uppercase text-[10px]">
+                            <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+                            Bloqueio Anti-Duplicidade
+                          </div>
+                          <p className="leading-tight text-[11px] font-medium">{conflictInfo.message}</p>
                         </div>
                       )}
                     </div>
@@ -600,21 +601,21 @@ export default function Trocas() {
                       <Button 
                         onClick={() => handleClaimShift(shift)} 
                         disabled={submitting || conflictInfo.hasConflict} 
-                        className={`flex-1 h-10 font-black text-xs rounded-xl shadow-md gap-2 ${
+                        className={`flex-1 h-11 font-black text-xs rounded-xl shadow-md gap-2 ${
                           conflictInfo.hasConflict 
-                            ? 'bg-slate-300 text-slate-500 cursor-not-allowed' 
+                            ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 border border-slate-300 dark:border-slate-700 cursor-not-allowed opacity-80' 
                             : 'bg-amber-600 hover:bg-amber-500 text-white cursor-pointer'
                         }`}
                       >
                         <Check className="w-4 h-4" /> 
-                        {conflictInfo.hasConflict ? 'Horário Conflitante' : 'Assumir Plantão'}
+                        {conflictInfo.hasConflict ? 'Horário Conflitante (Bloqueado)' : 'Assumir Plantão'}
                       </Button>
 
                       {isManager && (
                         <Button 
                           variant="ghost" 
                           onClick={() => handleDeleteVaga(shift.id)} 
-                          className="h-10 w-10 p-0 text-slate-400 hover:text-rose-500 rounded-xl cursor-pointer"
+                          className="h-11 w-11 p-0 text-slate-400 hover:text-rose-500 rounded-xl cursor-pointer"
                           title="Excluir Vaga"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -629,9 +630,7 @@ export default function Trocas() {
         </>
       )}
 
-      {/* ========================================================================= */}
-      {/* 4. ABA 2: APROVAÇÕES PENDENTES DA COORDENAÇÃO (EXCLUSIVO DO GESTOR)       */}
-      {/* ========================================================================= */}
+      {/* 4. APROVAÇÕES PENDENTES DA COORDENAÇÃO (EXCLUSIVO GESTOR) */}
       {activeTab === 'pendentes' && isManager && (
         <div className="space-y-4">
           <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 text-xs text-indigo-900 dark:text-indigo-200 flex items-center justify-between">
@@ -651,7 +650,7 @@ export default function Trocas() {
               <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
               <h3 className="font-black text-slate-900 dark:text-white text-base">Nenhuma solicitação pendente</h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Não há nenhum pedido de envio de plantão ao Mural aguardando sua autorização.
+                Não há pedidos de envio de plantão ao Mural aguardando sua autorização.
               </p>
             </Card>
           ) : (
@@ -721,9 +720,7 @@ export default function Trocas() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 5. ABA 3: MEUS PLANTÕES / PASSAR PLANTÃO P/ MURAL                          */}
-      {/* ========================================================================= */}
+      {/* 5. MEUS PLANTÕES / PASSAR PLANTÃO P/ MURAL */}
       {activeTab === 'trocas' && (
         <div className="space-y-4">
           <div className="p-4 rounded-2xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 text-xs text-sky-900 dark:text-sky-200 flex items-center justify-between">
@@ -786,9 +783,7 @@ export default function Trocas() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 6. ABA 4: HISTÓRICO DE REPASSES AUDITADO ("FULANO PARA CICLANO")          */}
-      {/* ========================================================================= */}
+      {/* 6. HISTÓRICO DE REPASSES AUDITADO */}
       {activeTab === 'historico' && (
         <div className="space-y-4">
           <div className="p-4 rounded-2xl bg-slate-900 text-white text-xs flex items-center justify-between border border-slate-800">

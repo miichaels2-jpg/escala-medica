@@ -26,7 +26,8 @@ import {
   Zap, 
   ChevronDown, 
   ChevronUp, 
-  Clock3 
+  Clock3,
+  ShieldAlert
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -51,6 +52,19 @@ function getLocalDateString(d = new Date()) {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function timeToMinutes(timeStr, isEnd = false) {
+  if (!timeStr) return isEnd ? 19 * 60 : 7 * 60;
+  const [h, m] = String(timeStr).split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function getShiftInterval(shift) {
+  const startMin = timeToMinutes(shift?.start_time || '07:00');
+  let endMin = timeToMinutes(shift?.end_time || '19:00', true);
+  if (endMin <= startMin) endMin += 24 * 60;
+  return { startMin, endMin };
 }
 
 const MONTH_NAMES = [
@@ -114,7 +128,6 @@ export default function MinhaEscala() {
     return m;
   }, [sectors]);
 
-  // Carga e filtro dos plantões do profissional
   const loadMyShifts = useCallback(async () => {
     setLoading(true);
     try {
@@ -175,7 +188,7 @@ export default function MinhaEscala() {
       valorPorHora = valorPorPlantao / 12;
     } else {
       valorPorHora = hourlyRate > 0 ? hourlyRate : (baseSalario / 220);
-      valorPorPlantao = valorPorHora * 12;
+      valorPorHora = valorPorHora * 12;
     }
 
     return { 
@@ -186,13 +199,13 @@ export default function MinhaEscala() {
     };
   }, [currentProfessional]);
 
-  // Classificação temporal e de status
+  // Classificação temporal e detecção de sobreposição existente
   const enrichedShifts = useMemo(() => {
     const nowHour = now.getHours();
     const nowMin = now.getMinutes();
     const nowTotalMin = nowHour * 60 + nowMin;
 
-    return (shifts || []).map(s => {
+    const list = (shifts || []).map(s => {
       const [startH, startM] = (s.start_time || '07:00').split(':').map(Number);
       const [endH, endM] = (s.end_time || '19:00').split(':').map(Number);
       const startMin = (startH || 7) * 60 + (startM || 0);
@@ -209,7 +222,7 @@ export default function MinhaEscala() {
       const notesStr = String(s.notes || '');
       const isPendingApproval = s.status === 'aguardando_aprovacao_gestor' || notesStr.includes('[AGUARDANDO_GESTOR]');
 
-      let state = 'programado'; // 'ativo' | 'concluido' | 'programado'
+      let state = 'programado';
       let timeLeftDesc = '';
 
       const startDateTime = new Date(`${sDate}T${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}:00`);
@@ -249,29 +262,43 @@ export default function MinhaEscala() {
         isPendingApproval,
         duration: Math.round(duration * 10) / 10,
         timeLeftDesc,
-        startDateTime
+        startDateTime,
+        startMin,
+        endMin
       };
+    });
+
+    // Identifica quais plantões estão em choque uns com os outros
+    return list.map(item => {
+      const hasConflict = list.some(other => {
+        if (other.id === item.id) return false;
+        if (other.date !== item.date) return false;
+        if (other.status === 'cancelado' || other.status === 'vago') return false;
+        return Math.max(item.startMin, other.startMin) < Math.min(item.endMin, other.endMin);
+      });
+      return { ...item, hasConflict };
     });
   }, [shifts, now, todayStr, sectorMap]);
 
-  // 1. Plantão Ativo Agora
+  // Alerta global de choque de horários existente na escala
+  const conflictingShiftsCount = useMemo(() => {
+    return enrichedShifts.filter(s => s.hasConflict).length;
+  }, [enrichedShifts]);
+
   const activeShiftNow = useMemo(() => {
     return enrichedShifts.find(s => s.state === 'ativo') || null;
   }, [enrichedShifts]);
 
-  // 2. Próximo Plantão Imediato
   const nextHighlightedShift = useMemo(() => {
     const upcoming = enrichedShifts.filter(s => s.state === 'programado');
     if (upcoming.length === 0) return null;
     return upcoming.sort((a, b) => a.startDateTime.getTime() - b.startDateTime.getTime())[0];
   }, [enrichedShifts]);
 
-  // 3. PLANTÕES DO MÊS: SEPARADOS EM PENDENTES (FALTA FAZER) E CONCLUÍDOS
   const monthShifts = useMemo(() => {
     return enrichedShifts.filter(s => (s.date || '').startsWith(monthPrefix));
   }, [enrichedShifts, monthPrefix]);
 
-  // PLANTÕES QUE FALTAM FAZER: A partir de hoje (crescente)
   const upcomingMonthShifts = useMemo(() => {
     return monthShifts
       .filter(s => s.state === 'programado' || s.state === 'ativo')
@@ -282,7 +309,6 @@ export default function MinhaEscala() {
       });
   }, [monthShifts]);
 
-  // PLANTÕES CONCLUÍDOS
   const completedMonthShifts = useMemo(() => {
     return monthShifts
       .filter(s => s.state === 'concluido')
@@ -293,7 +319,6 @@ export default function MinhaEscala() {
       });
   }, [monthShifts]);
 
-  // Métricas do Mês
   const monthMetrics = useMemo(() => {
     let cumpridos = 0;
     let futuros = 0;
@@ -321,7 +346,6 @@ export default function MinhaEscala() {
     };
   }, [monthShifts, remunConfig]);
 
-  // CORRIGIDO: O plantão NÃO vai direto para vaga. Entra para aprovação do gestor!
   const handlePassShiftToMural = async (shift) => {
     const requesterName = currentProfessional?.name || user?.full_name || 'Profissional';
     const requesterId = currentProfessional?.id || user?.id || '';
@@ -336,7 +360,6 @@ export default function MinhaEscala() {
       const cleanNotes = currentNotes.replace(/\[SOLICITADO_POR:[^\]]+\]/gi, '').replace(/\[AGUARDANDO_GESTOR\]/gi, '').trim();
       const updatedNotes = `${cleanNotes} [SOLICITADO_POR: ${requesterName}] [SOLICITADO_ID: ${requesterId}] [AGUARDANDO_GESTOR]`.trim();
 
-      // Envia para o status de aprovação do gestor mantendo o titular até que seja aprovado
       await autoHealingSaveShift(shift.id, {
         status: 'aguardando_aprovacao_gestor',
         notes: updatedNotes
@@ -352,7 +375,6 @@ export default function MinhaEscala() {
     }
   };
 
-  // Impressão Oficial do Espelho de Plantões Pessoal
   const handlePrintMyStatement = () => {
     const printWindow = window.open('', '_blank', 'width=1000,height=800');
     if (!printWindow) {
@@ -477,6 +499,25 @@ export default function MinhaEscala() {
           </Button>
         </div>
       </div>
+
+      {/* BANNER DE ALERTA SE HOUVER PLANTÕES COM CHOQUE DE HORÁRIO CADASTRADOS */}
+      {conflictingShiftsCount > 0 && (
+        <div className="p-4 rounded-3xl bg-rose-500/10 border-2 border-rose-500/50 shadow-md text-rose-900 dark:text-rose-200 flex items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-rose-600 text-white shrink-0">
+              <ShieldAlert className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <strong className="text-sm font-black uppercase tracking-wider block">
+                Alerta de Choque de Horário Detectado ({conflictingShiftsCount} turnos sobrepostos)
+              </strong>
+              <p className="text-xs opacity-90">
+                Você possui plantões alocados no mesmo horário em setores diferentes (marcados em vermelho abaixo). Solicite a liberação no Mural ou regularize com o gestor.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 2. CARD DE PLANTÃO AO VIVO */}
       {activeShiftNow && (
@@ -631,7 +672,7 @@ export default function MinhaEscala() {
         </Card>
       </div>
 
-      {/* 5. SEÇÃO PRINCIPAL: PLANTÕES QUE FALTAM FAZER (CRESCENTE) */}
+      {/* 5. PLANTÕES A REALIZAR */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div>
@@ -681,12 +722,15 @@ export default function MinhaEscala() {
             {upcomingMonthShifts.map(shift => {
               const isAtivo = shift.state === 'ativo';
               const isPending = shift.isPendingApproval;
+              const hasConflict = shift.hasConflict;
 
               return (
                 <div 
                   key={shift.id} 
                   className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
-                    isAtivo 
+                    hasConflict
+                      ? 'border-2 border-rose-500 bg-rose-50/40 dark:bg-rose-950/20 shadow-md ring-2 ring-rose-500/20'
+                      : isAtivo 
                       ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-md ring-1 ring-emerald-500/40' 
                       : isPending
                       ? 'border-amber-300 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/20'
@@ -704,15 +748,22 @@ export default function MinhaEscala() {
                         </span>
                       </div>
 
-                      <span className={`text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full ${
-                        isAtivo 
-                          ? 'bg-emerald-600 text-white animate-pulse' 
-                          : isPending
-                          ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
-                          : 'bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300'
-                      }`}>
-                        {isAtivo ? '● Ao Vivo' : isPending ? '⏳ Em Análise' : 'Programado'}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        {hasConflict && (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-600 text-white flex items-center gap-1 animate-pulse">
+                            <ShieldAlert className="w-3 h-3" /> Choque Horário
+                          </span>
+                        )}
+                        <span className={`text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                          isAtivo 
+                            ? 'bg-emerald-600 text-white animate-pulse' 
+                            : isPending
+                            ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                            : 'bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300'
+                        }`}>
+                          {isAtivo ? '● Ao Vivo' : isPending ? '⏳ Em Análise' : 'Programado'}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="text-sm font-black text-slate-900 dark:text-white truncate">
@@ -756,7 +807,7 @@ export default function MinhaEscala() {
         )}
       </div>
 
-      {/* 6. SEÇÃO INFERIOR: HISTÓRICO DE PLANTÕES CONCLUÍDOS */}
+      {/* 6. HISTÓRICO DE PLANTÕES CONCLUÍDOS */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
