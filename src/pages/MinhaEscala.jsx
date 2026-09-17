@@ -60,13 +60,6 @@ function timeToMinutes(timeStr, isEnd = false) {
   return (h || 0) * 60 + (m || 0);
 }
 
-function getShiftInterval(shift) {
-  const startMin = timeToMinutes(shift?.start_time || '07:00');
-  let endMin = timeToMinutes(shift?.end_time || '19:00', true);
-  if (endMin <= startMin) endMin += 24 * 60;
-  return { startMin, endMin };
-}
-
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
@@ -114,7 +107,7 @@ export default function MinhaEscala() {
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
   const todayStr = useMemo(() => getLocalDateString(now), [now]);
 
-  // Identificação do profissional logado
+  // Identificação cadastral do profissional logado
   const currentProfessional = useMemo(() => {
     return (professionals || []).find(p => 
       String(p.id) === String(myProfId) || 
@@ -128,6 +121,7 @@ export default function MinhaEscala() {
     return m;
   }, [sectors]);
 
+  // Carga e filtro: SÓ CARREGA O QUE ESTÁ EFETIVAMENTE ATRIBUÍDO AO PROFISSIONAL
   const loadMyShifts = useCallback(async () => {
     setLoading(true);
     try {
@@ -136,11 +130,15 @@ export default function MinhaEscala() {
       
       const myShifts = (allShifts || []).filter(s => {
         if (!s || s.status === 'cancelado') return false;
+        
+        // Se o plantão já foi aprovado e está vago no Mural, NÃO PERTENCE MAIS À MINHA ESCALA!
+        if (s.status === 'vago' || !s.professional_id) return false;
+
         const matchesId = currentProfessional && String(s.professional_id) === String(currentProfessional.id);
         const matchesUserProf = String(s.professional_id) === String(myProfId);
         const matchesName = user?.full_name && s.professional_name && s.professional_name.toLowerCase().trim() === user.full_name.toLowerCase().trim();
-        const matchesOfferedBy = (s.notes || '').includes(`[SOLICITADO_POR: ${currentProfessional?.name || user?.full_name}]`);
-        return matchesId || matchesUserProf || matchesName || matchesOfferedBy;
+
+        return matchesId || matchesUserProf || matchesName;
       });
 
       setShifts(myShifts);
@@ -188,7 +186,7 @@ export default function MinhaEscala() {
       valorPorHora = valorPorPlantao / 12;
     } else {
       valorPorHora = hourlyRate > 0 ? hourlyRate : (baseSalario / 220);
-      valorPorHora = valorPorHora * 12;
+      valorPorPlantao = valorPorHora * 12;
     }
 
     return { 
@@ -268,7 +266,6 @@ export default function MinhaEscala() {
       };
     });
 
-    // Identifica quais plantões estão em choque uns com os outros
     return list.map(item => {
       const hasConflict = list.some(other => {
         if (other.id === item.id) return false;
@@ -280,7 +277,6 @@ export default function MinhaEscala() {
     });
   }, [shifts, now, todayStr, sectorMap]);
 
-  // Alerta global de choque de horários existente na escala
   const conflictingShiftsCount = useMemo(() => {
     return enrichedShifts.filter(s => s.hasConflict).length;
   }, [enrichedShifts]);
@@ -365,7 +361,7 @@ export default function MinhaEscala() {
         notes: updatedNotes
       });
 
-      alert('Solicitação enviada com sucesso! O plantão está aguardando a aprovação do gestor para entrar no Mural.');
+      alert('Solicitação enviada! Aguarde a aprovação da coordenação para liberação no Mural.');
       if (typeof syncGlobalData === 'function') await syncGlobalData();
       await loadMyShifts();
     } catch (e) {
@@ -500,7 +496,7 @@ export default function MinhaEscala() {
         </div>
       </div>
 
-      {/* BANNER DE ALERTA SE HOUVER PLANTÕES COM CHOQUE DE HORÁRIO CADASTRADOS */}
+      {/* BANNER DE ALERTA SE HOUVER PLANTÕES COM CHOQUE DE HORÁRIO */}
       {conflictingShiftsCount > 0 && (
         <div className="p-4 rounded-3xl bg-rose-500/10 border-2 border-rose-500/50 shadow-md text-rose-900 dark:text-rose-200 flex items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -509,10 +505,10 @@ export default function MinhaEscala() {
             </div>
             <div>
               <strong className="text-sm font-black uppercase tracking-wider block">
-                Alerta de Choque de Horário Detectado ({conflictingShiftsCount} turnos sobrepostos)
+                Alerta de Choque de Horário ({conflictingShiftsCount} turnos sobrepostos)
               </strong>
               <p className="text-xs opacity-90">
-                Você possui plantões alocados no mesmo horário em setores diferentes (marcados em vermelho abaixo). Solicite a liberação no Mural ou regularize com o gestor.
+                Você possui plantões alocados no mesmo horário em setores diferentes (destacados em vermelho). Solicite o envio ao Mural de um deles ou alinhe com a coordenação.
               </p>
             </div>
           </div>
@@ -714,7 +710,7 @@ export default function MinhaEscala() {
         ) : upcomingMonthShifts.length === 0 ? (
           <div className="py-12 text-center text-slate-400 text-xs border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl p-6">
             <CheckCircle2 className="w-8 h-8 mx-auto mb-2 opacity-40 text-emerald-500" />
-            Parabéns! Você não possui mais nenhum plantão pendente para realizar este mês.<br />
+            Parabéns! Você não possui nenhum plantão pendente para realizar este mês.<br />
             Caso queira assumir plantões extras, consulte o <b>Mural de Oportunidades</b>.
           </div>
         ) : (
