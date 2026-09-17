@@ -66,9 +66,13 @@ function normalize(value) {
   return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
-function toTitleCase(value) {
-  if (!value) return '';
-  return String(value).toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+function titleCase(str) {
+  if (!str) return '';
+  const acr = ['UTI', 'UCO', 'PA', 'PS', 'CCO'];
+  return str.toLowerCase().split(' ').map(w => {
+    if (acr.includes(w.toUpperCase())) return w.toUpperCase();
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  }).join(' ');
 }
 
 function getShiftName(shift) {
@@ -153,7 +157,6 @@ export default function Relatorios() {
   const [selectedSector, setSelectedSector] = useState('todos');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Estados cruciais para o carregamento sob demanda corrigidos!
   const [hasSearched, setHasSearched] = useState(false);
   const [appliedFilters, setAppliedFilters] = useState({
     month: String(new Date().getMonth() + 1),
@@ -271,7 +274,6 @@ export default function Relatorios() {
     const map = {};
     sectors.forEach(sector => {
       const n = normalize(sector.name);
-      // Ignora setor fantasma da lista de metricas base
       if (n && n !== 'setor' && !n.includes('setor geral')) {
         map[String(sector.id)] = { id: sector.id, name: titleCase(sector.name), total: 0, filled: 0, vacant: 0, hours: 0, cost: 0 };
       }
@@ -347,7 +349,7 @@ export default function Relatorios() {
     return { valid, expired, nearExpiry, missing, total: professionals.length };
   }, [professionals]);
 
-  const exportCSV = (rows, fileName) => {
+  const handleExportCSV = (rows, fileName) => {
     if (!rows.length) {
       alert('Nenhum dado para exportar com os filtros atuais.');
       return;
@@ -586,7 +588,7 @@ export default function Relatorios() {
                   <td className="py-3 px-3 font-bold font-mono text-slate-300 print:text-black">{formatDate(s.date)}</td>
                   <td className="py-3 px-3 text-slate-300 print:text-slate-700">{getSectorName(s, sectors)}</td>
                   <td className={`py-3 px-3 font-black ${isVago ? 'text-rose-400' : 'text-white print:text-black'}`}>
-                    {isVago ? '⚠️ VAGA EM ABERTO' : toTitleCase(s.professional_name)}
+                    {isVago ? '⚠️ VAGA EM ABERTO' : titleCase(s.professional_name)}
                   </td>
                   <td className="py-3 px-3 font-mono text-slate-400 print:text-slate-600">{s.start_time || '07:00'} - {s.end_time || '19:00'}</td>
                   <td className="py-3 px-3 font-mono text-teal-400">{getShiftHours(s)}h</td>
@@ -701,7 +703,7 @@ export default function Relatorios() {
     <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 shadow-lg space-y-4 print:border-slate-300 print:bg-white print:shadow-none">
       <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
         <h3 className="font-black text-sm uppercase tracking-widest text-indigo-400 print:text-slate-700 flex items-center gap-2">
-          <ShieldPass className="w-5 h-5" /> Conformidade de Credenciais e Documentação
+          <ShieldCheck className="w-5 h-5" /> Conformidade de Credenciais e Documentação
         </h3>
       </div>
 
@@ -768,14 +770,14 @@ export default function Relatorios() {
             variant="outline" disabled={!hasSearched}
             className="w-full sm:w-auto h-11 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 rounded-2xl border-slate-700 gap-2 cursor-pointer disabled:opacity-50 shadow-md"
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Exportar Excel (.csv)
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Exportar Planilha (.csv)
           </Button>
 
           <Button 
             onClick={handlePrint} disabled={!hasSearched}
             className="w-full sm:w-auto h-11 bg-teal-600 hover:bg-teal-500 text-white font-black text-xs px-6 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105 disabled:opacity-50 border border-teal-500"
           >
-            <PrinterIcon className="w-4 h-4" /> Imprimir Dossiê (PDF)
+            <PrinterIcon className="w-4 h-4" /> Dossiê Executivo (PDF)
           </Button>
         </div>
       </div>
