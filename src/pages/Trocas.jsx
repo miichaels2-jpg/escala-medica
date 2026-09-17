@@ -121,7 +121,6 @@ export default function Trocas() {
   const [selectedSpecialtyFilter, setSelectedSpecialtyFilter] = useState('todas');
   const [submitting, setSubmitting] = useState(false);
 
-  // Identificação infalível do profissional atual
   const myProf = useMemo(() => {
     return currentProfessional || (professionals || []).find(p => 
       (p.id && String(p.id) === String(user?.data?.professional_id || user?.id)) ||
@@ -135,7 +134,6 @@ export default function Trocas() {
     return m;
   }, [sectors]);
 
-  // TODOS os plantões ativos que o profissional possui (em qualquer setor)
   const myAllocatedShifts = useMemo(() => {
     if (!myProf?.id && !user?.full_name) return [];
     return (shifts || []).filter(s => {
@@ -147,7 +145,6 @@ export default function Trocas() {
     });
   }, [shifts, myProf, user]);
 
-  // CHECAGEM MATEMÁTICA DE CHOQUE DE HORÁRIO
   const checkTimeConflict = (shiftCandidate) => {
     if (!shiftCandidate || !shiftCandidate.date) return { hasConflict: false };
 
@@ -189,7 +186,6 @@ export default function Trocas() {
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  // 1. VAGAS DISPONÍVEIS NO MURAL
   const openShifts = useMemo(() => {
     return (shifts || []).filter(s => {
       if (!s) return false;
@@ -213,7 +209,6 @@ export default function Trocas() {
     }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
   }, [shifts, selectedSpecialtyFilter, todayStr]);
 
-  // 2. SOLICITAÇÕES PENDENTES DE APROVAÇÃO
   const pendingApprovalShifts = useMemo(() => {
     return (shifts || []).filter(s => {
       if (!s) return false;
@@ -232,7 +227,6 @@ export default function Trocas() {
     });
   }, [pendingApprovalShifts, myProf]);
 
-  // 3. MEUS PLANTÕES FUTUROS
   const myUpcomingShifts = useMemo(() => {
     if (!myProf?.id && !user?.full_name) return [];
     return (shifts || []).filter(s => {
@@ -244,7 +238,6 @@ export default function Trocas() {
     }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
   }, [shifts, myProf, user, todayStr]);
 
-  // 4. HISTÓRICO DE REPASSES
   const transferHistory = useMemo(() => {
     return (shifts || []).filter(s => {
       if (!s) return false;
@@ -281,7 +274,6 @@ export default function Trocas() {
     }
   };
 
-  // AUTORIZAÇÃO DO GESTOR: DESVINCULA TOTALMENTE O PROFISSIONAL DE ORIGEM
   const handleApproveMuralPost = async (shift) => {
     const audit = parseShiftAudit(shift);
     const originName = audit.offeredByName || formatFullName(shift.professional_name) || 'Colega';
@@ -336,7 +328,6 @@ export default function Trocas() {
     }
   };
 
-  // ASSUMIR PLANTÃO COM TRAVA TOTAL
   const handleClaimShift = async (shift) => {
     if (!myProf?.id) {
       alert('Seu perfil profissional não foi localizado no sistema.');
@@ -517,7 +508,7 @@ export default function Trocas() {
         )}
       </div>
 
-      {/* 3. VAGAS NO MURAL (COM BOTÃO BLOQUEADO QUANDO HÁ CHOQUE) */}
+      {/* 3. VAGAS NO MURAL */}
       {activeTab === 'vagas' && (
         <>
           {openShifts.length === 0 ? (
@@ -781,7 +772,7 @@ export default function Trocas() {
         </div>
       )}
 
-      {/* 6. HISTÓRICO DE REPASSES (BLINDADO E FORMATADO) */}
+      {/* 6. HISTÓRICO DE REPASSES (REGEX CORRIGIDA) */}
       {activeTab === 'historico' && (
         <div className="space-y-4">
           <div className="p-4 rounded-2xl bg-slate-900 text-white text-xs flex items-center justify-between border border-slate-800">
@@ -818,8 +809,7 @@ export default function Trocas() {
                       const sector = sectorMap[String(shift.sector_id)];
                       const notes = String(shift.notes || '');
 
-                      // Parsing blindado de origem, destino e autorizador
-                      const matchTransfer = notes.match(/\[TRANSFERENCIA:\s*([^\]->]+)\s*->\s*([^\]]+)\]/i);
+                      const matchTransfer = notes.match(/\[TRANSFERENCIA:\s*([^\]\->]+)\s*->\s*([^\]]+)\]/i);
                       const deQuem = matchTransfer?.[1]?.trim() || (notes.match(/\[ORIGEM_MURAL:\s*([^\]]+)\]/i)?.[1]) || 'Profissional Cedente';
                       const paraQuem = matchTransfer?.[2]?.trim() || shift.professional_name || (shift.professional_id ? 'Assumido' : 'No Mural');
                       const autorizador = (notes.match(/\[AUTORIZADO_POR:\s*([^\]]+)\]/i)?.[1]) || 'Gestão Geral';
