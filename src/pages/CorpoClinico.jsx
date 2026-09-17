@@ -27,6 +27,12 @@ function getInitials(name) {
   return (p[0][0] + p[p.length - 1][0]).toUpperCase();
 }
 
+function safeNumber(val, fb = 0) {
+  if (val === null || val === undefined || val === '') return fb;
+  const n = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  return Number.isFinite(n) ? n : fb;
+}
+
 function getProfMeta(prof) {
   if (!prof) return {};
   try {
@@ -167,7 +173,6 @@ export default function CorpoClinico() {
 
       const saved = await autoHealingSaveProfessional(editingProfId, payload);
       
-      // Salva também no localStorage para garantir persistência imediata dos metadados unificados
       const profId = editingProfId || saved?.id;
       if (profId) {
         try {
