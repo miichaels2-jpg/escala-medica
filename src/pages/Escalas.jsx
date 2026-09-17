@@ -12,7 +12,7 @@ import {
   MousePointerClick, HeartPulse, UserPlus, SlidersHorizontal,
   Flame, ArrowRight, MonitorPlay, GripVertical, 
   Printer, Sun, Moon, AlertTriangle, CheckCircle2, Radio, Calendar as CalendarIcon,
-  PanelLeftClose, PanelLeftOpen, Filter
+  PanelLeftClose, PanelLeftOpen, Filter, Columns, SidebarClose, SidebarOpen
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -77,7 +77,7 @@ export default function Escalas() {
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState('mensal'); 
   const [filterTurno, setFilterTurno] = useState('todos'); 
-  const [startDateFilter, setStartDateFilter] = useState(''); // Filtro A PARTIR DE
+  const [startDateFilter, setStartDateFilter] = useState('');
 
   // Persistência do Setor Selecionado
   const [selectedSectorId, setSelectedSectorId] = useState(() => {
@@ -110,6 +110,29 @@ export default function Escalas() {
       try { window.localStorage.setItem('scale_tray_collapsed', String(next)); } catch {}
       return next;
     });
+  };
+
+  // RECOLHER / EXPANDIR A BARRA LATERAL PRINCIPAL DO SISTEMA
+  const [sidebarHidden, setSidebarHidden] = useState(() => {
+    try {
+      return window.localStorage.getItem('scale_main_sidebar_hidden') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleMainSidebar = () => {
+    const next = !sidebarHidden;
+    setSidebarHidden(next);
+    try {
+      window.localStorage.setItem('scale_main_sidebar_hidden', String(next));
+      // Procura o elemento da sidebar no layout principal caso utilize seletor padrão
+      const sidebarEl = document.querySelector('aside') || document.querySelector('[data-sidebar="true"]');
+      if (sidebarEl && !sidebarEl.classList.contains('roll-professionals')) {
+        if (next) sidebarEl.style.display = 'none';
+        else sidebarEl.style.display = '';
+      }
+    } catch {}
   };
 
   const currentYear = currentDate.getFullYear();
@@ -154,7 +177,6 @@ export default function Escalas() {
   const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if(s) m[String(s.id)] = s; }); return m; }, [sectors]);
   const professionalMap = useMemo(() => { const m = {}; (professionals || []).forEach(p => { if(p) m[String(p.id)] = p; }); return m; }, [professionals]);
 
-  // Abertura automática da vaga crítica vinda do Dashboard
   useEffect(() => {
     const autoOpenId = window.localStorage.getItem('scale_auto_open_shift_id');
     if (autoOpenId && shifts.length > 0) {
@@ -201,7 +223,6 @@ export default function Escalas() {
     setStartDateFilter('');
   };
 
-  // Seletor com filtro A PARTIR DE
   const handleStartDateChange = (e) => {
     const val = e.target.value;
     setStartDateFilter(val);
@@ -211,7 +232,6 @@ export default function Escalas() {
     }
   };
 
-  // Dias a serem renderizados (respeitando "A partir de" quando ativo)
   const daysInMonth = useMemo(() => {
     const date = new Date(currentYear, currentMonth, 1);
     const days = [];
@@ -279,7 +299,7 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // CÁLCULO MODO TV ALINHADO COM O DASHBOARD (CORRIGIDO PARA SEMPRE ENCONTRAR O PLANTONISTA AO VIVO)
+  // CÁLCULO MODO TV
   const tvData = useMemo(() => {
     const nowHour = liveNow.getHours();
     const nowMin = liveNow.getMinutes();
@@ -324,7 +344,6 @@ export default function Escalas() {
           });
         }
       } else {
-        // Plantão de ontem que virou a noite
         if (endMin > 24 * 60) {
           const yesterdayStr = getLocalDateString(new Date(liveNow.getTime() - 86400000));
           if (sDate === yesterdayStr && nowTotalMin < (endMin - 24 * 60)) {
@@ -342,7 +361,6 @@ export default function Escalas() {
     return { emAndamento, proximoRendimento, tableDayShifts };
   }, [shifts, selectedSectorId, liveNow, todayLocalStr, professionalMap]);
 
-  // Lista de todos os profissionais ativos para o Select do Modal
   const allActiveProfessionals = useMemo(() => {
     return (professionals || []).filter(p => p?.status === 'ativo');
   }, [professionals]);
@@ -451,9 +469,22 @@ export default function Escalas() {
   return (
     <div className={`p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200 ${activeTab === 'tv' ? 'fixed inset-0 z-50 bg-slate-950 text-white overflow-y-auto p-6 md:p-8' : ''}`}>
       
-      {/* SELETOR DE SEÇÕES COM PERSISTÊNCIA & CONFIGURADOR */}
+      {/* SELETOR DE SEÇÕES COM PERSISTÊNCIA, BOTÃO RECOLHER MENU & CONFIGURADOR */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 print:hidden">
         <div className="flex items-center gap-3 flex-1 min-w-0">
+          
+          {/* BOTÃO PARA RECOLHER E EXPANDIR A BARRA LATERAL PRINCIPAL DO SISTEMA */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={toggleMainSidebar}
+            title={sidebarHidden ? "Expandir Menu Lateral Principal" : "Recolher Menu Lateral para Ganho de Tela"}
+            className="h-9 px-3 text-xs font-black rounded-2xl gap-1.5 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 hover:text-sky-600 shrink-0"
+          >
+            {sidebarHidden ? <SidebarOpen className="w-4 h-4 text-sky-600" /> : <SidebarClose className="w-4 h-4" />}
+            <span className="hidden sm:inline">{sidebarHidden ? 'Menu' : 'Ocultar Menu'}</span>
+          </Button>
+
           <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 shrink-0">
             <Building2 className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Setor:
           </div>
@@ -494,7 +525,6 @@ export default function Escalas() {
             <button onClick={handleNextMonth} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
           </div>
 
-          {/* NOVO CAMPO: A PARTIR DE... */}
           <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-950 px-3.5 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-bold">
             <Filter className="w-3.5 h-3.5 text-sky-600" />
             <span className="text-[11px] text-slate-500">A partir de:</span>
@@ -549,7 +579,7 @@ export default function Escalas() {
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
           {isManager && (
-            <aside className={`transition-all duration-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3 ${trayCollapsed ? 'w-full lg:w-14 p-2.5 items-center' : 'w-full lg:w-72'}`}>
+            <aside className={`transition-all duration-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3 roll-professionals ${trayCollapsed ? 'w-full lg:w-14 p-2.5 items-center' : 'w-full lg:w-72'}`}>
               <div className="flex items-center justify-between">
                 {!trayCollapsed && (
                   <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5 truncate">
@@ -669,7 +699,68 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* MODO TV COM SINCRONIZAÇÃO EM TEMPO REAL E SEM ESPAÇO VAZIO */}
+      {/* PLANTÃO DO DIA (Aba Específica) */}
+      {activeTab === 'dia' && (
+        <div className="space-y-5">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div>
+                <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400 tracking-wider block">Escala Oficial Diária</span>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
+                  Plantões de Hoje ({liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })})
+                </h3>
+              </div>
+              <Button onClick={() => setPrintPreviewOpen(true)} className="h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 text-xs font-black px-5 rounded-2xl gap-2 shadow-md">
+                <Printer className="w-4 h-4" /> Imprimir Plantão do Dia (A4 Paisagem)
+              </Button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 uppercase text-[10px] font-black border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    <th className="py-3 px-4">Seção / Setor</th>
+                    <th className="py-3 px-4">Horário</th>
+                    <th className="py-3 px-4">Profissional Escalado</th>
+                    <th className="py-3 px-4">Especialidade / Atuação</th>
+                    <th className="py-3 px-4 text-center">Status Atual</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                  {tvData.tableDayShifts.length === 0 ? (
+                    <tr><td colSpan="5" className="py-8 text-center text-slate-400">Nenhum plantão registrado tocando o dia de hoje.</td></tr>
+                  ) : (
+                    tvData.tableDayShifts.map(shift => {
+                      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+                      const sector = sectorMap[String(shift.sector_id)];
+                      const status = getStatusBadge(shift);
+                      const realSpecialty = extractSpecialty(shift, prof);
+
+                      return (
+                        <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
+                          <td className="py-3 px-4 font-black text-slate-900 dark:text-white">{sector?.name || 'Setor'}</td>
+                          <td className="py-3 px-4 font-mono font-bold text-sky-600 dark:text-sky-400">{shift.start_time} às {shift.end_time}</td>
+                          <td className="py-3 px-4 font-black text-slate-900 dark:text-slate-100">
+                            {status.code === 'vaga' || status.code === 'perdida' ? <span className="text-rose-600 dark:text-rose-400">⚠️ {status.label}</span> : formatFullName(prof?.name)}
+                          </td>
+                          <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-semibold">{realSpecialty}</td>
+                          <td className="py-3 px-4 text-center">
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-wider ${status.wrapper} ${status.text} border-none`}>
+                              {status.icon} {status.label}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODO TV COM SINCRONIZAÇÃO EM TEMPO REAL */}
       {activeTab === 'tv' && (
         <div className="space-y-6">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -723,60 +814,103 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* MODAL DE EDIÇÃO COM SELECT CORRIGIDO */}
+      {/* ========================================================================= */}
+      {/* MODAL DE EDIÇÃO DE PLANTÃO COM CAMPO DE PROFISSIONAL CORRIGIDO            */}
+      {/* ========================================================================= */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-md bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999]">
-          <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2 text-sky-400">{editingShiftId ? 'Editar Plantão da Escala' : 'Lançar Novo Plantão'}</DialogTitle></DialogHeader>
-          <form onSubmit={handleSaveShift} className="space-y-4 py-2 text-xs">
-            
+        <DialogContent className="sm:max-w-md w-full max-w-[95vw] bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-6 rounded-3xl overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black flex items-center gap-2 text-sky-400">
+              {editingShiftId ? 'Editar Plantão da Escala' : 'Lançar Novo Plantão'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveShift} className="space-y-4 py-1 text-xs">
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1"><Label className="text-xs font-bold text-slate-300">Data *</Label><Input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white" /></div>
-              <div className="space-y-1"><Label className="text-xs font-bold text-slate-300">Setor / Seção *</Label><Select value={formData.sector_id} onValueChange={v => setFormData({ ...formData, sector_id: v })}><SelectTrigger className="h-10 bg-slate-900 border-slate-700 text-white"><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">{(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-300">Data *</Label>
+                <Input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-300">Setor / Seção *</Label>
+                <Select value={formData.sector_id} onValueChange={v => setFormData({ ...formData, sector_id: v })}>
+                  <SelectTrigger className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl">
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
+                    {(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             
             <div className="space-y-1">
               <Label className="text-xs font-bold text-slate-300">Especialidade Exigida *</Label>
-              <Input placeholder="Ex: Cirurgião Geral, UTI..." value={formData.target_specialty} onChange={e => setFormData({ ...formData, target_specialty: e.target.value })} className="h-10 bg-slate-900 border-slate-700 font-bold text-sky-400" list="modal-specs" />
+              <Input placeholder="Ex: Ginecologista, Cirurgião Geral..." value={formData.target_specialty} onChange={e => setFormData({ ...formData, target_specialty: e.target.value })} className="h-10 bg-slate-900 border-slate-700 font-bold text-sky-400 rounded-xl" list="modal-specs" />
               <datalist id="modal-specs">{registeredSpecialties.map(spec => <option key={spec} value={spec} />)}</datalist>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1"><Label className="text-xs font-bold text-slate-300">Horário de Início</Label><Input type="time" value={formData.start_time} onChange={e => setFormData({ ...formData, start_time: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white" /></div>
-              <div className="space-y-1"><Label className="text-xs font-bold text-slate-300">Horário de Término</Label><Input type="time" value={formData.end_time} onChange={e => setFormData({ ...formData, end_time: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white" /></div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-300">Horário de Início</Label>
+                <Input type="time" value={formData.start_time} onChange={e => setFormData({ ...formData, start_time: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-300">Horário de Término</Label>
+                <Input type="time" value={formData.end_time} onChange={e => setFormData({ ...formData, end_time: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl" />
+              </div>
             </div>
 
+            {/* CONTAINER DESTINO DO PLANTÃO BLINDADO CONTRA QUEBRA */}
             <div className="p-3.5 bg-slate-900/80 rounded-2xl border border-slate-800 space-y-3">
               <Label className="text-xs font-black uppercase text-slate-400">Destino do Plantão</Label>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setFormData({ ...formData, action_type: 'alocar' })} className={`p-2.5 rounded-xl border text-xs font-black transition-all ${formData.action_type === 'alocar' ? 'bg-sky-600 border-sky-600 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400'}`}>Alocar Pessoal</button>
-                <button type="button" onClick={() => setFormData({ ...formData, action_type: 'mural', professional_id: '' })} className={`p-2.5 rounded-xl border text-xs font-black transition-all flex items-center justify-center gap-1.5 ${formData.action_type === 'mural' ? 'bg-rose-600 border-rose-600 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400'}`}><Flame className="w-3.5 h-3.5" /> Vaga no Mural</button>
+                <button 
+                  type="button" 
+                  onClick={() => setFormData({ ...formData, action_type: 'alocar' })} 
+                  className={`p-2.5 rounded-xl border text-xs font-black transition-all ${formData.action_type === 'alocar' ? 'bg-sky-600 border-sky-600 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400'}`}
+                >
+                  Alocar Pessoal
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setFormData({ ...formData, action_type: 'mural', professional_id: '' })} 
+                  className={`p-2.5 rounded-xl border text-xs font-black transition-all flex items-center justify-center gap-1.5 ${formData.action_type === 'mural' ? 'bg-rose-600 border-rose-600 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400'}`}
+                >
+                  <Flame className="w-3.5 h-3.5" /> Vaga no Mural
+                </button>
               </div>
               
               {formData.action_type === 'alocar' ? (
-                <div className="space-y-1 pt-1">
+                <div className="space-y-1 pt-1 min-w-0">
                   <Label className="text-xs font-bold text-slate-300">Profissional Disponível *</Label>
-                  <Select 
-                    value={formData.professional_id || ''} 
-                    onValueChange={v => { 
-                      const p = professionalMap[v]; 
-                      setFormData({ 
-                        ...formData, 
-                        professional_id: v, 
-                        target_specialty: p?.specialty || formData.target_specialty 
-                      }); 
-                    }}
-                  >
-                    <SelectTrigger className="h-11 bg-slate-900 border border-slate-700 text-white font-bold rounded-xl focus:ring-2 focus:ring-sky-500">
-                      <SelectValue placeholder="Selecione o profissional da lista..." />
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-900 border border-slate-700 text-white max-h-60 overflow-y-auto z-[99999] shadow-2xl">
+                  
+                  {/* SELECT NATIVO BLINDADO E TRUNCADO: NUNCA ESTOURA A TELA */}
+                  <div className="relative">
+                    <select
+                      value={formData.professional_id || ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const p = professionalMap[v];
+                        setFormData({
+                          ...formData,
+                          professional_id: v,
+                          target_specialty: p?.specialty || formData.target_specialty
+                        });
+                      }}
+                      className="w-full h-11 px-3 py-2 bg-slate-900 border border-slate-700 text-white text-xs font-bold rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none appearance-none truncate pr-8 cursor-pointer"
+                    >
+                      <option value="">Selecione o profissional da lista...</option>
                       {allActiveProfessionals.map(p => (
-                        <SelectItem key={p.id} value={String(p.id)} className="py-2 text-xs font-medium cursor-pointer hover:bg-slate-800">
-                          {p.name} • <span className="text-sky-400 font-bold">{p.specialty || 'Geral'}</span> ({p.document || 'CRM'})
-                        </SelectItem>
+                        <option key={p.id} value={String(p.id)} className="bg-slate-900 text-white py-1">
+                          {p.name} • {p.specialty || 'Geral'} ({p.document || 'CRM'})
+                        </option>
                       ))}
-                    </SelectContent>
-                  </Select>
+                    </select>
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+                      ▼
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <p className="text-[11px] text-rose-400 bg-rose-950/40 p-2.5 rounded-xl border border-rose-900/60 leading-tight">
@@ -788,11 +922,11 @@ export default function Escalas() {
             <DialogFooter className="pt-2 gap-2 border-t border-slate-800 mt-2">
               {editingShiftId && (
                 <div className="flex items-center gap-2 mr-auto">
-                  {formData.action_type === 'alocar' && <Button type="button" variant="outline" onClick={handleSendToMuralFromModal} className="h-10 text-xs font-bold border-amber-500/60 text-amber-400 hover:bg-amber-950/30">Mandar p/ Mural</Button>}
-                  <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-10 text-xs font-bold text-rose-400 hover:bg-rose-950/30"><Trash2 className="w-4 h-4 mr-1" /> Excluir</Button>
+                  {formData.action_type === 'alocar' && <Button type="button" variant="outline" onClick={handleSendToMuralFromModal} className="h-10 text-xs font-bold border-amber-500/60 text-amber-400 hover:bg-amber-950/30 rounded-xl">Mandar p/ Mural</Button>}
+                  <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-10 text-xs font-bold text-rose-400 hover:bg-rose-950/30 rounded-xl"><Trash2 className="w-4 h-4 mr-1" /> Excluir</Button>
                 </div>
               )}
-              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="h-10 text-xs font-bold border-slate-700 text-slate-300">Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="h-10 text-xs font-bold border-slate-700 text-slate-300 rounded-xl">Cancelar</Button>
               <Button type="submit" disabled={submitting} className="h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-8 rounded-xl shadow-md">Confirmar Plantão</Button>
             </DialogFooter>
           </form>
