@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   Users, Stethoscope, ShieldCheck, AlertTriangle, FileText, 
   Calendar, Plus, Search, CheckCircle2, XCircle, Edit3, Trash2, 
-  Phone, Mail, Award, Check, X, ShieldAlert
+  Phone, Mail, Award, Check, X, ShieldAlert, DollarSign
 } from 'lucide-react';
 
 function formatFullName(name) {
@@ -68,12 +68,14 @@ export default function CorpoClinico() {
     email: '',
     phone: '',
     specialty: 'Clínica Médica',
-    document: '', // CRM / Registro
-    rqe: '', // Registro de Qualificação de Especialidade
-    document_expiry: '', // Validade do documento
+    document: '', // CRM
+    rqe: '', 
+    document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
     status: 'ativo',
     remuneration_type: 'mensal',
-    monthly_salary: 1672
+    monthly_salary: 1672,
+    daily_rate: 0,
+    hourly_rate: 0
   });
 
   const allSpecialties = useMemo(() => {
@@ -82,12 +84,14 @@ export default function CorpoClinico() {
     return Array.from(set).sort();
   }, [professionals]);
 
-  // Filtragem avançada do corpo clínico
   const filteredProfessionals = useMemo(() => {
     const term = searchQuery.toLowerCase().trim();
     return (professionals || []).filter(p => {
       if (!p) return false;
-      if (statusFilter !== 'todos' && p.status !== statusFilter) return false;
+      const meta = getProfMeta(p);
+      const status = p.status || meta.status || 'ativo';
+
+      if (statusFilter !== 'todos' && status !== statusFilter) return false;
       if (specialtyFilter !== 'todas' && (p.specialty || '').toLowerCase() !== specialtyFilter.toLowerCase()) return false;
       
       if (!term) return true;
@@ -103,7 +107,7 @@ export default function CorpoClinico() {
     setFormData({
       name: '', email: '', phone: '', specialty: 'Clínica Médica',
       document: '', rqe: '', document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
-      status: 'ativo', remuneration_type: 'mensal', monthly_salary: 1672
+      status: 'ativo', remuneration_type: 'mensal', monthly_salary: 1672, daily_rate: 0, hourly_rate: 0
     });
     setModalOpen(true);
   };
@@ -111,7 +115,6 @@ export default function CorpoClinico() {
   const handleOpenEdit = (prof) => {
     setEditingProfId(prof.id);
     const meta = getProfMeta(prof);
-    let expiry = prof.document_expiry || meta.document_expiry || '';
 
     setFormData({
       name: prof.name || '',
@@ -119,11 +122,13 @@ export default function CorpoClinico() {
       phone: prof.phone || '',
       specialty: prof.specialty || 'Clínica Médica',
       document: prof.document || '',
-      rqe: prof.rqe || (meta.rqe || ''),
-      document_expiry: expiry || new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0],
-      status: prof.status || 'ativo',
-      remuneration_type: prof.remuneration_type || 'mensal',
-      monthly_salary: prof.monthly_salary || 1672
+      rqe: prof.rqe || meta.rqe || '',
+      document_expiry: prof.document_expiry || meta.document_expiry || new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0],
+      status: prof.status || meta.status || 'ativo',
+      remuneration_type: prof.remuneration_type || meta.remuneration_type || 'mensal',
+      monthly_salary: prof.monthly_salary !== undefined ? prof.monthly_salary : (meta.monthly_salary !== undefined ? meta.monthly_salary : 1672),
+      daily_rate: prof.daily_rate !== undefined ? prof.daily_rate : (meta.daily_rate || 0),
+      hourly_rate: prof.hourly_rate !== undefined ? prof.hourly_rate : (meta.hourly_rate || 0)
     });
     setModalOpen(true);
   };
@@ -147,16 +152,32 @@ export default function CorpoClinico() {
         status: formData.status,
         remuneration_type: formData.remuneration_type,
         monthly_salary: parseFloat(formData.monthly_salary) || 1672,
+        daily_rate: parseFloat(formData.daily_rate) || 0,
+        hourly_rate: parseFloat(formData.hourly_rate) || 0,
         data: {
           rqe: formData.rqe.trim(),
-          document_expiry: formData.document_expiry
+          document_expiry: formData.document_expiry,
+          status: formData.status,
+          remuneration_type: formData.remuneration_type,
+          monthly_salary: parseFloat(formData.monthly_salary) || 1672,
+          daily_rate: parseFloat(formData.daily_rate) || 0,
+          hourly_rate: parseFloat(formData.hourly_rate) || 0
         }
       };
 
-      await autoHealingSaveProfessional(editingProfId, payload);
+      const saved = await autoHealingSaveProfessional(editingProfId, payload);
+      
+      // Salva também no localStorage para garantir persistência imediata dos metadados unificados
+      const profId = editingProfId || saved?.id;
+      if (profId) {
+        try {
+          window.localStorage.setItem(`prof_meta_${profId}`, JSON.stringify(payload.data));
+        } catch {}
+      }
+
       setModalOpen(false);
       await syncGlobalData();
-      alert('Profissional e credenciais salvos com sucesso!');
+      alert('Profissional credenciado e salvo com sucesso!');
     } catch (err) {
       alert('Erro ao salvar profissional: ' + err.message);
     } finally {
@@ -168,6 +189,7 @@ export default function CorpoClinico() {
     if (!confirm('Deseja excluir este profissional do corpo clínico?')) return;
     try {
       await base44.entities.Professional.delete(profId);
+      try { window.localStorage.removeItem(`prof_meta_${profId}`); } catch {}
       await syncGlobalData();
     } catch (err) {
       alert('Erro ao excluir: ' + err.message);
@@ -185,7 +207,7 @@ export default function CorpoClinico() {
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Corpo Clínico & Documentação</h1>
           <p className="text-xs text-slate-400 max-w-2xl">
-            Gestão unificada de credenciais médicas, validade de CRM/RQE e status de habilitação para escalas.
+            Gestão unificada de credenciais médicas, validade de CRM, remuneração base e status ativo na unidade.
           </p>
         </div>
 
@@ -199,7 +221,7 @@ export default function CorpoClinico() {
         )}
       </div>
 
-      {/* BARRA DE FILTROS & BUSCA */}
+      {/* FILTROS & BUSCA */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -246,9 +268,11 @@ export default function CorpoClinico() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredProfessionals.map(prof => {
             const meta = getProfMeta(prof);
+            const status = prof.status || meta.status || 'ativo';
             const expiry = prof.document_expiry || meta.document_expiry || '';
             const rqeNum = prof.rqe || meta.rqe || 'Não informado';
             const isExpired = expiry && expiry < new Date().toISOString().split('T')[0];
+            const salary = safeNumber(prof.monthly_salary !== undefined ? prof.monthly_salary : meta.monthly_salary, 1672);
 
             return (
               <Card 
@@ -274,9 +298,9 @@ export default function CorpoClinico() {
                     </div>
 
                     <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-full ${
-                      prof.status === 'ativo' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-200 text-slate-600'
+                      status === 'ativo' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-200 text-slate-600'
                     }`}>
-                      {prof.status || 'Ativo'}
+                      {status}
                     </span>
                   </div>
 
@@ -286,13 +310,19 @@ export default function CorpoClinico() {
                       <strong className="font-mono text-slate-900 dark:text-white">{prof.document || 'N/A'}</strong>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400 text-[10px] uppercase font-bold">RQE Especialidade:</span>
-                      <strong className="font-mono text-slate-700 dark:text-slate-300">{rqeNum}</strong>
+                      <span className="text-slate-400 text-[10px] uppercase font-bold">RQE / Detalhe:</span>
+                      <strong className="font-mono text-slate-700 dark:text-slate-300 truncate max-w-[150px]">{rqeNum}</strong>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-slate-400 text-[10px] uppercase font-bold">Validade Credencial:</span>
                       <strong className={`font-mono ${isExpired ? 'text-rose-500 font-black' : 'text-slate-700 dark:text-slate-300'}`}>
                         {expiry ? expiry.split('-').reverse().join('/') : 'Não informada'} {isExpired && '⚠️'}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200 dark:border-slate-800">
+                      <span className="text-slate-400 text-[10px] uppercase font-bold">Remuneração Base:</span>
+                      <strong className="font-mono text-emerald-600 dark:text-emerald-400">
+                        R$ {salary.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </strong>
                     </div>
                   </div>
@@ -332,7 +362,7 @@ export default function CorpoClinico() {
         </div>
       )}
 
-      {/* MODAL DE CREDENCIAMENTO / EDIÇÃO RESPONSIVO */}
+      {/* MODAL DE CREDENCIAMENTO COMPLETO */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="w-[95vw] sm:max-w-lg max-h-[92vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-5 sm:p-6 rounded-3xl">
           <DialogHeader className="border-b border-slate-800 pb-3">
@@ -364,11 +394,11 @@ export default function CorpoClinico() {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-300">RQE (Especialidade)</Label>
+                <Label className="text-xs font-bold text-slate-300">RQE / Observação</Label>
                 <Input 
                   value={formData.rqe} 
                   onChange={e => setFormData({ ...formData, rqe: e.target.value })} 
-                  placeholder="Ex: 45678"
+                  placeholder="Ex: RQE 45678"
                   className="h-10 bg-slate-900 border-slate-700 text-white font-mono rounded-xl" 
                 />
               </div>
@@ -424,7 +454,7 @@ export default function CorpoClinico() {
                   <SelectTrigger className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-slate-900 border-slate-800 text-white">
+                  <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
                     <SelectItem value="ativo">Ativo</SelectItem>
                     <SelectItem value="inativo">Inativo</SelectItem>
                   </SelectContent>
@@ -432,7 +462,7 @@ export default function CorpoClinico() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-300">Remuneração Base (R$)</Label>
+                <Label className="text-xs font-bold text-slate-300">Salário / Base Mensal (R$)</Label>
                 <Input 
                   type="number"
                   value={formData.monthly_salary} 
