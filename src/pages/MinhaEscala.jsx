@@ -117,7 +117,7 @@ export default function MinhaEscala() {
     if (!appLoading) loadMyShifts();
   }, [appLoading, loadMyShifts]);
 
-  // Cálculo blindado da Remuneração do Profissional
+  // Cálculo rigorosamente blindado da remuneração (sem nenhuma variável solta)
   const remunConfig = useMemo(() => {
     let meta = {};
     if (currentProfessional?.id) {
@@ -129,27 +129,27 @@ export default function MinhaEscala() {
 
     const remunType = meta.remuneration_type || currentProfessional?.remuneration_type || 'mensal';
     
-    let salaryBase = 1672;
+    let baseSalario = 1672;
     if (meta.monthly_salary !== undefined && meta.monthly_salary !== null) {
-      salaryBase = safeNumber(meta.monthly_salary, 1672);
+      baseSalario = safeNumber(meta.monthly_salary, 1672);
     } else if (currentProfessional?.monthly_salary !== undefined && currentProfessional?.monthly_salary !== null) {
-      salaryBase = safeNumber(currentProfessional.monthly_salary, 1672);
+      baseSalario = safeNumber(currentProfessional.monthly_salary, 1672);
     }
 
-    let dailyRate = meta.daily_rate !== undefined ? safeNumber(meta.daily_rate) : safeNumber(currentProfessional?.daily_rate, 0);
-    let hourlyRate = meta.hourly_rate !== undefined ? safeNumber(meta.hourly_rate) : safeNumber(currentProfessional?.hourly_rate, 0);
+    const dailyRate = meta.daily_rate !== undefined ? safeNumber(meta.daily_rate) : safeNumber(currentProfessional?.daily_rate, 0);
+    const hourlyRate = meta.hourly_rate !== undefined ? safeNumber(meta.hourly_rate) : safeNumber(currentProfessional?.hourly_rate, 0);
 
     let valorPorPlantao = 0;
     let valorPorHora = 0;
 
     if (remunType === 'mensal') {
-      valorPorPlantao = salaryBase / 20;
-      valorPorHora = salaryBase / 220;
+      valorPorPlantao = baseSalario / 20;
+      valorPorHora = baseSalario / 220;
     } else if (remunType === 'diaria') {
-      valorPorPlantao = dailyRate > 0 ? dailyRate : (salaryBase / 20);
+      valorPorPlantao = dailyRate > 0 ? dailyRate : (baseSalario / 20);
       valorPorHora = valorPorPlantao / 12;
     } else {
-      valorPorHora = hourlyRate > 0 ? hourlyRate : (salaryBase / 220);
+      valorPorHora = hourlyRate > 0 ? hourlyRate : (baseSalario / 220);
       valorPorPlantao = valorPorHora * 12;
     }
 
@@ -157,7 +157,7 @@ export default function MinhaEscala() {
       valorPorPlantao: safeNumber(valorPorPlantao, 83.6), 
       valorPorHora: safeNumber(valorPorHora, 7.6), 
       remunType, 
-      salarioBase 
+      salarioBase: baseSalario 
     };
   }, [currentProfessional]);
 
@@ -227,7 +227,7 @@ export default function MinhaEscala() {
     return enrichedShifts.filter(s => (s.date || '').startsWith(monthPrefix));
   }, [enrichedShifts, monthPrefix]);
 
-  // Métricas do Mês (Progresso Real de Escala)
+  // Métricas do Mês
   const monthMetrics = useMemo(() => {
     let cumpridos = 0;
     let futuros = 0;
@@ -383,14 +383,14 @@ export default function MinhaEscala() {
         <div className="flex flex-wrap items-center gap-3">
           <Button 
             onClick={handlePrintMyStatement} 
-            className="h-11 bg-white hover:bg-slate-100 text-slate-900 font-black text-xs px-5 rounded-2xl shadow-lg gap-2"
+            className="h-11 bg-white hover:bg-slate-100 text-slate-900 font-black text-xs px-5 rounded-2xl shadow-lg gap-2 cursor-pointer"
           >
             <Printer className="w-4 h-4 text-sky-600" /> Imprimir Espelho
           </Button>
 
           <Button 
             onClick={() => navigate('/mural')} 
-            className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-5 rounded-2xl shadow-lg gap-2"
+            className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-5 rounded-2xl shadow-lg gap-2 cursor-pointer"
           >
             <Flame className="w-4 h-4" /> Mural de Oportunidades
           </Button>
@@ -510,7 +510,7 @@ export default function MinhaEscala() {
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-1 rounded-2xl gap-2">
             <button 
               onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} 
-              className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500"
+              className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500 cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -519,7 +519,7 @@ export default function MinhaEscala() {
             </span>
             <button 
               onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} 
-              className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500"
+              className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500 cursor-pointer"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -592,14 +592,13 @@ export default function MinhaEscala() {
                     </div>
                   </div>
 
-                  {/* AÇÕES: PASSAR PLANTÃO (APENAS SE FOR PROGRAMADO E NÃO CONCLUÍDO) */}
                   {!isConcluido && !isAtivo && (
                     <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
                       <Button 
                         size="sm" 
                         variant="outline" 
                         onClick={() => handlePassShiftToMural(shift)}
-                        className="h-8 text-[11px] font-bold border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl gap-1.5"
+                        className="h-8 text-[11px] font-bold border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl gap-1.5 cursor-pointer"
                       >
                         <Flame className="w-3.5 h-3.5" /> Passar no Mural
                       </Button>
