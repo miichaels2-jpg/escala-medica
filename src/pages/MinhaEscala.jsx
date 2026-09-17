@@ -24,7 +24,8 @@ import {
   Layers,
   CalendarCheck,
   Zap,
-  MapPin
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -64,6 +65,7 @@ export default function MinhaEscala() {
   const [loading, setLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [now, setNow] = useState(() => new Date());
+  const [showPastShifts, setShowPastShifts] = useState(true);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
@@ -78,7 +80,7 @@ export default function MinhaEscala() {
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
   const todayStr = useMemo(() => getLocalDateString(now), [now]);
 
-  // Identificação do profissional logado
+  // Identificação cadastral do profissional logado
   const currentProfessional = useMemo(() => {
     return (professionals || []).find(p => 
       String(p.id) === String(myProfId) || 
@@ -119,7 +121,7 @@ export default function MinhaEscala() {
     if (!appLoading) loadMyShifts();
   }, [appLoading, loadMyShifts]);
 
-  // Remuneração configurada
+  // Cálculo da remuneração blindado
   const remunConfig = useMemo(() => {
     let meta = {};
     if (currentProfessional?.id) {
@@ -152,7 +154,7 @@ export default function MinhaEscala() {
       valorPorHora = valorPorPlantao / 12;
     } else {
       valorPorHora = hourlyRate > 0 ? hourlyRate : (baseSalario / 220);
-      valorPorHora = valorPorHora * 12;
+      valorPorPlantao = valorPorHora * 12;
     }
 
     return { 
@@ -163,7 +165,7 @@ export default function MinhaEscala() {
     };
   }, [currentProfessional]);
 
-  // Classificação dos plantões com cálculo temporal
+  // Classificação temporal
   const enrichedShifts = useMemo(() => {
     const nowHour = now.getHours();
     const nowMin = now.getMinutes();
@@ -185,12 +187,10 @@ export default function MinhaEscala() {
 
       let state = 'programado'; // 'ativo' | 'concluido' | 'programado'
       let timeLeftDesc = '';
-      let countdownDiffMinutes = 0;
 
-      // Cria timestamp do início
       const startDateTime = new Date(`${sDate}T${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}:00`);
       const diffMs = startDateTime.getTime() - now.getTime();
-      countdownDiffMinutes = Math.round(diffMs / 60000);
+      const countdownDiffMinutes = Math.round(diffMs / 60000);
 
       if (isPastDay) {
         state = 'concluido';
@@ -224,36 +224,49 @@ export default function MinhaEscala() {
         state,
         duration: Math.round(duration * 10) / 10,
         timeLeftDesc,
-        countdownDiffMinutes,
         startDateTime
       };
     });
   }, [shifts, now, todayStr, sectorMap]);
 
-  // 1. Plantão Ativo Agora (se estiver dentro da jornada)
+  // 1. Plantão Ativo Agora
   const activeShiftNow = useMemo(() => {
     return enrichedShifts.find(s => s.state === 'ativo') || null;
   }, [enrichedShifts]);
 
-  // 2. PRÓXIMO PLANTÃO IMEDIATO DESTACADO (O mais próximo a acontecer no futuro)
+  // 2. Próximo Plantão Imediato
   const nextHighlightedShift = useMemo(() => {
     const upcoming = enrichedShifts.filter(s => s.state === 'programado');
     if (upcoming.length === 0) return null;
     return upcoming.sort((a, b) => a.startDateTime.getTime() - b.startDateTime.getTime())[0];
   }, [enrichedShifts]);
 
-  // 3. MINHA GRADE EM ORDEM CRESCENTE (Cronológica: 1º ao último dia do mês)
-  const monthShiftsSortedAsc = useMemo(() => {
-    return enrichedShifts
-      .filter(s => (s.date || '').startsWith(monthPrefix))
+  // 3. PLANTÕES DO MÊS: SEPARADOS EM PENDENTES (FALTA FAZER) E CONCLUÍDOS
+  const monthShifts = useMemo(() => {
+    return enrichedShifts.filter(s => (s.date || '').startsWith(monthPrefix));
+  }, [enrichedShifts, monthPrefix]);
+
+  // PLANTÕES QUE FALTAM FAZER: Começam a partir da data atual em diante (crescente)
+  const upcomingMonthShifts = useMemo(() => {
+    return monthShifts
+      .filter(s => s.state === 'programado' || s.state === 'ativo')
       .sort((a, b) => {
-        // Ordena por data crescente
-        const cmpDate = (a.date || '').localeCompare(b.date || '');
-        if (cmpDate !== 0) return cmpDate;
-        // Se for na mesma data, ordena pelo horário de início crescente
+        const cmp = (a.date || '').localeCompare(b.date || '');
+        if (cmp !== 0) return cmp;
         return (a.start_time || '').localeCompare(b.start_time || '');
       });
-  }, [enrichedShifts, monthPrefix]);
+  }, [monthShifts]);
+
+  // PLANTÕES CONCLUÍDOS: Ficam na parte inferior (ordenados por data decrescente dos mais recentes para os mais antigos)
+  const completedMonthShifts = useMemo(() => {
+    return monthShifts
+      .filter(s => s.state === 'concluido')
+      .sort((a, b) => {
+        const cmp = (b.date || '').localeCompare(a.date || '');
+        if (cmp !== 0) return cmp;
+        return (b.start_time || '').localeCompare(a.start_time || '');
+      });
+  }, [monthShifts]);
 
   // Métricas do Mês
   const monthMetrics = useMemo(() => {
@@ -261,7 +274,7 @@ export default function MinhaEscala() {
     let futuros = 0;
     let horas = 0;
 
-    monthShiftsSortedAsc.forEach(s => {
+    monthShifts.forEach(s => {
       if (s.state === 'concluido' || s.state === 'ativo') {
         cumpridos += 1;
         horas += s.duration;
@@ -279,9 +292,9 @@ export default function MinhaEscala() {
       horas: Math.round(horas * 10) / 10,
       valorBruto,
       extrasQtd,
-      totalMes: monthShiftsSortedAsc.length
+      totalMes: monthShifts.length
     };
-  }, [monthShiftsSortedAsc, remunConfig]);
+  }, [monthShifts, remunConfig]);
 
   // Passar Plantão para o Mural
   const handlePassShiftToMural = async (shift) => {
@@ -315,7 +328,10 @@ export default function MinhaEscala() {
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = now.toLocaleDateString('pt-BR') + ' às ' + now.toLocaleTimeString('pt-BR');
 
-    const rowsHtml = monthShiftsSortedAsc.map((s, idx) => `
+    // Ordem cronológica pura para o documento impresso
+    const allOrdered = [...monthShifts].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    const rowsHtml = allOrdered.map((s, idx) => `
       <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
         <td style="border: 1px solid #000; padding: 6px 8px; font-weight: bold;">${formatDateBR(s.date)}</td>
         <td style="border: 1px solid #000; padding: 6px 8px; text-transform: uppercase;">${s.sectorName}</td>
@@ -404,7 +420,7 @@ export default function MinhaEscala() {
             Olá, {currentProfessional?.name ? `Dr(a). ${currentProfessional.name.split(' ')[0]}` : user?.full_name || 'Profissional'}!
           </h1>
           <p className="text-xs md:text-sm text-slate-300 font-medium">
-            Gerencie sua agenda de plantões, acompanhe seu repasse e solicite trocas rápidas.
+            Gerencie sua agenda de plantões, acompanhe seu repasse e passe turnos no Mural.
           </p>
         </div>
 
@@ -459,7 +475,7 @@ export default function MinhaEscala() {
         </div>
       )}
 
-      {/* 3. NOVO CAMPO: DESTAQUE DO PRÓXIMO PLANTÃO AGENDADO (MAIOR E VISÍVEL) */}
+      {/* 3. CAMPO DE DESTAQUE: SEU PRÓXIMO PLANTÃO AGENDADO */}
       {nextHighlightedShift && (
         <div className="rounded-3xl border border-sky-300 dark:border-sky-800 bg-gradient-to-r from-sky-50 via-white to-sky-50/50 dark:from-slate-900 dark:via-sky-950/30 dark:to-slate-900 p-6 shadow-md flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="flex items-start sm:items-center gap-4">
@@ -499,7 +515,7 @@ export default function MinhaEscala() {
             <Button 
               onClick={() => handlePassShiftToMural(nextHighlightedShift)}
               variant="outline"
-              className="h-10 text-xs font-black rounded-xl border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 gap-1.5"
+              className="h-10 text-xs font-black rounded-xl border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 gap-1.5 cursor-pointer"
             >
               <Flame className="w-4 h-4" /> Passar no Mural
             </Button>
@@ -570,16 +586,18 @@ export default function MinhaEscala() {
         </Card>
       </div>
 
-      {/* 5. MINHA GRADE EM ORDEM CRESCENTE (DO 1º AO ÚLTIMO DIA DO MÊS) */}
+      {/* 5. SEÇÃO PRINCIPAL: PLANTÕES QUE FALTAM FAZER (A PARTIR DE HOJE EM DIANTE) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div>
-            <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-              <CalendarDays className="w-5 h-5 text-sky-600" />
-              Minha Grade Cronológica • {MONTH_NAMES[currentMonth]} {currentYear}
-            </h2>
-            <p className="text-xs text-slate-500 font-medium">
-              Turnos organizados em ordem crescente por data e horário de execução.
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
+              <h2 className="text-lg font-black text-slate-900 dark:text-white">
+                Plantões a Realizar (Escala Futura & Hoje)
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              Turnos que faltam cumprir em {MONTH_NAMES[currentMonth]} {currentYear}, ordenados a partir da data atual.
             </p>
           </div>
 
@@ -602,22 +620,21 @@ export default function MinhaEscala() {
           </div>
         </div>
 
-        {/* LISTAGEM DOS PLANTÕES EM ORDEM CRESCENTE */}
+        {/* LISTA CRESCENTE DOS PLANTÕES A REALIZAR */}
         {loading ? (
           <div className="py-16 text-center text-slate-400">
             <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-sky-600" />
             Carregando sua grade pessoal de plantões...
           </div>
-        ) : monthShiftsSortedAsc.length === 0 ? (
-          <div className="py-16 text-center text-slate-400 text-xs border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl p-8">
-            <CalendarDays className="w-8 h-8 mx-auto mb-2 opacity-30 text-sky-600" />
-            Você não possui plantões agendados para {MONTH_NAMES[currentMonth]} de {currentYear}.<br />
-            Acesse o <b>Mural de Oportunidades</b> para assumir turnos disponíveis.
+        ) : upcomingMonthShifts.length === 0 ? (
+          <div className="py-12 text-center text-slate-400 text-xs border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl p-6">
+            <CheckCircle2 className="w-8 h-8 mx-auto mb-2 opacity-40 text-emerald-500" />
+            Parabéns! Você não possui mais nenhum plantão pendente para realizar este mês.<br />
+            Caso queira assumir plantões extras, consulte o <b>Mural de Oportunidades</b>.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {monthShiftsSortedAsc.map(shift => {
-              const isConcluido = shift.state === 'concluido';
+            {upcomingMonthShifts.map(shift => {
               const isAtivo = shift.state === 'ativo';
 
               return (
@@ -626,9 +643,7 @@ export default function MinhaEscala() {
                   className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
                     isAtivo 
                       ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-md ring-1 ring-emerald-500/40' 
-                      : isConcluido
-                      ? 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 opacity-75'
-                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:border-sky-300'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:border-sky-400'
                   }`}
                 >
                   <div className="space-y-2">
@@ -645,11 +660,9 @@ export default function MinhaEscala() {
                       <span className={`text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full ${
                         isAtivo 
                           ? 'bg-emerald-600 text-white animate-pulse' 
-                          : isConcluido
-                          ? 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                           : 'bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300'
                       }`}>
-                        {isAtivo ? '● Ao Vivo' : isConcluido ? '✓ Concluído' : 'Programado'}
+                        {isAtivo ? '● Ao Vivo' : 'Programado'}
                       </span>
                     </div>
 
@@ -668,7 +681,7 @@ export default function MinhaEscala() {
                     </div>
                   </div>
 
-                  {!isConcluido && !isAtivo && (
+                  {!isAtivo && (
                     <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
                       <Button 
                         size="sm" 
@@ -684,6 +697,62 @@ export default function MinhaEscala() {
               );
             })}
           </div>
+        )}
+      </div>
+
+      {/* 6. SEÇÃO INFERIOR: HISTÓRICO DE PLANTÕES JÁ CONCLUÍDOS */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <h3 className="text-sm font-black text-slate-800 dark:text-slate-200">
+              Plantões Já Concluídos ({completedMonthShifts.length})
+            </h3>
+          </div>
+
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setShowPastShifts(!showPastShifts)}
+            className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white"
+          >
+            {showPastShifts ? (
+              <span className="flex items-center gap-1">Ocultar <ChevronUp className="w-3.5 h-3.5" /></span>
+            ) : (
+              <span className="flex items-center gap-1">Expandir <ChevronDown className="w-3.5 h-3.5" /></span>
+            )}
+          </Button>
+        </div>
+
+        {showPastShifts && (
+          completedMonthShifts.length === 0 ? (
+            <p className="text-xs text-slate-400 py-4 text-center">Nenhum plantão concluído até o momento nesta competência.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 opacity-85">
+              {completedMonthShifts.map(shift => (
+                <div 
+                  key={shift.id} 
+                  className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 text-xs flex items-center justify-between"
+                >
+                  <div className="space-y-0.5">
+                    <span className="font-mono font-bold text-slate-900 dark:text-white block">
+                      {formatDateBR(shift.date)}
+                    </span>
+                    <span className="text-[11px] text-slate-500 block truncate max-w-[140px]">
+                      {shift.sectorName}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {shift.start_time} - {shift.end_time} ({shift.duration}h)
+                    </span>
+                  </div>
+
+                  <span className="text-[9px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-black px-2 py-0.5 rounded-lg shrink-0">
+                    ✓ Concluído
+                  </span>
+                </div>
+              ))}
+            </div>
+          )
         )}
       </div>
     </div>
