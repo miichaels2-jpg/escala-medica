@@ -12,7 +12,7 @@ import {
   MousePointerClick, HeartPulse, UserPlus, SlidersHorizontal,
   Flame, ArrowRight, MonitorPlay, GripVertical, 
   Printer, Sun, Moon, AlertTriangle, CheckCircle2, Radio, Calendar as CalendarIcon,
-  PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight, Minimize2, Target, Eye
+  PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight, Minimize2, Target
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -110,7 +110,7 @@ export default function Escalas() {
     });
   };
 
-  // BOTÃO LATERAL FIXADO EXATAMENTE NO MEIO / ALTURA DE RELATÓRIOS
+  // BOTÃO LATERAL FIXADO NA BORDA ESQUERDA (NA ALTURA DE RELATÓRIOS)
   const [sidebarHidden, setSidebarHidden] = useState(() => {
     try {
       return window.localStorage.getItem('scale_main_sidebar_hidden') === 'true';
@@ -170,6 +170,7 @@ export default function Escalas() {
   const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if(s) m[String(s.id)] = s; }); return m; }, [sectors]);
   const professionalMap = useMemo(() => { const m = {}; (professionals || []).forEach(p => { if(p) m[String(p.id)] = p; }); return m; }, [professionals]);
 
+  // Abertura automática da vaga crítica vinda do Dashboard
   useEffect(() => {
     const autoOpenId = window.localStorage.getItem('scale_auto_open_shift_id');
     if (autoOpenId && shifts.length > 0) {
@@ -389,6 +390,7 @@ export default function Escalas() {
       let effNow = nowTotalMin;
       if (endMin > 24 * 60 && nowTotalMin < startMin) effNow += 24 * 60;
 
+      // PLANTÕES DE HOJE (P/ TABELA PLANTÃO DO DIA)
       if (sDate === todayLocalStr) {
         tableDayShifts.push(shift);
       } else if (endMin > 24 * 60) {
@@ -401,6 +403,7 @@ export default function Escalas() {
       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
       if (shift.status === 'vago' || !prof) return;
 
+      // ATIVOS AGORA
       if (sDate === todayLocalStr && effNow >= startMin && effNow < endMin) {
         const left = endMin - effNow;
         emAndamento.push({
@@ -418,6 +421,7 @@ export default function Escalas() {
         }
       }
 
+      // PRÓXIMA RENDIÇÃO
       if (sDate === todayLocalStr && startMin > effNow && (startMin - effNow) <= 120) {
         proximoRendimento.push({
           shift,
@@ -430,7 +434,7 @@ export default function Escalas() {
     return { emAndamento, proximoRendimento, tableDayShifts };
   }, [shifts, selectedSectorId, liveNow, todayLocalStr, professionalMap]);
 
-  /// IMPRESSÃO A4 PAISAGEM LIMPA EM JANELA PURA (SEM VAGAS EM ABERTO, COM DATA+HORA E STATUS CONCLUÍDO PRECISO)
+  // IMPRESSÃO A4 PAISAGEM LIMPA (SEM VAGAS EM ABERTO, COM DATA+HORA E STATUS CONCLUÍDO)
   const handlePrintA4Landscape = () => {
     const printWindow = window.open('', '_blank', 'width=1100,height=800');
     if (!printWindow) {
@@ -443,7 +447,7 @@ export default function Escalas() {
     const dataVigencia = liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
     const dataEmissao = liveNow.toLocaleDateString('pt-BR') + ' às ' + liveNow.toLocaleTimeString('pt-BR');
 
-    // FILTRO RIGOROSO: Apenas plantões com profissionais alocados (NÃO SAI VAGA EM ABERTO)
+    // FILTRO: Apenas plantões com profissionais alocados (NÃO SAI VAGA EM ABERTO NO IMPRESSO)
     const activeShiftsOnly = tvData.tableDayShifts.filter(shift => {
       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
       return shift.status !== 'vago' && prof && !shift.professional_name?.toLowerCase().includes('vaga');
@@ -464,11 +468,9 @@ export default function Escalas() {
           const profNome = `Dr(a). ${prof?.name || shift.professional_name}`;
           const conselho = prof?.document || '—';
 
-          // Formatação da Data do Plantão
           const [sYear, sMonth, sDay] = (shift.date || '').split('-');
           const formattedDate = sDay && sMonth ? `${sDay}/${sMonth}/${sYear}` : shift.date;
 
-          // Cálculo exato de conclusão
           const [startH, startM] = (shift.start_time || '07:00').split(':').map(Number);
           const [endH, endM] = (shift.end_time || '19:00').split(':').map(Number);
           const startMin = startH * 60 + startM;
@@ -574,8 +576,113 @@ export default function Escalas() {
     printWindow.document.close();
   };
 
+  const allActiveProfessionals = useMemo(() => {
+    return (professionals || []).filter(p => p?.status === 'ativo');
+  }, [professionals]);
+
+  const filteredTrayProfs = useMemo(() => {
+    const term = traySearch.toLowerCase().trim();
+    return (professionals || []).filter(p => {
+      if (p?.status !== 'ativo') return false;
+      if (traySpecialtyFilter !== 'todas' && (p.specialty || '').toLowerCase() !== traySpecialtyFilter.toLowerCase()) return false;
+      if (!term) return true;
+      return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowerCase().includes(term);
+    });
+  }, [professionals, traySearch, traySpecialtyFilter]);
+
+  const handleDayClick = (dateStr, e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      setSelectedDays(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
+    } else {
+      if (selectedDays.length > 0) setSelectedDays([]);
+    }
+  };
+
+  const handleDragStart = (e, profId) => { setDraggingProfId(profId); e.dataTransfer.setData('text/plain', profId); };
+
+  const handleDropOnDay = async (e, dateStr) => {
+    e.preventDefault();
+    const profId = e.dataTransfer.getData('text/plain') || draggingProfId;
+    if (!profId) return;
+
+    const prof = professionalMap[profId];
+    const targetSector = selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '');
+    if (!targetSector) { alert('Selecione ou cadastre um setor hospitalar.'); return; }
+
+    const targetDates = selectedDays.includes(dateStr) && selectedDays.length > 1 ? selectedDays : [dateStr];
+    if (!confirm(`Alocar ${prof?.name} para ${targetDates.length} dia(s)?`)) { setDraggingProfId(null); return; }
+
+    try {
+      for (const d of targetDates) {
+        const spec = prof?.specialty || 'Clínica Médica';
+        const saved = await autoHealingSaveShift(null, {
+          company_id: company?.id || 'cmp_principal',
+          unit_id: selectedUnitId || 'unit_h1',
+          sector_id: targetSector,
+          professional_id: profId,
+          target_specialty: spec,
+          notes: `[ESP:${spec}]`,
+          date: d,
+          shift_type: 'diurno',
+          start_time: '07:00',
+          end_time: '19:00',
+          status: 'confirmado'
+        });
+        if (saved?.id) try { window.localStorage.setItem(`shift_spec_${saved.id}`, spec); } catch {}
+      }
+      setSelectedDays([]); await syncGlobalData();
+    } catch (err) { alert('Erro ao alocar: ' + err.message); } finally { setDraggingProfId(null); }
+  };
+
+  const handleSaveShift = async (e) => {
+    e.preventDefault();
+    if (!formData.sector_id || !formData.date) return;
+
+    const isMural = formData.action_type === 'mural';
+    setSubmitting(true);
+    try {
+      const prof = formData.professional_id ? professionalMap[formData.professional_id] : null;
+      const finalSpecialty = (formData.target_specialty || prof?.specialty || 'Clínica Médica').trim();
+      const sType = formData.start_time >= '18:00' || formData.start_time < '06:00' ? 'noturno' : 'diurno';
+
+      const payload = {
+        company_id: company?.id || 'cmp_principal',
+        unit_id: selectedUnitId || 'unit_h1',
+        sector_id: formData.sector_id,
+        target_specialty: finalSpecialty,
+        professional_id: isMural ? null : formData.professional_id,
+        date: formData.date,
+        shift_type: sType,
+        start_time: formData.start_time,
+        end_time: formData.end_time,
+        status: isMural ? 'vago' : 'confirmado',
+        notes: `[ESP:${finalSpecialty}]`
+      };
+
+      const saved = await autoHealingSaveShift(editingShiftId, payload);
+      if (saved?.id || editingShiftId) try { window.localStorage.setItem(`shift_spec_${saved?.id || editingShiftId}`, finalSpecialty); } catch {}
+
+      setModalOpen(false); await syncGlobalData();
+    } finally { setSubmitting(false); }
+  };
+
+  const handleSendToMuralFromModal = async () => {
+    if (!editingShiftId) return;
+    if (!confirm('Disponibilizar no Mural?')) return;
+    try {
+      await autoHealingSaveShift(editingShiftId, { professional_id: null, status: 'vago' });
+      setModalOpen(false); await syncGlobalData();
+    } catch (err) { alert(err.message); }
+  };
+
+  const handleDeleteShift = async (shiftId) => {
+    if (!confirm('Excluir plantão?')) return;
+    try { await base44.entities.Shift.delete(shiftId); setModalOpen(false); await syncGlobalData(); } catch (err) { alert(err.message); }
+  };
+
   // =========================================================================
-  // 1. MODO TV CCO EM TELA CHEIA ISOLADA
+  // 1. MODO TV CCO EM TELA CHEIA ISOLADA (100% DA TELA SEM MENU OU TOPO)
   // =========================================================================
   if (activeTab === 'tv') {
     return (
@@ -618,7 +725,9 @@ export default function Escalas() {
           </div>
         </div>
 
+        {/* CORPO DO MODO TV */}
         <div className="flex-1 my-6 grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-hidden">
+          {/* ATIVOS NO MOMENTO */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
@@ -655,6 +764,7 @@ export default function Escalas() {
             </div>
           </div>
 
+          {/* PRÓXIMAS RENDIÇÕES */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
@@ -707,7 +817,7 @@ export default function Escalas() {
   return (
     <div className="relative p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
-      {/* BOTÃO LATERAL FIXADO NA BORDA EXATA ONDE VOCÊ APONTOU A SETA (ALTURA DE RELATÓRIOS) */}
+      {/* BOTÃO LATERAL FIXADO NA BORDA EXATA ONDE VOCÊ APONTOU A SETA NO PRINT 3 */}
       <button
         onClick={toggleMainSidebar}
         title={sidebarHidden ? "Expandir Menu Lateral Principal" : "Recolher Menu Lateral"}
@@ -751,9 +861,7 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* ⚠️ SISTEMA ANTI-ERRO VISUAL: ALERTA SE UM SETOR ESTIVER FILTRADO          */}
-      {/* ========================================================================= */}
+      {/* ALERTA VISUAL ANTI-ERRO SE UM SETOR ESTIVER FILTRADO */}
       {selectedSectorObj && (
         <div className="p-3 px-4 rounded-2xl bg-gradient-to-r from-sky-950/70 via-indigo-950/70 to-slate-900 border border-sky-500/50 shadow-md flex items-center justify-between gap-3 animate-in fade-in">
           <div className="flex items-center gap-2.5 text-xs font-black text-sky-300">
@@ -922,7 +1030,6 @@ export default function Escalas() {
                       </div>
                       <div className="text-[9px] font-semibold opacity-70 truncate flex items-center justify-between">
                         <span>{realSpec}</span>
-                        {/* Indicador sutil de setor caso esteja em todos os setores */}
                         {!selectedSectorObj && (
                           <span className="text-[8px] font-mono text-slate-400 opacity-60 truncate max-w-[60px]">{sectorMap[shift.sector_id]?.name}</span>
                         )}
@@ -966,7 +1073,7 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* PLANTÃO DO DIA (RESTAURADO E FUNCIONAL) */}
+      {/* 3. ABA PLANTÃO DO DIA (RESTAURADA E COMPLETA) */}
       {activeTab === 'dia' && (
         <div className="space-y-5">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
@@ -987,10 +1094,10 @@ export default function Escalas() {
                 <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 uppercase text-[10px] font-black border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="py-3 px-4">Seção / Setor</th>
-                    <th className="py-3 px-4">Horário</th>
+                    <th className="py-3 px-4 text-center">Data & Horário</th>
                     <th className="py-3 px-4">Profissional Escalado</th>
                     <th className="py-3 px-4">Especialidade / Atuação</th>
-                    <th className="py-3 px-4 text-center">Status Atual</th>
+                    <th className="py-3 px-4 text-center">Situação / Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
@@ -1003,10 +1110,16 @@ export default function Escalas() {
                       const status = getStatusBadge(shift);
                       const realSpecialty = extractSpecialty(shift, prof);
 
+                      const [sYear, sMonth, sDay] = (shift.date || '').split('-');
+                      const formattedDate = sDay && sMonth ? `${sDay}/${sMonth}/${sYear}` : shift.date;
+
                       return (
                         <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
                           <td className="py-3 px-4 font-black text-slate-900 dark:text-white">{sector?.name || 'Setor'}</td>
-                          <td className="py-3 px-4 font-mono font-bold text-sky-600 dark:text-sky-400">{shift.start_time} às {shift.end_time}</td>
+                          <td className="py-3 px-4 font-mono font-bold text-sky-600 dark:text-sky-400 text-center whitespace-nowrap">
+                            {formattedDate}<br />
+                            <span className="text-[10px] text-slate-400">{shift.start_time} às {shift.end_time}</span>
+                          </td>
                           <td className="py-3 px-4 font-black text-slate-900 dark:text-slate-100">
                             {status.code === 'vaga' || status.code === 'perdida' ? <span className="text-rose-600 dark:text-rose-400">⚠️ {status.label}</span> : formatFullName(prof?.name)}
                           </td>
@@ -1127,7 +1240,7 @@ export default function Escalas() {
               )}
             </div>
             
-            {/* RODAPÉ DO MODAL ALINHADO E SIMÉTRICO */}
+            {/* RODAPÉ DO MODAL SIMÉTRICO */}
             <DialogFooter className="pt-2 flex flex-row items-center justify-between border-t border-slate-800 mt-3 gap-2">
               <div className="flex items-center gap-2">
                 {editingShiftId && (
