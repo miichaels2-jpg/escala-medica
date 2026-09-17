@@ -11,7 +11,7 @@ import {
   Users, UserPlus, Search, CheckCircle2, 
   Clock, DollarSign, Edit3, KeyRound, Send, RefreshCw, Ban, 
   UserCheck, MessageSquare, Shield, UserCog, BadgeCheck, Eye, EyeOff,
-  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle
+  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle, Building2, Check
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -89,7 +89,8 @@ export default function CorpoClinico() {
     hourly_rate: 120, daily_rate: 1500, monthly_salary: 18000,
     monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
     pix_key: '', bank_info: '', password: '',
-    document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0]
+    document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
+    authorized_sectors: [] // Matriz de Permissão por Setor
   });
 
   const resetForm = () => {
@@ -103,7 +104,8 @@ export default function CorpoClinico() {
       hourly_rate: 120, daily_rate: 1500, monthly_salary: 18000,
       monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
       pix_key: '', bank_info: '', password: '',
-      document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0]
+      document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
+      authorized_sectors: (sectors || []).map(s => String(s.id)) // padrão: todos liberados
     });
     setEditingProf(null);
     setShowPassword(false);
@@ -116,6 +118,7 @@ export default function CorpoClinico() {
     const meta = getProfMeta(prof);
     const generatedMatricula = meta.registration_id || prof.registration_id || `MAT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const expiry = prof.document_expiry || meta.document_expiry || new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0];
+    const authSectors = meta.authorized_sectors || (sectors || []).map(s => String(s.id));
 
     setFormData({
       name: prof.name || prof.full_name || '',
@@ -142,9 +145,21 @@ export default function CorpoClinico() {
       pix_key: meta.pix_key || '',
       bank_info: meta.bank_info || '',
       password: '',
-      document_expiry: expiry
+      document_expiry: expiry,
+      authorized_sectors: authSectors
     });
     setModalOpen(true);
+  };
+
+  const handleToggleSectorAuth = (secId) => {
+    setFormData(prev => {
+      const current = prev.authorized_sectors || [];
+      if (current.includes(secId)) {
+        return { ...prev, authorized_sectors: current.filter(id => id !== secId) };
+      } else {
+        return { ...prev, authorized_sectors: [...current, secId] };
+      }
+    });
   };
 
   const handleAddCustomCategory = (e) => {
@@ -190,7 +205,8 @@ export default function CorpoClinico() {
         monthly_work_hours: safeNumber(formData.monthly_work_hours), pix_type: formData.pix_type,
         pix_key: formData.pix_key.trim(), bank_info: formData.bank_info.trim(),
         remuneration_type: formData.remuneration_type, hourly_rate: safeNumber(formData.hourly_rate),
-        document_expiry: formData.document_expiry, status: formData.status
+        document_expiry: formData.document_expiry, status: formData.status,
+        authorized_sectors: formData.authorized_sectors
       };
 
       const profPayload = {
@@ -208,7 +224,7 @@ export default function CorpoClinico() {
         try { window.localStorage.setItem(`prof_meta_${savedProfId}`, JSON.stringify(richMeta)); } catch {}
       }
 
-      setModalOpen(false); resetForm(); await syncGlobalData(); alert('Profissional salvo com sucesso!');
+      setModalOpen(false); resetForm(); await syncGlobalData(); alert('Profissional e matriz de permissões salvos com sucesso!');
     } catch (err) { alert('Erro ao salvar: ' + err.message); } finally { setSubmitting(false); }
   };
 
@@ -258,7 +274,7 @@ export default function CorpoClinico() {
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-400"><Users className="w-4 h-4" /> Gestão de Pessoal & Matrícula</div>
           <h2 className="mt-1 text-2xl sm:text-3xl font-black">Corpo Clínico & Matrículas</h2>
-          <p className="text-xs text-slate-300">Cadastro de profissionais, validade de credenciais, repasse PIX e geração automática de Matrícula ID.</p>
+          <p className="text-xs text-slate-300">Cadastro de profissionais, validade de credenciais, repasse PIX e matriz de habilitação por setor.</p>
         </div>
         {isManager && (<Button onClick={handleOpenNew} className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-10 px-5 rounded-xl shadow-lg gap-1.5 shrink-0 cursor-pointer"><UserPlus className="w-4 h-4" /> Novo Profissional</Button>)}
       </div>
@@ -287,7 +303,6 @@ export default function CorpoClinico() {
 
           const expiry = prof.document_expiry || meta.document_expiry || '';
           
-          // CÁLCULO PRECISO DE DIAS RESTANTES (ZERO HORAS / MEIA-NOITE)
           let diffDays = null;
           let isExpired = false;
           let isNearExpiry = false;
@@ -304,10 +319,11 @@ export default function CorpoClinico() {
             diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
             isExpired = diffDays < 0;
-            isNearExpiry = diffDays >= 0 && diffDays <= 30; // Alerta 30 dias
+            isNearExpiry = diffDays >= 0 && diffDays <= 30;
           }
 
           const profStatus = prof.status || meta.status || 'ativo';
+          const authSectorsCount = (meta.authorized_sectors || (sectors || []).map(s => String(s.id))).length;
 
           return (
             <Card key={prof.id} className={`p-5 rounded-3xl border-2 transition-all flex flex-col justify-between space-y-4 shadow-sm bg-white dark:bg-slate-900 ${
@@ -335,7 +351,14 @@ export default function CorpoClinico() {
                   <div className="flex justify-between"><span>Conselho:</span><strong>{prof.document || '—'}</strong></div>
                   <div className="flex justify-between"><span>Especialidade:</span><strong className="text-slate-900 dark:text-white truncate max-w-[140px]">{prof.specialty || meta.specialty || 'Geral'}</strong></div>
                   
-                  {/* ALERTA DINÂMICO DE DIAS RESTANTES */}
+                  {/* HABILITAÇÃO POR SETOR */}
+                  <div className="flex justify-between items-center">
+                    <span>Habilitação Setores:</span>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                      {authSectorsCount} de {sectors.length} setor(es)
+                    </span>
+                  </div>
+
                   <div className="flex items-center justify-between">
                     <span>Validade Credencial:</span>
                     <div className="flex items-center gap-1.5">
@@ -354,8 +377,6 @@ export default function CorpoClinico() {
                       )}
                     </div>
                   </div>
-
-                  <div className="flex justify-between"><span>Chave PIX:</span><strong className="text-sky-600 font-mono truncate max-w-[140px]">{meta.pix_key || 'Não cadastrado'}</strong></div>
                 </div>
 
                 <div className="mt-2 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 flex items-center justify-between">
@@ -377,7 +398,7 @@ export default function CorpoClinico() {
         })}
       </div>
 
-      {/* MODAL DE CADASTRO/EDIÇÃO COMPLETO */}
+      {/* MODAL DE CADASTRO/EDIÇÃO COMPLETO COM MATRIZ DE SETORES */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
           <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2 text-slate-900 dark:text-white"><UserCog className="w-5 h-5 text-sky-600" /> {editingProf ? 'Editar Perfil Profissional & Acesso' : 'Cadastrar Novo Profissional'}</DialogTitle></DialogHeader>
@@ -417,6 +438,43 @@ export default function CorpoClinico() {
                     <p className="text-[10px] text-slate-500 leading-tight">{role.desc}</p>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* MATRIZ DE HABILITAÇÃO POR SETOR */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-black text-xs uppercase text-slate-700 dark:text-slate-300">
+                  <Building2 className="w-4 h-4 text-sky-600" /> Matriz de Habilitação por Setor Hospitalar
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {formData.authorized_sectors.length} de {sectors.length} liberados
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-tight">
+                Selecione em quais setores o profissional possui autorização e competência para atuar nas escalas:
+              </p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                {(sectors || []).map(sec => {
+                  const isAuth = formData.authorized_sectors.includes(String(sec.id));
+                  return (
+                    <div 
+                      key={sec.id}
+                      onClick={() => handleToggleSectorAuth(String(sec.id))}
+                      className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                        isAuth 
+                          ? 'bg-sky-50 dark:bg-sky-950/30 border-sky-300 dark:border-sky-800 text-sky-900 dark:text-sky-200 font-bold' 
+                          : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-400'
+                      }`}
+                    >
+                      <span className="text-xs truncate">{sec.name}</span>
+                      <div className={`w-5 h-5 rounded-lg flex items-center justify-center border ${isAuth ? 'bg-sky-600 border-sky-600 text-white' : 'border-slate-300'}`}>
+                        {isAuth && <Check className="w-3.5 h-3.5" />}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
