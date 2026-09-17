@@ -45,6 +45,52 @@ function getShiftInterval(startStr, endStr) {
   return { startMin, endMin };
 }
 
+// CÁLCULO PRECISO DE STATUS QUE CONSIDERA VIRADA DE MADRUGADA
+function computeShiftLiveStatus(shift, liveNowDate) {
+  if (!shift || !shift.date) {
+    return { isLive: false, isConcluded: false, isProgrammed: true };
+  }
+
+  const [sYear, sMonth, sDay] = String(shift.date).split('-').map(Number);
+  const [startH, startM] = String(shift.start_time || '07:00').split(':').map(Number);
+  const [endH, endM] = String(shift.end_time || '19:00').split(':').map(Number);
+
+  const startDate = new Date(sYear, sMonth - 1, sDay, startH || 0, startM || 0, 0);
+  let endDate = new Date(sYear, sMonth - 1, sDay, endH || 0, endM || 0, 0);
+
+  // Se o horário final for menor ou igual ao inicial, o plantão vira a noite (termina no dia seguinte)
+  if (endDate.getTime() <= startDate.getTime()) {
+    endDate.setDate(endDate.getDate() + 1);
+  }
+
+  const nowMs = liveNowDate.getTime();
+  const startMs = startDate.getTime();
+  const endMs = endDate.getTime();
+
+  if (nowMs >= startMs && nowMs < endMs) {
+    const diffMin = Math.round((endMs - nowMs) / 60000);
+    return {
+      isLive: true,
+      isConcluded: false,
+      isProgrammed: false,
+      remainingMinutes: diffMin,
+      remainingDesc: `Resta ${Math.floor(diffMin / 60)}h ${diffMin % 60}m`
+    };
+  }
+
+  if (nowMs >= endMs) {
+    return { isLive: false, isConcluded: true, isProgrammed: false };
+  }
+
+  const toStartMin = Math.round((startMs - nowMs) / 60000);
+  return {
+    isLive: false,
+    isConcluded: false,
+    isProgrammed: true,
+    startsInMinutes: toStartMin
+  };
+}
+
 async function autoHealingSaveShift(id, initialPayload) {
   let payload = { ...initialPayload };
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -151,10 +197,8 @@ export default function Escalas() {
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
 
-  // Histórico e Armazenamento de Publicações Granulares por Setor
   const [publishedVersion, setPublishedVersion] = useState(0);
 
-  // Recupera as faixas de datas já publicadas por setor
   const getSectorPublishedRanges = (secId) => {
     try {
       const raw = window.localStorage.getItem(`scale_published_ranges_${selectedUnitId}_${secId}_${currentYear}_${currentMonth + 1}`);
@@ -171,12 +215,10 @@ export default function Escalas() {
     return getSectorPublishedRanges(selectedSectorId).length > 0;
   }, [selectedSectorId, sectors, currentYear, currentMonth, selectedUnitId, publishedVersion]);
 
-  // Setores pendentes de publicação
   const unsubmittedSectors = useMemo(() => {
     return (sectors || []).filter(s => getSectorPublishedRanges(s.id).length === 0);
   }, [sectors, currentYear, currentMonth, selectedUnitId, publishedVersion]);
 
-  // Modal de Publicação Granular
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [publishConfig, setPublishConfig] = useState({
     sector_id: '',
@@ -217,7 +259,6 @@ export default function Escalas() {
     }));
   };
 
-  // DETECTA SE O PERÍODO SELECIONADO JÁ ESTÁ PUBLICADO (ALERTA NO MODAL)
   const existingPublishedOverlaps = useMemo(() => {
     if (!publishConfig.sector_id || !publishConfig.start_date || !publishConfig.end_date) return [];
     const ranges = getSectorPublishedRanges(publishConfig.sector_id);
@@ -245,7 +286,6 @@ export default function Escalas() {
     return set.size;
   }, [publishTargetShifts]);
 
-  // EXECUTA A PUBLICAÇÃO E SALVA A FAIXA DE DATAS PUBLICADA
   const handleExecutePublishSector = async () => {
     if (!publishConfig.sector_id) {
       alert('Selecione o setor a ser publicado.');
@@ -260,7 +300,6 @@ export default function Escalas() {
 
     setSubmitting(true);
     try {
-      // Atualiza lista de intervalos publicados do setor
       const storageKey = `scale_published_ranges_${selectedUnitId}_${publishConfig.sector_id}_${currentYear}_${currentMonth + 1}`;
       const currentRanges = getSectorPublishedRanges(publishConfig.sector_id);
       
@@ -270,7 +309,6 @@ export default function Escalas() {
         published_at: new Date().toISOString()
       };
 
-      // Remove intervalos que foram englobados e insere o novo
       const updatedRanges = [
         ...currentRanges.filter(r => !(r.start_date >= newRange.start_date && r.end_date <= newRange.end_date)),
         newRange
@@ -278,7 +316,6 @@ export default function Escalas() {
 
       window.localStorage.setItem(storageKey, JSON.stringify(updatedRanges));
       
-      // Carimba notas nos plantões para rastreio
       for (const shift of publishTargetShifts) {
         const currNotes = String(shift.notes || '');
         if (!currNotes.includes('[ESCALA_PUBLICADA]')) {
@@ -342,7 +379,6 @@ export default function Escalas() {
   const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if(s) m[String(s.id)] = s; }); return m; }, [sectors]);
   const professionalMap = useMemo(() => { const m = {}; (professionals || []).forEach(p => { if(p) m[String(p.id)] = p; }); return m; }, [professionals]);
 
-  // VERIFICA SE UMA DETERMINADA DATA ESTÁ PUBLICADA PARA O SETOR
   const isDatePublishedForCurrentSector = (dateStr) => {
     if (selectedSectorId === 'todos') {
       return (sectors || []).length > 0 && (sectors || []).every(sec => {
@@ -548,27 +584,26 @@ export default function Escalas() {
 
   const todayLocalStr = getLocalDateString(liveNow);
 
+  // BADGE DE STATUS COM SUPORTE TOTAL A VIRADA DE NOITE
   const getStatusBadge = (shift) => {
     const isVago = shift.status === 'vago' || !shift.professional_id;
-    const { startMin, endMin } = getShiftInterval(shift.start_time, shift.end_time);
-    
-    const now = liveNow;
-    let nowTotalMin = now.getHours() * 60 + now.getMinutes();
-    if (endMin > 24 * 60 && nowTotalMin < startMin) nowTotalMin += 24 * 60;
+    const liveStatus = computeShiftLiveStatus(shift, liveNow);
 
     if (isVago) {
-      if (shift.date < todayLocalStr || (shift.date === todayLocalStr && nowTotalMin >= endMin)) {
+      if (liveStatus.isConcluded) {
         return { dot: 'bg-slate-400', label: 'VAGA PERDIDA', text: 'text-slate-500', wrapper: 'border-l-slate-400 bg-slate-100 dark:bg-slate-900/50 opacity-60 grayscale hover:grayscale-0', icon: <AlertTriangle className="w-3 h-3 text-slate-500" /> };
       }
       return { dot: 'bg-rose-500 animate-pulse', label: 'VAGA ABERTA', text: 'text-rose-600 dark:text-rose-400', wrapper: 'border-l-rose-500 bg-rose-50 dark:bg-rose-950/30', icon: <Flame className="w-3 h-3 text-rose-500 animate-pulse" /> };
     }
     
-    if (shift.date < todayLocalStr || (shift.date === todayLocalStr && nowTotalMin >= endMin)) {
+    if (liveStatus.isLive) {
+      return { dot: 'bg-emerald-500 animate-ping', label: 'EM ANDAMENTO', text: 'text-emerald-600 dark:text-emerald-400', wrapper: 'border-l-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 ring-1 ring-emerald-500/50', icon: <Radio className="w-3 h-3 text-emerald-500 animate-ping" /> };
+    }
+
+    if (liveStatus.isConcluded) {
       return { dot: 'bg-slate-400', label: 'CONCLUÍDO', text: 'text-slate-500 dark:text-slate-400', wrapper: 'border-l-slate-300 bg-slate-100 dark:bg-slate-800/40 opacity-70 grayscale hover:grayscale-0', icon: <CheckCircle2 className="w-3 h-3 text-slate-400" /> };
     }
-    if (shift.date === todayLocalStr && nowTotalMin >= startMin && nowTotalMin < endMin) {
-      return { dot: 'bg-emerald-500 animate-ping', label: 'AO VIVO', text: 'text-emerald-600 dark:text-emerald-400', wrapper: 'border-l-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 ring-1 ring-emerald-500/50', icon: <Radio className="w-3 h-3 text-emerald-500 animate-ping" /> };
-    }
+
     return { dot: 'bg-sky-500', label: 'PROGRAMADO', text: 'text-sky-600 dark:text-sky-400', wrapper: 'border-l-sky-400 bg-sky-50 dark:bg-sky-900/10', icon: <CalendarIcon className="w-3 h-3 text-sky-500" /> };
   };
 
@@ -595,204 +630,6 @@ export default function Escalas() {
     monthlyShifts.forEach(s => { if (!map[s.date]) map[s.date] = []; map[s.date].push(s); });
     return map;
   }, [monthlyShifts]);
-
-  // MODO TV & PLANTÃO DO DIA
-  const tvData = useMemo(() => {
-    const nowHour = liveNow.getHours();
-    const nowMin = liveNow.getMinutes();
-    const nowTotalMin = nowHour * 60 + nowMin;
-
-    const emAndamento = [];
-    const proximoRendimento = [];
-    const tableDayShifts = [];
-
-    (shifts || []).forEach(shift => {
-      if (!shift) return;
-      if (selectedSectorId !== 'todos' && String(shift.sector_id) !== String(selectedSectorId)) return;
-
-      const sDate = (shift.date || '').split('T')[0];
-      const { startMin, endMin } = getShiftInterval(shift.start_time, shift.end_time);
-
-      let effNow = nowTotalMin;
-      if (endMin > 24 * 60 && nowTotalMin < startMin) effNow += 24 * 60;
-
-      if (sDate === todayLocalStr) {
-        tableDayShifts.push(shift);
-      } else if (endMin > 24 * 60) {
-        const yesterdayStr = getLocalDateString(new Date(liveNow.getTime() - 86400000));
-        if (sDate === yesterdayStr && nowTotalMin < (endMin - 24 * 60)) {
-          tableDayShifts.push(shift);
-        }
-      }
-
-      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-      if (shift.status === 'vago' || !prof) return;
-
-      if (sDate === todayLocalStr && effNow >= startMin && effNow < endMin) {
-        const left = endMin - effNow;
-        emAndamento.push({
-          ...shift,
-          detail: `Resta ${Math.floor(left / 60)}h ${left % 60}m`
-        });
-      } else if (endMin > 24 * 60) {
-        const yesterdayStr = getLocalDateString(new Date(liveNow.getTime() - 86400000));
-        if (sDate === yesterdayStr && nowTotalMin < (endMin - 24 * 60)) {
-          const left = (endMin - 24 * 60) - nowTotalMin;
-          emAndamento.push({
-            ...shift,
-            detail: `Resta ${Math.floor(left / 60)}h ${left % 60}m`
-          });
-        }
-      }
-
-      if (sDate === todayLocalStr && startMin > effNow && (startMin - effNow) <= 120) {
-        proximoRendimento.push({
-          shift,
-          startsIn: startMin - effNow
-        });
-      }
-    });
-
-    tableDayShifts.sort((a, b) => (a.start_time || '07:00').localeCompare(b.start_time || '07:00'));
-    return { emAndamento, proximoRendimento, tableDayShifts };
-  }, [shifts, selectedSectorId, liveNow, todayLocalStr, professionalMap]);
-
-  // IMPRESSÃO A4 PAISAGEM LIMPA DO PLANTÃO DO DIA
-  const handlePrintA4Landscape = () => {
-    const printWindow = window.open('', '_blank', 'width=1100,height=800');
-    if (!printWindow) {
-      alert('Permita pop-ups para abrir a impressão.');
-      return;
-    }
-
-    const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
-    const logoLetter = hospitalName[0] || 'H';
-    const dataVigencia = liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-    const dataEmissao = liveNow.toLocaleDateString('pt-BR') + ' às ' + liveNow.toLocaleTimeString('pt-BR');
-
-    const activeShiftsOnly = tvData.tableDayShifts.filter(shift => {
-      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-      return shift.status !== 'vago' && prof && !shift.professional_name?.toLowerCase().includes('vaga');
-    });
-
-    const now = liveNow;
-    const nowHour = now.getHours();
-    const nowMin = now.getMinutes();
-    const nowTotalMin = nowHour * 60 + nowMin;
-
-    const tableRowsHtml = activeShiftsOnly.length === 0
-      ? `<tr><td colspan="6" style="padding: 24px; text-align: center; color: #666; font-size: 11px;">Nenhum profissional com plantão confirmado para esta data.</td></tr>`
-      : activeShiftsOnly.map((shift, idx) => {
-          const prof = professionalMap[String(shift.professional_id)];
-          const sector = sectorMap[String(shift.sector_id)];
-          const realSpecialty = extractSpecialty(shift, prof);
-          const bg = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
-          const profNome = `Dr(a). ${prof?.name || shift.professional_name}`;
-          const conselho = prof?.document || '—';
-
-          const [sYear, sMonth, sDay] = (shift.date || '').split('-');
-          const formattedDate = sDay && sMonth ? `${sDay}/${sMonth}/${sYear}` : shift.date;
-
-          const { startMin, endMin } = getShiftInterval(shift.start_time, shift.end_time);
-
-          let effNow = nowTotalMin;
-          if (endMin > 24 * 60 && nowTotalMin < startMin) effNow += 24 * 60;
-
-          const isShiftDatePast = shift.date < todayLocalStr;
-          const isShiftDateToday = shift.date === todayLocalStr;
-          const isConcluded = isShiftDatePast || (isShiftDateToday && effNow >= endMin);
-          const isActiveNow = isShiftDateToday && effNow >= startMin && effNow < endMin;
-
-          const statusHtml = isConcluded
-            ? `<span style="font-weight: bold; color: #166534; background-color: #dcfce7; padding: 2px 6px; border-radius: 4px; font-size: 9px;">✓ CONCLUÍDO</span>`
-            : isActiveNow
-            ? `<span style="font-weight: bold; color: #0369a1; background-color: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-size: 9px;">● EM ANDAMENTO</span>`
-            : `<span style="color: #475569; background-color: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 9px;">PROGRAMADO</span>`;
-
-          return `
-            <tr style="background-color: ${bg};">
-              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold; text-transform: uppercase;">${sector?.name || 'Setor'}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; font-weight: bold; text-align: center; white-space: nowrap;">
-                ${formattedDate}<br><span style="color: #334155; font-size: 10px;">${shift.start_time} às ${shift.end_time}</span>
-              </td>
-              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold;">${profNome}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px;">${realSpecialty}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; text-align: center;">${conselho}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px; text-align: center;">${statusHtml}</td>
-            </tr>
-          `;
-        }).join('');
-
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="utf-8">
-        <title>Escala Oficial - ${hospitalName}</title>
-        <style>
-          @page { size: A4 landscape; margin: 8mm; }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; background: #fff !important; color: #000 !important; padding: 15px; font-size: 11px; }
-          .header-box { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 15px; }
-          .logo-badge { width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px; }
-          .header-info h1 { font-size: 19px; font-weight: 900; text-transform: uppercase; }
-          table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 30px; }
-          th { background-color: #e5e7eb; border: 1px solid #000; padding: 8px 10px; text-align: left; font-size: 9.5px; font-weight: 900; text-transform: uppercase; }
-          .signatures-area { display: flex; justify-content: space-around; margin-top: 35px; }
-          .sig-box { text-align: center; width: 320px; }
-          .sig-line { border-bottom: 1px solid #000; margin-bottom: 6px; }
-        </style>
-      </head>
-      <body>
-        <div class="header-box">
-          <div style="display: flex; align-items: center;">
-            <div class="logo-badge">${logoLetter}</div>
-            <div class="header-info">
-              <h1>${hospitalName}</h1>
-              <p>ESCALA OFICIAL DE PLANTÃO • MURAL HOSPITALAR</p>
-              <div>Vigência: <b>${dataVigencia}</b></div>
-            </div>
-          </div>
-          <div style="text-align: right; font-size: 9.5px;">
-            <div style="border: 1px solid #000; padding: 3px 8px; font-weight: 900; display: inline-block;">DOCUMENTO OFICIAL AUDITÁVEL</div>
-            <div style="margin-top: 4px;">Emissão: ${dataEmissao}</div>
-          </div>
-        </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 20%;">Seção / Setor</th>
-              <th style="width: 18%; text-align: center;">Data & Horário</th>
-              <th style="width: 26%;">Profissional Escalado</th>
-              <th style="width: 18%;">Especialidade / Atuação</th>
-              <th style="width: 10%; text-align: center;">Conselho</th>
-              <th style="width: 14%; text-align: center;">Situação / Status</th>
-            </tr>
-          </thead>
-          <tbody>${tableRowsHtml}</tbody>
-        </table>
-
-        <div class="signatures-area">
-          <div class="sig-box">
-            <div class="sig-line"></div>
-            <div style="font-weight: 900; text-transform: uppercase;">Diretoria Clínica / RT Médica</div>
-          </div>
-          <div class="sig-box">
-            <div class="sig-line"></div>
-            <div style="font-weight: 900; text-transform: uppercase;">Gerência de Enfermagem / RT Assistencial</div>
-          </div>
-        </div>
-
-        <script>window.onload = function() { window.print(); };</script>
-      </body>
-      </html>
-    `;
-
-    printWindow.document.open();
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-  };
 
   const allActiveProfessionals = useMemo(() => {
     return (professionals || []).filter(p => p?.status === 'ativo');
@@ -1231,7 +1068,7 @@ export default function Escalas() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* BOTÃO DE PUBLICAR POR SETOR COM CONTROLE */}
+          {/* BOTÃO DE PUBLICAR POR SETOR */}
           {isManager && (
             <div className="flex items-center gap-1.5">
               <Button 
@@ -1272,7 +1109,7 @@ export default function Escalas() {
       </div>
 
       {/* ========================================================================= */}
-      {/* 3. ABA 1: GRADE MENSAL COM BADGE VISUAL DE PUBLICADO EM CADA DIA          */}
+      {/* 3. ABA 1: GRADE MENSAL                                                   */}
       {/* ========================================================================= */}
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
@@ -1370,14 +1207,12 @@ export default function Escalas() {
 
                 return (
                   <div key={dateStr} onClick={(e) => handleDayClick(dateStr, e)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnDay(e, dateStr)} className={`min-h-[220px] p-2 transition-all flex flex-col justify-between select-none cursor-pointer ${isSelected ? 'bg-indigo-50 dark:bg-indigo-950/50 ring-2 ring-indigo-500 z-10' : isToday ? 'bg-sky-50/60 dark:bg-sky-950/20' : 'hover:bg-slate-50 dark:hover:bg-slate-850/50'}`}>
-                    {/* CABEÇALHO DO DIA COM SELO CLARO DE PUBLICADO / RASCUNHO */}
                     <div className={`flex items-center justify-between p-1 px-2 rounded-xl mb-1.5 border shadow-sm ${isToday ? 'bg-gradient-to-r from-sky-600 to-cyan-600 border-sky-400 text-white font-black' : isWeekend ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-200 text-indigo-800 dark:text-indigo-300 font-bold' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 text-slate-800 dark:text-slate-200 font-bold'}`}>
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-black">{dateObj.getDate()}</span>
                         <span className="text-[9px] uppercase font-bold opacity-70">{WEEKDAYS[dateObj.getDay()].short}</span>
                       </div>
 
-                      {/* BADGE VISUAL DE PUBLICADO */}
                       {isDatePublished ? (
                         <span title="Escala oficializada e publicada para esta data" className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-600 text-white flex items-center gap-0.5">
                           <Check className="w-2.5 h-2.5" /> Publicado
@@ -1418,7 +1253,7 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 4. ABA 2: PLANTÃO DO DIA                                                  */}
+      {/* 4. ABA 2: PLANTÃO DO DIA (RESTAURADA E OPERACIONAL)                        */}
       {/* ========================================================================= */}
       {activeTab === 'dia' && (
         <div className="space-y-5 animate-in fade-in">
@@ -1487,7 +1322,7 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 5. MODAL EXECUTIVO: PUBLICAR ESCALA COM ALERTA DE DIAS JÁ PUBLICADOS     */}
+      {/* 5. MODAL EXECUTIVO: PUBLICAR ESCALA POR SETOR & INTERVALO CUSTOMIZADO     */}
       {/* ========================================================================= */}
       <Dialog open={publishModalOpen} onOpenChange={setPublishModalOpen}>
         <DialogContent className="w-[95vw] sm:max-w-lg bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-5 sm:p-6 rounded-3xl">
