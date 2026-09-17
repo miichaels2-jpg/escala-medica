@@ -10,7 +10,7 @@ import {
   CalendarDays, Download, FileText, ShieldAlert, CheckCircle2, 
   Activity, Clock, Award, Printer, PieChart, Layers, ArrowUpRight,
   AlertTriangle, Stethoscope, Briefcase, FileSpreadsheet, Filter, Check,
-  Gauge, History, ShieldCheck, Database, Printer as PrinterIcon
+  Gauge, History, ShieldCheck, Database, Printer as PrinterIcon, Search
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -56,7 +56,8 @@ export default function Relatorios() {
   const [selectedStatus, setSelectedStatus] = useState('todos');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filtros Aplicados
+  // Estado de controle para exigir o clique em "Aplicar Filtros"
+  const [hasSearched, setHasSearched] = useState(false);
   const [appliedFilters, setAppliedFilters] = useState({
     month: String(new Date().getMonth() + 1),
     year: '2026',
@@ -73,6 +74,7 @@ export default function Relatorios() {
       status: selectedStatus,
       search: searchQuery
     });
+    setHasSearched(true);
   };
 
   function getProfMeta(prof) {
@@ -97,6 +99,7 @@ export default function Relatorios() {
   }, [professionals]);
 
   const filteredShifts = useMemo(() => {
+    if (!hasSearched) return [];
     const mStr = String(appliedFilters.month).padStart(2, '0');
     const yStr = appliedFilters.year;
     const term = normalize(appliedFilters.search);
@@ -123,7 +126,7 @@ export default function Relatorios() {
 
       return true;
     });
-  }, [shifts, sectors, appliedFilters]);
+  }, [shifts, sectors, appliedFilters, hasSearched]);
 
   const { totalShiftsCount, filledShiftsCount, vacantShiftsCount, vacantShiftItems } = useMemo(() => {
     let total = filteredShifts.length;
@@ -306,7 +309,7 @@ export default function Relatorios() {
 
   const handleExportCSV = (rows, filename) => {
     if (!rows.length) {
-      alert('Nenhum dado para exportar com os filtros atuais.');
+      alert('Nenhum dado para exportar com os filtros atuais. Aplique os filtros primeiro.');
       return;
     }
     const headers = Object.keys(rows[0]);
@@ -327,6 +330,10 @@ export default function Relatorios() {
   };
 
   const handlePrint = () => {
+    if (!hasSearched) {
+      alert('Por favor, aplique os filtros antes de gerar o relatório em PDF.');
+      return;
+    }
     window.print();
   };
 
@@ -345,7 +352,7 @@ export default function Relatorios() {
             Relatórios Executivos & Dossiê de Gestão
           </h1>
           <p className="text-xs text-slate-400 font-medium max-w-2xl">
-            Visão unificada de escalas, plantões descobertos, produtividade clínica, custos operacionais e conformidade regulatória.
+            Selecione os parâmetros e aplique os filtros para gerar relatórios auditados e consolidados sob demanda.
           </p>
         </div>
 
@@ -360,14 +367,16 @@ export default function Relatorios() {
               Status: s.status || 'Ativo'
             })), `plantoes_${appliedFilters.month}_${appliedFilters.year}.csv`)}
             variant="outline"
-            className="h-11 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 rounded-2xl border-slate-700 gap-2 cursor-pointer"
+            disabled={!hasSearched}
+            className="h-11 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 rounded-2xl border-slate-700 gap-2 cursor-pointer disabled:opacity-50"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Baixar Excel (.csv)
           </Button>
 
           <Button 
             onClick={handlePrint}
-            className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105"
+            disabled={!hasSearched}
+            className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105 disabled:opacity-50"
           >
             <PrinterIcon className="w-4 h-4" /> Imprimir Dossiê (PDF)
           </Button>
@@ -384,13 +393,13 @@ export default function Relatorios() {
         </div>
       </div>
 
-      {/* PAINEL DE FILTROS AVANÇADOS (Oculto na Impressão) */}
+      {/* PAINEL DE FILTROS AVANÇADOS (Obrigatório para gerar os dados) */}
       <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:hidden">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-            <Filter className="w-4 h-4 text-sky-600" /> Configuração de Filtros de Análise
+            <Filter className="w-4 h-4 text-sky-600" /> Parâmetros de Filtro do Relatório
           </span>
-          <span className="text-[11px] text-slate-400 font-mono">Aplicando em tempo real sobre {shifts.length} registros</span>
+          <span className="text-[11px] text-amber-600 font-bold">⚠️ É necessário aplicar o filtro para carregar os dados</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
@@ -452,286 +461,299 @@ export default function Relatorios() {
           <div>
             <Button 
               onClick={handleApplyFilters}
-              className="w-full h-10 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-900 text-white font-black text-xs rounded-xl shadow-md gap-1.5 cursor-pointer"
+              className="w-full h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl shadow-md gap-1.5 cursor-pointer"
             >
-              <Check className="w-4 h-4 text-emerald-400" /> Aplicar Filtros
+              <Check className="w-4 h-4" /> Aplicar Filtros
             </Button>
           </div>
         </div>
       </Card>
 
-      {/* ABAS DE NAVEGAÇÃO ENTRE OS RELATÓRIOS */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 print:hidden">
-        {[
-          { id: 'executivo', label: '📊 Visão Executiva & KPIs', icon: BarChart3 },
-          { id: 'escalas', label: '📅 Escalas & Plantões Descobertos', icon: CalendarDays },
-          { id: 'profissionais', label: '🩺 Produtividade & Carga Horária', icon: Users },
-          { id: 'financeiro', label: '💰 Inteligência Financeira', icon: DollarSign },
-          { id: 'governanca', label: '🛡️ Governança de Credenciais', icon: ShieldCheck },
-        ].map(tab => {
-          const isActive = activeTab === tab.id;
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-5 py-3 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
-                isActive 
-                  ? 'bg-slate-950 dark:bg-white text-white dark:text-slate-950 shadow-md' 
-                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              <Icon className="w-4 h-4" /> {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* CONTEÚDO DAS ABAS */}
-      <div className="space-y-6 print:block">
-        
-        {/* ABA 1: EXECUTIVO */}
-        {(activeTab === 'executivo' || true) && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:grid-cols-2">
-              <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Volume de Plantões</span>
-                <div className="text-3xl font-black text-slate-900 dark:text-white font-mono">{totalShiftsCount}</div>
-                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                  <b>{filledShiftsCount}</b> preenchidos · <span className={vacantShiftsCount > 0 ? "text-rose-500 font-bold" : ""}><b>{vacantShiftsCount}</b> vagos</span>
-                </p>
-              </Card>
-
-              <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Taxa de Cobertura Global</span>
-                <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">{coverageRate}%</div>
-                <p className="text-[11px] text-slate-500 font-medium">Meta hospitalar: &gt; 98%</p>
-              </Card>
-
-              <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Custo Orçamentário Total</span>
-                <div className="text-3xl font-black text-slate-900 dark:text-white font-mono">{formatCurrency(financialSummary.totalCost)}</div>
-                <p className="text-[11px] text-slate-500 font-medium">Honorários estimados ({financialSummary.totalHours}h)</p>
-              </Card>
-
-              <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Compliance de Credenciais</span>
-                <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400 font-mono">
-                  {Math.round(((credentialAudit.valid + credentialAudit.nearExpiry) / Math.max(1, credentialAudit.total)) * 100)}%
-                </div>
-                <p className="text-[11px] text-slate-500 font-medium">
-                  <b>{credentialAudit.expired}</b> vencido(s) · <b>{credentialAudit.nearExpiry}</b> próximos
-                </p>
-              </Card>
-            </div>
-
-            {/* DESEMPENHO POR SETOR */}
-            <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-5 print:break-inside-avoid">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-                <div>
-                  <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-                    <Building2 className="w-5 h-5 text-sky-600" /> Desempenho Operacional por Setor ({periodLabel})
-                  </h3>
-                  <p className="text-xs text-slate-500">Volume de turnos, cobertura e custos segregados</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print:grid-cols-2">
-                {sectorMetrics.map((sec, idx) => {
-                  const pct = sec.total > 0 ? Math.round((sec.filled / sec.total) * 100) : 100;
-                  return (
-                    <div key={idx} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <strong className="text-sm font-black text-slate-900 dark:text-white truncate">{sec.name}</strong>
-                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
-                          pct >= 90 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                        }`}>
-                          {pct}% Cobertura
-                        </span>
-                      </div>
-                      <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-sky-600 transition-all" style={{ width: `${pct}%` }} />
-                      </div>
-                      <div className="flex justify-between text-[11px] text-slate-500 font-medium">
-                        <span>Alocados: <b>{sec.filled}</b></span>
-                        <span>Vagos: <b className={sec.vacant > 0 ? 'text-rose-500' : ''}>{sec.vacant}</b></span>
-                        <span>Custo: <b className="font-mono text-emerald-600">{formatCurrency(sec.cost)}</b></span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
+      {/* ESTADO INICIAL: SE NÃO FILTROU AINDA */}
+      {!hasSearched ? (
+        <Card className="p-16 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900 text-center space-y-3">
+          <Filter className="w-10 h-10 text-sky-500 mx-auto animate-bounce" />
+          <h3 className="text-base font-black text-slate-900 dark:text-white">Aguardando Aplicação de Filtros</h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            Selecione o período e o setor desejados no painel acima e clique em <b>"Aplicar Filtros"</b> para carregar os indicadores com alta performance.
+          </p>
+        </Card>
+      ) : (
+        <>
+          {/* ABAS DE NAVEGAÇÃO ENTRE OS RELATÓRIOS */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 print:hidden">
+            {[
+              { id: 'executivo', label: '📊 Visão Executiva & KPIs', icon: BarChart3 },
+              { id: 'escalas', label: '📅 Escalas & Plantões Descobertos', icon: CalendarDays },
+              { id: 'profissionais', label: '🩺 Produtividade & Carga Horária', icon: Users },
+              { id: 'financeiro', label: '💰 Inteligência Financeira', icon: DollarSign },
+              { id: 'governanca', label: '🛡️ Governança de Credenciais', icon: ShieldCheck },
+            ].map(tab => {
+              const isActive = activeTab === tab.id;
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`px-5 py-3 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+                    isActive 
+                      ? 'bg-slate-950 dark:bg-white text-white dark:text-slate-950 shadow-md' 
+                      : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" /> {tab.label}
+                </button>
+              );
+            })}
           </div>
-        )}
 
-        {/* ABA 2: ESCALAS & PLANTÕES DESCOBERTOS */}
-        {(activeTab === 'escalas' || true) && (
-          <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:break-inside-avoid print:mt-6">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-                <CalendarDays className="w-5 h-5 text-sky-600" /> Relatório de Escalas & Turnos ({filteredShifts.length} registros)
-              </h3>
-              <Button 
-                size="sm"
-                variant="outline"
-                onClick={() => handleExportCSV(filteredShifts.map(s => ({
-                  Data: formatDate(s.date),
-                  Setor: s.sector_name || 'Setor',
-                  Profissional: s.professional_name || 'Vago',
-                  Inicio: s.start_time || '',
-                  Fim: s.end_time || '',
-                  Status: s.status || 'Ativo'
-                })), 'relatorio_escala.csv')}
-                className="rounded-xl text-xs gap-1.5 print:hidden"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" /> Exportar CSV
-              </Button>
-            </div>
+          {/* CONTEÚDO DAS ABAS */}
+          <div className="space-y-6 print:block">
+            
+            {/* ABA 1: EXECUTIVO */}
+            {(activeTab === 'executivo' || true) && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:grid-cols-2">
+                  <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Volume de Plantões</span>
+                    <div className="text-3xl font-black text-slate-900 dark:text-white font-mono">{totalShiftsCount}</div>
+                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                      <b>{filledShiftsCount}</b> preenchidos · <span className={vacantShiftsCount > 0 ? "text-rose-500 font-bold" : ""}><b>{vacantShiftsCount}</b> vagos</span>
+                    </p>
+                  </Card>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                    <th className="py-2.5 px-3">Data</th>
-                    <th className="py-2.5 px-3">Setor</th>
-                    <th className="py-2.5 px-3">Profissional Alocado</th>
-                    <th className="py-2.5 px-3">Horário</th>
-                    <th className="py-2.5 px-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                  {filteredShifts.slice(0, 50).map((s, idx) => {
-                    const isVago = !s.professional_id || normalize(s.status) === 'vago' || (s.professional_name || '').toLowerCase().includes('vaga');
-                    return (
-                      <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900">
-                        <td className="py-3 px-3 font-bold font-mono">{formatDate(s.date)}</td>
-                        <td className="py-3 px-3">{s.sector_name || 'Setor Geral'}</td>
-                        <td className={`py-3 px-3 font-black ${isVago ? 'text-rose-600 animate-pulse' : 'text-slate-900 dark:text-white'}`}>
-                          {isVago ? '⚠️ VAGA EM ABERTO' : toTitleCase(s.professional_name)}
-                        </td>
-                        <td className="py-3 px-3 font-mono">{s.start_time || '07:00'} - {s.end_time || '19:00'}</td>
-                        <td className="py-3 px-3">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${isVago ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                            {isVago ? 'Vago' : (s.status || 'Confirmado')}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        )}
+                  <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Taxa de Cobertura Global</span>
+                    <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">{coverageRate}%</div>
+                    <p className="text-[11px] text-slate-500 font-medium">Meta hospitalar: &gt; 98%</p>
+                  </Card>
 
-        {/* ABA 3: PROFISSIONAIS */}
-        {(activeTab === 'profissionais' || true) && (
-          <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:break-inside-avoid print:mt-6">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-                <Users className="w-5 h-5 text-emerald-600" /> Produtividade & Carga Horária do Corpo Clínico
-              </h3>
-              <span className="text-xs font-mono text-slate-500">{professionalMetrics.length} médicos atuantes</span>
-            </div>
+                  <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Custo Orçamentário Total</span>
+                    <div className="text-3xl font-black text-slate-900 dark:text-white font-mono">{formatCurrency(financialSummary.totalCost)}</div>
+                    <p className="text-[11px] text-slate-500 font-medium">Honorários estimados ({financialSummary.totalHours}h)</p>
+                  </Card>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                    <th className="py-2.5 px-3">Profissional</th>
-                    <th className="py-2.5 px-3">Setores de Atuação</th>
-                    <th className="py-2.5 px-3 text-center">Plantões</th>
-                    <th className="py-2.5 px-3 text-right">Carga Horária</th>
-                    <th className="py-2.5 px-3 text-right">Custo Estimado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                  {professionalMetrics.map((doc, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-900">
-                      <td className="py-3 px-3 font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-xl bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 font-black flex items-center justify-center text-[10px]">
-                          {doc.name.substring(0,2).toUpperCase()}
+                  <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Compliance de Credenciais</span>
+                    <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                      {Math.round(((credentialAudit.valid + credentialAudit.nearExpiry) / Math.max(1, credentialAudit.total)) * 100)}%
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      <b>{credentialAudit.expired}</b> vencido(s) · <b>{credentialAudit.nearExpiry}</b> próximos
+                    </p>
+                  </Card>
+                </div>
+
+                {/* DESEMPENHO POR SETOR */}
+                <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-5 print:break-inside-avoid">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                    <div>
+                      <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                        <Building2 className="w-5 h-5 text-sky-600" /> Desempenho Operacional por Setor ({periodLabel})
+                      </h3>
+                      <p className="text-xs text-slate-500">Volume de turnos, cobertura e custos segregados</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 print:grid-cols-2">
+                    {sectorMetrics.map((sec, idx) => {
+                      const pct = sec.total > 0 ? Math.round((sec.filled / sec.total) * 100) : 100;
+                      return (
+                        <div key={idx} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <strong className="text-sm font-black text-slate-900 dark:text-white truncate">{sec.name}</strong>
+                            <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                              pct >= 90 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                            }`}>
+                              {pct}% Cobertura
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-sky-600 transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                          <div className="flex justify-between text-[11px] text-slate-500 font-medium">
+                            <span>Alocados: <b>{sec.filled}</b></span>
+                            <span>Vagos: <b className={sec.vacant > 0 ? 'text-rose-500' : ''}>{sec.vacant}</b></span>
+                            <span>Custo: <b className="font-mono text-emerald-600">{formatCurrency(sec.cost)}</b></span>
+                          </div>
                         </div>
-                        {doc.name}
-                      </td>
-                      <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{doc.sectors}</td>
-                      <td className="py-3 px-3 text-center font-mono font-bold text-slate-900 dark:text-white">{doc.shifts}</td>
-                      <td className="py-3 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{doc.hours}h</td>
-                      <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">{formatCurrency(doc.cost)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        )}
-
-        {/* ABA 4: FINANCEIRO */}
-        {(activeTab === 'financeiro' || true) && (
-          <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:break-inside-avoid print:mt-6">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-amber-500" /> Inteligência Financeira & Custos Assistenciais
-              </h3>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900">
-                <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-300">Custo Realizado</span>
-                <div className="text-2xl font-black font-mono text-emerald-700 dark:text-emerald-300 mt-1">{formatCurrency(financialSummary.executedCost)}</div>
+                      );
+                    })}
+                  </div>
+                </Card>
               </div>
-              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900">
-                <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-300">Custo Pendente</span>
-                <div className="text-2xl font-black font-mono text-amber-700 dark:text-amber-300 mt-1">{formatCurrency(financialSummary.pendingCost)}</div>
-              </div>
-              <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900">
-                <span className="text-[10px] font-black uppercase text-rose-700 dark:text-rose-300">Custo Potencial de Vagas</span>
-                <div className="text-2xl font-black font-mono text-rose-700 dark:text-rose-300 mt-1">{formatCurrency(financialSummary.vacantCost)}</div>
-              </div>
-            </div>
-          </Card>
-        )}
+            )}
 
-        {/* ABA 5: GOVERNANÇA */}
-        {(activeTab === 'governanca' || true) && (
-          <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:break-inside-avoid print:mt-6">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-indigo-600" /> Governança de Credenciais & CRM
-              </h3>
-              <span className="text-xs font-mono text-slate-500">{credentialAudit.total} profissionais cadastrados</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="flex items-center justify-between p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-3.5 h-3.5 rounded-full bg-emerald-500" />
-                  <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">Documentos Válidos</span>
+            {/* ABA 2: ESCALAS & PLANTÕES DESCOBERTOS */}
+            {(activeTab === 'escalas' || true) && (
+              <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:break-inside-avoid print:mt-6">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                    <CalendarDays className="w-5 h-5 text-sky-600" /> Relatório de Escalas & Turnos ({filteredShifts.length} registros)
+                  </h3>
+                  <Button 
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleExportCSV(filteredShifts.map(s => ({
+                      Data: formatDate(s.date),
+                      Setor: s.sector_name || 'Setor',
+                      Profissional: s.professional_name || 'Vago',
+                      Inicio: s.start_time || '',
+                      Fim: s.end_time || '',
+                      Status: s.status || 'Ativo'
+                    })), 'relatorio_escala.csv')}
+                    className="rounded-xl text-xs gap-1.5 print:hidden"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" /> Exportar CSV
+                  </Button>
                 </div>
-                <strong className="font-mono text-emerald-700 dark:text-emerald-300 text-sm">{credentialAudit.valid}</strong>
-              </div>
 
-              <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-3.5 h-3.5 rounded-full bg-amber-500" />
-                  <span className="text-xs font-bold text-amber-900 dark:text-amber-200">Vencem em até 30 dias</span>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                        <th className="py-2.5 px-3">Data</th>
+                        <th className="py-2.5 px-3">Setor</th>
+                        <th className="py-2.5 px-3">Profissional Alocado</th>
+                        <th className="py-2.5 px-3">Horário</th>
+                        <th className="py-2.5 px-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                      {filteredShifts.slice(0, 50).map((s, idx) => {
+                        const isVago = !s.professional_id || normalize(s.status) === 'vago' || (s.professional_name || '').toLowerCase().includes('vaga');
+                        return (
+                          <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900">
+                            <td className="py-3 px-3 font-bold font-mono">{formatDate(s.date)}</td>
+                            <td className="py-3 px-3">{s.sector_name || 'Setor Geral'}</td>
+                            <td className={`py-3 px-3 font-black ${isVago ? 'text-rose-600 animate-pulse' : 'text-slate-900 dark:text-white'}`}>
+                              {isVago ? '⚠️ VAGA EM ABERTO' : toTitleCase(s.professional_name)}
+                            </td>
+                            <td className="py-3 px-3 font-mono">{s.start_time || '07:00'} - {s.end_time || '19:00'}</td>
+                            <td className="py-3 px-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${isVago ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                {isVago ? 'Vago' : (s.status || 'Confirmado')}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-                <strong className="font-mono text-amber-700 dark:text-amber-300 text-sm">{credentialAudit.nearExpiry}</strong>
-              </div>
+              </Card>
+            )}
 
-              <div className="flex items-center justify-between p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-3.5 h-3.5 rounded-full bg-rose-500 animate-pulse" />
-                  <span className="text-xs font-bold text-rose-900 dark:text-rose-200">Credenciais Vencidas</span>
+            {/* ABA 3: PROFISSIONAIS */}
+            {(activeTab === 'profissionais' || true) && (
+              <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:break-inside-avoid print:mt-6">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                    <Users className="w-5 h-5 text-emerald-600" /> Produtividade & Carga Horária do Corpo Clínico
+                  </h3>
+                  <span className="text-xs font-mono text-slate-500">{professionalMetrics.length} médicos atuantes</span>
                 </div>
-                <strong className="font-mono text-rose-600 dark:text-rose-400 text-sm font-black">{credentialAudit.expired}</strong>
-              </div>
-            </div>
-          </Card>
-        )}
 
-      </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                        <th className="py-2.5 px-3">Profissional</th>
+                        <th className="py-2.5 px-3">Setores de Atuação</th>
+                        <th className="py-2.5 px-3 text-center">Plantões</th>
+                        <th className="py-2.5 px-3 text-right">Carga Horária</th>
+                        <th className="py-2.5 px-3 text-right">Custo Estimado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                      {professionalMetrics.map((doc, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-900">
+                          <td className="py-3 px-3 font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-xl bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 font-black flex items-center justify-center text-[10px]">
+                              {doc.name.substring(0,2).toUpperCase()}
+                            </div>
+                            {doc.name}
+                          </td>
+                          <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{doc.sectors}</td>
+                          <td className="py-3 px-3 text-center font-mono font-bold text-slate-900 dark:text-white">{doc.shifts}</td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{doc.hours}h</td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">{formatCurrency(doc.cost)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {/* ABA 4: FINANCEIRO */}
+            {(activeTab === 'financeiro' || true) && (
+              <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:break-inside-avoid print:mt-6">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-amber-500" /> Inteligência Financeira & Custos Assistenciais
+                  </h3>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900">
+                    <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-300">Custo Realizado</span>
+                    <div className="text-2xl font-black font-mono text-emerald-700 dark:text-emerald-300 mt-1">{formatCurrency(financialSummary.executedCost)}</div>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900">
+                    <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-300">Custo Pendente</span>
+                    <div className="text-2xl font-black font-mono text-amber-700 dark:text-amber-300 mt-1">{formatCurrency(financialSummary.pendingCost)}</div>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900">
+                    <span className="text-[10px] font-black uppercase text-rose-700 dark:text-rose-300">Custo Potencial de Vagas</span>
+                    <div className="text-2xl font-black font-mono text-rose-700 dark:text-rose-300 mt-1">{formatCurrency(financialSummary.vacantCost)}</div>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* ABA 5: GOVERNANÇA */}
+            {(activeTab === 'governanca' || true) && (
+              <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:break-inside-avoid print:mt-6">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-indigo-600" /> Governança de Credenciais & CRM
+                  </h3>
+                  <span className="text-xs font-mono text-slate-500">{credentialAudit.total} profissionais cadastrados</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="flex items-center justify-between p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200">
+                    <div className="flex items-center gap-3">
+                      <div className="w-3.5 h-3.5 rounded-full bg-emerald-500" />
+                      <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">Documentos Válidos</span>
+                    </div>
+                    <strong className="font-mono text-emerald-700 dark:text-emerald-300 text-sm">{credentialAudit.valid}</strong>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200">
+                    <div className="flex items-center gap-3">
+                      <div className="w-3.5 h-3.5 rounded-full bg-amber-500" />
+                      <span className="text-xs font-bold text-amber-900 dark:text-amber-200">Vencem em até 30 dias</span>
+                    </div>
+                    <strong className="font-mono text-amber-700 dark:text-amber-300 text-sm">{credentialAudit.nearExpiry}</strong>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200">
+                    <div className="flex items-center gap-3">
+                      <div className="w-3.5 h-3.5 rounded-full bg-rose-500 animate-pulse" />
+                      <span className="text-xs font-bold text-rose-900 dark:text-rose-200">Credenciais Vencidas</span>
+                    </div>
+                    <strong className="font-mono text-rose-600 dark:text-rose-400 text-sm font-black">{credentialAudit.expired}</strong>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+          </div>
+        </>
+      )}
 
     </div>
   );
