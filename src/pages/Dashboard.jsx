@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
@@ -9,7 +9,6 @@ import {
   Clock, 
   Maximize2, 
   Minimize2, 
-  Clock3, 
   Stethoscope,
   AlertTriangle,
   CheckCircle2,
@@ -18,9 +17,13 @@ import {
   DollarSign,
   Building2,
   ShieldAlert,
-  Radio
+  Radio,
+  Plus,
+  ArrowUpRight,
+  TrendingUp,
+  Sparkles
 } from 'lucide-react';
-import { getShiftTvLifecycle, getShiftInterval } from '@/lib/shiftUtils';
+import { useNavigate } from 'react-router-dom';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -68,8 +71,16 @@ function toTitleCase(str) {
     .join(' ');
 }
 
+function safeNumber(val, fb = 0) {
+  if (val === null || val === undefined || val === '') return fb;
+  const n = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  return Number.isFinite(n) ? n : fb;
+}
+
 export default function Painel() {
-  const { user, company, loading: appLoading } = useAppData();
+  const { user, company, loading: appLoading, selectedUnitId } = useAppData();
+  const navigate = useNavigate();
+
   const [shifts, setShifts] = useState([]);
   const [sectors, setSectors] = useState([]);
   const [professionals, setProfessionals] = useState([]);
@@ -78,7 +89,7 @@ export default function Painel() {
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
   const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
-  const unitId = user?.data?.selected_unit_id || company?.selected_unit_id || company?.units?.[0]?.id || 'unit_h1';
+  const unitId = selectedUnitId || user?.data?.selected_unit_id || company?.selected_unit_id || 'unit_h1';
 
   const loadData = useCallback(async () => {
     if (!companyId) return;
@@ -111,111 +122,131 @@ export default function Painel() {
   }, []);
 
   const todayStr = useMemo(() => getLocalDateString(currentTime), [currentTime]);
-  const currentMonthKey = useMemo(() => todayStr.slice(0, 7), [todayStr]);
 
-  // Mapas duplos para garantir encontrar o profissional por ID ou por Nome
+  function getProfMeta(prof) {
+    if (!prof) return {};
+    try {
+      const stored = window.localStorage.getItem(`prof_meta_${prof.id}`);
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    if (prof.data && typeof prof.data === 'object') return prof.data;
+    return {};
+  }
+
+  // Mapeamentos de profissionais com cache financeiro atualizado
   const { profById, profByName } = useMemo(() => {
     const byId = {};
     const byName = {};
     (professionals || []).forEach((p) => {
-      if (p.id) byId[p.id] = p;
-      if (p.name) byName[normalizeStr(p.name)] = p;
+      const meta = getProfMeta(p);
+      const mergedProf = {
+        ...p,
+        monthly_salary: meta.monthly_salary !== undefined ? meta.monthly_salary : p.monthly_salary,
+        hourly_rate: meta.hourly_rate !== undefined ? meta.hourly_rate : p.hourly_rate,
+        daily_rate: meta.daily_rate !== undefined ? meta.daily_rate : p.daily_rate,
+        remuneration_type: meta.remuneration_type || p.remuneration_type || 'mensal'
+      };
+      if (p.id) byId[p.id] = mergedProf;
+      if (p.name) byName[normalizeStr(p.name)] = mergedProf;
     });
     return { profById: byId, profByName: byName };
   }, [professionals]);
 
-  // Contagem de plantões de cada profissional no mês para mensalistas
-  const monthlyShiftsCountByProf = useMemo(() => {
-    const counts = {};
-    shifts.forEach((s) => {
-      const sDate = (s.date || '').slice(0, 7);
-      if (sDate === currentMonthKey && s.status !== 'cancelado') {
-        const pKey = s.professional_id || normalizeStr(s.professional_name);
-        if (pKey) counts[pKey] = (counts[pKey] || 0) + 1;
-      }
-    });
-    return counts;
-  }, [shifts, currentMonthKey]);
-
-  // Plantões de Hoje
+  // Cálculo autônomo do ciclo de vida do plantão (independe de libs externas)
   const todayShifts = useMemo(() => {
-    return shifts
+    const nowHour = currentTime.getHours();
+    const nowMin = currentTime.getMinutes();
+    const nowTotalMin = nowHour * 60 + nowMin;
+
+    return (shifts || [])
       .filter((s) => {
         const sDate = (s.date || '').split('T')[0];
         return sDate === todayStr && s.status !== 'cancelado';
       })
-      .map((s) => ({
-        ...s,
-        lifecycle: getShiftTvLifecycle(s, currentTime)
-      }))
+      .map((s) => {
+        const [startH, startM] = (s.start_time || '07:00').split(':').map(Number);
+        const [endH, endM] = (s.end_time || '19:00').split(':').map(Number);
+        const startMin = startH * 60 + startM;
+        let endMin = endH * 60 + endM;
+        if (endMin <= startMin) endMin += 24 * 60; // Vira a noite
+
+        let effNow = nowTotalMin;
+        if (endMin > 24 * 60 && nowTotalMin < startMin) effNow += 24 * 60;
+
+        let state = 'upcoming';
+        let detail = 'Inicia às ' + s.start_time;
+
+        if (effNow >= startMin && effNow < endMin) {
+          state = 'active';
+          const left = endMin - effNow;
+          detail = `Resta ${Math.floor(left / 60)}h ${left % 60}m`;
+        } else if (effNow >= endMin) {
+          state = 'concluded';
+          detail = 'Concluído às ' + s.end_time;
+        }
+
+        return {
+          ...s,
+          lifecycle: { state, detail }
+        };
+      })
       .sort((a, b) => {
-        const order = { active: 0, upcoming: 1, recently_finished: 2, concluded: 3 };
+        const order = { active: 0, upcoming: 1, concluded: 2 };
         return (order[a.lifecycle.state] ?? 99) - (order[b.lifecycle.state] ?? 99);
       });
   }, [shifts, todayStr, currentTime]);
 
   const activeNowList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'active'), [todayShifts]);
   const upcomingList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'upcoming'), [todayShifts]);
-  const concludedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'concluded' || s.lifecycle.state === 'recently_finished'), [todayShifts]);
+  const concludedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'concluded'), [todayShifts]);
 
   const vacantShifts = useMemo(() => {
-    return todayShifts.filter((s) => !s.professional_id || s.professional_name?.toLowerCase().includes('vaga') || s.status === 'pendente');
+    return todayShifts.filter((s) => !s.professional_id || s.professional_name?.toLowerCase().includes('vaga') || s.status === 'vago');
   }, [todayShifts]);
 
-  // =========================================================================
-  // CÁLCULO DE CUSTO OPERACIONAL EM TEMPO REAL (BLINDADO)
-  // =========================================================================
+  // CUSTO OPERACIONAL EXATO DO DIA (BASE / 20 OU DIÁRIA REAL)
   const todayFinancials = useMemo(() => {
     let executedValue = 0;
     let plannedValue = 0;
 
     todayShifts.forEach((s) => {
-      // Localiza o profissional por ID ou por Nome normalizado
       const prof = profById[s.professional_id] || profByName[normalizeStr(s.professional_name)];
-      const hours = Number(s.duration_hours) || 12;
       let shiftCost = 0;
 
       if (prof) {
-        const remType = prof.remuneration_type || 'hora';
+        const remType = prof.remuneration_type || 'mensal';
+        const salary = safeNumber(prof.monthly_salary, 1672);
+        const daily = safeNumber(prof.daily_rate, 0);
+        const hourly = safeNumber(prof.hourly_rate, 0);
+
         if (remType === 'hora') {
-          const rate = Number(prof.hourly_rate) > 0 ? Number(prof.hourly_rate) : 120;
-          shiftCost = hours * rate;
+          const hours = Number(s.duration_hours) || 12;
+          shiftCost = hours * (hourly > 0 ? hourly : (salary / 220));
         } else if (remType === 'diaria') {
-          shiftCost = Number(prof.daily_rate) > 0 ? Number(prof.daily_rate) : 1500;
-        } else if (remType === 'mensal') {
-          const pKey = prof.id || normalizeStr(prof.name);
-          const totalMonthPlanned = monthlyShiftsCountByProf[pKey] || 1;
-          const salary = Number(prof.monthly_salary) > 0 ? Number(prof.monthly_salary) : 18000;
-          shiftCost = salary / (totalMonthPlanned > 0 ? totalMonthPlanned : 1);
+          shiftCost = daily > 0 ? daily : (salary / 20);
+        } else {
+          // Mensalista proporcional à cota de plantões
+          shiftCost = salary / 20;
         }
       } else {
-        // Se for um plantão preenchido mas sem cadastro de médico vinculado, usa valor médio padrão
         if (s.professional_name && !s.professional_name.toLowerCase().includes('vaga')) {
-          shiftCost = hours * 120; // R$ 120/h padrão hospitalar
+          shiftCost = 1672 / 20; // Padrão base
         }
       }
 
-      // Soma na previsão total do dia
       plannedValue += shiftCost;
-
-      // Soma no valor EXECUTADO de hoje se já iniciou ou concluiu
-      const st = s.lifecycle.state;
-      if (st === 'active' || st === 'recently_finished' || st === 'concluded') {
+      if (s.lifecycle.state === 'active' || s.lifecycle.state === 'concluded') {
         executedValue += shiftCost;
       }
     });
 
-    return { 
-      executedValue, 
-      plannedValue, 
-      totalToday: plannedValue 
-    };
-  }, [todayShifts, profById, profByName, monthlyShiftsCountByProf]);
+    return { executedValue, plannedValue, totalToday: plannedValue };
+  }, [todayShifts, profById, profByName]);
 
-  // Cobertura por Setor
+  // Capacidade dos Setores
   const sectorsCoverage = useMemo(() => {
     const map = {};
-    sectors.forEach((sec) => {
+    (sectors || []).forEach((sec) => {
       map[sec.id] = {
         id: sec.id,
         name: toTitleCase(sec.name),
@@ -243,7 +274,7 @@ export default function Painel() {
       map[secId].total += 1;
       if (s.lifecycle.state === 'active') map[secId].active += 1;
       if (s.lifecycle.state === 'upcoming') map[secId].upcoming += 1;
-      if (!s.professional_id || s.professional_name?.toLowerCase().includes('vaga')) {
+      if (!s.professional_id || s.status === 'vago' || s.professional_name?.toLowerCase().includes('vaga')) {
         map[secId].vacant += 1;
       }
     });
@@ -258,18 +289,12 @@ export default function Painel() {
     const incoming = upcomingList.filter((s) => s.start_time === nextStart);
     const outgoing = activeNowList.filter((s) => s.end_time === nextStart);
 
-    return {
-      targetTime: nextStart,
-      incoming,
-      outgoing
-    };
+    return { targetTime: nextStart, incoming, outgoing };
   }, [upcomingList, activeNowList]);
 
   const openTvMode = async () => {
     setTvMode(true);
-    try {
-      await document.documentElement.requestFullscreen?.();
-    } catch {}
+    try { await document.documentElement.requestFullscreen?.(); } catch {}
   };
 
   const closeTvMode = async () => {
@@ -277,7 +302,7 @@ export default function Painel() {
     if (document.fullscreenElement) await document.exitFullscreen?.();
   };
 
-  // Modo TV CCO
+  // MODO TV CCO
   if (tvMode) {
     const overallFillRate = todayShifts.length > 0 
       ? Math.round(((todayShifts.length - vacantShifts.length) / todayShifts.length) * 100) 
@@ -287,7 +312,7 @@ export default function Painel() {
       <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col justify-between p-6 lg:p-8 select-none overflow-hidden font-sans">
         <div className="flex items-center justify-between border-b border-white/10 pb-5 shrink-0">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-xl shadow-sky-950/50">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-xl">
               <Radio className="w-7 h-7 animate-pulse" />
             </div>
             <div>
@@ -345,7 +370,7 @@ export default function Painel() {
             <div>
               <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4">
                 <div className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-sky-400">
-                  <Building2 className="w-5 h-5" /> Capacidade e Ocupação por Setor Clínico
+                  <Building2 className="w-5 h-5" /> Ocupação por Setor Clínico
                 </div>
                 <span className="text-xs font-bold px-3 py-1 rounded-full bg-white/10 text-slate-300">
                   {sectorsCoverage.length} setores monitorados
@@ -362,7 +387,7 @@ export default function Painel() {
                       key={sec.id}
                       className={`p-4 rounded-2xl border transition-all ${
                         hasVacant
-                          ? 'border-amber-500/60 bg-amber-950/20 shadow-lg shadow-amber-950/30'
+                          ? 'border-amber-500/60 bg-amber-950/20 shadow-lg'
                           : sec.active > 0
                           ? 'border-emerald-500/40 bg-emerald-950/10'
                           : 'border-white/10 bg-white/[0.02]'
@@ -399,7 +424,7 @@ export default function Painel() {
                         </div>
                       ) : (
                         <div className="text-[11px] text-slate-500 mt-2.5 font-medium">
-                          {sec.upcoming} plantonista(s) a assumir no próximo turno
+                          {sec.upcoming} plantonista(s) a assumir a seguir
                         </div>
                       )}
                     </div>
@@ -414,7 +439,7 @@ export default function Painel() {
             </div>
           </div>
 
-          {/* Custo Operacional e Passagem de Turno */}
+          {/* Passagem de Turno e Custo Operacional */}
           <div className="flex flex-col justify-between gap-6">
             <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-5 shadow-2xl flex-1 flex flex-col justify-between">
               <div>
@@ -472,7 +497,7 @@ export default function Painel() {
 
               <div className="text-[10px] text-slate-500 pt-2 border-t border-white/5 flex items-center justify-between">
                 <span>Passagem auditada</span>
-                <span className="text-sky-400 font-mono">Próximo bloco</span>
+                <span className="text-sky-400 font-mono">Tempo Real</span>
               </div>
             </div>
 
@@ -488,13 +513,13 @@ export default function Painel() {
               <div className="flex items-baseline justify-between">
                 <div>
                   <div className="text-2xl font-black font-mono text-white">
-                    R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
-                  <span className="text-[10px] text-emerald-400 font-semibold">Executado (Concluídos e Ativos)</span>
+                  <span className="text-[10px] text-emerald-400 font-semibold">Executado (Ativos e Concluídos)</span>
                 </div>
                 <div className="text-right">
                   <div className="text-base font-bold font-mono text-slate-400">
-                    R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <span className="text-[10px] text-slate-500">Previsão 24h</span>
                 </div>
@@ -513,12 +538,12 @@ export default function Painel() {
             <span>{todayShifts.length} Plantões no Dia</span>
             <span>•</span>
             <span className={vacantShifts.length > 0 ? 'text-amber-400 font-bold animate-pulse' : 'text-slate-400'}>
-              {vacantShifts.length > 0 ? `⚠️ ${vacantShifts.length} Desfalque(s) na Unidade` : 'Zero Desfalques'}
+              {vacantShifts.length > 0 ? `⚠️ ${vacantShifts.length} Vaga(s) em Aberto` : 'Escala 100% Coberta'}
             </span>
           </div>
 
           <div className="font-mono text-[11px] text-slate-500">
-            ScaleMedic Enterprise CCO · Sincronização Contínua
+            ScaleMedic Enterprise CCO · Hospital Santa Clara
           </div>
         </div>
       </div>
@@ -526,67 +551,94 @@ export default function Painel() {
   }
 
   // ==========================================
-  // PAINEL DE CONTROLE EXECUTIVO FORA DA TV
+  // DASHBOARD EXECUTIVO PRINCIPAL
   // ==========================================
   return (
-    <div className="p-4 md:p-8 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white p-6 rounded-3xl border border-slate-800 shadow-xl">
-        <div>
-          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-sky-400 font-bold">
-            <Activity className="w-4 h-4" /> Centro de Operações Clínicas
+    <div className="p-4 md:p-8 space-y-6 font-sans">
+      {/* BANNER COM COMANDOS RÁPIDOS */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white p-6 md:p-8 rounded-3xl border border-slate-800 shadow-2xl">
+        <div className="space-y-2 max-w-2xl">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-sky-400 font-black">
+            <Activity className="w-4 h-4" /> Centro de Operações Clínicas & Gestão
           </div>
-          <h1 className="text-2xl md:text-3xl font-black mt-2 tracking-tight">Painel Operacional Hospitalar</h1>
-          <p className="text-sm text-slate-300 mt-1 max-w-2xl">
-            Acompanhamento contínuo de presença médica, transições de turno e capacidade instalada.
+          <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white">
+            {company?.name || 'Hospital Santa Clara'}
+          </h1>
+          <p className="text-xs md:text-sm text-slate-300 font-medium leading-relaxed">
+            Monitoramento em tempo real de escalas, cobertura médica hospitalar e custo operacional diário.
           </p>
         </div>
 
-        <div>
-          <Button onClick={openTvMode} className="bg-sky-600 hover:bg-sky-500 text-white font-bold gap-2 text-xs h-10 px-5 rounded-xl shadow-lg shadow-sky-950">
-            <Radio className="w-4 h-4" /> Modo TV — Centro de Comando (CCO)
+        {/* HUB DE AÇÕES RÁPIDAS */}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button 
+            onClick={() => navigate('/escalas')} 
+            className="bg-white text-slate-900 hover:bg-slate-100 font-black text-xs h-10 px-5 rounded-2xl shadow-lg gap-1.5"
+          >
+            <CalendarDays className="w-4 h-4 text-sky-600" /> Abrir Escalas
+          </Button>
+
+          <Button 
+            onClick={() => navigate('/faturamento')} 
+            variant="outline"
+            className="border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-white font-black text-xs h-10 px-5 rounded-2xl gap-1.5"
+          >
+            <DollarSign className="w-4 h-4 text-emerald-400" /> Faturamento
+          </Button>
+
+          <Button 
+            onClick={openTvMode} 
+            className="bg-sky-600 hover:bg-sky-500 text-white font-black text-xs h-10 px-5 rounded-2xl shadow-lg gap-2"
+          >
+            <Radio className="w-4 h-4 animate-pulse" /> Modo TV CCO
           </Button>
         </div>
       </div>
 
+      {/* ALERTA DE COBERTURA */}
       {vacantShifts.length > 0 && (
-        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+        <div className="p-4 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-900 dark:text-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-amber-500 text-slate-950 shrink-0 font-bold">
+            <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0 font-bold shadow-md">
               <ShieldAlert className="w-5 h-5" />
             </div>
             <div>
-              <strong className="text-sm font-black block">Atenção: {vacantShifts.length} vaga(s) com risco de cobertura hoje</strong>
+              <strong className="text-sm font-black block">Atenção Crítica: {vacantShifts.length} vaga(s) sem plantonista hoje</strong>
               <p className="text-xs opacity-90">
                 Setores afetados: {Array.from(new Set(vacantShifts.map((s) => toTitleCase(s.sector_name) || 'Geral'))).join(', ')}.
               </p>
             </div>
           </div>
-          <span className="text-xs font-bold uppercase px-3 py-1 bg-amber-500/20 border border-amber-500/40 rounded-lg shrink-0">
-            Ação Recomendada: Alocar Retaguarda
-          </span>
+          <Button 
+            onClick={() => navigate('/escalas')}
+            size="sm"
+            className="bg-rose-600 hover:bg-rose-500 text-white font-black text-xs px-4 h-9 rounded-xl shrink-0"
+          >
+            Cobrir no Mural
+          </Button>
         </div>
       )}
 
-      {/* 4 Cards de Métricas */}
+      {/* 4 CARDS EXECUTIVOS DE MÉTRICAS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="p-5 border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20 relative overflow-hidden">
+        <Card className="p-5 rounded-3xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-              Ativos no Plantão Agora
+              Ativos no Posto Agora
             </span>
             <span className="p-2 rounded-xl bg-emerald-600 text-white shadow-sm animate-pulse">
               <Clock className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl md:text-3xl font-black text-emerald-950 dark:text-emerald-100 mt-3">
-            {activeNowList.length} Profissionais
+          <div className="text-3xl font-black text-emerald-950 dark:text-emerald-100 mt-3">
+            {activeNowList.length} Plantonistas
           </div>
           <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1 font-medium">
-            Em jornada presencial ativa na unidade
+            Em jornada assistencial ativa na unidade
           </p>
         </Card>
 
-        <Card className="p-5 border-slate-200 dark:border-slate-800">
+        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Plantões de Hoje
@@ -595,15 +647,15 @@ export default function Painel() {
               <CalendarDays className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-3">
+          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
             {todayShifts.length} Turnos
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            {upcomingList.length} Programados · {concludedList.length} concluídos
+          <p className="text-[11px] text-slate-500 mt-1 font-medium">
+            {upcomingList.length} a iniciar · {concludedList.length} concluídos
           </p>
         </Card>
 
-        <Card className="p-5 border-slate-200 dark:border-slate-800">
+        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Corpo Clínico Ativo
@@ -612,16 +664,15 @@ export default function Painel() {
               <Users className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-3">
-            {professionals.length} Cadastrados
+          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
+            {professionals.length} Credenciados
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            Profissionais vinculados a escalas
+          <p className="text-[11px] text-slate-500 mt-1 font-medium">
+            Equipe vinculada às escalas
           </p>
         </Card>
 
-        {/* Card de Custo Real com Valores Atualizados */}
-        <Card className="p-5 border-slate-200 dark:border-slate-800">
+        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Custo Operacional Hoje
@@ -630,28 +681,28 @@ export default function Painel() {
               <DollarSign className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white mt-3">
-            R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
+            R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            Previsão total do dia: <b>R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</b>
+          <p className="text-[11px] text-slate-500 mt-1 font-medium">
+            Previsão do dia: <b>R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
           </p>
         </Card>
       </div>
 
-      {/* Passagem de Turno + Termômetro de Cobertura */}
+      {/* PASSAGEM DE TURNO & MONITORAMENTO SETORIAL */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="p-5 border-slate-200 dark:border-slate-800 lg:col-span-1 flex flex-col justify-between space-y-4">
+        <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div>
-                <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
-                  <ArrowRightLeft className="w-4 h-4 text-sky-600" /> Passagem de Plantão
+                <h3 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                  <ArrowRightLeft className="w-4 h-4 text-sky-600" /> Próxima Passagem de Turno
                 </h3>
-                <p className="text-xs text-slate-500">Próxima transição de escala</p>
+                <p className="text-xs text-slate-500">Rendimento de postos</p>
               </div>
               {nextHandover && (
-                <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-sky-100 text-sky-800 font-mono">
+                <span className="text-xs font-black px-3 py-1 rounded-xl bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 font-mono">
                   {nextHandover.targetTime}
                 </span>
               )}
@@ -659,32 +710,32 @@ export default function Painel() {
 
             {nextHandover ? (
               <div className="mt-4 space-y-4">
-                <div className="p-3 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
-                  <div className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 uppercase flex items-center gap-1">
+                <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
+                  <div className="text-[11px] font-black text-emerald-800 dark:text-emerald-300 uppercase flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Equipe que Assume ({nextHandover.incoming.length})
                   </div>
-                  <div className="mt-2 space-y-1.5">
+                  <div className="mt-2 space-y-2">
                     {nextHandover.incoming.map((s) => (
                       <div key={s.id} className="text-xs flex items-center justify-between">
                         <span className="font-bold text-slate-900 dark:text-white truncate">{toTitleCase(s.professional_name) || 'Vaga Aberta'}</span>
-                        <span className="text-[10px] text-slate-500 shrink-0 font-medium">{toTitleCase(s.sector_name) || 'Geral'}</span>
+                        <span className="text-[10px] text-slate-500 font-semibold">{toTitleCase(s.sector_name) || 'Geral'}</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase">
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                  <div className="text-[11px] font-black text-slate-500 uppercase">
                     Equipe que Entrega ({nextHandover.outgoing.length})
                   </div>
-                  <div className="mt-2 space-y-1.5">
+                  <div className="mt-2 space-y-2">
                     {nextHandover.outgoing.length === 0 ? (
                       <div className="text-xs text-slate-400 italic">Nenhum plantão encerrando exatamente neste minuto.</div>
                     ) : (
                       nextHandover.outgoing.map((s) => (
                         <div key={s.id} className="text-xs flex items-center justify-between">
-                          <span className="font-medium text-slate-700 dark:text-slate-300 truncate">{toTitleCase(s.professional_name)}</span>
-                          <span className="text-[10px] text-slate-400 shrink-0">{toTitleCase(s.sector_name) || 'Geral'}</span>
+                          <span className="font-semibold text-slate-700 dark:text-slate-300 truncate">{toTitleCase(s.professional_name)}</span>
+                          <span className="text-[10px] text-slate-400">{toTitleCase(s.sector_name) || 'Geral'}</span>
                         </div>
                       ))
                     )}
@@ -692,28 +743,28 @@ export default function Painel() {
                 </div>
               </div>
             ) : (
-              <div className="py-10 text-center text-xs text-slate-400">
-                Nenhuma passagem de turno pendente para hoje.
+              <div className="py-12 text-center text-xs text-slate-400">
+                Nenhuma passagem de plantão programada para as próximas 2 horas.
               </div>
             )}
           </div>
 
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 flex items-center justify-between">
             <span>Passagens auditadas em tempo real</span>
-            <span className="font-bold text-sky-600">ScaleMedic Cockpit</span>
+            <span className="font-black text-sky-600">ScaleMedic Cockpit</span>
           </div>
         </Card>
 
-        {/* Termômetro por Setor */}
-        <Card className="p-5 border-slate-200 dark:border-slate-800 lg:col-span-2 space-y-4">
+        {/* COBERTURA POR SETOR CLÍNICO */}
+        <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
             <div>
-              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
-                <Building2 className="w-4 h-4 text-emerald-600" /> Cobertura por Setor Clínico
+              <h3 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-emerald-600" /> Ocupação por Setor Clínico
               </h3>
-              <p className="text-xs text-slate-500">Capacidade operacional instalada e ocupação hoje</p>
+              <p className="text-xs text-slate-500">Capacidade operacional instalada e status hoje</p>
             </div>
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+            <span className="text-xs font-black px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
               {sectorsCoverage.length} setores ativos
             </span>
           </div>
@@ -723,7 +774,7 @@ export default function Painel() {
               Nenhum setor cadastrado ou com escala vinculada.
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {sectorsCoverage.map((sec) => {
                 const percent = sec.total > 0 ? Math.round((sec.active / sec.total) * 100) : 0;
                 const hasVacant = sec.vacant > 0;
@@ -731,31 +782,31 @@ export default function Painel() {
                 return (
                   <div 
                     key={sec.id}
-                    className={`p-3.5 rounded-xl border transition-all ${
+                    className={`p-4 rounded-2xl border transition-all ${
                       hasVacant
                         ? 'border-amber-300 bg-amber-50/40 dark:bg-amber-950/20'
-                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                        : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <strong className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                      <strong className="text-sm font-black text-slate-900 dark:text-white truncate">
                         {sec.name}
                       </strong>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
                         sec.active > 0 
-                          ? 'bg-emerald-100 text-emerald-800' 
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
                       }`}>
                         {sec.active} ativo(s)
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between text-xs text-slate-500 mt-2">
+                    <div className="flex items-center justify-between text-xs text-slate-500 mt-2.5 font-medium">
                       <span>Ocupação do setor</span>
-                      <span className="font-bold text-slate-800 dark:text-slate-200">{sec.active} / {sec.total} turnos</span>
+                      <span className="font-bold text-slate-900 dark:text-white">{sec.active} / {sec.total} turnos</span>
                     </div>
 
-                    <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full mt-1.5 overflow-hidden">
+                    <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full mt-2 overflow-hidden">
                       <div 
                         className={`h-full transition-all duration-500 ${hasVacant ? 'bg-amber-500' : 'bg-emerald-500'}`}
                         style={{ width: `${Math.min(100, Math.max(10, percent))}%` }}
@@ -763,8 +814,8 @@ export default function Painel() {
                     </div>
 
                     {hasVacant && (
-                      <div className="text-[10px] text-amber-700 dark:text-amber-400 font-bold mt-2 flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> {sec.vacant} vaga(s) com desfalque
+                      <div className="text-[10px] text-amber-700 dark:text-amber-400 font-bold mt-2.5 flex items-center gap-1 animate-pulse">
+                        <AlertTriangle className="w-3.5 h-3.5" /> {sec.vacant} vaga(s) sem plantonista
                       </div>
                     )}
                   </div>
@@ -775,15 +826,15 @@ export default function Painel() {
         </Card>
       </div>
 
-      {/* Lista de Plantões do Dia */}
-      <Card className="p-5 border-slate-200 dark:border-slate-800 space-y-4">
+      {/* PLANTÕES DO DIA COM STATUS CLARO */}
+      <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div>
-            <h3 className="font-bold text-base text-slate-900 dark:text-white">Plantões em Operação Hoje</h3>
-            <p className="text-xs text-slate-500">Escala de {fmtDate(todayStr)} (Ativos no momento, programados e concluídos)</p>
+            <h3 className="font-black text-base text-slate-900 dark:text-white">Plantões em Operação Hoje</h3>
+            <p className="text-xs text-slate-500">Escala de {fmtDate(todayStr)} (Ativos agora, programados e concluídos)</p>
           </div>
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-sky-50 text-sky-700">
-            {todayShifts.length} turno(s) no total
+          <span className="text-xs font-black px-3 py-1 rounded-full bg-sky-50 text-sky-700">
+            {todayShifts.length} turno(s)
           </span>
         </div>
 
@@ -792,47 +843,47 @@ export default function Painel() {
             Nenhum plantão ativo ou agendado para a data de hoje.
           </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
             {todayShifts.map((shift) => {
               const state = shift.lifecycle.state;
               const isActive = state === 'active';
-              const isFinished = state === 'recently_finished' || state === 'concluded';
+              const isFinished = state === 'concluded';
 
               return (
                 <div
                   key={shift.id}
-                  className={`p-4 rounded-xl border transition-all duration-300 ${
+                  className={`p-4 rounded-2xl border transition-all ${
                     isActive 
-                      ? 'border-emerald-300 bg-emerald-50/70 shadow-sm' 
+                      ? 'border-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/20 shadow-sm ring-1 ring-emerald-400/40' 
                       : isFinished
-                      ? 'border-slate-200 bg-slate-50/80 opacity-80'
-                      : 'border-slate-200 bg-white dark:bg-slate-900'
+                      ? 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-850/40 opacity-70'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    <span className="text-xs font-bold font-mono text-slate-600 dark:text-slate-300">
                       {shift.start_time} às {shift.end_time}
                     </span>
                     <span
-                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
+                      className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase ${
                         isActive
                           ? 'bg-emerald-600 text-white animate-pulse'
                           : isFinished
-                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                          : 'bg-sky-100 text-sky-800'
+                          ? 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                          : 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'
                       }`}
                     >
                       {isActive ? '● Ativo no Plantão' : isFinished ? '✓ Concluído' : '⏳ Programado'}
                     </span>
                   </div>
 
-                  <div className="font-bold text-sm text-slate-900 dark:text-white truncate">
-                    {toTitleCase(shift.professional_name) || 'Vaga Aberta'}
+                  <div className="font-black text-sm text-slate-900 dark:text-white truncate">
+                    {toTitleCase(shift.professional_name) || 'Vaga em Aberto'}
                   </div>
 
                   <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
                     <span className="truncate">{toTitleCase(shift.sector_name) || 'Setor Geral'}</span>
-                    <span className="text-[10px] text-slate-400">{shift.lifecycle.detail}</span>
+                    <span className="text-[10px] font-semibold text-slate-400">{shift.lifecycle.detail}</span>
                   </div>
                 </div>
               );
