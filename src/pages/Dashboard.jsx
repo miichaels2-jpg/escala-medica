@@ -84,7 +84,6 @@ function safeNumber(val, fb = 0) {
   return Number.isFinite(n) ? n : fb;
 }
 
-// CÁLCULO PRECISO DE STATUS COM VIRADA DE MADRUGADA
 function computeShiftLiveStatus(shift, liveNowDate) {
   if (!shift || !shift.date) {
     return { isLive: false, isConcluded: false, isProgrammed: true, detail: '' };
@@ -184,7 +183,6 @@ export default function Painel() {
   const currentYear = currentTime.getFullYear();
   const currentMonth = currentTime.getMonth();
 
-  // Setores pendentes de publicação na competência
   const unsubmittedSectors = useMemo(() => {
     return (sectors || []).filter(s => {
       try {
@@ -225,15 +223,12 @@ export default function Painel() {
     return { profById: byId, profByName: byName };
   }, [professionals]);
 
-  // CALCULO EXATO DE HOJE CONSIDERANDO PLANTÕES DE ONTEM QUE TERMINAM HOJE
   const todayShifts = useMemo(() => {
     return (shifts || [])
       .filter((s) => {
         if (!s || s.status === 'cancelado') return false;
         const sDate = (s.date || '').split('T')[0];
         const status = computeShiftLiveStatus(s, currentTime);
-
-        // Pertence a hoje se: foi cadastrado na data de hoje OU começou ontem à noite e ainda está ativo agora
         return sDate === todayStr || status.isLive;
       })
       .map((s) => {
@@ -253,7 +248,6 @@ export default function Painel() {
   const upcomingList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'upcoming'), [todayShifts]);
   const concludedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'concluded'), [todayShifts]);
 
-  // Vagas críticas
   const vacantShifts = useMemo(() => {
     return (shifts || [])
       .filter((s) => {
@@ -269,7 +263,6 @@ export default function Painel() {
       }));
   }, [shifts, todayStr, currentTime, sectors]);
 
-  // Custo Operacional
   const todayFinancials = useMemo(() => {
     let executedValue = 0;
     let plannedValue = 0;
@@ -307,7 +300,6 @@ export default function Painel() {
     return { executedValue, plannedValue, totalToday: plannedValue };
   }, [todayShifts, profById, profByName]);
 
-  // Cobertura por setor
   const sectorsCoverage = useMemo(() => {
     const map = {};
     (sectors || []).forEach((sec) => {
@@ -346,7 +338,6 @@ export default function Painel() {
     return Object.values(map);
   }, [sectors, todayShifts]);
 
-  // Próxima Passagem de Turno
   const nextHandover = useMemo(() => {
     if (upcomingList.length === 0) return null;
     const nextStart = upcomingList[0].start_time;
@@ -356,14 +347,12 @@ export default function Painel() {
     return { targetTime: nextStart, incoming, outgoing };
   }, [upcomingList, activeNowList]);
 
-  // Eficiência de Cobertura
   const globalFillRate = useMemo(() => {
     if (todayShifts.length === 0) return 100;
     const filled = todayShifts.length - vacantShifts.filter(v => v.date === todayStr).length;
     return Math.max(0, Math.min(100, Math.round((filled / todayShifts.length) * 100)));
   }, [todayShifts, vacantShifts, todayStr]);
 
-  // Curva 24h
   const hourlyCurveData = useMemo(() => {
     const buckets = [
       { label: '06h', count: 0 }, { label: '08h', count: 0 }, { label: '10h', count: 0 },
@@ -553,7 +542,7 @@ export default function Painel() {
             </div>
           </div>
 
-          {/* COLUNA 3: ATIVOS NO POSTO AGORA COM DETECÇÃO REAL */}
+          {/* COLUNA 3: ATIVOS NO POSTO AGORA ( COM NOME E SETOR EM DESTAQUE ) */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-2xl flex flex-col justify-between overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0">
@@ -567,18 +556,30 @@ export default function Painel() {
                 {activeNowList.length === 0 ? (
                   <div className="py-20 text-center text-xs text-slate-500">Nenhum plantonista em atendimento neste minuto.</div>
                 ) : (
-                  activeNowList.map(s => (
-                    <div key={s.id} className="p-3 rounded-2xl bg-slate-950 border border-emerald-500/30 flex items-center justify-between shadow-md">
-                      <div className="min-w-0 pr-2">
-                        <span className="text-[10px] text-emerald-400 font-mono font-bold block uppercase">{toTitleCase(s.sector_name)}</span>
-                        <div className="font-black text-sm text-white truncate">{toTitleCase(s.professional_name)}</div>
-                        <span className="text-[10px] text-slate-400 font-mono">{s.start_time} às {s.end_time}</span>
+                  activeNowList.map(s => {
+                    const prof = profById[s.professional_id] || profByName[normalizeStr(s.professional_name)];
+                    const profName = toTitleCase(prof?.name || s.professional_name || 'Profissional');
+                    const sectorName = toTitleCase(s.sector_name || sectors.find(sec => String(sec.id) === String(s.sector_id))?.name || 'Setor Geral');
+
+                    return (
+                      <div key={s.id} className="p-3.5 rounded-2xl bg-slate-950 border border-emerald-500/40 flex items-center justify-between shadow-md">
+                        <div className="min-w-0 pr-2">
+                          <span className="text-[10px] text-emerald-400 font-mono font-black block uppercase tracking-wider">
+                            🏥 {sectorName}
+                          </span>
+                          <div className="font-black text-sm text-white truncate mt-0.5">
+                            Dr(a). {profName}
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
+                            Horário: {s.start_time} às {s.end_time}
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-mono font-black text-emerald-300 bg-emerald-500/20 px-2.5 py-1.5 rounded-xl shrink-0 border border-emerald-500/30">
+                          {s.lifecycle.detail}
+                        </span>
                       </div>
-                      <span className="text-[10px] font-mono font-black text-emerald-300 bg-emerald-500/20 px-2 py-1 rounded-lg shrink-0">
-                        {s.lifecycle.detail}
-                      </span>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
@@ -690,7 +691,7 @@ export default function Painel() {
   return (
     <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-900/40 min-h-screen text-slate-900 dark:text-slate-100">
       
-      {/* 1. HEADER EXECUTIVO COM ATIVAÇÃO DO MODO TV */}
+      {/* HEADER EXECUTIVO */}
       <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white p-6 md:p-8 rounded-3xl border border-slate-800 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-sky-400 font-black">
@@ -712,7 +713,7 @@ export default function Painel() {
         </Button>
       </div>
 
-      {/* 2. RADAR GERENCIAL: SETORES PENDENTES DE PUBLICAÇÃO */}
+      {/* RADAR GERENCIAL: SETORES PENDENTES DE PUBLICAÇÃO */}
       {unsubmittedSectors.length > 0 && isManager && (
         <div className="p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
           <div className="flex items-start sm:items-center gap-3">
@@ -747,7 +748,7 @@ export default function Painel() {
         </div>
       )}
 
-      {/* 3. ALERTA CRÍTICO COM CLIQUE DIRETO NA VAGA */}
+      {/* ALERTA CRÍTICO COM CLIQUE DIRETO NA VAGA */}
       {vacantShifts.length > 0 ? (
         <div className="p-5 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-900 dark:text-rose-200 shadow-lg space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -797,7 +798,7 @@ export default function Painel() {
         </div>
       )}
 
-      {/* 4. CARDS DE TELEMETRIA EXECUTIVA */}
+      {/* CARDS DE TELEMETRIA EXECUTIVA */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 rounded-3xl border border-emerald-200 dark:border-emerald-800/60 bg-gradient-to-br from-white to-emerald-50/40 dark:from-slate-900 dark:to-emerald-950/20 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
@@ -868,7 +869,7 @@ export default function Painel() {
         </Card>
       </div>
 
-      {/* 5. OCUPAÇÃO REAL POR SETOR E COBERTURA */}
+      {/* OCUPAÇÃO REAL POR SETOR E COBERTURA */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm lg:col-span-2 space-y-5">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
@@ -1024,7 +1025,7 @@ export default function Painel() {
         </Card>
       </div>
 
-      {/* 6. LISTA DE PLANTÕES DE HOJE */}
+      {/* PLANTÕES DE HOJE */}
       <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div>
