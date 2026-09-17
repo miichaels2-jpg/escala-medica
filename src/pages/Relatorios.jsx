@@ -10,10 +10,32 @@ import {
   CalendarDays, Download, FileText, ShieldAlert, CheckCircle2, 
   Activity, Clock, Award, Printer, PieChart, Layers, ArrowUpRight,
   AlertTriangle, Stethoscope, Briefcase, FileSpreadsheet, Filter, Check,
-  Gauge, History, ShieldCheck, Database, Printer as PrinterIcon, Search
+  Gauge, History, ShieldCheck, Database, Printer as PrinterIcon, Search,
+  ArrowDownRight, CircleDollarSign, CalendarX, ShieldCheck as ShieldPass
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+const STATUS_LABELS = {
+  programado: 'Programado',
+  confirmado: 'Confirmado',
+  pendente: 'Pendente',
+  concluida: 'Concluído',
+  concluído: 'Concluído',
+  realizado: 'Realizado',
+  cancelado: 'Cancelado',
+  vago: 'Vago'
+};
+
+const STATUS_COLORS = {
+  programado: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+  confirmado: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  pendente: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+  concluida: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  realizado: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  cancelado: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+  vago: 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+};
 
 function safeNumber(val, fb = 0) {
   if (val === null || val === undefined || val === '') return fb;
@@ -56,7 +78,7 @@ export default function Relatorios() {
   const [selectedStatus, setSelectedStatus] = useState('todos');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Estado de controle para exigir o clique em "Aplicar Filtros"
+  // Controle de filtro aplicado para grandes volumes hospitalares
   const [hasSearched, setHasSearched] = useState(false);
   const [appliedFilters, setAppliedFilters] = useState({
     month: String(new Date().getMonth() + 1),
@@ -340,19 +362,19 @@ export default function Relatorios() {
   const periodLabel = `${MONTH_NAMES[Number(appliedFilters.month) - 1]} ${appliedFilters.year}`;
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 p-4 md:p-8 space-y-6 font-sans text-slate-900 dark:text-slate-100 print:bg-white print:p-0">
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 space-y-6 font-sans print:bg-white print:text-slate-900 print:p-0">
       
-      {/* TOPO EXECUTIVO PREMIUM */}
-      <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-6 md:p-8 text-white shadow-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-6 print:hidden">
+      {/* HEADER EXECUTIVO ESTILO CCO PREMIUM */}
+      <div className="rounded-3xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 md:p-8 text-white shadow-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-6 print:hidden">
         <div className="space-y-1.5">
-          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-sky-400">
-            <Activity className="w-4 h-4 text-sky-400 animate-pulse" /> Central de Inteligência Hospitalar
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-cyan-400">
+            <Activity className="w-4 h-4 text-cyan-400 animate-pulse" /> Meditech Hospital Admin Portal • Intelligence CCO
           </div>
           <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white">
-            Relatórios Executivos & Dossiê de Gestão
+            Central de Inteligência Hospitalar & Relatórios Executivos
           </h1>
           <p className="text-xs text-slate-400 font-medium max-w-2xl">
-            Selecione os parâmetros e aplique os filtros para gerar relatórios auditados e consolidados sob demanda.
+            Ambiente corporativo de auditoria, escalas, telemetria financeira e conformidade do corpo clínico.
           </p>
         </div>
 
@@ -365,20 +387,20 @@ export default function Relatorios() {
               Inicio: s.start_time || '',
               Fim: s.end_time || '',
               Status: s.status || 'Ativo'
-            })), `plantoes_${appliedFilters.month}_${appliedFilters.year}.csv`)}
+            })), `dossie_executivo_${appliedFilters.month}_${appliedFilters.year}.csv`)}
             variant="outline"
             disabled={!hasSearched}
-            className="h-11 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 rounded-2xl border-slate-700 gap-2 cursor-pointer disabled:opacity-50"
+            className="h-11 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 rounded-2xl border-slate-700 gap-2 cursor-pointer disabled:opacity-50 shadow-md"
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Baixar Excel (.csv)
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Exportar Excel (.csv)
           </Button>
 
           <Button 
             onClick={handlePrint}
             disabled={!hasSearched}
-            className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105 disabled:opacity-50"
+            className="h-11 bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs px-6 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105 disabled:opacity-50"
           >
-            <PrinterIcon className="w-4 h-4" /> Imprimir Dossiê (PDF)
+            <PrinterIcon className="w-4 h-4" /> Imprimir Dossiê Executivo (PDF)
           </Button>
         </div>
       </div>
@@ -386,30 +408,32 @@ export default function Relatorios() {
       {/* CABEÇALHO PARA IMPRESSÃO (PDF) */}
       <div className="hidden print:block border-b-2 border-slate-900 pb-6 mb-6 space-y-1">
         <h1 className="text-2xl font-black uppercase text-slate-900">{company?.name || 'Hospital Santa Clara'}</h1>
-        <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">Diretoria Médica & Gestão de Escalas - Dossiê Executivo Mensal</p>
+        <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">Diretoria Médica & Gestão de Escalas - Dossiê Executivo Oficial</p>
         <div className="flex justify-between text-xs text-slate-500 pt-2">
           <span><b>Período:</b> {periodLabel}</span>
           <span><b>Emissão:</b> {new Date().toLocaleDateString('pt-BR')}</span>
         </div>
       </div>
 
-      {/* PAINEL DE FILTROS AVANÇADOS (Obrigatório para gerar os dados) */}
-      <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-          <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-            <Filter className="w-4 h-4 text-sky-600" /> Parâmetros de Filtro do Relatório
+      {/* PAINEL DE FILTROS ROBUSTO */}
+      <Card className="p-5 rounded-3xl border border-slate-800 bg-slate-900 shadow-xl space-y-4 print:hidden">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <span className="text-xs font-black uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+            <Filter className="w-4 h-4 text-cyan-400" /> Parâmetros de Consulta Analítica
           </span>
-          <span className="text-[11px] text-amber-600 font-bold">⚠️ É necessário aplicar o filtro para carregar os dados</span>
+          <span className="text-[11px] text-amber-400 font-bold bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/30">
+            ⚠️ Aplique os filtros para renderizar os dados
+          </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
           <div className="space-y-1">
-            <Label className="text-[10px] font-black uppercase text-slate-500">Mês</Label>
+            <Label className="text-[10px] font-black uppercase text-slate-400">Mês de Referência</Label>
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="h-10 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl">
+              <SelectTrigger className="h-11 text-xs font-bold bg-slate-950 border-slate-800 text-white rounded-2xl">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="z-[99999]">
+              <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
                 {MONTH_NAMES.map((name, idx) => (
                   <SelectItem key={idx + 1} value={String(idx + 1)}>{name}</SelectItem>
                 ))}
@@ -418,12 +442,12 @@ export default function Relatorios() {
           </div>
 
           <div className="space-y-1">
-            <Label className="text-[10px] font-black uppercase text-slate-500">Ano</Label>
+            <Label className="text-[10px] font-black uppercase text-slate-400">Ano</Label>
             <Select value={selectedYear} onValueChange={setSelectedYear}>
-              <SelectTrigger className="h-10 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl">
+              <SelectTrigger className="h-11 text-xs font-bold bg-slate-950 border-slate-800 text-white rounded-2xl">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="z-[99999]">
+              <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
                 {['2025', '2026', '2027', '2028'].map(yr => (
                   <SelectItem key={yr} value={yr}>{yr}</SelectItem>
                 ))}
@@ -432,13 +456,13 @@ export default function Relatorios() {
           </div>
 
           <div className="space-y-1">
-            <Label className="text-[10px] font-black uppercase text-slate-500">Setor</Label>
+            <Label className="text-[10px] font-black uppercase text-slate-400">Setor Hospitalar</Label>
             <Select value={selectedSector} onValueChange={setSelectedSector}>
-              <SelectTrigger className="h-10 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl">
+              <SelectTrigger className="h-11 text-xs font-bold bg-slate-950 border-slate-800 text-white rounded-2xl">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="z-[99999]">
-                <SelectItem value="todos">🏥 Todos os Setores</SelectItem>
+              <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
+                <SelectItem value="todos">🏥 Todos os Setores (Consolidado)</SelectItem>
                 {(sectors || []).map(s => {
                   const sName = (s.name || '').trim();
                   if (!sName || sName.toLowerCase() === 'setor') return null;
@@ -449,19 +473,19 @@ export default function Relatorios() {
           </div>
 
           <div className="space-y-1">
-            <Label className="text-[10px] font-black uppercase text-slate-500">Busca por Nome</Label>
+            <Label className="text-[10px] font-black uppercase text-slate-400">Busca por Nome ou Setor</Label>
             <Input 
-              placeholder="Médico ou setor..." 
+              placeholder="Digite o nome..." 
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="h-10 text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl"
+              className="h-11 text-xs bg-slate-950 border-slate-800 text-white rounded-2xl"
             />
           </div>
 
           <div>
             <Button 
               onClick={handleApplyFilters}
-              className="w-full h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl shadow-md gap-1.5 cursor-pointer"
+              className="w-full h-11 bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs rounded-2xl shadow-lg gap-2 cursor-pointer transition-all"
             >
               <Check className="w-4 h-4" /> Aplicar Filtros
             </Button>
@@ -469,25 +493,27 @@ export default function Relatorios() {
         </div>
       </Card>
 
-      {/* ESTADO INICIAL: SE NÃO FILTROU AINDA */}
+      {/* ESTADO INICIAL: AGUARDANDO FILTRO */}
       {!hasSearched ? (
-        <Card className="p-16 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900 text-center space-y-3">
-          <Filter className="w-10 h-10 text-sky-500 mx-auto animate-bounce" />
-          <h3 className="text-base font-black text-slate-900 dark:text-white">Aguardando Aplicação de Filtros</h3>
-          <p className="text-xs text-slate-500 max-w-md mx-auto">
-            Selecione o período e o setor desejados no painel acima e clique em <b>"Aplicar Filtros"</b> para carregar os indicadores com alta performance.
+        <Card className="p-20 rounded-3xl border border-dashed border-slate-800 bg-slate-900/60 text-center space-y-4 shadow-2xl">
+          <div className="w-16 h-16 rounded-3xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center mx-auto border border-cyan-500/30">
+            <Filter className="w-8 h-8 animate-pulse" />
+          </div>
+          <h3 className="text-lg font-black text-white">Central de Inteligência Pronta para Análise</h3>
+          <p className="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed">
+            Para garantir alta performance e evitar carregamento excessivo de dados, configure os parâmetros de período e setor acima e clique em <b>"Aplicar Filtros"</b>.
           </p>
         </Card>
       ) : (
         <>
-          {/* ABAS DE NAVEGAÇÃO ENTRE OS RELATÓRIOS */}
+          {/* ABAS ESTILO DASHBOARD PROFISSIONAL */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 print:hidden">
             {[
-              { id: 'executivo', label: '📊 Visão Executiva & KPIs', icon: BarChart3 },
-              { id: 'escalas', label: '📅 Escalas & Plantões Descobertos', icon: CalendarDays },
-              { id: 'profissionais', label: '🩺 Produtividade & Carga Horária', icon: Users },
-              { id: 'financeiro', label: '💰 Inteligência Financeira', icon: DollarSign },
-              { id: 'governanca', label: '🛡️ Governança de Credenciais', icon: ShieldCheck },
+              { id: 'executivo', label: 'Visão Executiva & KPIs', icon: BarChart3 },
+              { id: 'escalas', label: 'Escalas & Plantões', icon: CalendarDays },
+              { id: 'profissionais', label: 'Produtividade Clínica', icon: Users },
+              { id: 'financeiro', label: 'Inteligência Financeira', icon: DollarSign },
+              { id: 'governanca', label: 'Governança & CRM', icon: ShieldCheck },
             ].map(tab => {
               const isActive = activeTab === tab.id;
               const Icon = tab.icon;
@@ -495,10 +521,10 @@ export default function Relatorios() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-5 py-3 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+                  className={`px-5 py-3.5 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center gap-2.5 shrink-0 border ${
                     isActive 
-                      ? 'bg-slate-950 dark:bg-white text-white dark:text-slate-950 shadow-md' 
-                      : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50'
+                      ? 'bg-cyan-600 text-white border-cyan-500 shadow-lg shadow-cyan-950/50' 
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-850'
                   }`}
                 >
                   <Icon className="w-4 h-4" /> {tab.label}
@@ -510,49 +536,49 @@ export default function Relatorios() {
           {/* CONTEÚDO DAS ABAS */}
           <div className="space-y-6 print:block">
             
-            {/* ABA 1: EXECUTIVO */}
+            {/* 1. EXECUTIVO */}
             {(activeTab === 'executivo' || true) && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:grid-cols-2">
-                  <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
+                  <Card className="p-5 rounded-3xl border border-slate-800 bg-slate-900 shadow-xl space-y-1.5">
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Volume de Plantões</span>
-                    <div className="text-3xl font-black text-slate-900 dark:text-white font-mono">{totalShiftsCount}</div>
-                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                      <b>{filledShiftsCount}</b> preenchidos · <span className={vacantShiftsCount > 0 ? "text-rose-500 font-bold" : ""}><b>{vacantShiftsCount}</b> vagos</span>
+                    <div className="text-3xl font-black text-white font-mono">{totalShiftsCount}</div>
+                    <p className="text-[11px] text-emerald-400 font-semibold">
+                      <b>{filledShiftsCount}</b> preenchidos · <span className={vacantShiftsCount > 0 ? "text-rose-400 font-bold" : ""}><b>{vacantShiftsCount}</b> vagos</span>
                     </p>
                   </Card>
 
-                  <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
+                  <Card className="p-5 rounded-3xl border border-slate-800 bg-slate-900 shadow-xl space-y-1.5">
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Taxa de Cobertura Global</span>
-                    <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">{coverageRate}%</div>
-                    <p className="text-[11px] text-slate-500 font-medium">Meta hospitalar: &gt; 98%</p>
+                    <div className="text-3xl font-black text-emerald-400 font-mono">{coverageRate}%</div>
+                    <p className="text-[11px] text-slate-400 font-medium">Meta hospitalar: &gt; 98%</p>
                   </Card>
 
-                  <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
+                  <Card className="p-5 rounded-3xl border border-slate-800 bg-slate-900 shadow-xl space-y-1.5">
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Custo Orçamentário Total</span>
-                    <div className="text-3xl font-black text-slate-900 dark:text-white font-mono">{formatCurrency(financialSummary.totalCost)}</div>
-                    <p className="text-[11px] text-slate-500 font-medium">Honorários estimados ({financialSummary.totalHours}h)</p>
+                    <div className="text-3xl font-black text-white font-mono">{formatCurrency(financialSummary.totalCost)}</div>
+                    <p className="text-[11px] text-slate-400 font-medium">Honorários estimados ({financialSummary.totalHours}h)</p>
                   </Card>
 
-                  <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
+                  <Card className="p-5 rounded-3xl border border-slate-800 bg-slate-900 shadow-xl space-y-1.5">
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Compliance de Credenciais</span>
-                    <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                    <div className="text-3xl font-black text-cyan-400 font-mono">
                       {Math.round(((credentialAudit.valid + credentialAudit.nearExpiry) / Math.max(1, credentialAudit.total)) * 100)}%
                     </div>
-                    <p className="text-[11px] text-slate-500 font-medium">
+                    <p className="text-[11px] text-slate-400 font-medium">
                       <b>{credentialAudit.expired}</b> vencido(s) · <b>{credentialAudit.nearExpiry}</b> próximos
                     </p>
                   </Card>
                 </div>
 
                 {/* DESEMPENHO POR SETOR */}
-                <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-5 print:break-inside-avoid">
-                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+                <Card className="p-6 rounded-3xl border border-slate-800 bg-slate-900 shadow-xl space-y-5 print:break-inside-avoid">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-4">
                     <div>
-                      <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-                        <Building2 className="w-5 h-5 text-sky-600" /> Desempenho Operacional por Setor ({periodLabel})
+                      <h3 className="font-black text-base text-white flex items-center gap-2">
+                        <Building2 className="w-5 h-5 text-cyan-400" /> Desempenho Operacional por Setor ({periodLabel})
                       </h3>
-                      <p className="text-xs text-slate-500">Volume de turnos, cobertura e custos segregados</p>
+                      <p className="text-xs text-slate-400">Volume de turnos, cobertura e custos segregados por unidade</p>
                     </div>
                   </div>
 
@@ -560,22 +586,22 @@ export default function Relatorios() {
                     {sectorMetrics.map((sec, idx) => {
                       const pct = sec.total > 0 ? Math.round((sec.filled / sec.total) * 100) : 100;
                       return (
-                        <div key={idx} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2.5">
+                        <div key={idx} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 shadow-md">
                           <div className="flex items-center justify-between">
-                            <strong className="text-sm font-black text-slate-900 dark:text-white truncate">{sec.name}</strong>
+                            <strong className="text-sm font-black text-white truncate">{sec.name}</strong>
                             <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
-                              pct >= 90 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              pct >= 90 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                             }`}>
                               {pct}% Cobertura
                             </span>
                           </div>
-                          <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                            <div className="h-full bg-sky-600 transition-all" style={{ width: `${pct}%` }} />
+                          <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-cyan-500 transition-all" style={{ width: `${pct}%` }} />
                           </div>
-                          <div className="flex justify-between text-[11px] text-slate-500 font-medium">
-                            <span>Alocados: <b>{sec.filled}</b></span>
-                            <span>Vagos: <b className={sec.vacant > 0 ? 'text-rose-500' : ''}>{sec.vacant}</b></span>
-                            <span>Custo: <b className="font-mono text-emerald-600">{formatCurrency(sec.cost)}</b></span>
+                          <div className="flex justify-between text-[11px] text-slate-400 font-medium">
+                            <span>Alocados: <b className="text-white">{sec.filled}</b></span>
+                            <span>Vagos: <b className={sec.vacant > 0 ? 'text-rose-400 font-black' : 'text-white'}>{sec.vacant}</b></span>
+                            <span>Custo: <b className="font-mono text-emerald-400">{formatCurrency(sec.cost)}</b></span>
                           </div>
                         </div>
                       );
@@ -585,54 +611,39 @@ export default function Relatorios() {
               </div>
             )}
 
-            {/* ABA 2: ESCALAS & PLANTÕES DESCOBERTOS */}
+            {/* 2. ESCALAS */}
             {(activeTab === 'escalas' || true) && (
-              <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:break-inside-avoid print:mt-6">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-                    <CalendarDays className="w-5 h-5 text-sky-600" /> Relatório de Escalas & Turnos ({filteredShifts.length} registros)
+              <Card className="p-6 rounded-3xl border border-slate-800 bg-slate-900 shadow-xl space-y-4 print:break-inside-avoid print:mt-6">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="font-black text-base text-white flex items-center gap-2">
+                    <CalendarDays className="w-5 h-5 text-cyan-400" /> Relatório Detalhado de Escalas & Turnos ({filteredShifts.length} registros)
                   </h3>
-                  <Button 
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleExportCSV(filteredShifts.map(s => ({
-                      Data: formatDate(s.date),
-                      Setor: s.sector_name || 'Setor',
-                      Profissional: s.professional_name || 'Vago',
-                      Inicio: s.start_time || '',
-                      Fim: s.end_time || '',
-                      Status: s.status || 'Ativo'
-                    })), 'relatorio_escala.csv')}
-                    className="rounded-xl text-xs gap-1.5 print:hidden"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" /> Exportar CSV
-                  </Button>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                        <th className="py-2.5 px-3">Data</th>
-                        <th className="py-2.5 px-3">Setor</th>
-                        <th className="py-2.5 px-3">Profissional Alocado</th>
-                        <th className="py-2.5 px-3">Horário</th>
-                        <th className="py-2.5 px-3">Status</th>
+                      <tr className="border-b border-slate-800 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                        <th className="py-3 px-3">Data</th>
+                        <th className="py-3 px-3">Setor</th>
+                        <th className="py-3 px-3">Profissional Alocado</th>
+                        <th className="py-3 px-3">Horário</th>
+                        <th className="py-3 px-3">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                    <tbody className="divide-y divide-slate-800 font-medium">
                       {filteredShifts.slice(0, 50).map((s, idx) => {
                         const isVago = !s.professional_id || normalize(s.status) === 'vago' || (s.professional_name || '').toLowerCase().includes('vaga');
                         return (
-                          <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900">
-                            <td className="py-3 px-3 font-bold font-mono">{formatDate(s.date)}</td>
-                            <td className="py-3 px-3">{s.sector_name || 'Setor Geral'}</td>
-                            <td className={`py-3 px-3 font-black ${isVago ? 'text-rose-600 animate-pulse' : 'text-slate-900 dark:text-white'}`}>
+                          <tr key={s.id || idx} className="hover:bg-slate-950 transition-colors">
+                            <td className="py-3 px-3 font-bold font-mono text-slate-300">{formatDate(s.date)}</td>
+                            <td className="py-3 px-3 text-slate-300">{s.sector_name || 'Setor Geral'}</td>
+                            <td className={`py-3 px-3 font-black ${isVago ? 'text-rose-400 animate-pulse' : 'text-white'}`}>
                               {isVago ? '⚠️ VAGA EM ABERTO' : toTitleCase(s.professional_name)}
                             </td>
-                            <td className="py-3 px-3 font-mono">{s.start_time || '07:00'} - {s.end_time || '19:00'}</td>
+                            <td className="py-3 px-3 font-mono text-slate-400">{s.start_time || '07:00'} - {s.end_time || '19:00'}</td>
                             <td className="py-3 px-3">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${isVago ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase border ${isVago ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'}`}>
                                 {isVago ? 'Vago' : (s.status || 'Confirmado')}
                               </span>
                             </td>
@@ -645,40 +656,40 @@ export default function Relatorios() {
               </Card>
             )}
 
-            {/* ABA 3: PROFISSIONAIS */}
+            {/* 3. PROFISSIONAIS */}
             {(activeTab === 'profissionais' || true) && (
-              <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:break-inside-avoid print:mt-6">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-                    <Users className="w-5 h-5 text-emerald-600" /> Produtividade & Carga Horária do Corpo Clínico
+              <Card className="p-6 rounded-3xl border border-slate-800 bg-slate-900 shadow-xl space-y-4 print:break-inside-avoid print:mt-6">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="font-black text-base text-white flex items-center gap-2">
+                    <Users className="w-5 h-5 text-emerald-400" /> Produtividade & Carga Horária do Corpo Clínico
                   </h3>
-                  <span className="text-xs font-mono text-slate-500">{professionalMetrics.length} médicos atuantes</span>
+                  <span className="text-xs font-mono text-slate-400">{professionalMetrics.length} médicos atuantes</span>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                        <th className="py-2.5 px-3">Profissional</th>
-                        <th className="py-2.5 px-3">Setores de Atuação</th>
-                        <th className="py-2.5 px-3 text-center">Plantões</th>
-                        <th className="py-2.5 px-3 text-right">Carga Horária</th>
-                        <th className="py-2.5 px-3 text-right">Custo Estimado</th>
+                      <tr className="border-b border-slate-800 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                        <th className="py-3 px-3">Profissional</th>
+                        <th className="py-3 px-3">Setores de Atuação</th>
+                        <th className="py-3 px-3 text-center">Plantões</th>
+                        <th className="py-3 px-3 text-right">Carga Horária</th>
+                        <th className="py-3 px-3 text-right">Custo Estimado</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                    <tbody className="divide-y divide-slate-800 font-medium">
                       {professionalMetrics.map((doc, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-900">
-                          <td className="py-3 px-3 font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-xl bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 font-black flex items-center justify-center text-[10px]">
+                        <tr key={idx} className="hover:bg-slate-950 transition-colors">
+                          <td className="py-3 px-3 font-bold text-white flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-xl bg-cyan-500/20 text-cyan-400 font-black flex items-center justify-center text-[10px] border border-cyan-500/30">
                               {doc.name.substring(0,2).toUpperCase()}
                             </div>
                             {doc.name}
                           </td>
-                          <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{doc.sectors}</td>
-                          <td className="py-3 px-3 text-center font-mono font-bold text-slate-900 dark:text-white">{doc.shifts}</td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{doc.hours}h</td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">{formatCurrency(doc.cost)}</td>
+                          <td className="py-3 px-3 text-slate-400">{doc.sectors}</td>
+                          <td className="py-3 px-3 text-center font-mono font-bold text-white">{doc.shifts}</td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-emerald-400">{doc.hours}h</td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-white">{formatCurrency(doc.cost)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -687,65 +698,65 @@ export default function Relatorios() {
               </Card>
             )}
 
-            {/* ABA 4: FINANCEIRO */}
+            {/* 4. FINANCEIRO */}
             {(activeTab === 'financeiro' || true) && (
-              <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:break-inside-avoid print:mt-6">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-                    <DollarSign className="w-5 h-5 text-amber-500" /> Inteligência Financeira & Custos Assistenciais
+              <Card className="p-6 rounded-3xl border border-slate-800 bg-slate-900 shadow-xl space-y-4 print:break-inside-avoid print:mt-6">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="font-black text-base text-white flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-amber-400" /> Inteligência Financeira & Custos Assistenciais
                   </h3>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900">
-                    <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-300">Custo Realizado</span>
-                    <div className="text-2xl font-black font-mono text-emerald-700 dark:text-emerald-300 mt-1">{formatCurrency(financialSummary.executedCost)}</div>
+                  <div className="p-5 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 shadow-md">
+                    <span className="text-[10px] font-black uppercase text-emerald-400">Custo Realizado</span>
+                    <div className="text-2xl font-black font-mono text-emerald-300 mt-1">{formatCurrency(financialSummary.executedCost)}</div>
                   </div>
-                  <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900">
-                    <span className="text-[10px] font-black uppercase text-amber-700 dark:text-amber-300">Custo Pendente</span>
-                    <div className="text-2xl font-black font-mono text-amber-700 dark:text-amber-300 mt-1">{formatCurrency(financialSummary.pendingCost)}</div>
+                  <div className="p-5 rounded-2xl bg-amber-950/30 border border-amber-500/30 shadow-md">
+                    <span className="text-[10px] font-black uppercase text-amber-400">Custo Pendente</span>
+                    <div className="text-2xl font-black font-mono text-amber-300 mt-1">{formatCurrency(financialSummary.pendingCost)}</div>
                   </div>
-                  <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900">
-                    <span className="text-[10px] font-black uppercase text-rose-700 dark:text-rose-300">Custo Potencial de Vagas</span>
-                    <div className="text-2xl font-black font-mono text-rose-700 dark:text-rose-300 mt-1">{formatCurrency(financialSummary.vacantCost)}</div>
+                  <div className="p-5 rounded-2xl bg-rose-950/30 border border-rose-500/30 shadow-md">
+                    <span className="text-[10px] font-black uppercase text-rose-400">Custo Potencial de Vagas</span>
+                    <div className="text-2xl font-black font-mono text-rose-300 mt-1">{formatCurrency(financialSummary.vacantCost)}</div>
                   </div>
                 </div>
               </Card>
             )}
 
-            {/* ABA 5: GOVERNANÇA */}
+            {/* 5. GOVERNANÇA */}
             {(activeTab === 'governanca' || true) && (
-              <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 print:break-inside-avoid print:mt-6">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5 text-indigo-600" /> Governança de Credenciais & CRM
+              <Card className="p-6 rounded-3xl border border-slate-800 bg-slate-900 shadow-xl space-y-4 print:break-inside-avoid print:mt-6">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 className="font-black text-base text-white flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-indigo-400" /> Governança de Credenciais & CRM
                   </h3>
-                  <span className="text-xs font-mono text-slate-500">{credentialAudit.total} profissionais cadastrados</span>
+                  <span className="text-xs font-mono text-slate-400">{credentialAudit.total} profissionais cadastrados</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="flex items-center justify-between p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200">
+                  <div className="flex items-center justify-between p-4 rounded-2xl bg-emerald-950/20 border border-emerald-500/30">
                     <div className="flex items-center gap-3">
-                      <div className="w-3.5 h-3.5 rounded-full bg-emerald-500" />
-                      <span className="text-xs font-bold text-emerald-900 dark:text-emerald-200">Documentos Válidos</span>
+                      <div className="w-3.5 h-3.5 rounded-full bg-emerald-400" />
+                      <span className="text-xs font-bold text-emerald-200">Documentos Válidos</span>
                     </div>
-                    <strong className="font-mono text-emerald-700 dark:text-emerald-300 text-sm">{credentialAudit.valid}</strong>
+                    <strong className="font-mono text-emerald-300 text-sm">{credentialAudit.valid}</strong>
                   </div>
 
-                  <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200">
+                  <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-950/20 border border-amber-500/30">
                     <div className="flex items-center gap-3">
-                      <div className="w-3.5 h-3.5 rounded-full bg-amber-500" />
-                      <span className="text-xs font-bold text-amber-900 dark:text-amber-200">Vencem em até 30 dias</span>
+                      <div className="w-3.5 h-3.5 rounded-full bg-amber-400" />
+                      <span className="text-xs font-bold text-amber-200">Vencem em até 30 dias</span>
                     </div>
-                    <strong className="font-mono text-amber-700 dark:text-amber-300 text-sm">{credentialAudit.nearExpiry}</strong>
+                    <strong className="font-mono text-amber-300 text-sm">{credentialAudit.nearExpiry}</strong>
                   </div>
 
-                  <div className="flex items-center justify-between p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200">
+                  <div className="flex items-center justify-between p-4 rounded-2xl bg-rose-950/20 border border-rose-500/30">
                     <div className="flex items-center gap-3">
-                      <div className="w-3.5 h-3.5 rounded-full bg-rose-500 animate-pulse" />
-                      <span className="text-xs font-bold text-rose-900 dark:text-rose-200">Credenciais Vencidas</span>
+                      <div className="w-3.5 h-3.5 rounded-full bg-rose-400 animate-pulse" />
+                      <span className="text-xs font-bold text-rose-200">Credenciais Vencidas</span>
                     </div>
-                    <strong className="font-mono text-rose-600 dark:text-rose-400 text-sm font-black">{credentialAudit.expired}</strong>
+                    <strong className="font-mono text-rose-300 text-sm font-black">{credentialAudit.expired}</strong>
                   </div>
                 </div>
               </Card>
