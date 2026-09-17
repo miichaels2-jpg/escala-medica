@@ -26,12 +26,14 @@ import {
   Gauge,
   HeartPulse,
   Timer,
-  BellRing
+  BellRing,
+  Send
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
 function getLocalDateString(d = new Date()) {
   const year = d.getFullYear();
@@ -82,8 +84,60 @@ function safeNumber(val, fb = 0) {
   return Number.isFinite(n) ? n : fb;
 }
 
+// CÁLCULO PRECISO DE STATUS COM VIRADA DE MADRUGADA
+function computeShiftLiveStatus(shift, liveNowDate) {
+  if (!shift || !shift.date) {
+    return { isLive: false, isConcluded: false, isProgrammed: true, detail: '' };
+  }
+
+  const [sYear, sMonth, sDay] = String(shift.date).split('-').map(Number);
+  const [startH, startM] = String(shift.start_time || '07:00').split(':').map(Number);
+  const [endH, endM] = String(shift.end_time || '19:00').split(':').map(Number);
+
+  const startDate = new Date(sYear, sMonth - 1, sDay, startH || 0, startM || 0, 0);
+  let endDate = new Date(sYear, sMonth - 1, sDay, endH || 0, endM || 0, 0);
+
+  if (endDate.getTime() <= startDate.getTime()) {
+    endDate.setDate(endDate.getDate() + 1);
+  }
+
+  const nowMs = liveNowDate.getTime();
+  const startMs = startDate.getTime();
+  const endMs = endDate.getTime();
+
+  if (nowMs >= startMs && nowMs < endMs) {
+    const diffMin = Math.round((endMs - nowMs) / 60000);
+    return {
+      state: 'active',
+      isLive: true,
+      isConcluded: false,
+      isProgrammed: false,
+      remainingMinutes: diffMin,
+      detail: `Resta ${Math.floor(diffMin / 60)}h ${diffMin % 60}m`
+    };
+  }
+
+  if (nowMs >= endMs) {
+    return {
+      state: 'concluded',
+      isLive: false,
+      isConcluded: true,
+      isProgrammed: false,
+      detail: `Concluído às ${shift.end_time}`
+    };
+  }
+
+  return {
+    state: 'upcoming',
+    isLive: false,
+    isConcluded: false,
+    isProgrammed: true,
+    detail: `Inicia às ${shift.start_time}`
+  };
+}
+
 export default function Painel() {
-  const { user, company, loading: appLoading, selectedUnitId } = useAppData();
+  const { user, company, loading: appLoading, selectedUnitId, isManager } = useAppData();
   const navigate = useNavigate();
 
   const [shifts, setShifts] = useState([]);
@@ -127,6 +181,21 @@ export default function Painel() {
   }, []);
 
   const todayStr = useMemo(() => getLocalDateString(currentTime), [currentTime]);
+  const currentYear = currentTime.getFullYear();
+  const currentMonth = currentTime.getMonth();
+
+  // Setores pendentes de publicação na competência
+  const unsubmittedSectors = useMemo(() => {
+    return (sectors || []).filter(s => {
+      try {
+        const raw = window.localStorage.getItem(`scale_published_ranges_${unitId}_${s.id}_${currentYear}_${currentMonth + 1}`);
+        const ranges = raw ? JSON.parse(raw) : [];
+        return ranges.length === 0;
+      } catch {
+        return true;
+      }
+    });
+  }, [sectors, unitId, currentYear, currentMonth]);
 
   function getProfMeta(prof) {
     if (!prof) return {};
@@ -156,41 +225,22 @@ export default function Painel() {
     return { profById: byId, profByName: byName };
   }, [professionals]);
 
+  // CALCULO EXATO DE HOJE CONSIDERANDO PLANTÕES DE ONTEM QUE TERMINAM HOJE
   const todayShifts = useMemo(() => {
-    const nowHour = currentTime.getHours();
-    const nowMin = currentTime.getMinutes();
-    const nowTotalMin = nowHour * 60 + nowMin;
-
     return (shifts || [])
       .filter((s) => {
+        if (!s || s.status === 'cancelado') return false;
         const sDate = (s.date || '').split('T')[0];
-        return sDate === todayStr && s.status !== 'cancelado';
+        const status = computeShiftLiveStatus(s, currentTime);
+
+        // Pertence a hoje se: foi cadastrado na data de hoje OU começou ontem à noite e ainda está ativo agora
+        return sDate === todayStr || status.isLive;
       })
       .map((s) => {
-        const [startH, startM] = (s.start_time || '07:00').split(':').map(Number);
-        const [endH, endM] = (s.end_time || '19:00').split(':').map(Number);
-        const startMin = startH * 60 + startM;
-        let endMin = endH * 60 + endM;
-        if (endMin <= startMin) endMin += 24 * 60;
-
-        let effNow = nowTotalMin;
-        if (endMin > 24 * 60 && nowTotalMin < startMin) effNow += 24 * 60;
-
-        let state = 'upcoming';
-        let detail = 'Inicia às ' + s.start_time;
-
-        if (effNow >= startMin && effNow < endMin) {
-          state = 'active';
-          const left = endMin - effNow;
-          detail = `Resta ${Math.floor(left / 60)}h ${left % 60}m`;
-        } else if (effNow >= endMin) {
-          state = 'concluded';
-          detail = 'Concluído às ' + s.end_time;
-        }
-
+        const liveStatus = computeShiftLiveStatus(s, currentTime);
         return {
           ...s,
-          lifecycle: { state, detail }
+          lifecycle: { state: liveStatus.state, detail: liveStatus.detail }
         };
       })
       .sort((a, b) => {
@@ -257,7 +307,7 @@ export default function Painel() {
     return { executedValue, plannedValue, totalToday: plannedValue };
   }, [todayShifts, profById, profByName]);
 
-  // Setores com contagem real
+  // Cobertura por setor
   const sectorsCoverage = useMemo(() => {
     const map = {};
     (sectors || []).forEach((sec) => {
@@ -332,13 +382,19 @@ export default function Painel() {
     return buckets.map(b => ({ ...b, height: Math.round((b.count / max) * 100) }));
   }, [todayShifts]);
 
-  // CLIQUE DIRETO NA VAGA DO ALERTA: Salva o ID da vaga para abrir o modal direto na Escala
   const handleResolveAlert = (vs) => {
     if (vs?.sector_id) {
       window.localStorage.setItem('scale_filter_sector_id', String(vs.sector_id));
     }
     if (vs?.id) {
       window.localStorage.setItem('scale_auto_open_shift_id', String(vs.id));
+    }
+    navigate('/escalas');
+  };
+
+  const handleNavigateToSectorScale = (secId) => {
+    if (secId) {
+      window.localStorage.setItem('scale_filter_sector_id', String(secId));
     }
     navigate('/escalas');
   };
@@ -354,7 +410,7 @@ export default function Painel() {
   };
 
   // =========================================================================
-  // MODO TV CCO (SEM ESPAÇO VAZIO: 100% DA ALTURA PREENCHIDA)
+  // MODO TV CCO
   // =========================================================================
   if (tvMode) {
     return (
@@ -408,17 +464,17 @@ export default function Painel() {
             <button 
               title="Sair da tela cheia" 
               onClick={closeTvMode} 
-              className="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors"
+              className="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors cursor-pointer"
             >
               <Minimize2 className="h-5 w-5" />
             </button>
           </div>
         </div>
 
-        {/* CORPO CENTRAL 100% PREENCHIDO (SEM ESPAÇOS EM BRANCO) */}
+        {/* CORPO CENTRAL PREENCHIDO */}
         <div className="flex-1 my-4 grid grid-cols-1 lg:grid-cols-4 gap-5 overflow-hidden">
           
-          {/* COLUNA 1 & 2: CAPACIDADE E COBERTURA DOS SETORES (FLEX-1 AUTO AJUSTÁVEL) */}
+          {/* COLUNA 1 & 2: COBERTURA DOS SETORES */}
           <div className="lg:col-span-2 flex flex-col justify-between rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-2xl backdrop-blur-md overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0">
@@ -430,7 +486,6 @@ export default function Painel() {
                 </span>
               </div>
 
-              {/* Grid que expande até o final da tela */}
               <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto pr-1 pb-1">
                 {sectorsCoverage.map((sec) => {
                   const hasShifts = sec.total > 0;
@@ -498,7 +553,7 @@ export default function Painel() {
             </div>
           </div>
 
-          {/* COLUNA 3: ATIVOS NO POSTO AGORA */}
+          {/* COLUNA 3: ATIVOS NO POSTO AGORA COM DETECÇÃO REAL */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-2xl flex flex-col justify-between overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0">
@@ -534,7 +589,7 @@ export default function Painel() {
             </div>
           </div>
 
-          {/* COLUNA 4: PRÓXIMA PASSAGEM & CUSTO DIÁRIO */}
+          {/* COLUNA 4: PRÓXIMA PASSAGEM & CUSTO */}
           <div className="flex flex-col justify-between gap-4 overflow-hidden">
             <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-5 shadow-2xl flex-1 flex flex-col justify-between overflow-hidden">
               <div className="flex flex-col h-full overflow-hidden">
@@ -630,7 +685,7 @@ export default function Painel() {
   }
 
   // =========================================================================
-  // DASHBOARD PRINCIPAL EXECUTIVO
+  // DASHBOARD PRINCIPAL
   // =========================================================================
   return (
     <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-900/40 min-h-screen text-slate-900 dark:text-slate-100">
@@ -651,13 +706,48 @@ export default function Painel() {
 
         <Button 
           onClick={openTvMode} 
-          className="bg-sky-600 hover:bg-sky-500 text-white font-black text-xs h-12 px-6 rounded-2xl shadow-xl gap-2.5 transition-all hover:scale-105 shrink-0"
+          className="bg-sky-600 hover:bg-sky-500 text-white font-black text-xs h-12 px-6 rounded-2xl shadow-xl gap-2.5 transition-all hover:scale-105 shrink-0 cursor-pointer"
         >
           <Radio className="w-4 h-4 animate-pulse text-white" /> Ativar Modo TV CCO
         </Button>
       </div>
 
-      {/* 2. ALERTA CRÍTICO COM CLIQUE DIRETO NA VAGA ESPECÍFICA */}
+      {/* 2. RADAR GERENCIAL: SETORES PENDENTES DE PUBLICAÇÃO */}
+      {unsubmittedSectors.length > 0 && isManager && (
+        <div className="p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-amber-500 text-white shrink-0 shadow-sm">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <strong className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-300 block">
+                {unsubmittedSectors.length} Setor(es) com Escala Pendente de Publicação em {MONTH_NAMES[currentMonth]}
+              </strong>
+              <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                <span className="text-[11px] text-slate-600 dark:text-slate-300">Setores em rascunho:</span>
+                {unsubmittedSectors.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => handleNavigateToSectorScale(s.id)}
+                    className="text-[10px] font-black uppercase px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-800 dark:text-amber-200 hover:bg-amber-500/30 transition-all cursor-pointer border border-amber-500/30"
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <Button 
+            onClick={() => navigate('/escalas')}
+            className="h-9 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs px-4 rounded-xl shadow-md shrink-0 cursor-pointer gap-1.5"
+          >
+            <Send className="w-3.5 h-3.5" /> Abrir Escalas
+          </Button>
+        </div>
+      )}
+
+      {/* 3. ALERTA CRÍTICO COM CLIQUE DIRETO NA VAGA */}
       {vacantShifts.length > 0 ? (
         <div className="p-5 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-900 dark:text-rose-200 shadow-lg space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -707,7 +797,7 @@ export default function Painel() {
         </div>
       )}
 
-      {/* 3. CARDS DE TELEMETRIA EXECUTIVA */}
+      {/* 4. CARDS DE TELEMETRIA EXECUTIVA */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 rounded-3xl border border-emerald-200 dark:border-emerald-800/60 bg-gradient-to-br from-white to-emerald-50/40 dark:from-slate-900 dark:to-emerald-950/20 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
@@ -778,10 +868,8 @@ export default function Painel() {
         </Card>
       </div>
 
-      {/* 4. BLOCO DE GRÁFICOS VISUAIS: OCUPAÇÃO REAL COM PALETA CLEAN E RADIAL */}
+      {/* 5. OCUPAÇÃO REAL POR SETOR E COBERTURA */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* GRÁFICO 1: OCUPAÇÃO REAL COM CORES SOFISTICADAS */}
         <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm lg:col-span-2 space-y-5">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
             <div>
@@ -860,7 +948,7 @@ export default function Painel() {
           </div>
         </Card>
 
-        {/* GRÁFICO 2: DONUT CIRCULAR DE EFICIÊNCIA GLOBAL */}
+        {/* DONUT DE EFICIÊNCIA GLOBAL */}
         <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
@@ -936,7 +1024,7 @@ export default function Painel() {
         </Card>
       </div>
 
-      {/* 5. LISTA DE PLANTÕES DE HOJE */}
+      {/* 6. LISTA DE PLANTÕES DE HOJE */}
       <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div>

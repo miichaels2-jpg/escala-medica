@@ -45,7 +45,6 @@ function getShiftInterval(startStr, endStr) {
   return { startMin, endMin };
 }
 
-// CÁLCULO PRECISO DE STATUS QUE CONSIDERA VIRADA DE MADRUGADA
 function computeShiftLiveStatus(shift, liveNowDate) {
   if (!shift || !shift.date) {
     return { isLive: false, isConcluded: false, isProgrammed: true };
@@ -58,7 +57,6 @@ function computeShiftLiveStatus(shift, liveNowDate) {
   const startDate = new Date(sYear, sMonth - 1, sDay, startH || 0, startM || 0, 0);
   let endDate = new Date(sYear, sMonth - 1, sDay, endH || 0, endM || 0, 0);
 
-  // Se o horário final for menor ou igual ao inicial, o plantão vira a noite (termina no dia seguinte)
   if (endDate.getTime() <= startDate.getTime()) {
     endDate.setDate(endDate.getDate() + 1);
   }
@@ -139,18 +137,12 @@ export default function Escalas() {
   const [startDateFilter, setStartDateFilter] = useState('');
 
   const [selectedSectorId, setSelectedSectorId] = useState(() => {
-    try {
-      return window.localStorage.getItem('scale_filter_sector_id') || 'todos';
-    } catch {
-      return 'todos';
-    }
+    try { return window.localStorage.getItem('scale_filter_sector_id') || 'todos'; } catch { return 'todos'; }
   });
 
   const handleSelectSector = (secId) => {
     setSelectedSectorId(secId);
-    try {
-      window.localStorage.setItem('scale_filter_sector_id', secId);
-    } catch {}
+    try { window.localStorage.setItem('scale_filter_sector_id', secId); } catch {}
   };
 
   const selectedSectorObj = useMemo(() => {
@@ -159,11 +151,7 @@ export default function Escalas() {
   }, [sectors, selectedSectorId]);
 
   const [trayCollapsed, setTrayCollapsed] = useState(() => {
-    try {
-      return window.localStorage.getItem('scale_tray_collapsed') === 'true';
-    } catch {
-      return false;
-    }
+    try { return window.localStorage.getItem('scale_tray_collapsed') === 'true'; } catch { return false; }
   });
 
   const toggleTray = () => {
@@ -175,11 +163,7 @@ export default function Escalas() {
   };
 
   const [sidebarHidden, setSidebarHidden] = useState(() => {
-    try {
-      return window.localStorage.getItem('scale_main_sidebar_hidden') === 'true';
-    } catch {
-      return false;
-    }
+    try { return window.localStorage.getItem('scale_main_sidebar_hidden') === 'true'; } catch { return false; }
   });
 
   const toggleMainSidebar = () => {
@@ -188,9 +172,7 @@ export default function Escalas() {
     try {
       window.localStorage.setItem('scale_main_sidebar_hidden', String(next));
       const sidebarEl = document.querySelector('aside:not(.roll-professionals)') || document.querySelector('nav') || document.querySelector('[data-sidebar="true"]');
-      if (sidebarEl) {
-        sidebarEl.style.display = next ? 'none' : '';
-      }
+      if (sidebarEl) sidebarEl.style.display = next ? 'none' : '';
     } catch {}
   };
 
@@ -203,9 +185,7 @@ export default function Escalas() {
     try {
       const raw = window.localStorage.getItem(`scale_published_ranges_${selectedUnitId}_${secId}_${currentYear}_${currentMonth + 1}`);
       return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   };
 
   const isCurrentSectorPublished = useMemo(() => {
@@ -244,19 +224,14 @@ export default function Escalas() {
     const start = new Date(publishConfig.start_date + 'T12:00:00');
     let end = new Date(start);
 
-    if (type === '7days') {
-      end.setDate(start.getDate() + 6);
-    } else if (type === '15days') {
-      end.setDate(start.getDate() + 14);
-    } else if (type === 'month') {
+    if (type === '7days') end.setDate(start.getDate() + 6);
+    else if (type === '15days') end.setDate(start.getDate() + 14);
+    else if (type === 'month') {
       const lastDay = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
       end = new Date(start.getFullYear(), start.getMonth(), lastDay);
     }
 
-    setPublishConfig(prev => ({
-      ...prev,
-      end_date: getLocalDateString(end)
-    }));
+    setPublishConfig(prev => ({ ...prev, end_date: getLocalDateString(end) }));
   };
 
   const existingPublishedOverlaps = useMemo(() => {
@@ -280,21 +255,13 @@ export default function Escalas() {
 
   const publishImpactedProfessionalsCount = useMemo(() => {
     const set = new Set();
-    publishTargetShifts.forEach(s => {
-      if (s.professional_id) set.add(String(s.professional_id));
-    });
+    publishTargetShifts.forEach(s => { if (s.professional_id) set.add(String(s.professional_id)); });
     return set.size;
   }, [publishTargetShifts]);
 
   const handleExecutePublishSector = async () => {
-    if (!publishConfig.sector_id) {
-      alert('Selecione o setor a ser publicado.');
-      return;
-    }
-    if (publishConfig.start_date > publishConfig.end_date) {
-      alert('A data de término não pode ser anterior à data de início.');
-      return;
-    }
+    if (!publishConfig.sector_id) { alert('Selecione o setor a ser publicado.'); return; }
+    if (publishConfig.start_date > publishConfig.end_date) { alert('Data de término inválida.'); return; }
 
     const secName = sectorMap[String(publishConfig.sector_id)]?.name || 'Setor Hospitalar';
 
@@ -329,19 +296,15 @@ export default function Escalas() {
       setPublishModalOpen(false);
       await syncGlobalData();
 
-      alert(`✓ Escala de "${secName}" oficializada!\n\nVigência: ${formatDateBR(publishConfig.start_date)} até ${formatDateBR(publishConfig.end_date)}\n${publishImpactedProfessionalsCount} profissional(is) notificado(s) e ${publishTargetShifts.length} plantão(ões) marcados como publicados.`);
-    } catch (err) {
-      alert('Erro ao publicar escala: ' + err.message);
-    } finally {
-      setSubmitting(false);
-    }
+      alert(`✓ Escala de "${secName}" oficializada!\n\nVigência: ${formatDateBR(publishConfig.start_date)} até ${formatDateBR(publishConfig.end_date)}\n${publishImpactedProfessionalsCount} profissional(is) notificado(s).`);
+    } catch (err) { alert('Erro ao publicar escala: ' + err.message); } finally { setSubmitting(false); }
   };
 
   const handleUnpublishSector = () => {
     const secId = selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '');
     const secName = sectorMap[String(secId)]?.name || 'Setor';
 
-    if (!confirm(`Reverter escala de "${secName}" para Modo Rascunho? Todos os dias voltarão a ficar como não publicados.`)) return;
+    if (!confirm(`Reverter escala de "${secName}" para Modo Rascunho?`)) return;
 
     window.localStorage.removeItem(`scale_published_ranges_${selectedUnitId}_${secId}_${currentYear}_${currentMonth + 1}`);
     setPublishedVersion(v => v + 1);
@@ -378,6 +341,164 @@ export default function Escalas() {
 
   const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if(s) m[String(s.id)] = s; }); return m; }, [sectors]);
   const professionalMap = useMemo(() => { const m = {}; (professionals || []).forEach(p => { if(p) m[String(p.id)] = p; }); return m; }, [professionals]);
+
+  const todayLocalStr = useMemo(() => getLocalDateString(liveNow), [liveNow]);
+
+  // =========================================================================
+  // DEFINIÇÃO CENTRAL E ANTECIPADA DE TVDATA E IMPRESSÃO (SEM ERRO DE ESCOPO)
+  // =========================================================================
+  const tvData = useMemo(() => {
+    const emAndamento = [];
+    const proximoRendimento = [];
+    const tableDayShifts = [];
+
+    (shifts || []).forEach(shift => {
+      if (!shift || shift.status === 'cancelado') return;
+      if (selectedSectorId !== 'todos' && String(shift.sector_id) !== String(selectedSectorId)) return;
+
+      const liveStatus = computeShiftLiveStatus(shift, liveNow);
+
+      // Tabela do dia de hoje: plantões cadastrados na data de hoje OU plantões que viraram a noite de ontem e ainda estão ativos
+      const sDate = (shift.date || '').split('T')[0];
+      if (sDate === todayLocalStr || liveStatus.isLive) {
+        tableDayShifts.push(shift);
+      }
+
+      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+      if (shift.status === 'vago' || !prof) return;
+
+      if (liveStatus.isLive) {
+        emAndamento.push({
+          ...shift,
+          detail: liveStatus.remainingDesc
+        });
+      }
+
+      if (liveStatus.isProgrammed && liveStatus.startsInMinutes > 0 && liveStatus.startsInMinutes <= 120) {
+        proximoRendimento.push({
+          shift,
+          startsIn: liveStatus.startsInMinutes
+        });
+      }
+    });
+
+    tableDayShifts.sort((a, b) => (a.start_time || '07:00').localeCompare(b.start_time || '07:00'));
+    return { emAndamento, proximoRendimento, tableDayShifts };
+  }, [shifts, selectedSectorId, liveNow, todayLocalStr, professionalMap]);
+
+  const handlePrintA4Landscape = () => {
+    const printWindow = window.open('', '_blank', 'width=1100,height=800');
+    if (!printWindow) {
+      alert('Permita pop-ups para abrir a impressão.');
+      return;
+    }
+
+    const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
+    const logoLetter = hospitalName[0] || 'H';
+    const dataVigencia = liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const dataEmissao = liveNow.toLocaleDateString('pt-BR') + ' às ' + liveNow.toLocaleTimeString('pt-BR');
+
+    const activeShiftsOnly = tvData.tableDayShifts.filter(shift => {
+      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+      return shift.status !== 'vago' && prof && !shift.professional_name?.toLowerCase().includes('vaga');
+    });
+
+    const tableRowsHtml = activeShiftsOnly.length === 0
+      ? `<tr><td colspan="6" style="padding: 24px; text-align: center; color: #666; font-size: 11px;">Nenhum profissional com plantão confirmado para esta data.</td></tr>`
+      : activeShiftsOnly.map((shift, idx) => {
+          const prof = professionalMap[String(shift.professional_id)];
+          const sector = sectorMap[String(shift.sector_id)];
+          const realSpecialty = extractSpecialty(shift, prof);
+          const bg = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
+          const profNome = `Dr(a). ${prof?.name || shift.professional_name}`;
+          const conselho = prof?.document || '—';
+
+          const [sYear, sMonth, sDay] = (shift.date || '').split('-');
+          const formattedDate = sDay && sMonth ? `${sDay}/${sMonth}/${sYear}` : shift.date;
+
+          const liveStatus = computeShiftLiveStatus(shift, liveNow);
+
+          const statusHtml = liveStatus.isLive
+            ? `<span style="font-weight: bold; color: #0369a1; background-color: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-size: 9px;">● EM ANDAMENTO</span>`
+            : liveStatus.isConcluded
+            ? `<span style="font-weight: bold; color: #166534; background-color: #dcfce7; padding: 2px 6px; border-radius: 4px; font-size: 9px;">✓ CONCLUÍDO</span>`
+            : `<span style="color: #475569; background-color: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 9px;">PROGRAMADO</span>`;
+
+          return `
+            <tr style="background-color: ${bg};">
+              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold; text-transform: uppercase;">${sector?.name || 'Setor'}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; font-weight: bold; text-align: center; white-space: nowrap;">
+                ${formattedDate}<br><span style="color: #334155; font-size: 10px;">${shift.start_time} às ${shift.end_time}</span>
+              </td>
+              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold;">${profNome}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px;">${realSpecialty}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; text-align: center;">${conselho}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; text-align: center;">${statusHtml}</td>
+            </tr>
+          `;
+        }).join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8">
+        <title>Escala Oficial - ${hospitalName}</title>
+        <style>
+          @page { size: A4 landscape; margin: 8mm; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; background: #fff !important; color: #000 !important; padding: 15px; font-size: 11px; }
+          .header-box { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 15px; }
+          .logo-badge { width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px; }
+          .header-info h1 { font-size: 19px; font-weight: 900; text-transform: uppercase; }
+          table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 30px; }
+          th { background-color: #e5e7eb; border: 1px solid #000; padding: 8px 10px; text-align: left; font-size: 9.5px; font-weight: 900; text-transform: uppercase; }
+          .signatures-area { display: flex; justify-content: space-around; margin-top: 35px; }
+          .sig-box { text-align: center; width: 320px; }
+          .sig-line { border-bottom: 1px solid #000; margin-bottom: 6px; }
+        </style>
+      </head>
+      <body>
+        <div class="header-box">
+          <div style="display: flex; align-items: center;">
+            <div class="logo-badge">${logoLetter}</div>
+            <div class="header-info">
+              <h1>${hospitalName}</h1>
+              <p>ESCALA OFICIAL DE PLANTÃO • MURAL HOSPITALAR</p>
+              <div>Vigência: <b>${dataVigencia}</b></div>
+            </div>
+          </div>
+          <div style="text-align: right; font-size: 9.5px;">
+            <div style="border: 1px solid #000; padding: 3px 8px; font-weight: 900; display: inline-block;">DOCUMENTO OFICIAL AUDITÁVEL</div>
+            <div style="margin-top: 4px;">Emissão: ${dataEmissao}</div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 20%;">Seção / Setor</th>
+              <th style="width: 18%; text-align: center;">Data & Horário</th>
+              <th style="width: 26%;">Profissional Escalado</th>
+              <th style="width: 18%;">Especialidade / Atuação</th>
+              <th style="width: 10%; text-align: center;">Conselho</th>
+              <th style="width: 14%; text-align: center;">Situação / Status</th>
+            </tr>
+          </thead>
+          <tbody>${tableRowsHtml}</tbody>
+        </table>
+        <div class="signatures-area">
+          <div class="sig-box"><div class="sig-line"></div><div style="font-weight: 900; text-transform: uppercase;">Diretoria Clínica / RT Médica</div></div>
+          <div class="sig-box"><div class="sig-line"></div><div style="font-weight: 900; text-transform: uppercase;">Gerência de Enfermagem / RT Assistencial</div></div>
+        </div>
+        <script>window.onload = function() { window.print(); };</script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
 
   const isDatePublishedForCurrentSector = (dateStr) => {
     if (selectedSectorId === 'todos') {
@@ -546,19 +667,12 @@ export default function Escalas() {
       setGeneratorModalOpen(false); 
       await syncGlobalData(); 
       alert('Vagas geradas com sucesso!');
-    } catch (err) { 
-      alert(err.message); 
-    } finally { 
-      setSubmitting(false); 
-    }
+    } catch (err) { alert(err.message); } finally { setSubmitting(false); }
   };
 
   const handlePrevMonth = () => setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
-  const handleToday = () => {
-    setCurrentDate(new Date());
-    setStartDateFilter('');
-  };
+  const handleToday = () => { setCurrentDate(new Date()); setStartDateFilter(''); };
 
   const handleStartDateChange = (e) => {
     const val = e.target.value;
@@ -582,9 +696,6 @@ export default function Escalas() {
     return days;
   }, [currentYear, currentMonth, startDateFilter]);
 
-  const todayLocalStr = getLocalDateString(liveNow);
-
-  // BADGE DE STATUS COM SUPORTE TOTAL A VIRADA DE NOITE
   const getStatusBadge = (shift) => {
     const isVago = shift.status === 'vago' || !shift.professional_id;
     const liveStatus = computeShiftLiveStatus(shift, liveNow);
@@ -631,9 +742,7 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  const allActiveProfessionals = useMemo(() => {
-    return (professionals || []).filter(p => p?.status === 'ativo');
-  }, [professionals]);
+  const allActiveProfessionals = useMemo(() => (professionals || []).filter(p => p?.status === 'ativo'), [professionals]);
 
   const filteredTrayProfs = useMemo(() => {
     const term = traySearch.toLowerCase().trim();
@@ -1068,7 +1177,6 @@ export default function Escalas() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* BOTÃO DE PUBLICAR POR SETOR */}
           {isManager && (
             <div className="flex items-center gap-1.5">
               <Button 
@@ -1108,9 +1216,7 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* 3. ABA 1: GRADE MENSAL                                                   */}
-      {/* ========================================================================= */}
+      {/* 3. ABA 1: GRADE MENSAL COM BADGE VISUAL DE PUBLICADO */}
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
           {isManager && (
@@ -1252,9 +1358,7 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 4. ABA 2: PLANTÃO DO DIA (RESTAURADA E OPERACIONAL)                        */}
-      {/* ========================================================================= */}
+      {/* 4. ABA 2: PLANTÃO DO DIA */}
       {activeTab === 'dia' && (
         <div className="space-y-5 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
@@ -1321,9 +1425,7 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 5. MODAL EXECUTIVO: PUBLICAR ESCALA POR SETOR & INTERVALO CUSTOMIZADO     */}
-      {/* ========================================================================= */}
+      {/* 5. MODAL EXECUTIVO: PUBLICAR ESCALA */}
       <Dialog open={publishModalOpen} onOpenChange={setPublishModalOpen}>
         <DialogContent className="w-[95vw] sm:max-w-lg bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-5 sm:p-6 rounded-3xl">
           <DialogHeader className="border-b border-slate-800 pb-3">
@@ -1358,53 +1460,24 @@ export default function Escalas() {
                   Janela de Vigência
                 </span>
                 <div className="flex items-center gap-1">
-                  <button 
-                    type="button" 
-                    onClick={() => handleApplyQuickRange('7days')}
-                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 cursor-pointer"
-                  >
-                    7 Dias
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={() => handleApplyQuickRange('15days')}
-                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 cursor-pointer"
-                  >
-                    15 Dias
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={() => handleApplyQuickRange('month')}
-                    className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 cursor-pointer"
-                  >
-                    Mês Todo
-                  </button>
+                  <button type="button" onClick={() => handleApplyQuickRange('7days')} className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 cursor-pointer">7 Dias</button>
+                  <button type="button" onClick={() => handleApplyQuickRange('15days')} className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 cursor-pointer">15 Dias</button>
+                  <button type="button" onClick={() => handleApplyQuickRange('month')} className="px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-300 cursor-pointer">Mês Todo</button>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-[11px] text-slate-400 font-bold">Data Inicial</Label>
-                  <Input 
-                    type="date" 
-                    value={publishConfig.start_date} 
-                    onChange={e => setPublishConfig({ ...publishConfig, start_date: e.target.value })}
-                    className="h-10 bg-slate-950 border-slate-700 text-white font-mono text-xs rounded-xl"
-                  />
+                  <Input type="date" value={publishConfig.start_date} onChange={e => setPublishConfig({ ...publishConfig, start_date: e.target.value })} className="h-10 bg-slate-950 border-slate-700 text-white font-mono text-xs rounded-xl" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-[11px] text-slate-400 font-bold">Data Final</Label>
-                  <Input 
-                    type="date" 
-                    value={publishConfig.end_date} 
-                    onChange={e => setPublishConfig({ ...publishConfig, end_date: e.target.value })}
-                    className="h-10 bg-slate-950 border-slate-700 text-white font-mono text-xs rounded-xl"
-                  />
+                  <Input type="date" value={publishConfig.end_date} onChange={e => setPublishConfig({ ...publishConfig, end_date: e.target.value })} className="h-10 bg-slate-950 border-slate-700 text-white font-mono text-xs rounded-xl" />
                 </div>
               </div>
             </div>
 
-            {/* ALERTA SE O INTERVALO JÁ POSSUIR DIAS PUBLICADOS ANTERIORMENTE */}
             {existingPublishedOverlaps.length > 0 && (
               <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/40 text-amber-300 space-y-1">
                 <div className="flex items-center gap-1.5 text-xs font-black uppercase text-amber-400">
@@ -1420,7 +1493,6 @@ export default function Escalas() {
               </div>
             )}
 
-            {/* IMPACTO ESTIMADO */}
             <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 space-y-2">
               <div className="flex items-center justify-between font-black text-xs">
                 <span className="flex items-center gap-1.5">
@@ -1435,20 +1507,8 @@ export default function Escalas() {
           </div>
 
           <DialogFooter className="pt-2 flex flex-row items-center justify-between border-t border-slate-800 mt-2 gap-2">
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={() => setPublishModalOpen(false)}
-              className="h-10 text-xs font-bold border-slate-700 text-slate-300 rounded-xl px-4 cursor-pointer"
-            >
-              Cancelar
-            </Button>
-            <Button 
-              type="button" 
-              disabled={submitting || publishTargetShifts.length === 0}
-              onClick={handleExecutePublishSector}
-              className="h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-6 rounded-xl shadow-md cursor-pointer gap-1.5"
-            >
+            <Button type="button" variant="outline" onClick={() => setPublishModalOpen(false)} className="h-10 text-xs font-bold border-slate-700 text-slate-300 rounded-xl px-4 cursor-pointer">Cancelar</Button>
+            <Button type="button" disabled={submitting || publishTargetShifts.length === 0} onClick={handleExecutePublishSector} className="h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-6 rounded-xl shadow-md cursor-pointer gap-1.5">
               <Send className="w-3.5 h-3.5" /> Confirmar & Publicar
             </Button>
           </DialogFooter>
