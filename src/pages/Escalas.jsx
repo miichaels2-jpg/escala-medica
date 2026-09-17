@@ -12,7 +12,7 @@ import {
   MousePointerClick, HeartPulse, UserPlus, SlidersHorizontal,
   Flame, ArrowRight, MonitorPlay, GripVertical, 
   Printer, Sun, Moon, AlertTriangle, CheckCircle2, Radio, Calendar as CalendarIcon,
-  PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight
+  PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight, Minimize2
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -68,7 +68,7 @@ export default function Escalas() {
   const { shifts = [], sectors = [], professionals = [], selectedUnitId, company, isManager, syncGlobalData } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
-  const [activeTab, setActiveTab] = useState('mensal'); 
+  const [activeTab, setActiveTab] = useState('mensal'); // 'mensal' | 'dia' | 'tv'
   const [filterTurno, setFilterTurno] = useState('todos'); 
   const [startDateFilter, setStartDateFilter] = useState('');
 
@@ -105,7 +105,7 @@ export default function Escalas() {
     });
   };
 
-  // BOTÃO LATERAL FIXADO NA BORDA ESQUERDA PARA RECOLHER O MENU
+  // BOTÃO LATERAL FIXADO EXATAMENTE NO QUADRADO VERMELHO (NA ALTURA DE RELATÓRIOS)
   const [sidebarHidden, setSidebarHidden] = useState(() => {
     try {
       return window.localStorage.getItem('scale_main_sidebar_hidden') === 'true';
@@ -141,11 +141,9 @@ export default function Escalas() {
 
   const [liveNow, setLiveNow] = useState(() => new Date());
   useEffect(() => { 
-    if (activeTab === 'tv' || activeTab === 'dia') {
-      const t = setInterval(() => setLiveNow(new Date()), 1000); 
-      return () => clearInterval(t); 
-    }
-  }, [activeTab]);
+    const t = setInterval(() => setLiveNow(new Date()), 1000); 
+    return () => clearInterval(t); 
+  }, []);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [generatorModalOpen, setGeneratorModalOpen] = useState(false);
@@ -309,7 +307,7 @@ export default function Escalas() {
     return days;
   }, [currentYear, currentMonth, startDateFilter]);
 
-  const todayLocalStr = getLocalDateString(new Date());
+  const todayLocalStr = getLocalDateString(liveNow);
 
   const getStatusBadge = (shift) => {
     const isVago = shift.status === 'vago' || !shift.professional_id;
@@ -319,7 +317,7 @@ export default function Escalas() {
     let endMin = endH * 60 + endM;
     if (endMin <= startMin) endMin += 24 * 60;
     
-    const now = new Date();
+    const now = liveNow;
     let nowTotalMin = now.getHours() * 60 + now.getMinutes();
     if (endMin > 24 * 60 && nowTotalMin < startMin) nowTotalMin += 24 * 60;
 
@@ -363,7 +361,7 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // CÁLCULO MODO TV 100% BLINDADO
+  // CÁLCULO MODO TV & PLANTÃO DO DIA (GARANTINDO TODOS OS PLANTÕES ATIVOS E DO DIA)
   const tvData = useMemo(() => {
     const nowHour = liveNow.getHours();
     const nowMin = liveNow.getMinutes();
@@ -378,13 +376,6 @@ export default function Escalas() {
       if (selectedSectorId !== 'todos' && String(shift.sector_id) !== String(selectedSectorId)) return;
 
       const sDate = (shift.date || '').split('T')[0];
-      if (sDate === todayLocalStr) {
-        tableDayShifts.push(shift);
-      }
-
-      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-      if (shift.status === 'vago' || !prof) return;
-
       const [startH, startM] = (shift.start_time || '07:00').split(':').map(Number);
       const [endH, endM] = (shift.end_time || '19:00').split(':').map(Number);
       const startMin = startH * 60 + startM;
@@ -394,36 +385,156 @@ export default function Escalas() {
       let effNow = nowTotalMin;
       if (endMin > 24 * 60 && nowTotalMin < startMin) effNow += 24 * 60;
 
+      // PLANTÕES DE HOJE (P/ TABELA PLANTÃO DO DIA)
       if (sDate === todayLocalStr) {
-        if (effNow >= startMin && effNow < endMin) {
-          const left = endMin - effNow;
+        tableDayShifts.push(shift);
+      } else if (endMin > 24 * 60) {
+        const yesterdayStr = getLocalDateString(new Date(liveNow.getTime() - 86400000));
+        if (sDate === yesterdayStr && nowTotalMin < (endMin - 24 * 60)) {
+          tableDayShifts.push(shift);
+        }
+      }
+
+      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+      if (shift.status === 'vago' || !prof) return;
+
+      // ATIVOS AGORA
+      if (sDate === todayLocalStr && effNow >= startMin && effNow < endMin) {
+        const left = endMin - effNow;
+        emAndamento.push({
+          ...shift,
+          detail: `Resta ${Math.floor(left / 60)}h ${left % 60}m`
+        });
+      } else if (endMin > 24 * 60) {
+        const yesterdayStr = getLocalDateString(new Date(liveNow.getTime() - 86400000));
+        if (sDate === yesterdayStr && nowTotalMin < (endMin - 24 * 60)) {
+          const left = (endMin - 24 * 60) - nowTotalMin;
           emAndamento.push({
             ...shift,
             detail: `Resta ${Math.floor(left / 60)}h ${left % 60}m`
           });
-        } else if (startMin > effNow && (startMin - effNow) <= 120) {
-          proximoRendimento.push({
-            shift,
-            startsIn: startMin - effNow
-          });
         }
-      } else {
-        if (endMin > 24 * 60) {
-          const yesterdayStr = getLocalDateString(new Date(liveNow.getTime() - 86400000));
-          if (sDate === yesterdayStr && nowTotalMin < (endMin - 24 * 60)) {
-            const left = (endMin - 24 * 60) - nowTotalMin;
-            emAndamento.push({
-              ...shift,
-              detail: `Resta ${Math.floor(left / 60)}h ${left % 60}m`
-            });
-          }
-        }
+      }
+
+      // PRÓXIMA RENDIÇÃO
+      if (sDate === todayLocalStr && startMin > effNow && (startMin - effNow) <= 120) {
+        proximoRendimento.push({
+          shift,
+          startsIn: startMin - effNow
+        });
       }
     });
 
     tableDayShifts.sort((a, b) => (a.start_time || '07:00').localeCompare(b.start_time || '07:00'));
     return { emAndamento, proximoRendimento, tableDayShifts };
   }, [shifts, selectedSectorId, liveNow, todayLocalStr, professionalMap]);
+
+  // IMPRESSÃO A4 PAISAGEM LIMPA EM JANELA PURA
+  const handlePrintA4Landscape = () => {
+    const printWindow = window.open('', '_blank', 'width=1100,height=800');
+    if (!printWindow) {
+      alert('Permita pop-ups para abrir a impressão.');
+      return;
+    }
+
+    const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
+    const logoLetter = hospitalName[0] || 'H';
+    const dataVigencia = liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const dataEmissao = liveNow.toLocaleDateString('pt-BR') + ' às ' + liveNow.toLocaleTimeString('pt-BR');
+
+    const tableRowsHtml = tvData.tableDayShifts.length === 0
+      ? `<tr><td colspan="6" style="padding: 20px; text-align: center; color: #666;">Nenhum plantão registrado para a data de hoje.</td></tr>`
+      : tvData.tableDayShifts.map((shift, idx) => {
+          const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+          const sector = sectorMap[String(shift.sector_id)];
+          const isVago = shift.status === 'vago' || !prof;
+          const realSpecialty = extractSpecialty(shift, prof);
+          const bg = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
+          const profNome = isVago ? '<strong style="color: #b91c1c;">⚠️ VAGA EM ABERTO</strong>' : `Dr(a). ${prof?.name}`;
+          const conselho = prof?.document || '—';
+
+          return `
+            <tr style="background-color: ${bg};">
+              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold; text-transform: uppercase;">${sector?.name || 'Setor'}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; font-weight: bold; text-align: center;">${shift.start_time} - ${shift.end_time}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold;">${profNome}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px;">${realSpecialty}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; text-align: center;">${conselho}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; text-align: center; color: #aaa; font-family: monospace;">____________________</td>
+            </tr>
+          `;
+        }).join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8">
+        <title>Escala Oficial - ${hospitalName}</title>
+        <style>
+          @page { size: A4 landscape; margin: 8mm; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; background: #fff !important; color: #000 !important; padding: 15px; font-size: 11px; }
+          .header-box { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 15px; }
+          .logo-badge { width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px; }
+          .header-info h1 { font-size: 19px; font-weight: 900; text-transform: uppercase; }
+          table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 30px; }
+          th { background-color: #e5e7eb; border: 1px solid #000; padding: 8px 10px; text-align: left; font-size: 9.5px; font-weight: 900; text-transform: uppercase; }
+          .signatures-area { display: flex; justify-content: space-around; margin-top: 35px; }
+          .sig-box { text-align: center; width: 320px; }
+          .sig-line { border-bottom: 1px solid #000; margin-bottom: 6px; }
+        </style>
+      </head>
+      <body>
+        <div class="header-box">
+          <div style="display: flex; align-items: center;">
+            <div class="logo-badge">${logoLetter}</div>
+            <div class="header-info">
+              <h1>${hospitalName}</h1>
+              <p>ESCALA OFICIAL DE PLANTÃO • MURAL HOSPITALAR</p>
+              <div>Vigência: <b>${dataVigencia}</b></div>
+            </div>
+          </div>
+          <div style="text-align: right; font-size: 9.5px;">
+            <div style="border: 1px solid #000; padding: 3px 8px; font-weight: 900; display: inline-block;">DOCUMENTO OFICIAL AUDITÁVEL</div>
+            <div style="margin-top: 4px;">Emissão: ${dataEmissao}</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 20%;">Seção / Setor</th>
+              <th style="width: 14%; text-align: center;">Horário</th>
+              <th style="width: 28%;">Profissional Escalado</th>
+              <th style="width: 18%;">Especialidade / Atuação</th>
+              <th style="width: 12%; text-align: center;">Conselho</th>
+              <th style="width: 18%; text-align: center;">Rubrica / Presença</th>
+            </tr>
+          </thead>
+          <tbody>${tableRowsHtml}</tbody>
+        </table>
+
+        <div class="signatures-area">
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div style="font-weight: 900; text-transform: uppercase;">Diretoria Clínica / RT Médica</div>
+          </div>
+          <div class="sig-box">
+            <div class="sig-line"></div>
+            <div style="font-weight: 900; text-transform: uppercase;">Gerência de Enfermagem / RT Assistencial</div>
+          </div>
+        </div>
+
+        <script>window.onload = function() { window.print(); };</script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
 
   const allActiveProfessionals = useMemo(() => {
     return (professionals || []).filter(p => p?.status === 'ativo');
@@ -530,14 +641,148 @@ export default function Escalas() {
     try { await base44.entities.Shift.delete(shiftId); setModalOpen(false); await syncGlobalData(); } catch (err) { alert(err.message); }
   };
 
+  // =========================================================================
+  // 1. MODO TV CCO EM TELA CHEIA ISOLADA (100% DA TELA SEM MENU OU TOPO)
+  // =========================================================================
+  if (activeTab === 'tv') {
+    return (
+      <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col justify-between p-6 lg:p-8 select-none overflow-hidden font-sans">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4 shrink-0">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-2xl">
+              <Radio className="w-7 h-7 animate-pulse text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.25em] text-sky-400">
+                <span>{company?.name || 'Hospital Santa Clara'}</span>
+                <span>•</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /> CCO AO VIVO</span>
+              </div>
+              <h1 className="text-3xl lg:text-4xl font-black tracking-tight text-white mt-0.5">
+                Centro de Comando & Situação
+              </h1>
+              <p className="text-xs text-slate-400 font-bold">
+                {liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} · Escalas em Tempo Real
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-5">
+            <div className="bg-slate-900 border border-slate-800 px-6 py-2.5 rounded-2xl text-right">
+              <div className="text-3xl lg:text-4xl font-black font-mono tracking-tight text-cyan-400">
+                {liveNow.toLocaleTimeString('pt-BR')}
+              </div>
+              <div className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Horário Oficial CCO</div>
+            </div>
+
+            <button 
+              onClick={() => setActiveTab('mensal')} 
+              className="p-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors cursor-pointer"
+              title="Sair do Modo TV"
+            >
+              <Minimize2 className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+
+        {/* CORPO DO MODO TV */}
+        <div className="flex-1 my-6 grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-hidden">
+          {/* ATIVOS NO MOMENTO */}
+          <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
+            <div className="flex flex-col h-full overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
+                <span className="text-sm font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" /> Plantões em Andamento (No Posto Neste Momento)
+                </span>
+                <span className="text-xs font-mono font-bold text-slate-400">{tvData.emAndamento.length} ativo(s)</span>
+              </div>
+
+              <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+                {tvData.emAndamento.length === 0 ? (
+                  <div className="py-24 text-center text-xs text-slate-500">Nenhum profissional em atendimento neste exato momento.</div>
+                ) : (
+                  tvData.emAndamento.map(shift => {
+                    const prof = professionalMap[String(shift.professional_id)];
+                    const sector = sectorMap[String(shift.sector_id)];
+                    const realSpecialty = extractSpecialty(shift, prof);
+
+                    return (
+                      <div key={shift.id} className="p-4 bg-slate-950 border border-emerald-500/40 rounded-2xl shadow-lg flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-black text-emerald-400 uppercase">{sector?.name}</span>
+                          <div className="text-base font-black text-white">{formatFullName(prof?.name)}</div>
+                          <span className="text-xs text-slate-400">{realSpecialty} • {shift.start_time} às {shift.end_time}</span>
+                        </div>
+                        <span className="text-xs font-mono font-black text-emerald-300 bg-emerald-500/20 px-3 py-1.5 rounded-xl">
+                          {shift.detail}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* PRÓXIMAS RENDIÇÕES */}
+          <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
+            <div className="flex flex-col h-full overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
+                <span className="text-sm font-black uppercase text-sky-400 tracking-wider flex items-center gap-2">
+                  <ArrowRight className="w-4 h-4" /> Próxima Rendição (Próximas 2 Horas)
+                </span>
+                <span className="text-xs font-mono font-bold text-slate-400">{tvData.proximoRendimento.length} programado(s)</span>
+              </div>
+
+              <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+                {tvData.proximoRendimento.length === 0 ? (
+                  <div className="py-24 text-center text-xs text-slate-500">Nenhuma troca de turno programada para as próximas 2 horas.</div>
+                ) : (
+                  tvData.proximoRendimento.map(({ shift, startsIn }) => {
+                    const prof = professionalMap[String(shift.professional_id)];
+                    const sector = sectorMap[String(shift.sector_id)];
+
+                    return (
+                      <div key={shift.id} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-black text-slate-400 uppercase">{sector?.name}</span>
+                          <div className="text-base font-black text-white">{formatFullName(prof?.name)}</div>
+                          <span className="text-xs text-sky-400 font-mono">{shift.start_time} às {shift.end_time}</span>
+                        </div>
+                        <span className="text-xs font-black uppercase bg-sky-500/20 text-sky-300 px-3 py-1.5 rounded-xl font-mono">
+                          Inicia em {startsIn}m
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-800 pt-3 shrink-0 flex items-center justify-between text-xs text-slate-400 font-bold">
+          <div>ScaleMedic Enterprise CCO • Hospital Santa Clara</div>
+          <Button onClick={() => setActiveTab('mensal')} variant="outline" className="h-8 text-xs border-slate-700 text-slate-300">
+            Fechar Modo TV
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // 2. TELA NORMAL DE ESCALAS & PLANTÕES
+  // =========================================================================
   return (
-    <div className={`relative p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200 ${activeTab === 'tv' ? 'fixed inset-0 z-50 bg-slate-950 text-white overflow-y-auto p-6 md:p-8' : ''}`}>
+    <div className="relative p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
-      {/* BOTÃO LATERAL FIXADO NA BORDA EXATA ONDE VOCÊ APONTOU A SETA */}
+      {/* BOTÃO LATERAL FIXADO EXATAMENTE NO QUADRADO VERMELHO DO SEU PRINT 3 (NA ALTURA DE RELATÓRIOS) */}
       <button
         onClick={toggleMainSidebar}
         title={sidebarHidden ? "Expandir Menu Lateral Principal" : "Recolher Menu Lateral"}
-        className="fixed left-0 top-[280px] z-[50] bg-slate-900 border border-slate-700 text-sky-400 hover:text-white hover:bg-sky-600 shadow-2xl px-1.5 py-3 rounded-r-xl transition-all duration-200 flex items-center justify-center cursor-pointer"
+        style={{ top: '480px' }}
+        className="fixed left-0 z-[50] bg-slate-900 border border-slate-700 text-sky-400 hover:text-white hover:bg-sky-600 shadow-2xl px-1.5 py-3 rounded-r-xl transition-all duration-200 flex items-center justify-center cursor-pointer"
       >
         {sidebarHidden ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
@@ -623,8 +868,8 @@ export default function Escalas() {
             <button onClick={() => setActiveTab('dia')} className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 ${activeTab === 'dia' ? 'bg-white dark:bg-sky-600 shadow-sm text-sky-600 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}><Clock className="w-3.5 h-3.5" /> Plantão do Dia</button>
           </div>
 
-          <Button variant="outline" onClick={() => setActiveTab(activeTab === 'tv' ? 'mensal' : 'tv')} className={`h-9 px-4 text-xs font-black rounded-2xl gap-2 ${activeTab === 'tv' ? 'bg-rose-600 text-white border-rose-500' : 'bg-slate-50 dark:bg-slate-950 text-amber-600 border-slate-200 hover:bg-slate-100'}`}>
-            <MonitorPlay className="w-4 h-4" /> <span>{activeTab === 'tv' ? 'Sair da TV' : 'Modo TV CCO'}</span>
+          <Button variant="outline" onClick={() => setActiveTab('tv')} className="h-9 px-4 text-xs font-black rounded-2xl gap-2 bg-slate-50 dark:bg-slate-950 text-amber-600 border-slate-200 hover:bg-slate-100">
+            <MonitorPlay className="w-4 h-4" /> <span>Modo TV CCO</span>
           </Button>
 
           {isManager && (
@@ -759,63 +1004,68 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* MODO TV COM SINCRONIZAÇÃO AO VIVO */}
-      {activeTab === 'tv' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <div className="flex items-center gap-3"><span className="w-3 h-3 rounded-full bg-rose-500 animate-ping"></span><h2 className="text-xl font-black text-white uppercase tracking-wider">Centro de Comando CCO • Ao Vivo</h2></div>
-            <div className="font-mono text-cyan-400 font-black text-lg">{liveNow.toLocaleTimeString('pt-BR')}</div>
-          </div>
-          
-          <div className="space-y-2">
-            <h3 className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span> Plantões em Andamento (No Posto Neste Momento)
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {tvData.emAndamento.length === 0 ? <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 text-xs">Nenhum profissional em atendimento neste minuto.</div> : tvData.emAndamento.map(shift => {
-                const prof = professionalMap[String(shift.professional_id)];
-                const sector = sectorMap[String(shift.sector_id)];
-                const realSpecialty = extractSpecialty(shift, prof);
-                return (
-                  <div key={shift.id} className="p-4 bg-slate-900 border-2 border-emerald-500/40 rounded-2xl shadow-lg space-y-2">
-                    <div className="flex justify-between items-center text-xs font-black text-emerald-400"><span>{sector?.name}</span><span className="font-mono text-[11px]">{shift.start_time} - {shift.end_time}</span></div>
-                    <div className="text-sm font-black text-white truncate">{formatFullName(prof?.name)}</div>
-                    <div className="text-[11px] text-slate-400">{realSpecialty} • <span className="text-emerald-400 font-mono">{shift.detail}</span></div>
-                  </div>
-                );
-              })}
+      {/* PLANTÃO DO DIA (RESTAURADO E FUNCIONAL) */}
+      {activeTab === 'dia' && (
+        <div className="space-y-5">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div>
+                <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400 tracking-wider block">Escala Oficial Diária</span>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
+                  Plantões de Hoje ({liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })})
+                </h3>
+              </div>
+              <Button onClick={handlePrintA4Landscape} className="h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 text-xs font-black px-5 rounded-2xl gap-2 shadow-md">
+                <Printer className="w-4 h-4" /> Imprimir Plantão do Dia (A4 Paisagem)
+              </Button>
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <h3 className="text-xs font-black uppercase text-sky-400 tracking-wider flex items-center gap-2">
-              <ArrowRight className="w-3.5 h-3.5" /> Próxima Rendição (Nas próximas 2 horas)
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {tvData.proximoRendimento.length === 0 ? <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 text-xs">Nenhuma troca de turno programada para as próximas 2 horas.</div> : tvData.proximoRendimento.map(({ shift, startsIn }) => {
-                const prof = professionalMap[String(shift.professional_id)];
-                const sector = sectorMap[String(shift.sector_id)];
-                return (
-                  <div key={shift.id} className="p-3 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-slate-400">{sector?.name}</span>
-                      <div className="font-black text-xs text-white">{formatFullName(prof?.name)}</div>
-                      <span className="text-[10px] text-sky-400 font-mono">{shift.start_time} às {shift.end_time}</span>
-                    </div>
-                    <span className="text-[10px] font-black uppercase bg-sky-500/20 text-sky-300 px-2 py-1 rounded-lg">
-                      {`Inicia em ${startsIn}m`}
-                    </span>
-                  </div>
-                );
-              })}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 uppercase text-[10px] font-black border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    <th className="py-3 px-4">Seção / Setor</th>
+                    <th className="py-3 px-4">Horário</th>
+                    <th className="py-3 px-4">Profissional Escalado</th>
+                    <th className="py-3 px-4">Especialidade / Atuação</th>
+                    <th className="py-3 px-4 text-center">Status Atual</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                  {tvData.tableDayShifts.length === 0 ? (
+                    <tr><td colSpan="5" className="py-8 text-center text-slate-400">Nenhum plantão registrado tocando o dia de hoje.</td></tr>
+                  ) : (
+                    tvData.tableDayShifts.map(shift => {
+                      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+                      const sector = sectorMap[String(shift.sector_id)];
+                      const status = getStatusBadge(shift);
+                      const realSpecialty = extractSpecialty(shift, prof);
+
+                      return (
+                        <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
+                          <td className="py-3 px-4 font-black text-slate-900 dark:text-white">{sector?.name || 'Setor'}</td>
+                          <td className="py-3 px-4 font-mono font-bold text-sky-600 dark:text-sky-400">{shift.start_time} às {shift.end_time}</td>
+                          <td className="py-3 px-4 font-black text-slate-900 dark:text-slate-100">
+                            {status.code === 'vaga' || status.code === 'perdida' ? <span className="text-rose-600 dark:text-rose-400">⚠️ {status.label}</span> : formatFullName(prof?.name)}
+                          </td>
+                          <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-semibold">{realSpecialty}</td>
+                          <td className="py-3 px-4 text-center">
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-wider ${status.wrapper} ${status.text} border-none`}>
+                              {status.icon} {status.label}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL DE EDIÇÃO COM ENCAIXE E BOTÕES SIMÉTRICOS                           */}
-      {/* ========================================================================= */}
+      {/* MODAL DE EDIÇÃO COM ENCAIXE E BOTÕES SIMÉTRICOS */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-xl w-full bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-6 rounded-3xl overflow-hidden">
           <DialogHeader className="flex flex-row items-center justify-between pb-2">
@@ -943,9 +1193,7 @@ export default function Escalas() {
         </DialogContent>
       </Dialog>
 
-      {/* ========================================================================= */}
-      {/* MODAL CONFIGURAR & GERAR ESCALA (RESTAURADO E ATIVO)                       */}
-      {/* ========================================================================= */}
+      {/* MODAL CONFIGURAR & GERAR ESCALA */}
       <Dialog open={generatorModalOpen} onOpenChange={setGeneratorModalOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white rounded-3xl p-6 shadow-2xl z-[9999]">
           <DialogHeader>
