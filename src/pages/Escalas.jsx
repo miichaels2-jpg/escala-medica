@@ -12,7 +12,7 @@ import {
   MousePointerClick, HeartPulse, UserPlus, SlidersHorizontal,
   Flame, ArrowRight, MonitorPlay, GripVertical, 
   Printer, Sun, Moon, AlertTriangle, CheckCircle2, Radio, Calendar as CalendarIcon,
-  PanelLeftClose, PanelLeftOpen, Filter, Columns, SidebarClose, SidebarOpen
+  PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -23,13 +23,6 @@ function getLocalDateString(d = new Date()) {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function getShiftDates(shift) {
-  const start = new Date(`${shift.date}T${shift.start_time || '07:00'}:00`);
-  const end = new Date(`${shift.date}T${shift.end_time || '19:00'}:00`);
-  if (end <= start) end.setDate(end.getDate() + 1); 
-  return { start, end };
 }
 
 async function autoHealingSaveShift(id, initialPayload) {
@@ -112,7 +105,7 @@ export default function Escalas() {
     });
   };
 
-  // RECOLHER / EXPANDIR A BARRA LATERAL PRINCIPAL DO SISTEMA
+  // BOTÃO LATERAL FIXADO NA BORDA ESQUERDA PARA RECOLHER O MENU
   const [sidebarHidden, setSidebarHidden] = useState(() => {
     try {
       return window.localStorage.getItem('scale_main_sidebar_hidden') === 'true';
@@ -126,11 +119,9 @@ export default function Escalas() {
     setSidebarHidden(next);
     try {
       window.localStorage.setItem('scale_main_sidebar_hidden', String(next));
-      // Procura o elemento da sidebar no layout principal caso utilize seletor padrão
-      const sidebarEl = document.querySelector('aside') || document.querySelector('[data-sidebar="true"]');
-      if (sidebarEl && !sidebarEl.classList.contains('roll-professionals')) {
-        if (next) sidebarEl.style.display = 'none';
-        else sidebarEl.style.display = '';
+      const sidebarEl = document.querySelector('aside:not(.roll-professionals)') || document.querySelector('nav') || document.querySelector('[data-sidebar="true"]');
+      if (sidebarEl) {
+        sidebarEl.style.display = next ? 'none' : '';
       }
     } catch {}
   };
@@ -299,7 +290,6 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
-  // CÁLCULO MODO TV
   const tvData = useMemo(() => {
     const nowHour = liveNow.getHours();
     const nowMin = liveNow.getMinutes();
@@ -467,24 +457,20 @@ export default function Escalas() {
   };
 
   return (
-    <div className={`p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200 ${activeTab === 'tv' ? 'fixed inset-0 z-50 bg-slate-950 text-white overflow-y-auto p-6 md:p-8' : ''}`}>
+    <div className={`relative p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200 ${activeTab === 'tv' ? 'fixed inset-0 z-50 bg-slate-950 text-white overflow-y-auto p-6 md:p-8' : ''}`}>
       
-      {/* SELETOR DE SEÇÕES COM PERSISTÊNCIA, BOTÃO RECOLHER MENU & CONFIGURADOR */}
+      {/* BOTÃO LATERAL FIXADO NA BORDA ESQUERDA (EXATAMENTE ONDE INDICOU A SETA) */}
+      <button
+        onClick={toggleMainSidebar}
+        title={sidebarHidden ? "Expandir Menu Lateral Principal" : "Recolher Menu Lateral"}
+        className="fixed left-0 top-1/2 -translate-y-1/2 z-[40] bg-slate-900 border border-slate-700 text-sky-400 hover:text-white hover:bg-sky-600 shadow-2xl px-1.5 py-3 rounded-r-xl transition-all duration-200 flex items-center justify-center group"
+      >
+        {sidebarHidden ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+      </button>
+
+      {/* SELETOR DE SEÇÕES COM PERSISTÊNCIA & CONFIGURADOR */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 print:hidden">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          
-          {/* BOTÃO PARA RECOLHER E EXPANDIR A BARRA LATERAL PRINCIPAL DO SISTEMA */}
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={toggleMainSidebar}
-            title={sidebarHidden ? "Expandir Menu Lateral Principal" : "Recolher Menu Lateral para Ganho de Tela"}
-            className="h-9 px-3 text-xs font-black rounded-2xl gap-1.5 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 hover:text-sky-600 shrink-0"
-          >
-            {sidebarHidden ? <SidebarOpen className="w-4 h-4 text-sky-600" /> : <SidebarClose className="w-4 h-4" />}
-            <span className="hidden sm:inline">{sidebarHidden ? 'Menu' : 'Ocultar Menu'}</span>
-          </Button>
-
           <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 shrink-0">
             <Building2 className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Setor:
           </div>
@@ -699,128 +685,13 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* PLANTÃO DO DIA (Aba Específica) */}
-      {activeTab === 'dia' && (
-        <div className="space-y-5">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-              <div>
-                <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400 tracking-wider block">Escala Oficial Diária</span>
-                <h3 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
-                  Plantões de Hoje ({liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })})
-                </h3>
-              </div>
-              <Button onClick={() => setPrintPreviewOpen(true)} className="h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 text-xs font-black px-5 rounded-2xl gap-2 shadow-md">
-                <Printer className="w-4 h-4" /> Imprimir Plantão do Dia (A4 Paisagem)
-              </Button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 uppercase text-[10px] font-black border-b border-slate-200 dark:border-slate-800">
-                  <tr>
-                    <th className="py-3 px-4">Seção / Setor</th>
-                    <th className="py-3 px-4">Horário</th>
-                    <th className="py-3 px-4">Profissional Escalado</th>
-                    <th className="py-3 px-4">Especialidade / Atuação</th>
-                    <th className="py-3 px-4 text-center">Status Atual</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                  {tvData.tableDayShifts.length === 0 ? (
-                    <tr><td colSpan="5" className="py-8 text-center text-slate-400">Nenhum plantão registrado tocando o dia de hoje.</td></tr>
-                  ) : (
-                    tvData.tableDayShifts.map(shift => {
-                      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-                      const sector = sectorMap[String(shift.sector_id)];
-                      const status = getStatusBadge(shift);
-                      const realSpecialty = extractSpecialty(shift, prof);
-
-                      return (
-                        <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
-                          <td className="py-3 px-4 font-black text-slate-900 dark:text-white">{sector?.name || 'Setor'}</td>
-                          <td className="py-3 px-4 font-mono font-bold text-sky-600 dark:text-sky-400">{shift.start_time} às {shift.end_time}</td>
-                          <td className="py-3 px-4 font-black text-slate-900 dark:text-slate-100">
-                            {status.code === 'vaga' || status.code === 'perdida' ? <span className="text-rose-600 dark:text-rose-400">⚠️ {status.label}</span> : formatFullName(prof?.name)}
-                          </td>
-                          <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-semibold">{realSpecialty}</td>
-                          <td className="py-3 px-4 text-center">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-wider ${status.wrapper} ${status.text} border-none`}>
-                              {status.icon} {status.label}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODO TV COM SINCRONIZAÇÃO EM TEMPO REAL */}
-      {activeTab === 'tv' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <div className="flex items-center gap-3"><span className="w-3 h-3 rounded-full bg-rose-500 animate-ping"></span><h2 className="text-xl font-black text-white uppercase tracking-wider">Centro de Comando CCO • Ao Vivo</h2></div>
-            <div className="font-mono text-cyan-400 font-black text-lg">{liveNow.toLocaleTimeString('pt-BR')}</div>
-          </div>
-          
-          <div className="space-y-2">
-            <h3 className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span> Plantões em Andamento (No Posto Neste Momento)
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {tvData.emAndamento.length === 0 ? <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 text-xs">Nenhum profissional em atendimento neste minuto.</div> : tvData.emAndamento.map(shift => {
-                const prof = professionalMap[String(shift.professional_id)];
-                const sector = sectorMap[String(shift.sector_id)];
-                const realSpecialty = extractSpecialty(shift, prof);
-                return (
-                  <div key={shift.id} className="p-4 bg-slate-900 border-2 border-emerald-500/40 rounded-2xl shadow-lg space-y-2">
-                    <div className="flex justify-between items-center text-xs font-black text-emerald-400"><span>{sector?.name}</span><span className="font-mono text-[11px]">{shift.start_time} - {shift.end_time}</span></div>
-                    <div className="text-sm font-black text-white truncate">{formatFullName(prof?.name)}</div>
-                    <div className="text-[11px] text-slate-400">{realSpecialty} • <span className="text-emerald-400 font-mono">{shift.detail}</span></div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <h3 className="text-xs font-black uppercase text-sky-400 tracking-wider flex items-center gap-2">
-              <ArrowRight className="w-3.5 h-3.5" /> Próxima Rendição (Nas próximas 2 horas)
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {tvData.proximoRendimento.length === 0 ? <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 text-xs">Nenhuma troca de turno programada para as próximas 2 horas.</div> : tvData.proximoRendimento.map(({ shift, startsIn }) => {
-                const prof = professionalMap[String(shift.professional_id)];
-                const sector = sectorMap[String(shift.sector_id)];
-                return (
-                  <div key={shift.id} className="p-3 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-slate-400">{sector?.name}</span>
-                      <div className="font-black text-xs text-white">{formatFullName(prof?.name)}</div>
-                      <span className="text-[10px] text-sky-400 font-mono">{shift.start_time} às {shift.end_time}</span>
-                    </div>
-                    <span className="text-[10px] font-black uppercase bg-sky-500/20 text-sky-300 px-2 py-1 rounded-lg">
-                      {`Inicia em ${startsIn}m`}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ========================================================================= */}
-      {/* MODAL DE EDIÇÃO DE PLANTÃO COM CAMPO DE PROFISSIONAL CORRIGIDO            */}
+      {/* MODAL DE EDIÇÃO COM LAYOUT DE ENCAIXE EXATO (IDÊNTICO AO PRINT 3)         */}
       {/* ========================================================================= */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-md w-full max-w-[95vw] bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-6 rounded-3xl overflow-hidden">
-          <DialogHeader>
-            <DialogTitle className="text-base font-black flex items-center gap-2 text-sky-400">
+          <DialogHeader className="flex flex-row items-center justify-between pb-2">
+            <DialogTitle className="text-base font-black text-sky-400">
               {editingShiftId ? 'Editar Plantão da Escala' : 'Lançar Novo Plantão'}
             </DialogTitle>
           </DialogHeader>
@@ -861,7 +732,7 @@ export default function Escalas() {
               </div>
             </div>
 
-            {/* CONTAINER DESTINO DO PLANTÃO BLINDADO CONTRA QUEBRA */}
+            {/* CONTAINER DESTINO DO PLANTÃO (ESTILIZADO IGUAL AO PRINT 3) */}
             <div className="p-3.5 bg-slate-900/80 rounded-2xl border border-slate-800 space-y-3">
               <Label className="text-xs font-black uppercase text-slate-400">Destino do Plantão</Label>
               <div className="grid grid-cols-2 gap-2">
@@ -882,11 +753,9 @@ export default function Escalas() {
               </div>
               
               {formData.action_type === 'alocar' ? (
-                <div className="space-y-1 pt-1 min-w-0">
+                <div className="space-y-1 pt-1">
                   <Label className="text-xs font-bold text-slate-300">Profissional Disponível *</Label>
-                  
-                  {/* SELECT NATIVO BLINDADO E TRUNCADO: NUNCA ESTOURA A TELA */}
-                  <div className="relative">
+                  <div className="relative w-full">
                     <select
                       value={formData.professional_id || ''}
                       onChange={(e) => {
@@ -919,15 +788,29 @@ export default function Escalas() {
               )}
             </div>
             
-            <DialogFooter className="pt-2 gap-2 border-t border-slate-800 mt-2">
-              {editingShiftId && (
-                <div className="flex items-center gap-2 mr-auto">
-                  {formData.action_type === 'alocar' && <Button type="button" variant="outline" onClick={handleSendToMuralFromModal} className="h-10 text-xs font-bold border-amber-500/60 text-amber-400 hover:bg-amber-950/30 rounded-xl">Mandar p/ Mural</Button>}
-                  <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-10 text-xs font-bold text-rose-400 hover:bg-rose-950/30 rounded-xl"><Trash2 className="w-4 h-4 mr-1" /> Excluir</Button>
-                </div>
-              )}
-              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="h-10 text-xs font-bold border-slate-700 text-slate-300 rounded-xl">Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-8 rounded-xl shadow-md">Confirmar Plantão</Button>
+            {/* RODAPÉ SIMÉTRICO E ALINHADO: MESMO ENCAIXE DO PRINT 3 */}
+            <DialogFooter className="pt-2 flex flex-row items-center justify-between border-t border-slate-800 mt-2 gap-2">
+              <div className="flex items-center gap-2">
+                {editingShiftId && (
+                  <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-10 text-xs font-bold text-rose-400 hover:bg-rose-950/30 rounded-xl px-3">
+                    <Trash2 className="w-4 h-4 mr-1" /> Excluir
+                  </Button>
+                )}
+                {editingShiftId && formData.action_type === 'alocar' && (
+                  <Button type="button" variant="outline" onClick={handleSendToMuralFromModal} className="h-10 text-xs font-bold border-slate-700 text-slate-300 hover:bg-slate-800 rounded-xl px-3" title="Liberar vaga no Mural">
+                    <ArrowLeftRight className="w-3.5 h-3.5 mr-1 text-amber-400" /> Mural
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="h-10 text-xs font-bold border-slate-700 text-slate-300 rounded-xl px-4">
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={submitting} className="h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-xl shadow-md">
+                  Confirmar Plantão
+                </Button>
+              </div>
             </DialogFooter>
           </form>
         </DialogContent>
