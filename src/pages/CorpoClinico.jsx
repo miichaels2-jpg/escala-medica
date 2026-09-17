@@ -11,7 +11,7 @@ import {
   Users, UserPlus, Search, CheckCircle2, 
   Clock, DollarSign, Edit3, KeyRound, Send, RefreshCw, Ban, 
   UserCheck, MessageSquare, Shield, UserCog, BadgeCheck, Eye, EyeOff,
-  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle, Building2, Check
+  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle, Building2, Check, ToggleLeft, ToggleRight
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -90,7 +90,7 @@ export default function CorpoClinico() {
     monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
     pix_key: '', bank_info: '', password: '',
     document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
-    authorized_sectors: [] // Matriz de Permissão por Setor
+    authorized_sectors: []
   });
 
   const resetForm = () => {
@@ -105,7 +105,7 @@ export default function CorpoClinico() {
       monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
       pix_key: '', bank_info: '', password: '',
       document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
-      authorized_sectors: (sectors || []).map(s => String(s.id)) // padrão: todos liberados
+      authorized_sectors: (sectors || []).map(s => String(s.id))
     });
     setEditingProf(null);
     setShowPassword(false);
@@ -119,6 +119,7 @@ export default function CorpoClinico() {
     const generatedMatricula = meta.registration_id || prof.registration_id || `MAT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const expiry = prof.document_expiry || meta.document_expiry || new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0];
     const authSectors = meta.authorized_sectors || (sectors || []).map(s => String(s.id));
+    const profStatus = prof.status || meta.status || 'ativo';
 
     setFormData({
       name: prof.name || prof.full_name || '',
@@ -133,7 +134,7 @@ export default function CorpoClinico() {
       email: prof.email || '',
       phone: prof.phone || '',
       unit_id: prof.unit_id || selectedUnitId,
-      status: prof.status || meta.status || 'ativo',
+      status: profStatus,
       app_role: meta.app_role || prof.app_role || 'assistencial',
       remuneration_type: prof.remuneration_type || meta.remuneration_type || 'hora',
       hourly_rate: safeNumber(prof.hourly_rate ?? meta.hourly_rate, 120),
@@ -149,6 +150,24 @@ export default function CorpoClinico() {
       authorized_sectors: authSectors
     });
     setModalOpen(true);
+  };
+
+  const handleToggleStatusQuick = async (prof) => {
+    const meta = getProfMeta(prof);
+    const currentStatus = prof.status || meta.status || 'ativo';
+    const nextStatus = currentStatus === 'ativo' ? 'inativo' : 'ativo';
+
+    try {
+      const payload = { status: nextStatus };
+      await autoHealingSave(prof.id, payload);
+      
+      const updatedMeta = { ...meta, status: nextStatus };
+      try { window.localStorage.setItem(`prof_meta_${prof.id}`, JSON.stringify(updatedMeta)); } catch {}
+
+      await syncGlobalData();
+    } catch (err) {
+      alert('Erro ao alterar status: ' + err.message);
+    }
   };
 
   const handleToggleSectorAuth = (secId) => {
@@ -340,18 +359,34 @@ export default function CorpoClinico() {
                     <h3 className="font-black text-sm text-slate-900 dark:text-white mt-1.5">{prof.name}</h3>
                     <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400">ID: {meta.registration_id || prof.registration_id || 'MAT-XXXX'}</span>
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
-                    profStatus === 'ativo' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : 'bg-slate-200 text-slate-600'
-                  }`}>
-                    {profStatus}
-                  </span>
+
+                  {/* BOTÃO DE ALTERNÂNCIA RÁPIDA ATIVO / INATIVO */}
+                  {isManager ? (
+                    <button 
+                      onClick={() => handleToggleStatusQuick(prof)}
+                      title="Clique para alternar entre Ativo e Inativo"
+                      className={`text-[10px] px-2.5 py-1 rounded-full font-black uppercase border cursor-pointer transition-all flex items-center gap-1 ${
+                        profStatus === 'ativo' 
+                          ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20' 
+                          : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300'
+                      }`}
+                    >
+                      {profStatus === 'ativo' ? <ToggleRight className="w-3.5 h-3.5 text-emerald-600" /> : <ToggleLeft className="w-3.5 h-3.5 text-slate-500" />}
+                      {profStatus}
+                    </button>
+                  ) : (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
+                      profStatus === 'ativo' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {profStatus}
+                    </span>
+                  )}
                 </div>
                 
                 <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
                   <div className="flex justify-between"><span>Conselho:</span><strong>{prof.document || '—'}</strong></div>
                   <div className="flex justify-between"><span>Especialidade:</span><strong className="text-slate-900 dark:text-white truncate max-w-[140px]">{prof.specialty || meta.specialty || 'Geral'}</strong></div>
                   
-                  {/* HABILITAÇÃO POR SETOR */}
                   <div className="flex justify-between items-center">
                     <span>Habilitação Setores:</span>
                     <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
@@ -398,7 +433,7 @@ export default function CorpoClinico() {
         })}
       </div>
 
-      {/* MODAL DE CADASTRO/EDIÇÃO COMPLETO COM MATRIZ DE SETORES */}
+      {/* MODAL DE CADASTRO/EDIÇÃO COMPLETO */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
           <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2 text-slate-900 dark:text-white"><UserCog className="w-5 h-5 text-sky-600" /> {editingProf ? 'Editar Perfil Profissional & Acesso' : 'Cadastrar Novo Profissional'}</DialogTitle></DialogHeader>
