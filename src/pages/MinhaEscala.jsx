@@ -22,7 +22,9 @@ import {
   Flame,
   ArrowRight,
   Layers,
-  CalendarCheck
+  CalendarCheck,
+  Zap,
+  MapPin
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -76,7 +78,7 @@ export default function MinhaEscala() {
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
   const todayStr = useMemo(() => getLocalDateString(now), [now]);
 
-  // Identificação cadastral do profissional logado
+  // Identificação do profissional logado
   const currentProfessional = useMemo(() => {
     return (professionals || []).find(p => 
       String(p.id) === String(myProfId) || 
@@ -117,7 +119,7 @@ export default function MinhaEscala() {
     if (!appLoading) loadMyShifts();
   }, [appLoading, loadMyShifts]);
 
-  // Cálculo rigorosamente blindado da remuneração (sem nenhuma variável solta)
+  // Remuneração configurada
   const remunConfig = useMemo(() => {
     let meta = {};
     if (currentProfessional?.id) {
@@ -150,7 +152,7 @@ export default function MinhaEscala() {
       valorPorHora = valorPorPlantao / 12;
     } else {
       valorPorHora = hourlyRate > 0 ? hourlyRate : (baseSalario / 220);
-      valorPorPlantao = valorPorHora * 12;
+      valorPorHora = valorPorHora * 12;
     }
 
     return { 
@@ -183,6 +185,12 @@ export default function MinhaEscala() {
 
       let state = 'programado'; // 'ativo' | 'concluido' | 'programado'
       let timeLeftDesc = '';
+      let countdownDiffMinutes = 0;
+
+      // Cria timestamp do início
+      const startDateTime = new Date(`${sDate}T${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}:00`);
+      const diffMs = startDateTime.getTime() - now.getTime();
+      countdownDiffMinutes = Math.round(diffMs / 60000);
 
       if (isPastDay) {
         state = 'concluido';
@@ -200,6 +208,9 @@ export default function MinhaEscala() {
         }
       } else {
         state = 'programado';
+        const days = Math.floor(countdownDiffMinutes / 1440);
+        const hours = Math.floor((countdownDiffMinutes % 1440) / 60);
+        timeLeftDesc = days > 0 ? `Inicia em ${days}d e ${hours}h` : `Inicia em ${hours}h`;
       }
 
       let duration = (endH - startH) + (endM - startM) / 60;
@@ -212,19 +223,36 @@ export default function MinhaEscala() {
         sectorName,
         state,
         duration: Math.round(duration * 10) / 10,
-        timeLeftDesc
+        timeLeftDesc,
+        countdownDiffMinutes,
+        startDateTime
       };
     });
   }, [shifts, now, todayStr, sectorMap]);
 
-  // Plantão Ativo Agora
+  // 1. Plantão Ativo Agora (se estiver dentro da jornada)
   const activeShiftNow = useMemo(() => {
     return enrichedShifts.find(s => s.state === 'ativo') || null;
   }, [enrichedShifts]);
 
-  // Plantões da Competência Selecionada
-  const monthShifts = useMemo(() => {
-    return enrichedShifts.filter(s => (s.date || '').startsWith(monthPrefix));
+  // 2. PRÓXIMO PLANTÃO IMEDIATO DESTACADO (O mais próximo a acontecer no futuro)
+  const nextHighlightedShift = useMemo(() => {
+    const upcoming = enrichedShifts.filter(s => s.state === 'programado');
+    if (upcoming.length === 0) return null;
+    return upcoming.sort((a, b) => a.startDateTime.getTime() - b.startDateTime.getTime())[0];
+  }, [enrichedShifts]);
+
+  // 3. MINHA GRADE EM ORDEM CRESCENTE (Cronológica: 1º ao último dia do mês)
+  const monthShiftsSortedAsc = useMemo(() => {
+    return enrichedShifts
+      .filter(s => (s.date || '').startsWith(monthPrefix))
+      .sort((a, b) => {
+        // Ordena por data crescente
+        const cmpDate = (a.date || '').localeCompare(b.date || '');
+        if (cmpDate !== 0) return cmpDate;
+        // Se for na mesma data, ordena pelo horário de início crescente
+        return (a.start_time || '').localeCompare(b.start_time || '');
+      });
   }, [enrichedShifts, monthPrefix]);
 
   // Métricas do Mês
@@ -233,7 +261,7 @@ export default function MinhaEscala() {
     let futuros = 0;
     let horas = 0;
 
-    monthShifts.forEach(s => {
+    monthShiftsSortedAsc.forEach(s => {
       if (s.state === 'concluido' || s.state === 'ativo') {
         cumpridos += 1;
         horas += s.duration;
@@ -251,11 +279,11 @@ export default function MinhaEscala() {
       horas: Math.round(horas * 10) / 10,
       valorBruto,
       extrasQtd,
-      totalMes: monthShifts.length
+      totalMes: monthShiftsSortedAsc.length
     };
-  }, [monthShifts, remunConfig]);
+  }, [monthShiftsSortedAsc, remunConfig]);
 
-  // Lançar no Mural de Oportunidades (Passar Plantão)
+  // Passar Plantão para o Mural
   const handlePassShiftToMural = async (shift) => {
     if (!confirm(`Deseja disponibilizar seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) no Mural de Oportunidades?`)) return;
 
@@ -287,7 +315,7 @@ export default function MinhaEscala() {
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = now.toLocaleDateString('pt-BR') + ' às ' + now.toLocaleTimeString('pt-BR');
 
-    const rowsHtml = monthShifts.map((s, idx) => `
+    const rowsHtml = monthShiftsSortedAsc.map((s, idx) => `
       <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
         <td style="border: 1px solid #000; padding: 6px 8px; font-weight: bold;">${formatDateBR(s.date)}</td>
         <td style="border: 1px solid #000; padding: 6px 8px; text-transform: uppercase;">${s.sectorName}</td>
@@ -366,7 +394,7 @@ export default function MinhaEscala() {
   return (
     <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
       
-      {/* 1. HERO BANNER COM IDENTIFICAÇÃO E ATALHOS */}
+      {/* 1. HERO BANNER PRINCIPAL */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 md:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.25em] text-sky-400">
@@ -383,55 +411,103 @@ export default function MinhaEscala() {
         <div className="flex flex-wrap items-center gap-3">
           <Button 
             onClick={handlePrintMyStatement} 
-            className="h-11 bg-white hover:bg-slate-100 text-slate-900 font-black text-xs px-5 rounded-2xl shadow-lg gap-2 cursor-pointer"
+            className="h-11 bg-white hover:bg-slate-100 text-slate-900 font-black text-xs px-5 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105"
           >
             <Printer className="w-4 h-4 text-sky-600" /> Imprimir Espelho
           </Button>
 
           <Button 
             onClick={() => navigate('/mural')} 
-            className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-5 rounded-2xl shadow-lg gap-2 cursor-pointer"
+            className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-5 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105"
           >
             <Flame className="w-4 h-4" /> Mural de Oportunidades
           </Button>
         </div>
       </div>
 
-      {/* 2. CARD DE PLANTÃO AO VIVO (SE ESTIVER EM JORNADA AGORA) */}
+      {/* 2. CARD DE PLANTÃO AO VIVO (SE ESTIVER EM JORNADA NESTE MOMENTO) */}
       {activeShiftNow && (
-        <div className="p-5 rounded-3xl bg-emerald-500/10 border-2 border-emerald-500/50 shadow-lg text-emerald-950 dark:text-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
-          <div className="flex items-center gap-3.5">
-            <div className="p-3 rounded-2xl bg-emerald-600 text-white font-bold shadow-md animate-pulse shrink-0">
-              <Radio className="w-6 h-6" />
+        <div className="p-6 rounded-3xl bg-emerald-500/10 border-2 border-emerald-500/60 shadow-xl text-emerald-950 dark:text-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+          <div className="flex items-center gap-4">
+            <div className="p-3.5 rounded-2xl bg-emerald-600 text-white font-bold shadow-md animate-pulse shrink-0">
+              <Radio className="w-7 h-7" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-600 text-white">
+                <span className="text-xs font-black uppercase px-3 py-1 rounded-full bg-emerald-600 text-white tracking-wider">
                   ● Plantão em Andamento
                 </span>
                 <span className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">
                   {activeShiftNow.timeLeftDesc}
                 </span>
               </div>
-              <h3 className="text-lg font-black text-slate-900 dark:text-white mt-1">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white mt-1.5">
                 {activeShiftNow.sectorName} • {activeShiftNow.start_time} às {activeShiftNow.end_time}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
                 Jornada de {activeShiftNow.duration}h computada no fechamento deste mês.
               </p>
             </div>
           </div>
 
-          <div className="text-right shrink-0">
+          <div className="text-right shrink-0 bg-white/60 dark:bg-slate-900/60 p-4 rounded-2xl border border-emerald-500/30">
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Diária Apurada</span>
-            <div className="text-xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+            <div className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
               {formatCurrency(remunConfig.valorPorPlantao)}
             </div>
           </div>
         </div>
       )}
 
-      {/* 3. BARÔMETRO DE PRODUÇÃO & METAS DO MÊS */}
+      {/* 3. NOVO CAMPO: DESTAQUE DO PRÓXIMO PLANTÃO AGENDADO (MAIOR E VISÍVEL) */}
+      {nextHighlightedShift && (
+        <div className="rounded-3xl border border-sky-300 dark:border-sky-800 bg-gradient-to-r from-sky-50 via-white to-sky-50/50 dark:from-slate-900 dark:via-sky-950/30 dark:to-slate-900 p-6 shadow-md flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="flex items-start sm:items-center gap-4">
+            <div className="p-4 rounded-2xl bg-sky-600 text-white font-black shadow-lg shadow-sky-600/30 shrink-0">
+              <Zap className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" /> Próximo Plantão Agendado
+                </span>
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 font-mono">
+                  {nextHighlightedShift.timeLeftDesc}
+                </span>
+              </div>
+
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white">
+                {nextHighlightedShift.sectorName}
+              </h2>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300 font-medium">
+                <span className="font-bold text-slate-900 dark:text-white">
+                  📅 {formatDateBR(nextHighlightedShift.date)} ({new Date(nextHighlightedShift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' })})
+                </span>
+                <span>•</span>
+                <span className="font-mono font-bold text-sky-600 dark:text-sky-400">
+                  ⏰ {nextHighlightedShift.start_time} às {nextHighlightedShift.end_time} ({nextHighlightedShift.duration}h)
+                </span>
+                <span>•</span>
+                <span>Diária Prevista: <b>{formatCurrency(remunConfig.valorPorPlantao)}</b></span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <Button 
+              onClick={() => handlePassShiftToMural(nextHighlightedShift)}
+              variant="outline"
+              className="h-10 text-xs font-black rounded-xl border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 gap-1.5"
+            >
+              <Flame className="w-4 h-4" /> Passar no Mural
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* 4. BARÔMETRO DE PRODUÇÃO & METAS DO MÊS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
@@ -494,16 +570,16 @@ export default function MinhaEscala() {
         </Card>
       </div>
 
-      {/* 4. SELETOR DE COMPETÊNCIA & RELAÇÃO DE PLANTÕES */}
+      {/* 5. MINHA GRADE EM ORDEM CRESCENTE (DO 1º AO ÚLTIMO DIA DO MÊS) */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div>
             <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
               <CalendarDays className="w-5 h-5 text-sky-600" />
-              Minha Grade • {MONTH_NAMES[currentMonth]} {currentYear}
+              Minha Grade Cronológica • {MONTH_NAMES[currentMonth]} {currentYear}
             </h2>
             <p className="text-xs text-slate-500 font-medium">
-              Listagem de todos os seus turnos programados e executados nesta competência.
+              Turnos organizados em ordem crescente por data e horário de execução.
             </p>
           </div>
 
@@ -526,13 +602,13 @@ export default function MinhaEscala() {
           </div>
         </div>
 
-        {/* LISTAGEM DOS PLANTÕES */}
+        {/* LISTAGEM DOS PLANTÕES EM ORDEM CRESCENTE */}
         {loading ? (
           <div className="py-16 text-center text-slate-400">
             <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-sky-600" />
             Carregando sua grade pessoal de plantões...
           </div>
-        ) : monthShifts.length === 0 ? (
+        ) : monthShiftsSortedAsc.length === 0 ? (
           <div className="py-16 text-center text-slate-400 text-xs border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl p-8">
             <CalendarDays className="w-8 h-8 mx-auto mb-2 opacity-30 text-sky-600" />
             Você não possui plantões agendados para {MONTH_NAMES[currentMonth]} de {currentYear}.<br />
@@ -540,7 +616,7 @@ export default function MinhaEscala() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {monthShifts.map(shift => {
+            {monthShiftsSortedAsc.map(shift => {
               const isConcluido = shift.state === 'concluido';
               const isAtivo = shift.state === 'ativo';
 
