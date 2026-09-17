@@ -53,12 +53,18 @@ export default function Relatorios() {
     });
   }, [shifts, selectedMonth, selectedSector]);
 
+  // Contagem estrita considerando apenas plantões explicitamente vagos ou sem médico
   const totalShiftsCount = filteredShifts.length;
-  const filledShiftsCount = filteredShifts.filter(s => s.professional_id && s.status !== 'vago' && !(s.professional_name || '').toLowerCase().includes('vaga')).length;
+  const filledShiftsCount = filteredShifts.filter(s => {
+    const hasProfId = Boolean(s.professional_id);
+    const isVagoStatus = s.status === 'vago';
+    const isVagoName = (s.professional_name || '').toLowerCase().includes('vaga') || (s.professional_name || '').toLowerCase().includes('descoberto');
+    return hasProfId && !isVagoStatus && !isVagoName;
+  }).length;
+
   const vacantShiftsCount = totalShiftsCount - filledShiftsCount;
   const coverageRate = totalShiftsCount > 0 ? Math.round((filledShiftsCount / totalShiftsCount) * 100) : 100;
 
-  // Cálculo financeiro preciso cruzando com o cadastro do profissional
   const financialSummary = useMemo(() => {
     let executedCost = 0;
     let totalCost = 0;
@@ -80,7 +86,7 @@ export default function Relatorios() {
         } else if (type === 'diaria') {
           cost = safeNumber(prof.daily_rate, 1500);
         } else {
-          cost = safeNumber(prof.monthly_salary, 1672) / 20; // Custo proporcional por plantão do fixo
+          cost = safeNumber(prof.monthly_salary, 1672) / 20;
         }
       } else if (s.professional_id && s.status !== 'vago') {
         cost = 1672 / 20;
@@ -115,7 +121,6 @@ export default function Relatorios() {
     return Object.values(map);
   }, [sectors, filteredShifts]);
 
-  // Auditoria de Vencimento de Credenciais do Corpo Clínico
   const credentialAudit = useMemo(() => {
     let valid = 0;
     let expired = 0;
@@ -148,7 +153,6 @@ export default function Relatorios() {
   return (
     <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
       
-      {/* HEADER EXECUTIVO DE ALTO PADRÃO */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 md:p-8 text-white shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 print:hidden">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-sky-400">
@@ -170,7 +174,6 @@ export default function Relatorios() {
         </div>
       </div>
 
-      {/* BARRA DE FILTROS EXECUTIVA */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-3">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Período de Análise:</span>
@@ -200,7 +203,6 @@ export default function Relatorios() {
         </div>
       </div>
 
-      {/* KPIs EXECUTIVOS PRINCIPAIS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-1">
           <div className="flex items-center justify-between text-slate-400">
@@ -245,10 +247,7 @@ export default function Relatorios() {
         </Card>
       </div>
 
-      {/* PAINEL DE DESEMPENHO POR SETOR & COMPLIANCE */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* SETORES */}
         <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm lg:col-span-2 space-y-5">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
             <div>
@@ -286,7 +285,6 @@ export default function Relatorios() {
           </div>
         </Card>
 
-        {/* AUDITORIA DE DOCUMENTOS E CREDENCIAIS */}
         <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
@@ -327,7 +325,6 @@ export default function Relatorios() {
             <p>Profissionais com credenciais vencidas recebem restrição automática de alocação nas escalas ativas.</p>
           </div>
         </Card>
-
       </div>
     </div>
   );

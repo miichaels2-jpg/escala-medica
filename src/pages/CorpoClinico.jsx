@@ -131,10 +131,10 @@ export default function CorpoClinico() {
     const authSectors = meta.authorized_sectors || (sectors || []).map(s => String(s.id));
     const profStatus = prof.status || meta.status || 'ativo';
 
-    const remunType = prof.remuneration_type || meta.remuneration_type || 'mensal';
-    const sal = prof.monthly_salary !== undefined ? prof.monthly_salary : (meta.monthly_salary !== undefined ? meta.monthly_salary : 1672);
-    const hourly = prof.hourly_rate !== undefined ? prof.hourly_rate : (meta.hourly_rate !== undefined ? meta.hourly_rate : 120);
-    const daily = prof.daily_rate !== undefined ? prof.daily_rate : (meta.daily_rate !== undefined ? meta.daily_rate : 1500);
+    const remunType = meta.remuneration_type || prof.remuneration_type || 'mensal';
+    const sal = meta.monthly_salary !== undefined ? meta.monthly_salary : (prof.monthly_salary !== undefined ? prof.monthly_salary : 1672);
+    const hourly = meta.hourly_rate !== undefined ? meta.hourly_rate : (prof.hourly_rate !== undefined ? prof.hourly_rate : 120);
+    const daily = meta.daily_rate !== undefined ? meta.daily_rate : (prof.daily_rate !== undefined ? prof.daily_rate : 1500);
 
     setFormData({
       name: prof.name || prof.full_name || '',
@@ -260,7 +260,11 @@ export default function CorpoClinico() {
       }
 
       setModalOpen(false); resetForm(); await syncGlobalData(); alert('Profissional e matriz de permissões salvos com sucesso!');
-    } catch (err) { alert('Erro ao salvar: ' + err.message); } finally { setSubmitting(false); }
+    } catch (err) {
+      alert('Erro ao salvar: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const counts = useMemo(() => {
@@ -325,18 +329,18 @@ export default function CorpoClinico() {
           const catId = meta.category || prof.category || 'medico';
           const catObj = allCategories.find(c => c.id === catId) || allCategories[0];
           
-          const remunType = prof.remuneration_type || meta.remuneration_type || 'mensal';
+          const remunType = meta.remuneration_type || prof.remuneration_type || 'mensal';
           let remunValue = 1672;
           let remunLabel = '/ Mês Fixo';
 
           if (remunType === 'hora') {
-            remunValue = safeNumber(prof.hourly_rate !== undefined ? prof.hourly_rate : meta.hourly_rate, 120);
+            remunValue = safeNumber(meta.hourly_rate !== undefined ? meta.hourly_rate : prof.hourly_rate, 120);
             remunLabel = '/ Hora';
           } else if (remunType === 'diaria') {
-            remunValue = safeNumber(prof.daily_rate !== undefined ? prof.daily_rate : meta.daily_rate, 1500);
+            remunValue = safeNumber(meta.daily_rate !== undefined ? meta.daily_rate : prof.daily_rate, 1500);
             remunLabel = '/ Plantão';
           } else {
-            remunValue = safeNumber(prof.monthly_salary !== undefined ? prof.monthly_salary : meta.monthly_salary, 1672);
+            remunValue = safeNumber(meta.monthly_salary !== undefined ? meta.monthly_salary : prof.monthly_salary, 1672);
             remunLabel = '/ Mês Fixo';
           }
 
@@ -683,7 +687,7 @@ export default function CorpoClinico() {
             </div>
 
             <DialogFooter className="pt-4 gap-2">
-              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-10 border-slate-200 dark:border-slate-700 cursor-pointer">Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-10 border-slate-200 dark:border-slate-700 cursor-pointer">Cancelar	</Button>
               <Button type="submit" disabled={submitting} className="bg-sky-600 text-white font-black text-xs h-10 px-8 rounded-xl shadow-md cursor-pointer">Salvar Perfil Profissional</Button>
             </DialogFooter>
           </form>
