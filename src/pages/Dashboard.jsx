@@ -7,7 +7,6 @@ import {
   CalendarDays, 
   Users, 
   Clock, 
-  Maximize2, 
   Minimize2, 
   Stethoscope,
   AlertTriangle,
@@ -18,9 +17,11 @@ import {
   Building2,
   ShieldAlert,
   Radio,
-  Plus,
   ArrowUpRight,
   TrendingUp,
+  Flame,
+  ChevronRight,
+  Layers,
   Sparkles
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -133,7 +134,6 @@ export default function Painel() {
     return {};
   }
 
-  // Mapeamentos de profissionais com cache financeiro atualizado
   const { profById, profByName } = useMemo(() => {
     const byId = {};
     const byName = {};
@@ -152,7 +152,6 @@ export default function Painel() {
     return { profById: byId, profByName: byName };
   }, [professionals]);
 
-  // Cálculo autônomo do ciclo de vida do plantão (independe de libs externas)
   const todayShifts = useMemo(() => {
     const nowHour = currentTime.getHours();
     const nowMin = currentTime.getMinutes();
@@ -168,7 +167,7 @@ export default function Painel() {
         const [endH, endM] = (s.end_time || '19:00').split(':').map(Number);
         const startMin = startH * 60 + startM;
         let endMin = endH * 60 + endM;
-        if (endMin <= startMin) endMin += 24 * 60; // Vira a noite
+        if (endMin <= startMin) endMin += 24 * 60;
 
         let effNow = nowTotalMin;
         if (endMin > 24 * 60 && nowTotalMin < startMin) effNow += 24 * 60;
@@ -200,11 +199,23 @@ export default function Painel() {
   const upcomingList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'upcoming'), [todayShifts]);
   const concludedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'concluded'), [todayShifts]);
 
+  // Vagas Críticas com dados detalhados para exibição imediata
   const vacantShifts = useMemo(() => {
-    return todayShifts.filter((s) => !s.professional_id || s.professional_name?.toLowerCase().includes('vaga') || s.status === 'vago');
-  }, [todayShifts]);
+    return (shifts || [])
+      .filter((s) => {
+        const sDate = (s.date || '').split('T')[0];
+        const isTargetDay = sDate === todayStr || sDate === getLocalDateString(new Date(currentTime.getTime() + 86400000));
+        const isVago = !s.professional_id || s.status === 'vago' || (s.professional_name || '').toLowerCase().includes('vaga');
+        return isTargetDay && isVago && s.status !== 'cancelado';
+      })
+      .map(s => ({
+        ...s,
+        sectorName: toTitleCase(s.sector_name || sectors.find(sec => String(sec.id) === String(s.sector_id))?.name || 'Setor Geral'),
+        formattedDate: fmtDate(s.date)
+      }));
+  }, [shifts, todayStr, currentTime, sectors]);
 
-  // CUSTO OPERACIONAL EXATO DO DIA (BASE / 20 OU DIÁRIA REAL)
+  // Custo Operacional do Dia
   const todayFinancials = useMemo(() => {
     let executedValue = 0;
     let plannedValue = 0;
@@ -225,12 +236,11 @@ export default function Painel() {
         } else if (remType === 'diaria') {
           shiftCost = daily > 0 ? daily : (salary / 20);
         } else {
-          // Mensalista proporcional à cota de plantões
           shiftCost = salary / 20;
         }
       } else {
         if (s.professional_name && !s.professional_name.toLowerCase().includes('vaga')) {
-          shiftCost = 1672 / 20; // Padrão base
+          shiftCost = 1672 / 20;
         }
       }
 
@@ -243,7 +253,7 @@ export default function Painel() {
     return { executedValue, plannedValue, totalToday: plannedValue };
   }, [todayShifts, profById, profByName]);
 
-  // Capacidade dos Setores
+  // Monitoramento de Capacidade dos Setores (com 0/0 corrigido)
   const sectorsCoverage = useMemo(() => {
     const map = {};
     (sectors || []).forEach((sec) => {
@@ -274,12 +284,12 @@ export default function Painel() {
       map[secId].total += 1;
       if (s.lifecycle.state === 'active') map[secId].active += 1;
       if (s.lifecycle.state === 'upcoming') map[secId].upcoming += 1;
-      if (!s.professional_id || s.status === 'vago' || s.professional_name?.toLowerCase().includes('vaga')) {
+      if (!s.professional_id || s.status === 'vago' || (s.professional_name || '').toLowerCase().includes('vaga')) {
         map[secId].vacant += 1;
       }
     });
 
-    return Object.values(map).filter((sec) => sec.total > 0 || sectors.some((s) => s.id === sec.id));
+    return Object.values(map);
   }, [sectors, todayShifts]);
 
   // Próxima Passagem de Turno
@@ -302,12 +312,15 @@ export default function Painel() {
     if (document.fullscreenElement) await document.exitFullscreen?.();
   };
 
-  // MODO TV CCO
-  if (tvMode) {
-    const overallFillRate = todayShifts.length > 0 
-      ? Math.round(((todayShifts.length - vacantShifts.length) / todayShifts.length) * 100) 
-      : 100;
+  // Eficiência Global da Unidade
+  const globalFillRate = useMemo(() => {
+    if (todayShifts.length === 0) return 100;
+    const filled = todayShifts.length - vacantShifts.filter(v => v.date === todayStr).length;
+    return Math.max(0, Math.min(100, Math.round((filled / todayShifts.length) * 100)));
+  }, [todayShifts, vacantShifts, todayStr]);
 
+  // Modo TV CCO
+  if (tvMode) {
     return (
       <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col justify-between p-6 lg:p-8 select-none overflow-hidden font-sans">
         <div className="flex items-center justify-between border-b border-white/10 pb-5 shrink-0">
@@ -325,7 +338,7 @@ export default function Painel() {
                 Painel Executivo de Situação
               </h1>
               <p className="text-xs text-slate-400 font-medium">
-                {fmtDateLong(currentTime)}, {fmtDate(todayStr)} · Visão Geral da Unidade
+                {fmtDateLong(currentTime)}, {fmtDate(todayStr)} · Monitoramento em Tempo Real
               </p>
             </div>
           </div>
@@ -333,16 +346,16 @@ export default function Painel() {
           <div className="flex items-center gap-5">
             <div className={`px-4 py-2 rounded-2xl border flex items-center gap-2.5 ${
               vacantShifts.length > 0 
-                ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' 
+                ? 'bg-rose-500/10 border-rose-500/30 text-rose-300' 
                 : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
             }`}>
-              <div className={`w-3 h-3 rounded-full ${vacantShifts.length > 0 ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
+              <div className={`w-3 h-3 rounded-full ${vacantShifts.length > 0 ? 'bg-rose-500 animate-ping' : 'bg-emerald-400'}`} />
               <div className="text-left">
                 <div className="text-xs font-black uppercase tracking-wider">
-                  {vacantShifts.length > 0 ? 'Alerta de Cobertura' : 'Operação Estável'}
+                  {vacantShifts.length > 0 ? 'Alerta Crítico' : 'Operação Estável'}
                 </div>
                 <div className="text-[10px] opacity-80">
-                  {vacantShifts.length > 0 ? `${vacantShifts.length} vaga(s) pendente(s)` : 'Todos os postos cobertos'}
+                  {vacantShifts.length > 0 ? `${vacantShifts.length} vaga(s) sem médico` : '100% dos postos cobertos'}
                 </div>
               </div>
             </div>
@@ -364,13 +377,12 @@ export default function Painel() {
           </div>
         </div>
 
-        {/* Corpo CCO */}
         <div className="flex-1 my-6 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden">
           <div className="lg:col-span-2 flex flex-col justify-between rounded-3xl border border-white/10 bg-white/[0.02] p-6 shadow-2xl">
             <div>
               <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4">
                 <div className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-sky-400">
-                  <Building2 className="w-5 h-5" /> Ocupação por Setor Clínico
+                  <Building2 className="w-5 h-5" /> Capacidade e Cobertura dos Setores
                 </div>
                 <span className="text-xs font-bold px-3 py-1 rounded-full bg-white/10 text-slate-300">
                   {sectorsCoverage.length} setores monitorados
@@ -379,7 +391,8 @@ export default function Painel() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[460px] overflow-y-auto pr-1">
                 {sectorsCoverage.map((sec) => {
-                  const percent = sec.total > 0 ? Math.round((sec.active / sec.total) * 100) : 0;
+                  const hasShifts = sec.total > 0;
+                  const percent = hasShifts ? Math.round((sec.active / sec.total) * 100) : 0;
                   const hasVacant = sec.vacant > 0;
 
                   return (
@@ -387,44 +400,44 @@ export default function Painel() {
                       key={sec.id}
                       className={`p-4 rounded-2xl border transition-all ${
                         hasVacant
-                          ? 'border-amber-500/60 bg-amber-950/20 shadow-lg'
+                          ? 'border-rose-500/60 bg-rose-950/20 shadow-lg'
                           : sec.active > 0
                           ? 'border-emerald-500/40 bg-emerald-950/10'
-                          : 'border-white/10 bg-white/[0.02]'
+                          : 'border-white/5 bg-white/[0.01] opacity-70'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <h3 className="font-black text-lg text-white truncate">{sec.name}</h3>
                         <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
                           hasVacant 
-                            ? 'bg-amber-500/20 text-amber-300' 
+                            ? 'bg-rose-500/20 text-rose-300 font-black' 
                             : sec.active > 0 
                             ? 'bg-emerald-500/20 text-emerald-300' 
-                            : 'bg-white/10 text-slate-400'
+                            : 'bg-white/10 text-slate-500'
                         }`}>
-                          {sec.active} ativo(s)
+                          {hasShifts ? `${sec.active} ativo(s)` : 'Sem plantão'}
                         </span>
                       </div>
 
                       <div className="flex items-center justify-between text-xs text-slate-400 mt-3 font-medium">
-                        <span>Ocupação dos Postos</span>
+                        <span>Ocupação do Posto</span>
                         <strong className="text-white font-mono">{sec.active} / {sec.total} turnos</strong>
                       </div>
 
                       <div className="w-full h-2 bg-white/10 rounded-full mt-2 overflow-hidden">
                         <div 
-                          className={`h-full transition-all duration-500 ${hasVacant ? 'bg-amber-400' : 'bg-emerald-400'}`}
-                          style={{ width: `${Math.min(100, Math.max(10, percent))}%` }}
+                          className={`h-full transition-all duration-500 ${hasVacant ? 'bg-rose-500' : sec.active > 0 ? 'bg-emerald-400' : 'bg-transparent'}`}
+                          style={{ width: `${hasShifts ? Math.min(100, Math.max(8, percent)) : 0}%` }}
                         />
                       </div>
 
                       {hasVacant ? (
-                        <div className="text-xs text-amber-400 font-bold mt-2.5 flex items-center gap-1.5 animate-pulse">
-                          <AlertTriangle className="w-4 h-4" /> {sec.vacant} posto(s) sem médico
+                        <div className="text-xs text-rose-400 font-bold mt-2.5 flex items-center gap-1.5 animate-pulse">
+                          <AlertTriangle className="w-4 h-4" /> {sec.vacant} vaga(s) desocupada(s)
                         </div>
                       ) : (
                         <div className="text-[11px] text-slate-500 mt-2.5 font-medium">
-                          {sec.upcoming} plantonista(s) a assumir a seguir
+                          {hasShifts ? `${sec.upcoming} plantonista(s) a assumir a seguir` : 'Nenhum plantão agendado para hoje'}
                         </div>
                       )}
                     </div>
@@ -434,12 +447,11 @@ export default function Painel() {
             </div>
 
             <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-xs text-slate-400 font-medium">
-              <span>Taxa de Cobertura Global da Unidade: <b className="text-white text-sm font-mono">{overallFillRate}%</b></span>
-              <span className="text-sky-400">Auditoria Contínua CCO</span>
+              <span>Taxa de Cobertura da Unidade: <b className="text-white text-sm font-mono">{globalFillRate}%</b></span>
+              <span className="text-sky-400 font-bold">Auditoria CCO Ativa</span>
             </div>
           </div>
 
-          {/* Passagem de Turno e Custo Operacional */}
           <div className="flex flex-col justify-between gap-6">
             <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-5 shadow-2xl flex-1 flex flex-col justify-between">
               <div>
@@ -490,7 +502,7 @@ export default function Painel() {
                   </div>
                 ) : (
                   <div className="py-8 text-center text-xs text-slate-500">
-                    Nenhuma transição de turno pendente para hoje.
+                    Nenhuma transição de escala prevista para as próximas horas.
                   </div>
                 )}
               </div>
@@ -501,7 +513,6 @@ export default function Painel() {
               </div>
             </div>
 
-            {/* Card Financeiro TV */}
             <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-950 p-5 shadow-2xl space-y-3">
               <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
                 <span className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
@@ -537,13 +548,13 @@ export default function Painel() {
             <span>•</span>
             <span>{todayShifts.length} Plantões no Dia</span>
             <span>•</span>
-            <span className={vacantShifts.length > 0 ? 'text-amber-400 font-bold animate-pulse' : 'text-slate-400'}>
-              {vacantShifts.length > 0 ? `⚠️ ${vacantShifts.length} Vaga(s) em Aberto` : 'Escala 100% Coberta'}
+            <span className={vacantShifts.length > 0 ? 'text-rose-400 font-bold animate-pulse' : 'text-slate-400'}>
+              {vacantShifts.length > 0 ? `⚠️ ${vacantShifts.length} Vaga(s) Crítica(s)` : 'Escala 100% Coberta'}
             </span>
           </div>
 
           <div className="font-mono text-[11px] text-slate-500">
-            ScaleMedic Enterprise CCO · Hospital Santa Clara
+            ScaleMedic Enterprise CCO · Sincronização Hospitalar Contínua
           </div>
         </div>
       </div>
@@ -554,101 +565,143 @@ export default function Painel() {
   // DASHBOARD EXECUTIVO PRINCIPAL
   // ==========================================
   return (
-    <div className="p-4 md:p-8 space-y-6 font-sans">
-      {/* BANNER COM COMANDOS RÁPIDOS */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white p-6 md:p-8 rounded-3xl border border-slate-800 shadow-2xl">
-        <div className="space-y-2 max-w-2xl">
+    <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-50/50 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
+      
+      {/* 1. HEADER EXECUTIVO COM ATALHOS DE NAVEGAÇÃO RÁPIDA */}
+      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white p-6 md:p-8 rounded-3xl border border-slate-800 shadow-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <div className="space-y-2">
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-sky-400 font-black">
-            <Activity className="w-4 h-4" /> Centro de Operações Clínicas & Gestão
+            <Activity className="w-4 h-4" /> Cockpit de Inteligência Hospitalar
           </div>
           <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white">
             {company?.name || 'Hospital Santa Clara'}
           </h1>
-          <p className="text-xs md:text-sm text-slate-300 font-medium leading-relaxed">
-            Monitoramento em tempo real de escalas, cobertura médica hospitalar e custo operacional diário.
+          <p className="text-xs md:text-sm text-slate-300 font-medium">
+            Monitoramento de presença médica, cobertura dos postos clínicos e fluxo financeiro em tempo real.
           </p>
         </div>
 
-        {/* HUB DE AÇÕES RÁPIDAS */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* ATALHOS EM DESTAQUE COM CORES E ÍCONES */}
+        <div className="flex flex-wrap items-center gap-2.5">
           <Button 
             onClick={() => navigate('/escalas')} 
-            className="bg-white text-slate-900 hover:bg-slate-100 font-black text-xs h-10 px-5 rounded-2xl shadow-lg gap-1.5"
+            className="bg-white hover:bg-slate-100 text-slate-900 font-black text-xs h-11 px-5 rounded-2xl shadow-xl gap-2 transition-all hover:scale-105"
           >
             <CalendarDays className="w-4 h-4 text-sky-600" /> Abrir Escalas
           </Button>
 
           <Button 
             onClick={() => navigate('/faturamento')} 
-            variant="outline"
-            className="border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-white font-black text-xs h-10 px-5 rounded-2xl gap-1.5"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs h-11 px-5 rounded-2xl shadow-xl shadow-emerald-950/40 gap-2 transition-all hover:scale-105"
           >
-            <DollarSign className="w-4 h-4 text-emerald-400" /> Faturamento
+            <DollarSign className="w-4 h-4" /> Faturamento & Repasse
+          </Button>
+
+          <Button 
+            onClick={() => navigate('/corpo-clinico')} 
+            variant="outline"
+            className="border-slate-700 bg-slate-900/80 hover:bg-slate-800 text-slate-200 font-black text-xs h-11 px-4 rounded-2xl gap-2"
+          >
+            <Users className="w-4 h-4 text-indigo-400" /> Corpo Clínico
           </Button>
 
           <Button 
             onClick={openTvMode} 
-            className="bg-sky-600 hover:bg-sky-500 text-white font-black text-xs h-10 px-5 rounded-2xl shadow-lg gap-2"
+            className="bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-black text-xs h-11 px-5 rounded-2xl shadow-xl gap-2 transition-all hover:scale-105"
           >
             <Radio className="w-4 h-4 animate-pulse" /> Modo TV CCO
           </Button>
         </div>
       </div>
 
-      {/* ALERTA DE COBERTURA */}
-      {vacantShifts.length > 0 && (
-        <div className="p-4 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-900 dark:text-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+      {/* 2. ALERTA EXPLÍCITO DE VAGAS CRÍTICAS (MOSTRANDO DATA, HORÁRIO E SETOR EXATOS) */}
+      {vacantShifts.length > 0 ? (
+        <div className="p-5 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-900 dark:text-rose-200 shadow-md space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0 font-bold shadow-md animate-bounce">
+                <Flame className="w-5 h-5" />
+              </div>
+              <div>
+                <strong className="text-sm font-black flex items-center gap-2">
+                  Alerta Crítico de Cobertura: {vacantShifts.length} vaga(s) pendente(s)
+                </strong>
+                <span className="text-xs text-rose-700 dark:text-rose-300">
+                  Os seguintes postos hospitalares precisam de alocação imediata de plantonistas:
+                </span>
+              </div>
+            </div>
+
+            <Button 
+              onClick={() => navigate('/escalas')}
+              size="sm"
+              className="bg-rose-600 hover:bg-rose-500 text-white font-black text-xs px-5 h-9 rounded-xl shadow-md shrink-0"
+            >
+              Resolver na Escala Agora <ArrowUpRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          </div>
+
+          {/* CHIPS DOS SETORES E HORÁRIOS EXATOS */}
+          <div className="flex flex-wrap gap-2 pt-1 border-t border-rose-200 dark:border-rose-900/50">
+            {vacantShifts.map((vs) => (
+              <div 
+                key={vs.id} 
+                onClick={() => navigate('/escalas')}
+                className="cursor-pointer px-3 py-1.5 rounded-xl bg-white dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 text-xs font-bold text-rose-700 dark:text-rose-300 flex items-center gap-2 hover:brightness-95 transition-all"
+              >
+                <span className="w-2 h-2 rounded-full bg-rose-500" />
+                <span><b>{vs.sectorName}</b> ({vs.start_time} às {vs.end_time}) • {vs.formattedDate}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="p-4 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0 font-bold shadow-md">
-              <ShieldAlert className="w-5 h-5" />
+            <div className="p-2 rounded-xl bg-emerald-600 text-white font-bold">
+              <CheckCircle2 className="w-4 h-4" />
             </div>
             <div>
-              <strong className="text-sm font-black block">Atenção Crítica: {vacantShifts.length} vaga(s) sem plantonista hoje</strong>
-              <p className="text-xs opacity-90">
-                Setores afetados: {Array.from(new Set(vacantShifts.map((s) => toTitleCase(s.sector_name) || 'Geral'))).join(', ')}.
-              </p>
+              <strong className="text-xs font-black uppercase tracking-wider block">Escala Hospitalar 100% Homologada</strong>
+              <span className="text-[11px] text-emerald-700 dark:text-emerald-400">Todos os postos e setores clínicos possuem médicos alocados para hoje e amanhã.</span>
             </div>
           </div>
-          <Button 
-            onClick={() => navigate('/escalas')}
-            size="sm"
-            className="bg-rose-600 hover:bg-rose-500 text-white font-black text-xs px-4 h-9 rounded-xl shrink-0"
-          >
-            Cobrir no Mural
-          </Button>
+          <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono px-3 py-1 rounded-xl bg-emerald-500/20">
+            NENHUM DESFALQUE
+          </span>
         </div>
       )}
 
-      {/* 4 CARDS EXECUTIVOS DE MÉTRICAS */}
+      {/* 3. CARDS DE MÉTRICAS KPI COM DESIGN ELEGANTE */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="p-5 rounded-3xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-sm relative overflow-hidden">
+        <Card className="p-5 rounded-3xl border border-emerald-200 dark:border-emerald-800/60 bg-gradient-to-br from-white to-emerald-50/30 dark:from-slate-900 dark:to-emerald-950/20 shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-              Ativos no Posto Agora
+            <span className="text-xs font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
+              Médicos no Posto Agora
             </span>
-            <span className="p-2 rounded-xl bg-emerald-600 text-white shadow-sm animate-pulse">
+            <span className="p-2 rounded-xl bg-emerald-600 text-white shadow-md animate-pulse">
               <Clock className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-3xl font-black text-emerald-950 dark:text-emerald-100 mt-3">
-            {activeNowList.length} Plantonistas
+          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
+            {activeNowList.length} <span className="text-sm font-bold text-slate-500">em atendimento</span>
           </div>
-          <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-1 font-medium">
-            Em jornada assistencial ativa na unidade
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-semibold">
+            Presença física confirmada na unidade
           </p>
         </Card>
 
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Plantões de Hoje
+            <span className="text-xs font-black uppercase tracking-wider text-slate-500">
+              Plantões do Dia
             </span>
-            <span className="p-2 rounded-xl bg-sky-50 text-sky-600">
+            <span className="p-2 rounded-xl bg-sky-50 dark:bg-sky-950 text-sky-600 dark:text-sky-400">
               <CalendarDays className="w-4 h-4" />
             </span>
           </div>
           <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
-            {todayShifts.length} Turnos
+            {todayShifts.length} <span className="text-sm font-bold text-slate-500">turnos</span>
           </div>
           <p className="text-[11px] text-slate-500 mt-1 font-medium">
             {upcomingList.length} a iniciar · {concludedList.length} concluídos
@@ -657,184 +710,197 @@ export default function Painel() {
 
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            <span className="text-xs font-black uppercase tracking-wider text-slate-500">
               Corpo Clínico Ativo
             </span>
-            <span className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
+            <span className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
               <Users className="w-4 h-4" />
             </span>
           </div>
           <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
-            {professionals.length} Credenciados
+            {professionals.length} <span className="text-sm font-bold text-slate-500">profissionais</span>
           </div>
           <p className="text-[11px] text-slate-500 mt-1 font-medium">
-            Equipe vinculada às escalas
+            Equipe credenciada e cadastrada
           </p>
         </Card>
 
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            <span className="text-xs font-black uppercase tracking-wider text-slate-500">
               Custo Operacional Hoje
             </span>
-            <span className="p-2 rounded-xl bg-amber-50 text-amber-600">
+            <span className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400">
               <DollarSign className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
+          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3 font-mono">
             R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
           <p className="text-[11px] text-slate-500 mt-1 font-medium">
-            Previsão do dia: <b>R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
+            Previsão total 24h: <b>R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
           </p>
         </Card>
       </div>
 
-      {/* PASSAGEM DE TURNO & MONITORAMENTO SETORIAL */}
+      {/* 4. BLOCO DE GRÁFICOS VISUAIS: OCUPAÇÃO SETORIAL E DONUT DE EFICIÊNCIA */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4">
-          <div>
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <div>
-                <h3 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                  <ArrowRightLeft className="w-4 h-4 text-sky-600" /> Próxima Passagem de Turno
-                </h3>
-                <p className="text-xs text-slate-500">Rendimento de postos</p>
-              </div>
-              {nextHandover && (
-                <span className="text-xs font-black px-3 py-1 rounded-xl bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 font-mono">
-                  {nextHandover.targetTime}
-                </span>
-              )}
-            </div>
-
-            {nextHandover ? (
-              <div className="mt-4 space-y-4">
-                <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
-                  <div className="text-[11px] font-black text-emerald-800 dark:text-emerald-300 uppercase flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Equipe que Assume ({nextHandover.incoming.length})
-                  </div>
-                  <div className="mt-2 space-y-2">
-                    {nextHandover.incoming.map((s) => (
-                      <div key={s.id} className="text-xs flex items-center justify-between">
-                        <span className="font-bold text-slate-900 dark:text-white truncate">{toTitleCase(s.professional_name) || 'Vaga Aberta'}</span>
-                        <span className="text-[10px] text-slate-500 font-semibold">{toTitleCase(s.sector_name) || 'Geral'}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
-                  <div className="text-[11px] font-black text-slate-500 uppercase">
-                    Equipe que Entrega ({nextHandover.outgoing.length})
-                  </div>
-                  <div className="mt-2 space-y-2">
-                    {nextHandover.outgoing.length === 0 ? (
-                      <div className="text-xs text-slate-400 italic">Nenhum plantão encerrando exatamente neste minuto.</div>
-                    ) : (
-                      nextHandover.outgoing.map((s) => (
-                        <div key={s.id} className="text-xs flex items-center justify-between">
-                          <span className="font-semibold text-slate-700 dark:text-slate-300 truncate">{toTitleCase(s.professional_name)}</span>
-                          <span className="text-[10px] text-slate-400">{toTitleCase(s.sector_name) || 'Geral'}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="py-12 text-center text-xs text-slate-400">
-                Nenhuma passagem de plantão programada para as próximas 2 horas.
-              </div>
-            )}
-          </div>
-
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 flex items-center justify-between">
-            <span>Passagens auditadas em tempo real</span>
-            <span className="font-black text-sky-600">ScaleMedic Cockpit</span>
-          </div>
-        </Card>
-
-        {/* COBERTURA POR SETOR CLÍNICO */}
-        <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        
+        {/* GRÁFICO 1: BARRAS DE OCUPAÇÃO POR SETOR */}
+        <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm lg:col-span-2 space-y-5">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
             <div>
-              <h3 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-emerald-600" /> Ocupação por Setor Clínico
+              <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-sky-600" /> Monitoramento de Ocupação por Setor Clínico
               </h3>
-              <p className="text-xs text-slate-500">Capacidade operacional instalada e status hoje</p>
+              <p className="text-xs text-slate-500">Status dos postos assistenciais na data de hoje ({fmtDate(todayStr)})</p>
             </div>
-            <span className="text-xs font-black px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-              {sectorsCoverage.length} setores ativos
+            <span className="text-xs font-black px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              {sectorsCoverage.length} Setores Mapeados
             </span>
           </div>
 
-          {sectorsCoverage.length === 0 ? (
-            <div className="py-12 text-center text-xs text-slate-400">
-              Nenhum setor cadastrado ou com escala vinculada.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {sectorsCoverage.map((sec) => {
-                const percent = sec.total > 0 ? Math.round((sec.active / sec.total) * 100) : 0;
-                const hasVacant = sec.vacant > 0;
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {sectorsCoverage.map((sec) => {
+              const hasShifts = sec.total > 0;
+              const percent = hasShifts ? Math.round((sec.active / sec.total) * 100) : 0;
+              const hasVacant = sec.vacant > 0;
 
-                return (
-                  <div 
-                    key={sec.id}
-                    className={`p-4 rounded-2xl border transition-all ${
-                      hasVacant
-                        ? 'border-amber-300 bg-amber-50/40 dark:bg-amber-950/20'
-                        : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <strong className="text-sm font-black text-slate-900 dark:text-white truncate">
-                        {sec.name}
-                      </strong>
-                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
-                        sec.active > 0 
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                      }`}>
-                        {sec.active} ativo(s)
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs text-slate-500 mt-2.5 font-medium">
-                      <span>Ocupação do setor</span>
-                      <span className="font-bold text-slate-900 dark:text-white">{sec.active} / {sec.total} turnos</span>
-                    </div>
-
-                    <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full mt-2 overflow-hidden">
-                      <div 
-                        className={`h-full transition-all duration-500 ${hasVacant ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                        style={{ width: `${Math.min(100, Math.max(10, percent))}%` }}
-                      />
-                    </div>
-
-                    {hasVacant && (
-                      <div className="text-[10px] text-amber-700 dark:text-amber-400 font-bold mt-2.5 flex items-center gap-1 animate-pulse">
-                        <AlertTriangle className="w-3.5 h-3.5" /> {sec.vacant} vaga(s) sem plantonista
-                      </div>
-                    )}
+              return (
+                <div 
+                  key={sec.id}
+                  className={`p-4 rounded-2xl border transition-all ${
+                    hasVacant
+                      ? 'border-rose-300 bg-rose-50/40 dark:border-rose-900/60 dark:bg-rose-950/20'
+                      : sec.active > 0
+                      ? 'border-emerald-300 bg-emerald-50/30 dark:border-emerald-900/60 dark:bg-emerald-950/20'
+                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-850/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <strong className="text-sm font-black text-slate-900 dark:text-white truncate">
+                      {sec.name}
+                    </strong>
+                    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                      hasVacant 
+                        ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' 
+                        : sec.active > 0 
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                    }`}>
+                      {hasShifts ? `${sec.active} ativo(s)` : 'Sem escala hoje'}
+                    </span>
                   </div>
-                );
-              })}
+
+                  <div className="flex items-center justify-between text-xs text-slate-500 mt-2.5 font-medium">
+                    <span>Ocupação do posto</span>
+                    <span className="font-mono font-black text-slate-900 dark:text-white">
+                      {hasShifts ? `${sec.active} de ${sec.total} turnos (${percent}%)` : '0 / 0'}
+                    </span>
+                  </div>
+
+                  {/* BARRA CORRIGIDA: 0% real se não tiver plantão, sem barras verdes falsas */}
+                  <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full mt-2 overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-500 ${hasVacant ? 'bg-rose-500' : sec.active > 0 ? 'bg-emerald-500' : 'bg-transparent'}`}
+                      style={{ width: `${hasShifts ? Math.min(100, Math.max(5, percent)) : 0}%` }}
+                    />
+                  </div>
+
+                  {hasVacant ? (
+                    <div className="text-[11px] text-rose-600 dark:text-rose-400 font-black mt-2 flex items-center gap-1 animate-pulse">
+                      <AlertTriangle className="w-3.5 h-3.5" /> {sec.vacant} vaga(s) com desfalque médico
+                    </div>
+                  ) : hasShifts ? (
+                    <div className="text-[10px] text-slate-400 mt-2 font-medium">
+                      {sec.upcoming} plantonista(s) a assumir a seguir
+                    </div>
+                  ) : (
+                    <div className="text-[10px] text-slate-400 mt-2 italic">
+                      Nenhum plantão agendado para este setor hoje
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* GRÁFICO 2: DONUT CIRCULAR DE EFICIÊNCIA GLOBAL */}
+        <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4">
+          <div>
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-emerald-600" /> Eficiência de Cobertura
+              </h3>
+              <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                Hoje
+              </span>
             </div>
-          )}
+
+            {/* GRÁFICO CIRCULAR RADIAL SVG */}
+            <div className="py-6 flex flex-col items-center justify-center relative">
+              <svg className="w-44 h-44 transform -rotate-90" viewBox="0 0 120 120">
+                <circle 
+                  cx="60" cy="60" r="48" 
+                  className="text-slate-100 dark:text-slate-800" 
+                  strokeWidth="12" 
+                  stroke="currentColor" 
+                  fill="transparent" 
+                />
+                <circle 
+                  cx="60" cy="60" r="48" 
+                  className={globalFillRate === 100 ? "text-emerald-500" : "text-sky-500"} 
+                  strokeWidth="12" 
+                  strokeDasharray={2 * Math.PI * 48}
+                  strokeDashoffset={2 * Math.PI * 48 * (1 - globalFillRate / 100)}
+                  strokeLinecap="round"
+                  stroke="currentColor" 
+                  fill="transparent" 
+                />
+              </svg>
+              <div className="absolute flex flex-col items-center justify-center text-center">
+                <span className="text-4xl font-black font-mono tracking-tight text-slate-900 dark:text-white">
+                  {globalFillRate}%
+                </span>
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider mt-0.5">
+                  Coberto
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between items-center p-2 rounded-xl bg-slate-50 dark:bg-slate-850/50">
+                <span className="text-slate-500">Postos com Médico Ativo:</span>
+                <strong className="text-emerald-600 font-mono font-black">{activeNowList.length} turnos</strong>
+              </div>
+              <div className="flex justify-between items-center p-2 rounded-xl bg-slate-50 dark:bg-slate-850/50">
+                <span className="text-slate-500">Vagas Descobertas:</span>
+                <strong className={vacantShifts.length > 0 ? "text-rose-600 font-mono font-black" : "text-slate-400 font-mono"}>
+                  {vacantShifts.length} postos
+                </strong>
+              </div>
+            </div>
+          </div>
+
+          <Button 
+            onClick={() => navigate('/escalas')}
+            className="w-full h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 font-black text-xs rounded-xl shadow-md gap-2"
+          >
+            Ver Grade Completa da Escala <ChevronRight className="w-4 h-4" />
+          </Button>
         </Card>
       </div>
 
-      {/* PLANTÕES DO DIA COM STATUS CLARO */}
+      {/* 5. SEÇÃO DOS PLANTÕES DE HOJE COM CARDS EXECUTIVOS */}
       <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div>
-            <h3 className="font-black text-base text-slate-900 dark:text-white">Plantões em Operação Hoje</h3>
-            <p className="text-xs text-slate-500">Escala de {fmtDate(todayStr)} (Ativos agora, programados e concluídos)</p>
+            <h3 className="font-black text-base text-slate-900 dark:text-white">Plantões em Atendimento Hoje</h3>
+            <p className="text-xs text-slate-500">Escala de {fmtDate(todayStr)} (Ativos no momento, programados e concluídos)</p>
           </div>
-          <span className="text-xs font-black px-3 py-1 rounded-full bg-sky-50 text-sky-700">
-            {todayShifts.length} turno(s)
+          <span className="text-xs font-black px-3 py-1 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+            {todayShifts.length} turno(s) no total
           </span>
         </div>
 
@@ -848,12 +914,15 @@ export default function Painel() {
               const state = shift.lifecycle.state;
               const isActive = state === 'active';
               const isFinished = state === 'concluded';
+              const isVago = !shift.professional_id || shift.status === 'vago' || (shift.professional_name || '').toLowerCase().includes('vaga');
 
               return (
                 <div
                   key={shift.id}
                   className={`p-4 rounded-2xl border transition-all ${
-                    isActive 
+                    isVago
+                      ? 'border-rose-400 bg-rose-50/60 dark:bg-rose-950/20 shadow-sm'
+                      : isActive 
                       ? 'border-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/20 shadow-sm ring-1 ring-emerald-400/40' 
                       : isFinished
                       ? 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-850/40 opacity-70'
@@ -866,19 +935,21 @@ export default function Painel() {
                     </span>
                     <span
                       className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase ${
-                        isActive
+                        isVago
+                          ? 'bg-rose-600 text-white animate-pulse'
+                          : isActive
                           ? 'bg-emerald-600 text-white animate-pulse'
                           : isFinished
                           ? 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                           : 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'
                       }`}
                     >
-                      {isActive ? '● Ativo no Plantão' : isFinished ? '✓ Concluído' : '⏳ Programado'}
+                      {isVago ? '⚠️ Vaga Aberta' : isActive ? '● Ativo no Plantão' : isFinished ? '✓ Concluído' : '⏳ Programado'}
                     </span>
                   </div>
 
                   <div className="font-black text-sm text-slate-900 dark:text-white truncate">
-                    {toTitleCase(shift.professional_name) || 'Vaga em Aberto'}
+                    {isVago ? <span className="text-rose-600">Vaga em Aberto</span> : toTitleCase(shift.professional_name)}
                   </div>
 
                   <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
