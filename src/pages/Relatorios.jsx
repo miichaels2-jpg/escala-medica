@@ -67,7 +67,6 @@ function isShiftPast(shift) {
   try {
     const dateStr = shift.date.split('T')[0];
     const endStr = shift.end_time || '23:59';
-    // Adicionando um tratamento simples para data ISO
     const shiftEnd = new Date(`${dateStr}T${endStr}:00`);
     return shiftEnd < new Date();
   } catch (e) {
@@ -176,7 +175,7 @@ export default function Relatorios() {
 
       if (appliedFilters.sector !== 'todos' && String(shift.sector_id) !== String(appliedFilters.sector)) return false;
 
-      // Filtro de Data Flexível (Maior ou igual a Start / Menor ou igual a End)
+      // Filtro de Data Flexível
       const shiftDate = String(shift.date || shift.start_date || shift.data || '').slice(0, 10);
       if (shiftDate) {
         if (appliedFilters.start && shiftDate < appliedFilters.start) return false;
@@ -271,11 +270,10 @@ export default function Relatorios() {
     return Object.values(map).filter(item => item.total > 0).sort((a, b) => b.total - a.total);
   }, [sectors, filteredShifts, getProf]);
 
-  // Exibir TODOS os profissionais (até quem tem 0 plantões)
+  // Exibir TODOS os profissionais
   const professionalMetrics = useMemo(() => {
     const map = {};
     
-    // Inicia a lista com todos os médicos cadastrados no hospital
     professionals.forEach(p => {
       const name = normalize(p.name);
       map[name] = { 
@@ -288,7 +286,6 @@ export default function Relatorios() {
       };
     });
 
-    // Processa os plantões filtrados adicionando aos médicos
     filteredShifts.forEach(shift => {
       if (isVacant(shift)) return;
       
@@ -310,7 +307,6 @@ export default function Relatorios() {
       item.cost += getProfessionalCost(getProf(shift), h);
     });
 
-    // Retorna todos formatados, ordenados por quem fez mais plantões
     return Object.values(map).map(item => ({ 
       ...item, 
       sectors: item.sectors.size > 0 ? Array.from(item.sectors).join(', ') : '—' 
@@ -681,7 +677,7 @@ export default function Relatorios() {
                         const isVago = isVacant(s);
                         const isPast = isShiftPast(s);
                         
-                        let profNameRender = toTitleCase(s.professional_name);
+                        let profNameRender = titleCase(s.professional_name);
                         let badgeClass = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
                         let badgeText = s.status || 'Confirmado';
 
@@ -701,7 +697,7 @@ export default function Relatorios() {
                           <tr key={s.id || idx} className="hover:bg-slate-900/50 transition-colors">
                             <td className="py-3 px-3 font-bold font-mono text-slate-300">{formatDate(s.date)}</td>
                             <td className="py-3 px-3 text-slate-300">{getSectorName(s, sectors)}</td>
-                            <td className="py-3 px-3 font-black text-white">{profNameRender}</td>
+                            <td className={`py-3 px-3 font-black text-white`}>{profNameRender}</td>
                             <td className="py-3 px-3 font-mono text-slate-400">{s.start_time || '07:00'} - {s.end_time || '19:00'}</td>
                             <td className="py-3 px-3">
                               <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${badgeClass}`}>
@@ -809,12 +805,12 @@ export default function Relatorios() {
                 </div>
               </Card>
             )}
-          </div>
+          </>
         )}
       </div>
 
       {/* ========================================== */}
-      {/* MODO IMPRESSÃO (NATIVO BROWSER - SEM CARDS, SEM OVERFLOW) */}
+      {/* MODO IMPRESSÃO (NATIVO BROWSER - A4 HTML)    */}
       {/* ========================================== */}
       <div className="hidden print:block w-full text-black bg-white p-4 font-sans text-xs">
         {hasSearched ? (
