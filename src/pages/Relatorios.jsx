@@ -19,6 +19,11 @@ function safeNumber(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+// FUNÇÃO RESTAURADA QUE CAUSOU O ERRO
+function formatNumber(value) {
+  return new Intl.NumberFormat('pt-BR').format(safeNumber(value));
+}
+
 function formatCurrency(value) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(safeNumber(value));
 }
@@ -67,6 +72,7 @@ function isShiftPast(shift) {
   try {
     const dateStr = shift.date.split('T')[0];
     const endStr = shift.end_time || '23:59';
+    // Adicionando um tratamento simples para data ISO
     const shiftEnd = new Date(`${dateStr}T${endStr}:00`);
     return shiftEnd < new Date();
   } catch (e) {
@@ -175,7 +181,7 @@ export default function Relatorios() {
 
       if (appliedFilters.sector !== 'todos' && String(shift.sector_id) !== String(appliedFilters.sector)) return false;
 
-      // Filtro de Data Flexível
+      // Filtro de Data Flexível (Maior ou igual a Start / Menor ou igual a End)
       const shiftDate = String(shift.date || shift.start_date || shift.data || '').slice(0, 10);
       if (shiftDate) {
         if (appliedFilters.start && shiftDate < appliedFilters.start) return false;
@@ -270,10 +276,11 @@ export default function Relatorios() {
     return Object.values(map).filter(item => item.total > 0).sort((a, b) => b.total - a.total);
   }, [sectors, filteredShifts, getProf]);
 
-  // Exibir TODOS os profissionais
+  // Exibir TODOS os profissionais (até quem tem 0 plantões)
   const professionalMetrics = useMemo(() => {
     const map = {};
     
+    // Inicia a lista com todos os médicos cadastrados no hospital
     professionals.forEach(p => {
       const name = normalize(p.name);
       map[name] = { 
@@ -286,6 +293,7 @@ export default function Relatorios() {
       };
     });
 
+    // Processa os plantões filtrados adicionando aos médicos
     filteredShifts.forEach(shift => {
       if (isVacant(shift)) return;
       
@@ -307,6 +315,7 @@ export default function Relatorios() {
       item.cost += getProfessionalCost(getProf(shift), h);
     });
 
+    // Retorna todos formatados, ordenados por quem fez mais plantões
     return Object.values(map).map(item => ({ 
       ...item, 
       sectors: item.sectors.size > 0 ? Array.from(item.sectors).join(', ') : '—' 
