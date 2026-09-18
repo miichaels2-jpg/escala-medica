@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import {
   Flame, ArrowRight, MonitorPlay, GripVertical, 
   Printer, Sun, Moon, AlertTriangle, CheckCircle2, Radio, Calendar as CalendarIcon,
   PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight, Minimize2, Target, ShieldAlert,
-  BellRing, Check, Layers, History, ArrowRightLeft
+  BellRing, Check, Layers, History
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -43,6 +43,38 @@ function getShiftInterval(startStr, endStr) {
   let endMin = timeToMinutes(endStr, true);
   if (endMin <= startMin) endMin += 24 * 60;
   return { startMin, endMin };
+}
+
+// Verifica se uma vaga em aberto já passou do horário (Furo/Não Ocupado)
+function isShiftPast(shift, liveNowDate) {
+  if (!shift.date) return false;
+  try {
+    const dateStr = shift.date.split('T')[0];
+    const endStr = shift.end_time || '23:59';
+    const shiftEnd = new Date(`${dateStr}T${endStr}:00`);
+    return shiftEnd < liveNowDate;
+  } catch (e) {
+    return false;
+  }
+}
+
+function normalize(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+function getShiftName(shift) {
+  return shift.professional_name || shift.professional?.name || shift.professionalName || '';
+}
+
+function isVacant(shift) {
+  const name = normalize(getShiftName(shift));
+  const hasProfId = Boolean(shift.professional_id);
+  const hasName = Boolean(name);
+
+  if (normalize(shift.status) === 'vago') return true;
+  if (name.includes('vaga') || name.includes('descoberto') || name.includes('aberto') || name === 'plantao sem profissional') return true;
+  if (!hasProfId && !hasName) return true;
+  return false;
 }
 
 // MOTOR RIGOROSO DE CICLO DE VIDA HOSPITALAR (CONSIDERA VIRADA NOTURNA E PASSAGEM DE PLANTÃO)
@@ -367,6 +399,31 @@ export default function Escalas() {
   const professionalMap = useMemo(() => { const m = {}; (professionals || []).forEach(p => { if(p) m[String(p.id)] = p; }); return m; }, [professionals]);
 
   const todayLocalStr = useMemo(() => getLocalDateString(liveNow), [liveNow]);
+
+  // INJEÇÃO DA LÓGICA DE ALERTAS CRÍTICOS (MESMO DO RELATÓRIO)
+  const vacantShiftAlerts = useMemo(() => {
+    const alerts = [];
+    (shifts || []).forEach(s => {
+      if (!s || s.status === 'cancelado') return;
+      if (selectedSectorId !== 'todos' && String(s.sector_id) !== String(selectedSectorId)) return;
+      
+      const sMonth = String(s.date || '').slice(0, 7);
+      const mStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+      
+      // Checa vagas ativas apenas do mês que está sendo visto na tela
+      if (sMonth === mStr && isVacant(s)) {
+        alerts.push(s);
+      }
+    });
+
+    // Ordena do mais urgente pro mais antigo/futuro
+    return alerts.sort((a, b) => {
+      const aPast = isShiftPast(a, liveNow) ? 1 : 0;
+      const bPast = isShiftPast(b, liveNow) ? 1 : 0;
+      if (aPast !== bPast) return bPast - aPast;
+      return (a.date || '').localeCompare(b.date || '');
+    });
+  }, [shifts, selectedSectorId, currentYear, currentMonth, liveNow]);
 
   // =========================================================================
   // MOTOR COMPARTILHADO: MODO TV CCO E PLANTÃO DO DIA (100% SINCRONIZADOS)
@@ -733,16 +790,16 @@ export default function Escalas() {
     return days;
   }, [currentYear, currentMonth, startDateFilter]);
 
-  // STATUS COM O MOTOR HOSPITALAR COMPLETO
+  // STATUS COM O MOTOR HOSPITALAR COMPLETO E IDENTIFICAÇÃO DE FURO (VAGA QUE JÁ PASSOU)
   const getStatusBadge = (shift) => {
-    const isVago = shift.status === 'vago' || !shift.professional_id;
+    const isVago = isVacant(shift);
     const life = computeShiftHospitalLifecycle(shift, liveNow);
 
     if (isVago) {
-      if (life.isConcluded) {
-        return { dot: 'bg-slate-400', label: 'VAGA PERDIDA', text: 'text-slate-500', wrapper: 'border-l-slate-400 bg-slate-100 dark:bg-slate-900/50 opacity-60 grayscale hover:grayscale-0', icon: <AlertTriangle className="w-3 h-3 text-slate-500" /> };
+      if (isShiftPast(shift, liveNow)) {
+        return { dot: 'bg-rose-700', label: 'FURO / FALTA', text: 'text-rose-700 dark:text-rose-500', wrapper: 'border-l-rose-700 bg-rose-100 dark:bg-rose-950/50 opacity-90', icon: <AlertTriangle className="w-3 h-3 text-rose-700" /> };
       }
-      return { dot: 'bg-rose-500 animate-pulse', label: 'VAGA ABERTA', text: 'text-rose-600 dark:text-rose-400', wrapper: 'border-l-rose-500 bg-rose-50 dark:bg-rose-950/30', icon: <Flame className="w-3 h-3 text-rose-500 animate-pulse" /> };
+      return { dot: 'bg-amber-500 animate-pulse', label: 'VAGA ABERTA', text: 'text-amber-600 dark:text-amber-400', wrapper: 'border-l-amber-500 bg-amber-50 dark:bg-amber-950/30', icon: <Flame className="w-3 h-3 text-amber-500 animate-pulse" /> };
     }
     
     // Plantão ativo ou na passagem
@@ -1081,6 +1138,47 @@ export default function Escalas() {
       >
         {sidebarHidden ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
+
+      {/* BANNER 0: ALERTA CRÍTICO DE VAGAS EM ABERTO/FUROS (IGUAL DO BI RELATÓRIOS) */}
+      {vacantShiftAlerts.length > 0 && isManager && (
+        <div className="p-4 rounded-3xl bg-rose-500/15 border-2 border-rose-500/60 shadow-lg animate-in fade-in flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0">
+              <AlertTriangle className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <strong className="text-sm font-black text-rose-500 uppercase tracking-wider block">
+                Alerta Crítico: Plantões Descobertos ({vacantShiftAlerts.length})
+              </strong>
+              <p className="text-xs text-rose-600 dark:text-rose-300">
+                Os turnos abaixo estão sem profissional alocado e precisam de atenção imediata da coordenação.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-2">
+            {vacantShiftAlerts.slice(0, 8).map(v => {
+              const isPast = isShiftPast(v, liveNow);
+              return (
+                <div 
+                  key={v.id} 
+                  onClick={() => { setEditingShiftId(v.id); setFormData({ date: v.date, sector_id: v.sector_id, target_specialty: v.target_specialty, start_time: v.start_time, end_time: v.end_time, shift_type: v.shift_type || 'diurno', action_type: 'alocar', professional_id: '', notes: v.notes || '' }); setModalOpen(true); }}
+                  className={`p-2 rounded-xl text-xs font-bold border cursor-pointer transition-all flex flex-col gap-1 shadow-sm hover:scale-[1.02] ${
+                    isPast ? 'bg-rose-100 border-rose-400 text-rose-800 dark:bg-rose-950/80 dark:border-rose-500 dark:text-rose-300' : 'bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-950/60 dark:border-amber-500/60 dark:text-amber-300'
+                  }`}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="truncate">{sectorMap[v.sector_id]?.name || 'Setor'}</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase ${isPast ? 'bg-rose-500 text-white' : 'bg-amber-500 text-white'}`}>
+                      {isPast ? 'Falta / Furo' : 'Vaga Futura'}
+                    </span>
+                  </div>
+                  <div className="font-mono opacity-80">{formatDateBR(v.date)} • {v.start_time} às {v.end_time}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* BANNER 1: ALERTA DE CONFLITO EXISTENTE NA BASE */}
       {allScaleConflicts.length > 0 && isManager && (
@@ -1428,7 +1526,7 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 4. ABA 2: PLANTÃO DO DIA (RESTAURADA E OPERACIONAL)                        */}
+      {/* 4. ABA 2: PLANTÃO DO DIA (RESTAURADA E OPERACIONAL)                       */}
       {/* ========================================================================= */}
       {activeTab === 'dia' && (
         <div className="space-y-5 animate-in fade-in">
