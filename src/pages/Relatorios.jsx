@@ -122,6 +122,7 @@ export default function Relatorios() {
   const { shifts = [], sectors = [], professionals = [], company } = useAppData();
 
   const [activeTab, setActiveTab] = useState('executivo');
+  const [printMode, setPrintMode] = useState('current'); 
   
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
@@ -366,7 +367,7 @@ export default function Relatorios() {
   const hospitalName = company?.name || 'Hospital Principal';
 
   // ==========================================
-  // EXPORTAÇÃO EXCEL NATIVA (.xls)
+  // EXPORTAÇÃO EXCEL NATIVA
   // ==========================================
   const triggerExcelExport = (mode) => {
     if (!hasSearched) {
@@ -445,7 +446,7 @@ export default function Relatorios() {
       html += `<tr><td colspan="7" style="border:none;"></td></tr>`;
     }
 
-    if (mode === 'base_profissionais' || activeTab === 'base_profissionais') {
+    if (mode === 'all' || activeTab === 'base_profissionais') {
       html += `
           <tr><td colspan="10" class="section-title">BASE DE PROFISSIONAIS (CORPO CLÍNICO)</td></tr>
           <tr>
@@ -553,7 +554,7 @@ export default function Relatorios() {
         <style>
           @page { size: A4 portrait; margin: 15mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff; color: #000000; font-size: 11px; padding: 10px; }
+          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000000 !important; font-size: 11px; padding: 10px; }
           
           .header { border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 20px; }
           .h-title { font-size: 24px; font-weight: 900; text-transform: uppercase; color: #0f172a; margin-bottom: 4px; }
@@ -645,7 +646,7 @@ export default function Relatorios() {
             <tr>
               <td class="font-bold">${formatDate(v.date)}</td>
               <td>${getSectorName(v, sectors)}</td>
-              <td class="text-center font-bold">${v.start_time} - ${v.end_time}</td>
+              <td class="text-center">${v.start_time} - ${v.end_time}</td>
               <td class="text-center ${isPast ? 'furo' : 'vago'}">${isPast ? 'NÃO OCUPADO (FALTA)' : 'VAGA PENDENTE'}</td>
             </tr>
           `;
@@ -813,7 +814,7 @@ export default function Relatorios() {
     printWindow.document.write(printHtml);
     printWindow.document.close();
 
-    // Aguarda o HTML e o CSS serem processados no printWindow antes de invocar a tela de impressão
+    // Aguarda o HTML ser processado no printWindow antes de invocar a tela de impressão
     setTimeout(() => {
       printWindow.focus();
       printWindow.print();
@@ -1223,9 +1224,9 @@ export default function Relatorios() {
                 </div>
               </Card>
             )}
-          </>
+          </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
