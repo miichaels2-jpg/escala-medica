@@ -397,7 +397,7 @@ export default function Escalas() {
 
   const todayLocalStr = useMemo(() => getLocalDateString(liveNow), [liveNow]);
 
-  // INJEÇÃO DA LÓGICA DE ALERTAS CRÍTICOS
+  // ALERTA DE FUROS NA TELA PRINCIPAL
   const vacantShiftAlerts = useMemo(() => {
     const alerts = [];
     (shifts || []).forEach(s => {
@@ -416,7 +416,7 @@ export default function Escalas() {
   }, [shifts, selectedSectorId, currentYear, currentMonth, liveNow]);
 
   // =========================================================================
-  // MOTOR MODO TV CCO ATUALIZADO (TODOS DO DIA)
+  // TV CCO & IMPRESSÃO - ATUALIZADO PARA EXIBIR TODOS COM NOME VÁLIDO
   // =========================================================================
   const tvData = useMemo(() => {
     const emAndamento = [];
@@ -424,25 +424,30 @@ export default function Escalas() {
     const tableDayShifts = [];
 
     (shifts || []).forEach(shift => {
+      // Impede que escalas explicitamente deletadas ou canceladas subam
       if (!shift || shift.status === 'cancelado') return;
       if (selectedSectorId !== 'todos' && String(shift.sector_id) !== String(selectedSectorId)) return;
 
       const lifecycle = computeShiftHospitalLifecycle(shift, liveNow);
       const sDate = (shift.date || '').split('T')[0];
 
+      // Joga para a lista do dia (Impressão / Plantão do Dia) tudo de hoje ou tudo que estiver ao vivo
       if (sDate === todayLocalStr || lifecycle.isLive) {
         tableDayShifts.push(shift);
       }
 
+      // Verificação de Identidade (mesmo que ID esteja vazio, se tiver nome, é válido)
       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-      if (shift.status === 'vago' || !prof) return;
+      const validName = prof?.name || shift.professional_name;
 
-      // Todos os ativos neste exato momento (1 ou 10, entram todos aqui)
+      if (shift.status === 'vago' || !validName || String(validName).toLowerCase().includes('vaga')) return;
+
+      // Se a regra diz que é ao vivo (ex: 07:00 as 19:00 e são 14h), exibe na TV
       if (lifecycle.isLive) {
         emAndamento.push({ ...shift, lifecycle, detail: lifecycle.detail });
       }
 
-      // Toda a grade de plantões programados para o dia de hoje (Removemos a trava de 2 horas)
+      // Se está programado para o futuro e a data é hoje, joga no painel da direita da TV
       if (lifecycle.isProgrammed && sDate === todayLocalStr) {
         programadosHoje.push({ shift, lifecycle, startsIn: lifecycle.startsInMinutes });
       }
@@ -456,7 +461,6 @@ export default function Escalas() {
       return (a.start_time || '07:00').localeCompare(b.start_time || '07:00');
     });
 
-    // Ordenar Programados do mais cedo para o mais tarde
     programadosHoje.sort((a, b) => (a.shift.start_time || '07:00').localeCompare(b.shift.start_time || '07:00'));
 
     return { emAndamento, programadosHoje, tableDayShifts };
@@ -477,7 +481,8 @@ export default function Escalas() {
 
     const activeShiftsOnly = tvData.tableDayShifts.filter(shift => {
       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-      return shift.status !== 'vago' && prof && !shift.professional_name?.toLowerCase().includes('vaga');
+      const validName = prof?.name || shift.professional_name;
+      return shift.status !== 'vago' && validName && !String(validName).toLowerCase().includes('vaga');
     });
 
     const tableRowsHtml = activeShiftsOnly.length === 0
@@ -487,7 +492,7 @@ export default function Escalas() {
           const sector = sectorMap[String(shift.sector_id)];
           const realSpecialty = extractSpecialty(shift, prof);
           const bg = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
-          const profNome = `Dr(a). ${prof?.name || shift.professional_name}`;
+          const profNome = `Dr(a). ${formatFullName(prof?.name || shift.professional_name)}`;
           const conselho = prof?.document || '—';
 
           const [sYear, sMonth, sDay] = (shift.date || '').split('-');
@@ -773,7 +778,6 @@ export default function Escalas() {
     return days;
   }, [currentYear, currentMonth, startDateFilter]);
 
-  // STATUS COM O MOTOR HOSPITALAR COMPLETO (IDENTIFICAÇÃO DE FURO/FALTA)
   const getStatusBadge = (shift) => {
     const isVago = isVacant(shift);
     const life = computeShiftHospitalLifecycle(shift, liveNow);
@@ -824,7 +828,8 @@ export default function Escalas() {
     const monthStr = String(currentMonth + 1).padStart(2, '0');
     const prefix = `${currentYear}-${monthStr}`;
     return (shifts || []).filter(s => {
-      if (!s?.date || !s.date.startsWith(prefix)) return false;
+      // Ignora cancelados na grade também
+      if (!s?.date || !s.date.startsWith(prefix) || s.status === 'cancelado') return false;
       if (startDateFilter && s.date < startDateFilter) return false;
       if (selectedSectorId !== 'todos' && String(s.sector_id) !== String(selectedSectorId)) return false;
       if (!isShiftMatchingTurno(s, filterTurno)) return false;
@@ -943,7 +948,6 @@ export default function Escalas() {
       const finalSpecialty = (formData.target_specialty || prof?.specialty || 'Clínica Médica').trim();
       const sType = formData.start_time >= '18:00' || formData.start_time < '06:00' ? 'noturno' : 'diurno';
 
-      // Preserva notas antigas sem sujar
       let baseNotes = (formData.notes || '').replace(/\[ESP:[^\]]+\]/gi, '').replace(/\[AJUSTE_RETROATIVO:[^\]]+\]/gi, '').trim();
       let newNotes = `[ESP:${finalSpecialty}] ${baseNotes}`;
       
@@ -1050,6 +1054,7 @@ export default function Escalas() {
                     const prof = professionalMap[String(shift.professional_id)];
                     const sector = sectorMap[String(shift.sector_id)];
                     const realSpecialty = extractSpecialty(shift, prof);
+                    const validName = prof?.name || shift.professional_name;
 
                     return (
                       <div key={shift.id || `em-${idx}`} className="p-4 bg-slate-950 border border-emerald-500/40 rounded-2xl shadow-lg flex items-center justify-between">
@@ -1062,7 +1067,7 @@ export default function Escalas() {
                               </span>
                             )}
                           </div>
-                          <div className="text-base font-black text-white mt-0.5">{formatFullName(prof?.name)}</div>
+                          <div className="text-base font-black text-white mt-0.5">{formatFullName(validName)}</div>
                           <span className="text-xs text-slate-400">{realSpecialty} • {shift.start_time} às {shift.end_time}</span>
                         </div>
                         <span className="text-xs font-mono font-black text-emerald-300 bg-emerald-500/20 px-3 py-1.5 rounded-xl">
@@ -1093,12 +1098,13 @@ export default function Escalas() {
                   tvData.programadosHoje.map(({ shift, lifecycle }, idx) => {
                     const prof = professionalMap[String(shift.professional_id)];
                     const sector = sectorMap[String(shift.sector_id)];
+                    const validName = prof?.name || shift.professional_name;
 
                     return (
                       <div key={shift.id || `prog-${idx}`} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between">
                         <div>
                           <span className="text-xs font-black text-slate-400 uppercase">{sector?.name}</span>
-                          <div className="text-base font-black text-white">{formatFullName(prof?.name)}</div>
+                          <div className="text-base font-black text-white">{formatFullName(validName)}</div>
                           <span className="text-xs text-sky-400 font-mono">{shift.start_time} às {shift.end_time}</span>
                         </div>
                         <span className="text-xs font-black uppercase bg-sky-500/20 text-sky-300 px-3 py-1.5 rounded-xl font-mono">
@@ -1139,7 +1145,7 @@ export default function Escalas() {
         {sidebarHidden ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
 
-      {/* BANNER 0: ALERTA CRÍTICO DE VAGAS EM ABERTO/FUROS (IGUAL DO BI RELATÓRIOS) */}
+      {/* BANNER 0: ALERTA CRÍTICO DE VAGAS EM ABERTO/FUROS */}
       {vacantShiftAlerts.length > 0 && isManager && (
         <div className="p-4 rounded-3xl bg-rose-500/15 border-2 border-rose-500/60 shadow-lg animate-in fade-in flex flex-col gap-3">
           <div className="flex items-center gap-3">
@@ -1458,15 +1464,16 @@ export default function Escalas() {
                   const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
                   const status = getStatusBadge(shift);
                   const realSpec = extractSpecialty(shift, prof);
+                  const validName = prof?.name || shift.professional_name;
 
                   return (
-                    <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date, sector_id: shift.sector_id, target_specialty: realSpec, start_time: shift.start_time, end_time: shift.end_time, shift_type: shift.shift_type || 'diurno', action_type: (shift.status === 'vago' || !prof) ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '', retroactive_justification: extractRetroactiveJustification(shift.notes) }); setModalOpen(true); } }} className={`p-1.5 rounded-xl border border-l-4 shadow-sm cursor-pointer transition-all hover:brightness-95 ${status.wrapper}`}>
+                    <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date, sector_id: shift.sector_id, target_specialty: realSpec, start_time: shift.start_time, end_time: shift.end_time, shift_type: shift.shift_type || 'diurno', action_type: (shift.status === 'vago' || !validName) ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '', retroactive_justification: extractRetroactiveJustification(shift.notes) }); setModalOpen(true); } }} className={`p-1.5 rounded-xl border border-l-4 shadow-sm cursor-pointer transition-all hover:brightness-95 ${status.wrapper}`}>
                       <div className="flex justify-between font-mono text-[9px] mb-0.5 opacity-80">
                         <span>{shift.start_time}-{shift.end_time}</span>
                         <span className={`font-black uppercase tracking-tight flex items-center gap-1 ${status.text}`}>{status.icon} {status.label}</span>
                       </div>
                       <div className="font-black truncate leading-tight text-slate-900 dark:text-white">
-                        {status.label.includes('FALTA') || status.label.includes('VAGA') || status.label.includes('ABERTA') ? `⚠️ ${status.label}` : formatFullName(prof?.name)}
+                        {status.label.includes('FALTA') || status.label.includes('VAGA') || status.label.includes('ABERTA') ? `⚠️ ${status.label}` : formatFullName(validName)}
                       </div>
                       <div className="text-[9px] font-semibold opacity-70 truncate flex items-center justify-between">
                         <span>{realSpec}</span>
@@ -1563,6 +1570,7 @@ export default function Escalas() {
                       const sector = sectorMap[String(shift.sector_id)];
                       const status = getStatusBadge(shift);
                       const realSpecialty = extractSpecialty(shift, prof);
+                      const validName = prof?.name || shift.professional_name;
 
                       const [sYear, sMonth, sDay] = (shift.date || '').split('-');
                       const formattedDate = sDay && sMonth ? `${sDay}/${sMonth}/${sYear}` : shift.date;
@@ -1575,7 +1583,7 @@ export default function Escalas() {
                             <span className="text-[10px] text-slate-400">{shift.start_time} às {shift.end_time}</span>
                           </td>
                           <td className="py-3 px-4 font-black text-slate-900 dark:text-slate-100">
-                            {status.label.includes('FALTA') || status.label.includes('VAGA') ? <span className="text-rose-600 dark:text-rose-400">⚠️ {status.label}</span> : formatFullName(prof?.name)}
+                            {status.label.includes('FALTA') || status.label.includes('VAGA') ? <span className="text-rose-600 dark:text-rose-400">⚠️ {status.label}</span> : formatFullName(validName)}
                           </td>
                           <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-semibold">{realSpecialty}</td>
                           <td className="py-3 px-4 text-center">
