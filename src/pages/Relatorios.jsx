@@ -122,7 +122,6 @@ export default function Relatorios() {
   const { shifts = [], sectors = [], professionals = [], company } = useAppData();
 
   const [activeTab, setActiveTab] = useState('executivo');
-  const [printMode, setPrintMode] = useState('current'); 
   
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
@@ -169,6 +168,7 @@ export default function Relatorios() {
     return profMap[String(shift.professional_id)] || profMap[normalize(getShiftName(shift))];
   }, [profMap]);
 
+  // Filtragem flexível com ORDENAÇÃO CRESCENTE DE DATA/HORA
   const filteredShifts = useMemo(() => {
     if (!hasSearched) return [];
     const term = normalize(appliedFilters.search);
@@ -365,6 +365,9 @@ export default function Relatorios() {
   const periodLabel = `${formatDate(appliedFilters.start)} até ${formatDate(appliedFilters.end)}`;
   const hospitalName = company?.name || 'Hospital Principal';
 
+  // ==========================================
+  // EXPORTAÇÃO EXCEL NATIVA
+  // ==========================================
   const triggerExcelExport = (mode) => {
     if (!hasSearched) {
       alert('Atenção: Aplique os filtros antes de exportar a planilha.');
@@ -386,7 +389,7 @@ export default function Relatorios() {
         .header-main { background-color: #ffffff; text-align: center; padding: 15px; border: none; }
         .h1 { font-size: 24px; font-weight: bold; color: #0f172a; margin: 0; }
         .h2 { font-size: 14px; color: #475569; margin: 5px 0 0 0; }
-        .money { mso-number-format:"_-* #\\,##0\\.00_-\\;\\-* #\\,##0\\.00_-\\;_-* &quot;-&quot;??_-\\;_-@_-"; }
+        .money { mso-number-format:"_-* #\\\\,##0\\\\.00_-\\\\;\\\\-* #\\\\,##0\\\\.00_-\\\\;_-* &quot;-&quot;??_-\\\\;_-@_-"; }
         .section-title { font-size: 16px; font-weight: bold; color: #0f172a; background-color: #e2e8f0; padding: 10px; text-align: left; border: 1px solid #cbd5e1; }
       </style>
       </head>
@@ -524,7 +527,9 @@ export default function Relatorios() {
     URL.revokeObjectURL(url);
   };
 
-  // IMPRESSÃO PDF ISOLADA EM JANELA PURA (SEM BARRAS DE ROLAGEM, BRANCA E PAGINADA)
+  // ==========================================
+  // IMPRESSÃO HTML PURA (Isolada, A4 Branco c/ Quebra)
+  // ==========================================
   const triggerPrint = (mode) => {
     if (!hasSearched) {
       alert('Atenção: Aplique os filtros para renderizar a telemetria antes de imprimir.');
@@ -533,7 +538,7 @@ export default function Relatorios() {
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      alert('Permita pop-ups no seu navegador para abrir o relatório.');
+      alert('Permita pop-ups para abrir o relatório de impressão.');
       return;
     }
 
@@ -548,7 +553,7 @@ export default function Relatorios() {
         <style>
           @page { size: A4 portrait; margin: 15mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff; color: #000000; font-size: 11px; padding: 10px; }
+          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000000 !important; font-size: 11px; padding: 10px; }
           
           .header { border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 20px; }
           .h-title { font-size: 24px; font-weight: 900; text-transform: uppercase; color: #0f172a; margin-bottom: 4px; }
@@ -808,7 +813,6 @@ export default function Relatorios() {
     printWindow.document.write(printHtml);
     printWindow.document.close();
 
-    // Aguarda o HTML ser renderizado pelo navegador antes de chamar o print
     setTimeout(() => {
       printWindow.focus();
       printWindow.print();
@@ -1219,8 +1223,8 @@ export default function Relatorios() {
               </Card>
             )}
           </div>
-        )}
-      </div>
-    </>
+        </>
+      )}
+    </div>
   );
 }
