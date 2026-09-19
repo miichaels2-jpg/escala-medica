@@ -399,7 +399,7 @@ export default function Escalas() {
 
   const todayLocalStr = useMemo(() => getLocalDateString(liveNow), [liveNow]);
 
-  // INJEÇÃO DA LÓGICA DE ALERTAS CRÍTICOS (NÃO INCLUI FUROS PASSADOS AQUI)
+  // INJEÇÃO DA LÓGICA DE ALERTAS CRÍTICOS
   const vacantShiftAlerts = useMemo(() => {
     const alerts = [];
     (shifts || []).forEach(s => {
@@ -772,7 +772,7 @@ export default function Escalas() {
     return days;
   }, [currentYear, currentMonth, startDateFilter]);
 
-  // STATUS COM O MOTOR HOSPITALAR COMPLETO (IDENTIFICAÇÃO DE FURO/FALTA)
+  // STATUS COM O MOTOR HOSPITALAR COMPLETO E IDENTIFICAÇÃO DE FURO (VAGA QUE JÁ PASSOU)
   const getStatusBadge = (shift) => {
     const isVago = isVacant(shift);
     const life = computeShiftHospitalLifecycle(shift, liveNow);
@@ -784,6 +784,7 @@ export default function Escalas() {
       return { dot: 'bg-amber-500 animate-pulse', label: 'VAGA ABERTA', text: 'text-amber-600 dark:text-amber-400', wrapper: 'border-l-amber-500 bg-amber-50 dark:bg-amber-950/30', icon: <Flame className="w-3 h-3 text-amber-500 animate-pulse" /> };
     }
     
+    // Plantão ativo ou na passagem
     if (life.isLive) {
       return { 
         dot: 'bg-emerald-500 animate-ping', 
@@ -905,6 +906,10 @@ export default function Escalas() {
     } catch (err) { alert('Erro ao alocar: ' + err.message); } finally { setDraggingProfId(null); }
   };
 
+  const isEditingPastShift = useMemo(() => {
+    return isShiftPast({ date: formData.date, end_time: formData.end_time }, liveNow);
+  }, [formData.date, formData.end_time, liveNow]);
+
   const handleSaveShift = async (e) => {
     e.preventDefault();
     if (!formData.sector_id || !formData.date) return;
@@ -981,10 +986,6 @@ export default function Escalas() {
     if (!confirm('Excluir plantão?')) return;
     try { await base44.entities.Shift.delete(shiftId); setModalOpen(false); await syncGlobalData(); } catch (err) { alert(err.message); }
   };
-
-  const isEditingPastShift = useMemo(() => {
-    return isShiftPast({ date: formData.date, end_time: formData.end_time }, liveNow);
-  }, [formData.date, formData.end_time, liveNow]);
 
   // =========================================================================
   // 1. MODO TV CCO EM TELA CHEIA ISOLADA (TOTALMENTE OPERACIONAL)
@@ -1465,7 +1466,7 @@ export default function Escalas() {
                         <span className={`font-black uppercase tracking-tight flex items-center gap-1 ${status.text}`}>{status.icon} {status.label}</span>
                       </div>
                       <div className="font-black truncate leading-tight text-slate-900 dark:text-white">
-                        {status.code === 'vaga' || status.code === 'perdida' ? `⚠️ ${status.label}` : formatFullName(prof?.name)}
+                        {status.label.includes('FALTA') || status.label.includes('VAGA') || status.label.includes('ABERTA') ? `⚠️ ${status.label}` : formatFullName(prof?.name)}
                       </div>
                       <div className="text-[9px] font-semibold opacity-70 truncate flex items-center justify-between">
                         <span>{realSpec}</span>
@@ -1574,7 +1575,7 @@ export default function Escalas() {
                             <span className="text-[10px] text-slate-400">{shift.start_time} às {shift.end_time}</span>
                           </td>
                           <td className="py-3 px-4 font-black text-slate-900 dark:text-slate-100">
-                            {status.code === 'vaga' || status.code === 'perdida' ? <span className="text-rose-600 dark:text-rose-400">⚠️ {status.label}</span> : formatFullName(prof?.name)}
+                            {status.label.includes('FALTA') || status.label.includes('VAGA') ? <span className="text-rose-600 dark:text-rose-400">⚠️ {status.label}</span> : formatFullName(prof?.name)}
                           </td>
                           <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-semibold">{realSpecialty}</td>
                           <td className="py-3 px-4 text-center">
@@ -1797,7 +1798,7 @@ export default function Escalas() {
                     </div>
                   </div>
                   
-                  {isMemoEditingPastShift && (
+                  {isShiftPast({ date: formData.date, end_time: formData.end_time }, liveNow) && (
                     <div className="space-y-1.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 col-span-1 sm:col-span-2 mt-3">
                       <Label className="text-[10px] font-black uppercase text-amber-500">Justificativa de Ajuste Retroativo *</Label>
                       <Input
@@ -1810,7 +1811,7 @@ export default function Escalas() {
                     </div>
                   )}
 
-                  {!isMemoEditingPastShift && (
+                  {!isShiftPast({ date: formData.date, end_time: formData.end_time }, liveNow) && (
                     <p className="text-[10px] text-slate-400 leading-tight pt-0.5">
                       Profissionais em choque de horário aparecem desabilitados para prevenir duplicidade de escala.
                     </p>
@@ -1940,12 +1941,6 @@ export default function Escalas() {
           </form>
         </DialogContent>
       </Dialog>
-
     </div>
   );
-
-  // Helper Memo used locally to conditionally render the required Justification input
-  function useMemoEditingPastShift() {
-    return useMemo(() => isShiftPast({ date: formData.date, end_time: formData.end_time }, liveNow), [formData.date, formData.end_time, liveNow]);
-  }
 }
