@@ -12,7 +12,7 @@ import {
   MousePointerClick, HeartPulse, UserPlus, SlidersHorizontal,
   Flame, ArrowRight, MonitorPlay, GripVertical, 
   Printer, Sun, Moon, AlertTriangle, CheckCircle2, Radio, Calendar as CalendarIcon,
-  PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight, Minimize2, Target, ShieldAlert,
+  PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight, ArrowRightLeft, Minimize2, Target, ShieldAlert,
   BellRing, Check, Layers, History
 } from 'lucide-react';
 
@@ -772,7 +772,7 @@ export default function Escalas() {
     return days;
   }, [currentYear, currentMonth, startDateFilter]);
 
-  // STATUS COM O MOTOR HOSPITALAR COMPLETO E IDENTIFICAÇÃO DE FURO (VAGA QUE JÁ PASSOU)
+  // STATUS COM O MOTOR HOSPITALAR COMPLETO (IDENTIFICAÇÃO DE FURO/FALTA)
   const getStatusBadge = (shift) => {
     const isVago = isVacant(shift);
     const life = computeShiftHospitalLifecycle(shift, liveNow);
@@ -784,7 +784,6 @@ export default function Escalas() {
       return { dot: 'bg-amber-500 animate-pulse', label: 'VAGA ABERTA', text: 'text-amber-600 dark:text-amber-400', wrapper: 'border-l-amber-500 bg-amber-50 dark:bg-amber-950/30', icon: <Flame className="w-3 h-3 text-amber-500 animate-pulse" /> };
     }
     
-    // Plantão ativo ou na passagem
     if (life.isLive) {
       return { 
         dot: 'bg-emerald-500 animate-ping', 
@@ -1798,7 +1797,7 @@ export default function Escalas() {
                     </div>
                   </div>
                   
-                  {isShiftPast({ date: formData.date, end_time: formData.end_time }, liveNow) && (
+                  {isEditingPastShift && (
                     <div className="space-y-1.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 col-span-1 sm:col-span-2 mt-3">
                       <Label className="text-[10px] font-black uppercase text-amber-500">Justificativa de Ajuste Retroativo *</Label>
                       <Input
@@ -1811,7 +1810,7 @@ export default function Escalas() {
                     </div>
                   )}
 
-                  {!isShiftPast({ date: formData.date, end_time: formData.end_time }, liveNow) && (
+                  {!isEditingPastShift && (
                     <p className="text-[10px] text-slate-400 leading-tight pt-0.5">
                       Profissionais em choque de horário aparecem desabilitados para prevenir duplicidade de escala.
                     </p>
