@@ -114,14 +114,11 @@ function getProfessionalCost(professional, hours) {
   return safeNumber(meta.monthly_salary ?? meta.monthlySalary ?? meta.salary ?? meta.salario, 0) / 20;
 }
 
-function csvCell(value) {
-  return `"${String(value ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
-}
-
 export default function Relatorios() {
   const { shifts = [], sectors = [], professionals = [], company } = useAppData();
 
   const [activeTab, setActiveTab] = useState('executivo');
+  const [printMode, setPrintMode] = useState('current'); 
   
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
@@ -168,7 +165,6 @@ export default function Relatorios() {
     return profMap[String(shift.professional_id)] || profMap[normalize(getShiftName(shift))];
   }, [profMap]);
 
-  // Filtragem flexível com ORDENAÇÃO CRESCENTE DE DATA/HORA
   const filteredShifts = useMemo(() => {
     if (!hasSearched) return [];
     const term = normalize(appliedFilters.search);
@@ -389,21 +385,22 @@ export default function Relatorios() {
         .header-main { background-color: #ffffff; text-align: center; padding: 15px; border: none; }
         .h1 { font-size: 24px; font-weight: bold; color: #0f172a; margin: 0; }
         .h2 { font-size: 14px; color: #475569; margin: 5px 0 0 0; }
-        .money { mso-number-format:"_-* #\\\\,##0\\\\.00_-\\\\;\\\\-* #\\\\,##0\\\\.00_-\\\\;_-* &quot;-&quot;??_-\\\\;_-@_-"; }
+        .money { mso-number-format:"_-* #\\,##0\\.00_-\\;\\-* #\\,##0\\.00_-\\;_-* &quot;-&quot;??_-\\;_-@_-"; }
         .section-title { font-size: 16px; font-weight: bold; color: #0f172a; background-color: #e2e8f0; padding: 10px; text-align: left; border: 1px solid #cbd5e1; }
       </style>
       </head>
       <body>
         <table>
           <tr>
-            <td colspan="7" class="header-main">
+            <td colspan="10" class="header-main">
               <div class="h1">${hospitalName} - Relatório de Gestão Hospitalar</div>
               <div class="h2">Período: ${periodLabel}</div>
             </td>
           </tr>
-          <tr><td colspan="7" style="border:none;"></td></tr>
+          <tr><td colspan="10" style="border:none;"></td></tr>
     `;
 
+    // BLOCO: ESCALAS
     if (mode === 'all' || activeTab === 'escalas') {
       html += `
           <tr><td colspan="7" class="section-title">EXTRATO DETALHADO DE ESCALAS (Cronológico)</td></tr>
@@ -442,10 +439,11 @@ export default function Relatorios() {
           </tr>
         `;
       });
-      html += `<tr><td colspan="7" style="border:none;"></td></tr>`;
+      html += `<tr><td colspan="7" style="border:none; height:20px;"></td></tr>`;
     }
 
-    if (mode === 'base_profissionais' || activeTab === 'base_profissionais') {
+    // BLOCO: BASE DE PROFISSIONAIS
+    if (mode === 'all' || activeTab === 'base_profissionais') {
       html += `
           <tr><td colspan="10" class="section-title">BASE DE PROFISSIONAIS (CORPO CLÍNICO)</td></tr>
           <tr>
@@ -480,9 +478,10 @@ export default function Relatorios() {
           </tr>
         `;
       });
-      html += `<tr><td colspan="10" style="border:none;"></td></tr>`;
+      html += `<tr><td colspan="10" style="border:none; height:20px;"></td></tr>`;
     }
 
+    // BLOCO: PRODUTIVIDADE
     if (mode === 'all' || activeTab === 'profissionais') {
       html += `
           <tr><td colspan="6" class="section-title">MATRIZ DE PRODUTIVIDADE MÉDICA (No Período)</td></tr>
@@ -505,6 +504,47 @@ export default function Relatorios() {
             <td style="text-align:center;">${doc.shifts}</td>
             <td style="text-align:center;">${doc.hours}h</td>
             <td class="money">${doc.cost.toFixed(2).replace('.', ',')}</td>
+          </tr>
+        `;
+      });
+      html += `<tr><td colspan="6" style="border:none; height:20px;"></td></tr>`;
+    }
+
+    // BLOCO: FINANCEIRO (ESTE ERA O QUE ESTAVA FALTANDO E CAUSOU O ARQUIVO VAZIO!)
+    if (mode === 'all' || activeTab === 'financeiro') {
+      html += `
+          <tr><td colspan="4" class="section-title">RELATÓRIO FINANCEIRO OPERACIONAL</td></tr>
+          <tr>
+            <th colspan="2">Total Previsão Global</th>
+            <th colspan="2" style="background-color: #047857;">Realizado Concluído</th>
+          </tr>
+          <tr>
+            <td colspan="2" class="money" style="font-weight:bold; font-size:16px;">${financialSummary.totalCost.toFixed(2).replace('.', ',')}</td>
+            <td colspan="2" class="money" style="font-weight:bold; font-size:16px; color:#047857;">${financialSummary.executedCost.toFixed(2).replace('.', ',')}</td>
+          </tr>
+          <tr>
+            <th colspan="2" style="background-color: #b45309;">Valor Pendente a Realizar</th>
+            <th colspan="2" style="background-color: #be123c;">Valor Retido (Vagas e Furos)</th>
+          </tr>
+          <tr>
+            <td colspan="2" class="money" style="font-weight:bold; font-size:16px; color:#b45309;">${financialSummary.pendingCost.toFixed(2).replace('.', ',')}</td>
+            <td colspan="2" class="money" style="font-weight:bold; font-size:16px; color:#be123c;">${financialSummary.vacantCost.toFixed(2).replace('.', ',')}</td>
+          </tr>
+          <tr><td colspan="4" style="border:none; height: 20px;"></td></tr>
+          <tr><td colspan="4" class="section-title">CUSTOS DESDOBRADOS POR SETOR CLÍNICO</td></tr>
+          <tr>
+            <th colspan="2">Setor Clínico / Unidade</th>
+            <th class="text-center">Horas Assistenciais</th>
+            <th class="text-right">Alocação Orçamentária (R$)</th>
+          </tr>
+      `;
+      sectorMetrics.forEach((sec, i) => {
+        const rowClass = i % 2 === 0 ? '' : 'class="row-alt"';
+        html += `
+          <tr ${rowClass}>
+            <td colspan="2" style="font-weight:bold;">${sec.name}</td>
+            <td style="text-align:center;">${sec.hours}h</td>
+            <td class="money">${sec.cost.toFixed(2).replace('.', ',')}</td>
           </tr>
         `;
       });
@@ -813,6 +853,7 @@ export default function Relatorios() {
     printWindow.document.write(printHtml);
     printWindow.document.close();
 
+    // Aguarda o HTML ser renderizado pelo navegador antes de chamar o print
     setTimeout(() => {
       printWindow.focus();
       printWindow.print();
