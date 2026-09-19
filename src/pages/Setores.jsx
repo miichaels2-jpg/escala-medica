@@ -8,320 +8,371 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
-  Building2, Plus, Search, Edit3, Ban, CheckCircle2, 
-  MapPin, Stethoscope, Layers, AlertCircle, Clock
+  Building2, Plus, Search, Edit, Trash2, 
+  Activity, CheckCircle2, AlertTriangle, 
+  MapPin, Stethoscope, BedDouble, Save, X
 } from 'lucide-react';
 
 export default function Setores() {
-  const { 
-    sectors, 
-    units, 
-    selectedUnitId, 
-    companyId, 
-    isManager, 
-    syncGlobalData 
-  } = useAppData();
+  const { sectors = [], company, selectedUnitId, syncGlobalData } = useAppData();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [editingSector, setEditingSector] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Estado do Formulário
   const [formData, setFormData] = useState({
     name: '',
-    code: '',
-    location: '',
-    unit_id: '',
-    status: 'ativo',
-    description: ''
+    specialty: '',
+    capacity: '',
+    status: 'ativo'
   });
 
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      code: '',
-      location: '',
-      unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
-      status: 'ativo',
-      description: ''
+  // Extrair especialidades únicas para o Datalist (Autocompletar)
+  const registeredSpecialties = useMemo(() => {
+    const set = new Set();
+    sectors.forEach(s => {
+      if (s.specialty && s.specialty.trim()) set.add(s.specialty.trim());
     });
-    setEditingId(null);
-  };
+    return Array.from(set).sort();
+  }, [sectors]);
 
-  const handleOpenNew = () => {
-    resetForm();
-    setModalOpen(true);
-  };
+  // Filtragem e Ordenação
+  const filteredSectors = useMemo(() => {
+    const term = searchQuery.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    
+    return sectors.filter(s => {
+      if (!term) return true;
+      const name = (s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const spec = (s.specialty || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return name.includes(term) || spec.includes(term);
+    }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [sectors, searchQuery]);
 
-  const handleOpenEdit = (sector) => {
-    setEditingId(sector.id);
-    setFormData({
-      name: sector.name || '',
-      code: sector.code || '',
-      location: sector.location || '',
-      unit_id: sector.unit_id || selectedUnitId,
-      status: sector.status || 'ativo',
-      description: sector.description || ''
+  // Métricas
+  const metrics = useMemo(() => {
+    let ativos = 0;
+    let inativos = 0;
+    let totalCapacidade = 0;
+
+    sectors.forEach(s => {
+      if (s.status === 'inativo') inativos++;
+      else ativos++;
+      
+      if (s.capacity) totalCapacidade += parseInt(s.capacity, 10) || 0;
     });
-    setModalOpen(true);
-  };
 
-  const handleToggleSectorStatus = async (sector) => {
-    const nextStatus = sector.status === 'inativo' ? 'ativo' : 'inativo';
-    const msg = nextStatus === 'inativo' 
-      ? `Inativar o setor "${sector.name}"? Ele não aparecerá para novas escalas, mas os plantões antigos e relatórios serão preservados.` 
-      : `Reativar o setor "${sector.name}"?`;
+    return { total: sectors.length, ativos, inativos, totalCapacidade };
+  }, [sectors]);
 
-    if (!confirm(msg)) return;
-
-    try {
-      await base44.entities.Sector.update(sector.id, { status: nextStatus });
-      await syncGlobalData();
-    } catch (err) {
-      alert('Erro ao alterar status do setor: ' + err.message);
+  // Ações do CRUD
+  const handleOpenModal = (sector = null) => {
+    if (sector) {
+      setEditingSector(sector);
+      setFormData({
+        name: sector.name || '',
+        specialty: sector.specialty || '',
+        capacity: sector.capacity || '',
+        status: sector.status || 'ativo'
+      });
+    } else {
+      setEditingSector(null);
+      setFormData({
+        name: '',
+        specialty: '',
+        capacity: '',
+        status: 'ativo'
+      });
     }
+    setModalOpen(true);
   };
 
-  const handleSaveSector = async (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      alert('Informe o nome do setor.');
+      alert("O nome do setor é obrigatório.");
       return;
     }
 
     setSubmitting(true);
     try {
       const payload = {
-        company_id: companyId || 'cmp_principal',
-        unit_id: formData.unit_id || selectedUnitId,
+        company_id: company?.id || 'cmp_principal',
+        unit_id: selectedUnitId || 'unit_h1',
         name: formData.name.trim(),
-        code: formData.code.trim().toUpperCase(),
-        location: formData.location.trim(),
-        status: formData.status,
-        description: formData.description.trim()
+        specialty: formData.specialty.trim() || 'Geral',
+        capacity: formData.capacity ? parseInt(formData.capacity, 10) : null,
+        status: formData.status
       };
 
-      if (editingId) {
-        await base44.entities.Sector.update(editingId, payload);
+      if (editingSector?.id) {
+        // Atualizar
+        await base44.entities.Sector.update(editingSector.id, payload);
       } else {
+        // Criar Novo
         await base44.entities.Sector.create(payload);
       }
 
       setModalOpen(false);
-      resetForm();
       await syncGlobalData();
-      alert('Setor salvo com sucesso!');
-    } catch (err) {
-      alert('Erro ao salvar setor: ' + err.message);
+    } catch (error) {
+      alert('Erro ao salvar setor: ' + error.message);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const filteredSectors = useMemo(() => {
-    const term = searchQuery.toLowerCase().trim();
-    return sectors.filter(s => {
-      if (!term) return true;
-      return (s.name || '').toLowerCase().includes(term) || (s.code || '').toLowerCase().includes(term);
-    });
-  }, [sectors, searchQuery]);
+  const handleDelete = async (id, name) => {
+    if (!confirm(`Tem certeza que deseja excluir permanentemente o setor "${name}"? Esta ação pode afetar escalas vinculadas.`)) {
+      return;
+    }
+    try {
+      await base44.entities.Sector.delete(id);
+      await syncGlobalData();
+    } catch (error) {
+      alert('Erro ao excluir: ' + error.message);
+    }
+  };
 
   return (
-    <div className="p-4 md:p-8 space-y-6 font-sans">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans transition-colors duration-300">
       
-      {/* BANNER PRINCIPAL */}
-      <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-400">
-            <Building2 className="w-4 h-4" /> Estrutura Hospitalar
+      {/* HEADER EXECUTIVO */}
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 md:p-8 shadow-xl flex flex-col xl:flex-row xl:items-center justify-between gap-6 transition-colors duration-300">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-sky-600 dark:text-cyan-400">
+            <Activity className="w-4 h-4 text-sky-600 dark:text-cyan-400 animate-pulse" /> Estrutura Organizacional
           </div>
-          <h2 className="mt-1 text-2xl sm:text-3xl font-black">Setores & Unidades de Atendimento</h2>
-          <p className="text-xs text-slate-300">
-            Cadastro de alas, UTIs, pronto atendimento e centros cirúrgicos que alimentam as escalas e relatórios.
+          <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+            Gestão de Setores & Especialidades
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium max-w-2xl">
+            Cadastre as unidades de atendimento, alas hospitalares e parametrize as especialidades clínicas exigidas para cada posto.
           </p>
         </div>
 
-        {isManager && (
-          <Button onClick={handleOpenNew} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs h-10 px-5 rounded-xl shadow-lg gap-1.5 shrink-0">
+        <div className="shrink-0">
+          <Button 
+            onClick={() => handleOpenModal()} 
+            className="w-full sm:w-auto h-12 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs px-6 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105 border border-sky-500 dark:border-cyan-500/50"
+          >
             <Plus className="w-4 h-4" /> Novo Setor
           </Button>
-        )}
+        </div>
       </div>
 
-      {/* BARRA DE FILTRO */}
-      <div className="flex items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-3">
-        <span className="text-xs font-bold text-slate-500">
-          Total de setores: {filteredSectors.length}
-        </span>
+      {/* MÉTRICAS (CARDS) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in zoom-in-95 duration-300">
+        <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg transition-colors">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 rounded-xl bg-sky-100 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Total de Setores</p>
+          </div>
+          <p className="text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{metrics.total}</p>
+        </Card>
 
-        <div className="relative w-full sm:w-64">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <Input 
-            placeholder="Buscar por setor ou sigla..." 
-            value={searchQuery} 
-            onChange={e => setSearchQuery(e.target.value)} 
-            className="pl-9 h-9 text-xs" 
-          />
-        </div>
+        <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg transition-colors">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Setores Ativos</p>
+          </div>
+          <p className="text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{metrics.ativos}</p>
+        </Card>
+
+        <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg transition-colors">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 rounded-xl bg-rose-100 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Setores Inativos</p>
+          </div>
+          <p className="text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{metrics.inativos}</p>
+        </Card>
+
+        <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg transition-colors">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              <BedDouble className="w-5 h-5" />
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Capacidade Declarada</p>
+          </div>
+          <p className="text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{metrics.totalCapacidade}</p>
+          <p className="text-[10px] text-slate-400 mt-1 font-bold">Postos / Leitos</p>
+        </Card>
+      </div>
+
+      {/* BARRA DE PESQUISA */}
+      <div className="relative animate-in fade-in duration-500">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+        <Input 
+          placeholder="Buscar setor ou especialidade..." 
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full h-14 pl-12 bg-white dark:bg-[#1e293b] border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl shadow-sm focus:border-sky-500 dark:focus:border-cyan-500 transition-colors font-medium"
+        />
       </div>
 
       {/* GRID DE SETORES */}
-      {filteredSectors.length === 0 ? (
-        <Card className="p-16 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-2">
-          <Building2 className="w-10 h-10 text-slate-300 mx-auto" />
-          <h3 className="font-bold text-slate-700 dark:text-slate-200 text-sm">Nenhum setor cadastrado</h3>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            Cadastre os setores operacionais (ex: UTI, PA, Centro Cirúrgico) para poder gerar escalas.
-          </p>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredSectors.map(sector => {
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        {filteredSectors.length === 0 ? (
+          <div className="col-span-full py-12 text-center border-2 border-dashed border-slate-300 dark:border-slate-800 rounded-3xl bg-white/50 dark:bg-[#1e293b]/50 text-slate-500 dark:text-slate-400">
+            Nenhum setor encontrado. Clique em "Novo Setor" para adicionar.
+          </div>
+        ) : (
+          filteredSectors.map((sector) => {
             const isInactive = sector.status === 'inativo';
 
             return (
               <Card 
                 key={sector.id} 
-                className={`p-5 rounded-2xl border transition-all duration-200 flex flex-col justify-between space-y-4 shadow-sm ${
+                className={`p-5 rounded-3xl border transition-all duration-300 hover:shadow-lg flex flex-col justify-between h-full ${
                   isInactive 
-                    ? 'border-slate-200 dark:border-slate-800 opacity-60 bg-slate-50 dark:bg-slate-950' 
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
+                    ? 'border-slate-200 dark:border-slate-800/50 bg-slate-50 dark:bg-[#0f172a]/50 opacity-70 grayscale hover:grayscale-0' 
+                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] hover:border-sky-300 dark:hover:border-cyan-800'
                 }`}
               >
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
-                    <div>
-                      <h3 className="font-black text-sm text-slate-900 dark:text-white">
-                        {sector.name}
-                      </h3>
-                      {sector.code && (
-                        <span className="text-[10px] font-mono font-bold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-900 mt-1 inline-block">
-                          {sector.code}
+                <div>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-3 rounded-2xl ${isInactive ? 'bg-slate-200 dark:bg-slate-800 text-slate-500' : 'bg-sky-50 dark:bg-cyan-500/10 text-sky-600 dark:text-cyan-400'}`}>
+                        <MapPin className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-black text-lg text-slate-900 dark:text-white leading-tight">
+                          {sector.name}
+                        </h3>
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md mt-1 inline-block ${
+                          isInactive 
+                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' 
+                            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
+                        }`}>
+                          {sector.status || 'Ativo'}
                         </span>
-                      )}
+                      </div>
                     </div>
-
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
-                      isInactive 
-                        ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30' 
-                        : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
-                    }`}>
-                      {sector.status || 'Ativo'}
-                    </span>
                   </div>
 
-                  <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
-                    {sector.location && (
-                      <div className="flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                        <span>Localização: <b>{sector.location}</b></span>
+                  <div className="space-y-2 mt-5">
+                    <div className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-900/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800/50">
+                      <Stethoscope className="w-4 h-4 text-sky-500 dark:text-cyan-500 shrink-0" />
+                      <span className="truncate"><b>Especialidade:</b> {sector.specialty || 'Não definida'}</span>
+                    </div>
+                    
+                    {sector.capacity && (
+                      <div className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-900/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800/50">
+                        <BedDouble className="w-4 h-4 text-amber-500 shrink-0" />
+                        <span><b>Capacidade:</b> {sector.capacity} postos/leitos</span>
                       </div>
-                    )}
-                    {sector.description && (
-                      <p className="text-[11px] text-slate-500 italic mt-1 bg-slate-50 dark:bg-slate-800/40 p-2 rounded-lg">
-                        "{sector.description}"
-                      </p>
                     )}
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
+                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
                   <Button 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={() => handleOpenEdit(sector)} 
-                    className="flex-1 text-xs h-8 gap-1 font-bold"
-                  >
-                    <Edit3 className="w-3.5 h-3.5 text-indigo-600" /> Editar Setor
-                  </Button>
-
-                  <Button 
-                    size="sm" 
                     variant="ghost" 
-                    onClick={() => handleToggleSectorStatus(sector)} 
-                    className={`text-xs h-8 px-2.5 ${isInactive ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'}`}
-                    title={isInactive ? 'Reativar setor' : 'Inativar setor'}
+                    onClick={() => handleDelete(sector.id, sector.name)}
+                    className="h-8 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/30 rounded-xl px-3 cursor-pointer"
                   >
-                    {isInactive ? <CheckCircle2 className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
+                    <Trash2 className="w-3.5 h-3.5 mr-1" /> Excluir
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    onClick={() => handleOpenModal(sector)}
+                    className="h-8 text-xs font-bold bg-white hover:bg-slate-50 border-slate-200 text-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-700 dark:text-slate-200 rounded-xl px-4 cursor-pointer"
+                  >
+                    <Edit className="w-3.5 h-3.5 mr-1.5" /> Editar
                   </Button>
                 </div>
               </Card>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
 
-      {/* MODAL: CRIAR OU EDITAR SETOR */}
+      {/* MODAL DE CADASTRO/EDIÇÃO */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-base font-black flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-indigo-600" />
-              {editingId ? 'Editar Setor Hospitalar' : 'Cadastrar Novo Setor'}
+        <DialogContent className="w-[95vw] sm:max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-2xl z-[9999] p-5 sm:p-6 rounded-3xl">
+          <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-4">
+            <DialogTitle className="text-lg font-black flex items-center gap-2 text-sky-600 dark:text-cyan-400">
+              <Building2 className="w-5 h-5" /> 
+              {editingSector ? 'Editar Setor' : 'Novo Setor Hospitalar'}
             </DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={handleSaveSector} className="space-y-3 py-2 text-xs">
-            <div className="space-y-1">
-              <Label className="text-xs font-bold">Nome do Setor *</Label>
+          <form onSubmit={handleSave} className="space-y-4 py-4 text-sm">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nome do Setor / Unidade *</Label>
               <Input 
+                autoFocus
+                placeholder="Ex: UTI Adulto, Bloco Cirúrgico..." 
                 value={formData.name} 
-                onChange={e => setFormData({...formData, name: e.target.value})} 
-                placeholder="Ex: UTI Adulto Geral, Pronto Atendimento, Pediatria" 
-                className="h-9" 
+                onChange={e => setFormData({ ...formData, name: e.target.value })} 
+                className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-medium"
+                required
               />
             </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs font-bold">Sigla / Código</Label>
-                <Input 
-                  value={formData.code} 
-                  onChange={e => setFormData({...formData, code: e.target.value})} 
-                  placeholder="Ex: UTI-A, PA, CC" 
-                  className="h-9" 
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs font-bold">Localização / Andar</Label>
-                <Input 
-                  value={formData.location} 
-                  onChange={e => setFormData({...formData, location: e.target.value})} 
-                  placeholder="Ex: 2º Andar, Bloco B" 
-                  className="h-9" 
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-bold">Unidade Hospitalar Vinculada</Label>
-              <Select value={formData.unit_id} onValueChange={v => setFormData({...formData, unit_id: v})}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {units.map(u => (
-                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-bold">Observações / Descrição</Label>
+            
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Especialidade Principal Exigida</Label>
               <Input 
-                value={formData.description} 
-                onChange={e => setFormData({...formData, description: e.target.value})} 
-                placeholder="Ex: Exige especialista RQE em terapia intensiva" 
-                className="h-9" 
+                placeholder="Ex: Intensivista, Cirurgião Geral..." 
+                value={formData.specialty} 
+                onChange={e => setFormData({ ...formData, specialty: e.target.value })} 
+                className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-medium" 
+                list="specialty-options" 
               />
+              <datalist id="specialty-options">
+                {registeredSpecialties.map(spec => <option key={spec} value={spec} />)}
+              </datalist>
             </div>
 
-            <DialogFooter className="pt-3 gap-2">
-              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-9">
-                Cancelar
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Capacidade (Leitos/Postos)</Label>
+                <Input 
+                  type="number"
+                  min="0"
+                  placeholder="Ex: 10" 
+                  value={formData.capacity} 
+                  onChange={e => setFormData({ ...formData, capacity: e.target.value })} 
+                  className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-mono" 
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Status</Label>
+                <Select value={formData.status} onValueChange={v => setFormData({ ...formData, status: v })}>
+                  <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-bold">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
+                    <SelectItem value="ativo" className="font-bold text-emerald-600 dark:text-emerald-400">Ativo</SelectItem>
+                    <SelectItem value="inativo" className="font-bold text-rose-600 dark:text-rose-400">Inativo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <DialogFooter className="pt-4 flex flex-col-reverse sm:flex-row sm:justify-end border-t border-slate-100 dark:border-slate-800 mt-2 gap-2">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setModalOpen(false)} 
+                className="w-full sm:w-auto h-11 text-xs font-bold border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl px-6 cursor-pointer"
+              >
+                <X className="w-4 h-4 mr-1.5" /> Cancelar
               </Button>
-              <Button type="submit" disabled={submitting} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-5">
-                {submitting ? 'Salvando...' : 'Salvar Setor'}
+              <Button 
+                type="submit" 
+                disabled={submitting} 
+                className="w-full sm:w-auto h-11 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs px-8 rounded-xl shadow-md cursor-pointer transition-all"
+              >
+                <Save className="w-4 h-4 mr-1.5" /> Salvar Setor
               </Button>
             </DialogFooter>
           </form>
