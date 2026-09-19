@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   Building2, Plus, Search, Edit, Trash2, 
   Activity, CheckCircle2, AlertTriangle, 
-  MapPin, Stethoscope, BedDouble, Save, X
+  MapPin, Stethoscope, Save, X, Network
 } from 'lucide-react';
 
 export default function Setores() {
@@ -21,11 +21,10 @@ export default function Setores() {
   const [editingSector, setEditingSector] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Estado do Formulário
+  // Estado do Formulário (Sem capacidade de leitos)
   const [formData, setFormData] = useState({
     name: '',
     specialty: '',
-    capacity: '',
     status: 'ativo'
   });
 
@@ -54,17 +53,14 @@ export default function Setores() {
   const metrics = useMemo(() => {
     let ativos = 0;
     let inativos = 0;
-    let totalCapacidade = 0;
 
     sectors.forEach(s => {
       if (s.status === 'inativo') inativos++;
       else ativos++;
-      
-      if (s.capacity) totalCapacidade += parseInt(s.capacity, 10) || 0;
     });
 
-    return { total: sectors.length, ativos, inativos, totalCapacidade };
-  }, [sectors]);
+    return { total: sectors.length, ativos, inativos, especialidades: registeredSpecialties.length };
+  }, [sectors, registeredSpecialties]);
 
   // Ações do CRUD
   const handleOpenModal = (sector = null) => {
@@ -73,7 +69,6 @@ export default function Setores() {
       setFormData({
         name: sector.name || '',
         specialty: sector.specialty || '',
-        capacity: sector.capacity || '',
         status: sector.status || 'ativo'
       });
     } else {
@@ -81,7 +76,6 @@ export default function Setores() {
       setFormData({
         name: '',
         specialty: '',
-        capacity: '',
         status: 'ativo'
       });
     }
@@ -102,15 +96,12 @@ export default function Setores() {
         unit_id: selectedUnitId || 'unit_h1',
         name: formData.name.trim(),
         specialty: formData.specialty.trim() || 'Geral',
-        capacity: formData.capacity ? parseInt(formData.capacity, 10) : null,
         status: formData.status
       };
 
       if (editingSector?.id) {
-        // Atualizar
         await base44.entities.Sector.update(editingSector.id, payload);
       } else {
-        // Criar Novo
         await base44.entities.Sector.create(payload);
       }
 
@@ -197,12 +188,12 @@ export default function Setores() {
         <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg transition-colors">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400">
-              <BedDouble className="w-5 h-5" />
+              <Network className="w-5 h-5" />
             </div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Capacidade Declarada</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Especialidades Exigidas</p>
           </div>
-          <p className="text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{metrics.totalCapacidade}</p>
-          <p className="text-[10px] text-slate-400 mt-1 font-bold">Postos / Leitos</p>
+          <p className="text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{metrics.especialidades}</p>
+          <p className="text-[10px] text-slate-400 mt-1 font-bold">Mapeadas no hospital</p>
         </Card>
       </div>
 
@@ -262,13 +253,6 @@ export default function Setores() {
                       <Stethoscope className="w-4 h-4 text-sky-500 dark:text-cyan-500 shrink-0" />
                       <span className="truncate"><b>Especialidade:</b> {sector.specialty || 'Não definida'}</span>
                     </div>
-                    
-                    {sector.capacity && (
-                      <div className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-900/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800/50">
-                        <BedDouble className="w-4 h-4 text-amber-500 shrink-0" />
-                        <span><b>Capacidade:</b> {sector.capacity} postos/leitos</span>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -331,31 +315,17 @@ export default function Setores() {
               </datalist>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Capacidade (Leitos/Postos)</Label>
-                <Input 
-                  type="number"
-                  min="0"
-                  placeholder="Ex: 10" 
-                  value={formData.capacity} 
-                  onChange={e => setFormData({ ...formData, capacity: e.target.value })} 
-                  className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-mono" 
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Status</Label>
-                <Select value={formData.status} onValueChange={v => setFormData({ ...formData, status: v })}>
-                  <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-bold">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
-                    <SelectItem value="ativo" className="font-bold text-emerald-600 dark:text-emerald-400">Ativo</SelectItem>
-                    <SelectItem value="inativo" className="font-bold text-rose-600 dark:text-rose-400">Inativo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Status</Label>
+              <Select value={formData.status} onValueChange={v => setFormData({ ...formData, status: v })}>
+                <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-bold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
+                  <SelectItem value="ativo" className="font-bold text-emerald-600 dark:text-emerald-400">Ativo</SelectItem>
+                  <SelectItem value="inativo" className="font-bold text-rose-600 dark:text-rose-400">Inativo</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             
             <DialogFooter className="pt-4 flex flex-col-reverse sm:flex-row sm:justify-end border-t border-slate-100 dark:border-slate-800 mt-2 gap-2">
