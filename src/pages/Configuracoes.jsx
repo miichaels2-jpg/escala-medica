@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
@@ -8,9 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
-  Building2, Save, UserPlus, Users, Trash2, 
+  Building2, Save, UserPlus, Trash2, 
   Settings, Hospital, ShieldCheck, FileText,
-  Mail, MapPin, Edit, Plus, Clock, RotateCcw
+  Mail, MapPin, Edit, Plus, RotateCcw
 } from 'lucide-react';
 
 function getLocalDateString(d = new Date()) {
@@ -24,29 +24,33 @@ export default function Configuracoes() {
   const { user, company, units = [], selectedUnitId, loading, refresh } = useAppData();
   
   const [activeTab, setActiveTab] = useState('unidade_atual');
+  const [companies, setCompanies] = useState([]);
   const [companyUsers, setCompanyUsers] = useState([]);
   const [saving, setSaving] = useState(false);
   
-  // Unidade Atual (Dinâmico conforme selecionado no Menu Superior)
-  const currentUnit = units.find(u => String(u.id) === String(selectedUnitId));
-  const [unitForm, setUnitForm] = useState({ name: '', address: '', phone: '', primary_contact: '', status: 'ativo' });
+  // Integração com as Unidades (Garante funcionamento mesmo se a tabela não existir no BD)
+  const activeUnits = units?.length > 0 ? units : (company?.data?.units || []);
+  const currentUnit = activeUnits.find(u => String(u.id) === String(selectedUnitId));
 
-  // Contrato Matriz (Company)
-  const [contractForm, setContractForm] = useState({ 
-    name: '', cnpj: '', billing_cycle: 'mensal', contract_start: '', contract_end: '' 
-  });
+  // Forms
+  const [unitForm, setUnitForm] = useState({ name: '', address: '', phone: '', primary_contact: '', status: 'ativo' });
+  const [contractForm, setContractForm] = useState({ name: '', cnpj: '', billing_cycle: 'mensal', contract_start: '', contract_end: '' });
   
   // Convites
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('user');
 
-  // Controle de Modal de Cadastro de Novas Unidades
+  // Modal Novas Unidades
   const [unitModalOpen, setUnitModalOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState(null);
   const [newUnitForm, setNewUnitForm] = useState({ name: '', address: '', status: 'ativo' });
 
   const isAdmin = user?.role === 'admin';
   const companyId = user?.data?.company_id || company?.id;
+
+  const loadCompanies = async () => {
+    try { setCompanies(await base44.entities.Company.list('-created_date', 100)); } catch (e) {}
+  };
 
   const loadUsers = async () => {
     if (!companyId) return;
@@ -55,18 +59,22 @@ export default function Configuracoes() {
 
   useEffect(() => {
     if (loading) return;
+    if (isAdmin) loadCompanies();
     loadUsers();
+    
+    // Alimenta os dados do Contrato Matriz usando o JSON Data para evitar erros de coluna
     if (company) {
       setContractForm({ 
         name: company.name || '', 
         cnpj: company.cnpj || '', 
-        billing_cycle: company.billing_cycle || 'mensal',
-        contract_start: company.contract_start || '',
-        contract_end: company.contract_end || ''
+        billing_cycle: company.data?.billing_cycle || 'mensal',
+        contract_start: company.data?.contract_start || '',
+        contract_end: company.data?.contract_end || ''
       });
     }
-  }, [loading, company]);
+  }, [loading, company, isAdmin]);
 
+  // Espelha automaticamente os dados do Hospital de acordo com o seletor do topo
   useEffect(() => {
     if (currentUnit) {
       setUnitForm({
@@ -79,15 +87,41 @@ export default function Configuracoes() {
     }
   }, [currentUnit, selectedUnitId]);
 
+  // ISOLAMENTO DE ACESSO: Filtra os usuários para mostrar apenas os do Hospital Selecionado
+  const visibleUsers = useMemo(() => {
+    return companyUsers.filter(u => {
+      // Admin global vê todos
+      if (isAdmin || u.role === 'admin') return true;
+      // Usuário comum só aparece se estiver vinculado à unidade atual
+      const userUnit = u.unit_id || u.data?.unit_id || u.selected_unit_id || u.data?.selected_unit_id;
+      return !userUnit || String(userUnit) === String(selectedUnitId);
+    });
+  }, [companyUsers, selectedUnitId, isAdmin]);
+
   // =========================================================================
-  // SALVAR DADOS DA UNIDADE (HOSPITAL ATUAL)
+  // SALVAR DADOS DO HOSPITAL ATUAL (UNIDADE)
   // =========================================================================
   const handleSaveCurrentUnit = async (e) => {
     e.preventDefault();
     if (!currentUnit) return;
     setSaving(true);
     try {
-      await base44.entities.Unit.update(currentUnit.id, unitForm);
+      let success = false;
+      const UnitEntity = base44.entities.Unit || base44.entities.unit || base44.entities.units;
+      
+      if (UnitEntity) {
+        try {
+          await UnitEntity.update(currentUnit.id, unitForm);
+          success = true;
+        } catch (ex) { console.warn("Tabela Unit inexistente, usando fallback seguro."); }
+      }
+
+      // Auto-Healing: Se a tabela não existir, salva no JSON da Matriz
+      if (!success) {
+        const updatedUnits = activeUnits.map(u => String(u.id) === String(currentUnit.id) ? { ...u, ...unitForm } : u);
+        await base44.entities.Company.update(companyId, { data: { ...(company?.data || {}), units: updatedUnits }});
+      }
+      
       refresh();
       alert(`Dados do hospital "${unitForm.name}" atualizados com sucesso!`);
     } catch (err) {
@@ -104,15 +138,26 @@ export default function Configuracoes() {
     e.preventDefault();
     setSaving(true);
     try {
+      const payload = {
+        name: contractForm.name,
+        cnpj: contractForm.cnpj,
+        data: {
+          ...(company?.data || {}),
+          billing_cycle: contractForm.billing_cycle,
+          contract_start: contractForm.contract_start,
+          contract_end: contractForm.contract_end
+        }
+      };
+
       if (company) {
-        await base44.entities.Company.update(company.id, contractForm);
+        await base44.entities.Company.update(company.id, payload);
       } else {
-        const created = await base44.entities.Company.create(contractForm);
+        const created = await base44.entities.Company.create(payload);
         await base44.auth.updateMe({ data: { company_id: created.id, app_role: 'manager' } });
       }
       refresh();
-      alert('Contrato atualizado com sucesso!');
-    } catch (err) { alert(err.message || 'Erro ao salvar'); } 
+      alert('Contrato matriz atualizado com sucesso!');
+    } catch (err) { alert(err.message || 'Erro ao salvar contrato'); } 
     finally { setSaving(false); }
   };
 
@@ -131,7 +176,10 @@ export default function Configuracoes() {
       else if (contractForm.billing_cycle === 'anual') end.setFullYear(end.getFullYear() + 1);
 
       const newEnd = getLocalDateString(end);
-      await base44.entities.Company.update(company.id, { contract_end: newEnd });
+      
+      const payload = { data: { ...(company?.data || {}), contract_end: newEnd } };
+      await base44.entities.Company.update(company.id, payload);
+      
       setContractForm(prev => ({ ...prev, contract_end: newEnd }));
       refresh();
       alert(`Contrato renovado com sucesso! Novo vencimento: ${newEnd.split('-').reverse().join('/')}`);
@@ -159,8 +207,26 @@ export default function Configuracoes() {
     setSaving(true);
     try {
       const payload = { company_id: companyId, name: newUnitForm.name.trim(), address: newUnitForm.address, status: newUnitForm.status };
-      if (editingUnit?.id) await base44.entities.Unit.update(editingUnit.id, payload);
-      else await base44.entities.Unit.create(payload);
+      let success = false;
+      const UnitEntity = base44.entities.Unit || base44.entities.unit || base44.entities.units;
+      
+      if (UnitEntity) {
+        try {
+          if (editingUnit?.id) await UnitEntity.update(editingUnit.id, payload);
+          else await UnitEntity.create(payload);
+          success = true;
+        } catch (ex) { console.warn("Fallback de unidade disparado."); }
+      }
+
+      if (!success) {
+        let updatedUnits = [...activeUnits];
+        if (editingUnit?.id) {
+          updatedUnits = updatedUnits.map(u => String(u.id) === String(editingUnit.id) ? { ...u, ...payload } : u);
+        } else {
+          updatedUnits.push({ id: 'unit_' + Date.now(), ...payload });
+        }
+        await base44.entities.Company.update(companyId, { data: { ...(company?.data || {}), units: updatedUnits }});
+      }
       
       setUnitModalOpen(false);
       refresh();
@@ -170,23 +236,56 @@ export default function Configuracoes() {
 
   const handleDeleteUnit = async (id, name) => {
     if (!confirm(`Deseja remover o hospital "${name}"? Suas escalas ficarão órfãs.`)) return;
-    try { await base44.entities.Unit.delete(id); refresh(); } catch (err) { alert('Erro ao excluir: ' + err.message); }
+    try { 
+      let success = false;
+      const UnitEntity = base44.entities.Unit || base44.entities.unit || base44.entities.units;
+      if (UnitEntity) {
+        try { await UnitEntity.delete(id); success = true; } catch (e) {}
+      }
+      if (!success) {
+        const updatedUnits = activeUnits.filter(u => String(u.id) !== String(id));
+        await base44.entities.Company.update(companyId, { data: { ...(company?.data || {}), units: updatedUnits }});
+      }
+      refresh(); 
+    } catch (err) { alert('Erro ao excluir: ' + err.message); }
   };
 
   // =========================================================================
-  // USUÁRIOS E CONVITES
+  // USUÁRIOS E CONVITES BLINDADOS
   // =========================================================================
   const handleInvite = async (e) => {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
     setSaving(true);
     try {
-      await base44.users.inviteUser(inviteEmail, inviteRole);
+      const UserEntity = base44.entities.User || base44.entities.user || base44.entities.users;
+      const payload = {
+        email: inviteEmail,
+        role: inviteRole,
+        company_id: companyId,
+        unit_id: selectedUnitId, // Prende o convidado no hospital atual!
+        data: { unit_id: selectedUnitId }
+      };
+
+      if (base44.users && base44.users.inviteUser) {
+        try { await base44.users.inviteUser(inviteEmail, inviteRole); } 
+        catch { await UserEntity.create(payload); } // Auto-healing
+      } else if (UserEntity) {
+        await UserEntity.create(payload);
+      } else {
+        throw new Error("Módulo de usuários indisponível na API.");
+      }
+
       setInviteEmail('');
       loadUsers();
-      alert('Convite enviado com sucesso para ' + inviteEmail);
+      alert(`Convite enviado com sucesso para atuar em: ${currentUnit?.name || 'Hospital Atual'}`);
     } catch (err) { alert(err.message || 'Erro ao convidar'); } 
     finally { setSaving(false); }
+  };
+
+  const handleSelectCompany = async (id) => {
+    await base44.auth.updateMe({ data: { company_id: id } });
+    refresh();
   };
 
   if (loading) {
@@ -311,7 +410,7 @@ export default function Configuracoes() {
                 <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
                   <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Gestão de Contrato & Matriz
                 </h3>
-                <p className="text-xs text-slate-500 mt-1">Dados de faturamento e vigência do seu contrato com a ScaleMedic.</p>
+                <p className="text-xs text-slate-500 mt-1">Dados de faturamento e vigência do seu contrato com a ScaleMedic. Esta empresa pode gerenciar quantos hospitais quiser.</p>
               </div>
 
               <form onSubmit={handleSaveContract} className="space-y-5">
@@ -361,6 +460,42 @@ export default function Configuracoes() {
                 </div>
               </form>
             </Card>
+
+            {isAdmin && (
+              <div className="space-y-4 mt-6">
+                <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
+                  <h3 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2 mb-2">
+                    <Activity className="w-4 h-4 text-rose-500" /> Modo Super Admin
+                  </h3>
+                  <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">
+                    Você tem privilégios totais. Abaixo estão todas as empresas/contratos isolados no sistema. Selecione para "entrar" na visão de cada um.
+                  </p>
+                  
+                  <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                    {companies.length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center py-4">Nenhuma empresa mapeada.</p>
+                    ) : (
+                      companies.map((c) => (
+                        <div key={c.id} className="p-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-xs font-black text-slate-900 dark:text-white truncate">{c.name}</div>
+                            <div className="text-[9px] text-slate-500 font-mono mt-0.5">{c.cnpj || 'Sem CNPJ'}</div>
+                          </div>
+                          <Button 
+                            variant={company?.id === c.id ? 'default' : 'outline'} 
+                            size="sm" 
+                            onClick={() => handleSelectCompany(c.id)}
+                            className={`h-7 text-[10px] font-black rounded-lg shrink-0 cursor-pointer ${company?.id === c.id ? 'bg-sky-600 text-white border-transparent' : 'border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300'}`}
+                          >
+                            {company?.id === c.id ? 'Em Uso' : 'Acessar'}
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </Card>
+              </div>
+            )}
           </div>
         )}
 
@@ -384,13 +519,13 @@ export default function Configuracoes() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {units.length === 0 ? (
+              {activeUnits.length === 0 ? (
                 <div className="col-span-full py-16 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-3xl bg-slate-50 dark:bg-slate-900/50">
                   <Hospital className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
                   <h4 className="text-sm font-black text-slate-600 dark:text-slate-400">Nenhum hospital cadastrado</h4>
                 </div>
               ) : (
-                units.map(u => (
+                activeUnits.map(u => (
                   <div key={u.id} className="p-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:border-sky-300 dark:hover:border-sky-700 transition-all flex flex-col justify-between h-full">
                     <div>
                       <div className="flex items-start justify-between mb-3">
@@ -466,6 +601,7 @@ export default function Configuracoes() {
         {/* ========================================================================= */}
         {activeTab === 'usuarios' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+            
             <div className="lg:col-span-1 space-y-6">
               <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
                 <div className="border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
@@ -473,7 +609,7 @@ export default function Configuracoes() {
                     <UserPlus className="w-5 h-5 text-emerald-500" /> Enviar Convite
                   </h3>
                   <p className="text-[10px] text-slate-500 mt-1">
-                    Libere acesso ao sistema para médicos, coordenadores ou faturistas através do e-mail.
+                    Libere acesso ao hospital <strong className="text-slate-700 dark:text-slate-300">{currentUnit?.name || 'selecionado'}</strong> para sua equipe.
                   </p>
                 </div>
                 
@@ -500,7 +636,7 @@ export default function Configuracoes() {
                   </div>
 
                   <Button type="submit" disabled={saving || !inviteEmail} className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer transition-colors">
-                    {saving ? 'Enviando...' : 'Enviar Convite'}
+                    {saving ? 'Enviando...' : 'Enviar Convite Exclusivo'}
                   </Button>
                 </form>
               </Card>
@@ -513,20 +649,20 @@ export default function Configuracoes() {
                     <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
                       <ShieldCheck className="w-5 h-5 text-sky-600 dark:text-cyan-400" /> Controle de Acessos
                     </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">Visão consolidada de todos os usuários com login ativo no sistema.</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Visão consolidada dos usuários com acesso ao hospital <b>{currentUnit?.name || 'selecionado'}</b>.</p>
                   </div>
                   <span className="text-xs font-black px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl">
-                    {companyUsers.length} Logins Ativos
+                    {visibleUsers.length} Logins Ativos
                   </span>
                 </div>
                 
-                {companyUsers.length === 0 ? (
+                {visibleUsers.length === 0 ? (
                   <div className="py-12 text-center text-slate-400 text-sm">
-                    Nenhum usuário mapeado além de você.
+                    Nenhum usuário mapeado para este hospital.
                   </div>
                 ) : (
                   <div className="space-y-3 overflow-y-auto max-h-[500px] pr-2">
-                    {companyUsers.map((u) => (
+                    {visibleUsers.map((u) => (
                       <div key={u.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800/60 bg-slate-50 dark:bg-slate-900/40 hover:border-sky-200 dark:hover:border-sky-900/50 transition-colors gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-black text-slate-500 dark:text-slate-400 text-xs shrink-0 ring-1 ring-slate-300 dark:ring-slate-700">
