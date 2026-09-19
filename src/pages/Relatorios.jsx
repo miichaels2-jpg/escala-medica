@@ -65,7 +65,6 @@ function isVacant(shift) {
   return false;
 }
 
-// Verifica se o plantão já passou comparando a data+hora final com o momento atual
 function isShiftPast(shift) {
   if (!shift || !shift.date) return false;
   try {
@@ -123,7 +122,6 @@ export default function Relatorios() {
   const { shifts = [], sectors = [], professionals = [], company } = useAppData();
 
   const [activeTab, setActiveTab] = useState('executivo');
-  const [printMode, setPrintMode] = useState('current'); 
   
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
@@ -170,23 +168,18 @@ export default function Relatorios() {
     return profMap[String(shift.professional_id)] || profMap[normalize(getShiftName(shift))];
   }, [profMap]);
 
-  // Filtragem flexível baseada em Período Personalizado com ORDENAÇÃO CRESCENTE
+  // Filtragem flexível com ORDENAÇÃO CRESCENTE DE DATA/HORA
   const filteredShifts = useMemo(() => {
     if (!hasSearched) return [];
-    
     const term = normalize(appliedFilters.search);
 
     const filtered = shifts.filter(shift => {
       if (!shift || normalize(shift.status) === 'cancelado') return false;
-
-      // Limpeza de lixo e orfãos
       const rawSecName = getSectorName(shift, sectors);
       const secName = normalize(rawSecName);
       if (!secName || secName === 'setor' || secName.includes('setor geral')) return false;
-
       if (appliedFilters.sector !== 'todos' && String(shift.sector_id) !== String(appliedFilters.sector)) return false;
 
-      // Filtro de Data Flexível
       const shiftDate = String(shift.date || shift.start_date || shift.data || '').slice(0, 10);
       if (shiftDate) {
         if (appliedFilters.start && shiftDate < appliedFilters.start) return false;
@@ -197,11 +190,9 @@ export default function Relatorios() {
         const profName = normalize(getShiftName(shift));
         if (!profName.includes(term) && !secName.includes(term)) return false;
       }
-
       return true;
     });
 
-    // ORDENAÇÃO CRESCENTE POR DATA E HORA DE INÍCIO
     return filtered.sort((a, b) => {
       const dateA = a.date || '';
       const dateB = b.date || '';
@@ -210,7 +201,6 @@ export default function Relatorios() {
       const timeB = b.start_time || '00:00';
       return timeA.localeCompare(timeB);
     });
-
   }, [shifts, sectors, appliedFilters, hasSearched]);
 
   const filteredProfessionals = useMemo(() => {
@@ -238,19 +228,13 @@ export default function Relatorios() {
     }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }, [professionals, appliedFilters, hasSearched]);
 
-  // Indicadores
   const { totalShiftsCount, filledShiftsCount, vacantShiftsCount, vacantShiftItems } = useMemo(() => {
     let filled = 0;
     let vacantItems = [];
-
     filteredShifts.forEach(s => {
-      if (!isVacant(s)) {
-        filled++;
-      } else {
-        vacantItems.push(s);
-      }
+      if (!isVacant(s)) filled++;
+      else vacantItems.push(s);
     });
-
     return { 
       totalShiftsCount: filteredShifts.length, 
       filledShiftsCount: filled, 
@@ -263,12 +247,10 @@ export default function Relatorios() {
 
   const financialSummary = useMemo(() => {
     let totalCost = 0, executedCost = 0, pendingCost = 0, vacantCost = 0, totalHours = 0;
-
     filteredShifts.forEach(shift => {
       const hours = getShiftHours(shift);
       totalHours += hours;
       const professional = getProf(shift);
-      
       const cost = safeNumber(shift.total_cost ?? shift.cost ?? shift.valor_total, 0) || getProfessionalCost(professional, hours);
 
       if (isVacant(shift)) {
@@ -283,7 +265,6 @@ export default function Relatorios() {
         }
       }
     });
-
     return { totalCost, executedCost, pendingCost, vacantCost, hours: totalHours };
   }, [filteredShifts, getProf]);
 
@@ -299,29 +280,20 @@ export default function Relatorios() {
     filteredShifts.forEach(shift => {
       const id = String(shift.sector_id || 'unmapped');
       const sName = getSectorName(shift, sectors);
-      
-      if (!map[id]) {
-        map[id] = { id, name: titleCase(sName), total: 0, filled: 0, vacant: 0, hours: 0, cost: 0 };
-      }
+      if (!map[id]) map[id] = { id, name: titleCase(sName), total: 0, filled: 0, vacant: 0, hours: 0, cost: 0 };
       
       const item = map[id];
       item.total += 1;
       item.hours += getShiftHours(shift);
-      
       if (isVacant(shift)) item.vacant += 1;
       else item.filled += 1;
-      
       item.cost += getProfessionalCost(getProf(shift), getShiftHours(shift));
     });
-
     return Object.values(map).filter(item => item.total > 0).sort((a, b) => b.total - a.total);
   }, [sectors, filteredShifts, getProf]);
 
-  // Exibir TODOS os profissionais
   const professionalMetrics = useMemo(() => {
     const map = {};
-    
-    // Alimenta todos os profissionais ativos
     filteredProfessionals.forEach(p => {
       const name = normalize(p.name);
       if (name) {
@@ -329,20 +301,15 @@ export default function Relatorios() {
           id: p.id || name, 
           name: titleCase(p.name), 
           specialty: p.specialty,
-          shifts: 0, 
-          hours: 0, 
-          sectors: new Set(), 
-          cost: 0 
+          shifts: 0, hours: 0, sectors: new Set(), cost: 0 
         };
       }
     });
 
     filteredShifts.forEach(shift => {
       if (isVacant(shift)) return;
-      
       let rawName = getShiftName(shift);
       let normName = normalize(rawName);
-      
       if (!normName) {
         normName = `desconhecido_${shift.id}`;
         rawName = 'Profissional Não Identificado';
@@ -354,10 +321,7 @@ export default function Relatorios() {
           id: shift.professional_id || normName, 
           name: titleCase(prof?.name || rawName), 
           specialty: titleCase(prof?.specialty || 'Não Informada'),
-          shifts: 0, 
-          hours: 0, 
-          sectors: new Set(), 
-          cost: 0 
+          shifts: 0, hours: 0, sectors: new Set(), cost: 0 
         };
       }
       
@@ -365,10 +329,8 @@ export default function Relatorios() {
       item.shifts += 1;
       const h = getShiftHours(shift);
       item.hours += h;
-      
       const sName = getSectorName(shift, sectors);
       if (sName) item.sectors.add(titleCase(sName));
-      
       item.cost += getProfessionalCost(getProf(shift), h);
     });
 
@@ -385,7 +347,6 @@ export default function Relatorios() {
 
     filteredProfessionals.forEach(p => {
       const expiry = p.document_expiry || p.documentExpiry || p.valid_until || '';
-      
       if (!expiry) { missing += 1; return; }
       const expiryDate = new Date(expiry);
       if (Number.isNaN(expiryDate.getTime())) { missing += 1; return; }
@@ -405,14 +366,14 @@ export default function Relatorios() {
   const hospitalName = company?.name || 'Hospital Principal';
 
   // ==========================================
-  // EXPORTAÇÃO EXCEL NATIVA
+  // EXPORTAÇÃO EXCEL NATIVA (.xls)
   // ==========================================
   const triggerExcelExport = (mode) => {
     if (!hasSearched) {
       alert('Atenção: Aplique os filtros antes de exportar a planilha.');
       return;
     }
-    
+
     let html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
@@ -453,7 +414,7 @@ export default function Relatorios() {
             <th>Horário</th>
             <th>Status Operacional</th>
             <th>Carga (h)</th>
-            <th>Custo Estimado (R$)</th>
+            <th>Custo Est. (R$)</th>
           </tr>
       `;
       filteredShifts.forEach((s, i) => {
@@ -484,7 +445,7 @@ export default function Relatorios() {
       html += `<tr><td colspan="7" style="border:none;"></td></tr>`;
     }
 
-    if (mode === 'all' || activeTab === 'base_profissionais') {
+    if (mode === 'base_profissionais' || activeTab === 'base_profissionais') {
       html += `
           <tr><td colspan="10" class="section-title">BASE DE PROFISSIONAIS (CORPO CLÍNICO)</td></tr>
           <tr>
@@ -559,683 +520,712 @@ export default function Relatorios() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Dossie_${mode === 'all' ? 'Completo' : activeTab}_${appliedFilters.start}_a_${appliedFilters.end}.xls`;
+    link.download = `Relatorio_${mode === 'all' ? 'Completo' : activeTab}_${appliedFilters.start}_a_${appliedFilters.end}.xls`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
+  // ==========================================
+  // IMPRESSÃO HTML PURA (Isolada, A4 Branco c/ Quebra)
+  // ==========================================
   const triggerPrint = (mode) => {
     if (!hasSearched) {
       alert('Atenção: Aplique os filtros para renderizar a telemetria antes de imprimir.');
       return;
     }
-    setPrintMode(mode);
-    setTimeout(() => {
-      window.print();
-    }, 100);
-  };
 
-  return (
-    <>
-      {/* ========================================== */}
-      {/* INJEÇÃO DE CSS DE IMPRESSÃO PURA */}
-      {/* ========================================== */}
-      <style type="text/css" media="print" dangerouslySetInnerHTML={{ __html: `
-        @page { size: A4 portrait; margin: 15mm; }
-        body, html, #root { 
-          background-color: white !important; 
-          color: black !important; 
-          height: auto !important; 
-          min-height: auto !important; 
-          overflow: visible !important;
-          margin: 0 !important;
-          padding: 0 !important;
-        }
-        * {
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-        .break-before-page { page-break-before: always; }
-        .break-inside-avoid { page-break-inside: avoid; }
-      `}} />
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Permita pop-ups para abrir o relatório de impressão.');
+      return;
+    }
 
-      {/* ========================================== */}
-      {/* MODO TELA (DARK THEME E LIGHT THEME) */}
-      {/* ========================================== */}
-      <div className="min-h-screen bg-slate-50 dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans print:hidden transition-colors duration-300">
-        
-        {/* TOPO EXECUTIVO */}
-        <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 md:p-8 shadow-xl flex flex-col xl:flex-row xl:items-center justify-between gap-6 transition-colors duration-300">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-sky-600 dark:text-cyan-400">
-              <Activity className="w-4 h-4 text-sky-600 dark:text-cyan-400 animate-pulse" /> {hospitalName} • Intelligence CCO
-            </div>
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
-              Central de Relatórios & BI Hospitalar
-            </h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium max-w-2xl">
-              Filtre períodos personalizados para auditoria de produtividade, furos de escala, corpo clínico e consolidação de custos.
-            </p>
+    const docEmissao = `${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`;
+
+    let printHtml = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8">
+        <title>Dossiê Oficial - ${hospitalName}</title>
+        <style>
+          @page { size: A4 portrait; margin: 15mm; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff; color: #000000; font-size: 11px; padding: 10px; }
+          
+          .header { border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 20px; }
+          .h-title { font-size: 24px; font-weight: 900; text-transform: uppercase; color: #0f172a; margin-bottom: 4px; }
+          .h-subtitle { font-size: 13px; font-weight: bold; color: #334155; text-transform: uppercase; }
+          .h-info { display: flex; justify-content: space-between; font-size: 10px; margin-top: 15px; padding-top: 8px; border-top: 1px solid #cbd5e1; }
+          
+          .section-title { font-size: 13px; font-weight: 900; background-color: #f1f5f9; padding: 8px; border: 1px solid #94a3b8; text-transform: uppercase; margin-bottom: 12px; page-break-after: avoid; }
+          .section-title.alert { background-color: #fee2e2; color: #9f1239; border-color: #fda4af; }
+          
+          table { width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; margin-bottom: 30px; page-break-inside: auto; }
+          thead { display: table-header-group; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          th { background-color: #f8fafc; border: 1px solid #94a3b8; padding: 8px; text-align: left; font-size: 9.5px; font-weight: 900; text-transform: uppercase; }
+          td { border: 1px solid #cbd5e1; padding: 8px; vertical-align: middle; }
+          
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .font-bold { font-weight: bold; }
+          .furo { color: #be123c; font-weight: bold; background-color: #fff1f2; }
+          .vago { color: #d97706; font-weight: bold; background-color: #fffbeb; }
+          
+          .grid-4 { display: table; width: 100%; margin-bottom: 20px; border-collapse: separate; border-spacing: 10px 0; }
+          .grid-card { display: table-cell; border: 1px solid #94a3b8; padding: 12px; border-radius: 6px; width: 25%; }
+          .card-title { font-size: 9px; font-weight: bold; color: #475569; text-transform: uppercase; margin-bottom: 6px; }
+          .card-value { font-size: 18px; font-weight: 900; }
+          .card-sub { font-size: 9px; font-weight: bold; margin-top: 4px; }
+          
+          .footer { margin-top: 40px; padding-top: 15px; border-top: 1px solid #94a3b8; text-align: center; font-size: 9px; color: #64748b; }
+          
+          .break-before { page-break-before: always; }
+          .break-inside-avoid { page-break-inside: avoid; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="h-title">${hospitalName}</div>
+          <div class="h-subtitle">Dossiê Executivo Oficial - ScaleMedic</div>
+          <div class="h-info">
+            <span><b>Período Analisado:</b> ${periodLabel}</span>
+            <span><b>Emissão:</b> ${docEmissao}</span>
           </div>
+        </div>
+    `;
 
-          <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
-            <div className="flex gap-2 w-full sm:w-auto">
-              <Button onClick={() => triggerExcelExport('current')} variant="outline" disabled={!hasSearched} className="flex-1 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-white font-bold text-[11px] px-4 rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer shadow-sm disabled:opacity-50 transition-colors">
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Excel (Aba)
-              </Button>
-              <Button onClick={() => triggerExcelExport('all')} variant="outline" disabled={!hasSearched} className="flex-1 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-white font-bold text-[11px] px-4 rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer shadow-sm disabled:opacity-50 transition-colors">
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Excel (Tudo)
-              </Button>
-            </div>
-            <div className="flex gap-2 w-full sm:w-auto">
-              <Button onClick={() => triggerPrint('current')} disabled={!hasSearched} className="flex-1 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-700 dark:hover:bg-cyan-600 text-white font-bold text-[11px] px-4 rounded-xl shadow-md gap-2 cursor-pointer disabled:opacity-50 border border-sky-500 dark:border-cyan-500/50 transition-colors">
-                <PrinterIcon className="w-4 h-4" /> PDF (Aba)
-              </Button>
-              <Button onClick={() => triggerPrint('all')} disabled={!hasSearched} className="flex-1 bg-sky-700 hover:bg-sky-800 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-[11px] px-4 rounded-xl shadow-md gap-2 cursor-pointer transition-all disabled:opacity-50 border border-sky-600 dark:border-cyan-500">
-                <PrinterIcon className="w-4 h-4" /> Dossiê (Tudo)
-              </Button>
-            </div>
+    if (mode === 'all' || activeTab === 'executivo') {
+      printHtml += `
+        <div class="section-title break-inside-avoid">1. Resumo Operacional Global</div>
+        <div class="grid-4 break-inside-avoid">
+          <div class="grid-card">
+            <div class="card-title">Total de Plantões</div>
+            <div class="card-value">${totalShiftsCount}</div>
+            <div class="card-sub" style="color:#059669;">${filledShiftsCount} Preenchidos</div>
+          </div>
+          <div class="grid-card">
+            <div class="card-title">Taxa de Cobertura</div>
+            <div class="card-value">${coverageRate}%</div>
+            <div class="card-sub" style="color:#475569;">Meta: > 98%</div>
+          </div>
+          <div class="grid-card">
+            <div class="card-title">Custo Projetado Est.</div>
+            <div class="card-value">${formatCurrency(financialSummary.totalCost)}</div>
+            <div class="card-sub" style="color:#475569;">${financialSummary.hours}h Assistenciais</div>
+          </div>
+          <div class="grid-card">
+            <div class="card-title">Profissionais Ativos</div>
+            <div class="card-value">${filteredProfessionals.length}</div>
+            <div class="card-sub" style="color:#e11d48;">${credentialAudit.expired} Vencidos</div>
+          </div>
+        </div>
+      `;
+
+      if (vacantShiftItems.length > 0) {
+        printHtml += `
+          <div class="section-title alert break-inside-avoid">Atenção: Ocorrências de Furos e Vagas Abertas (${vacantShiftItems.length})</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Setor Clínico</th>
+                <th class="text-center">Horário</th>
+                <th class="text-center">Diagnóstico</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        vacantShiftItems.forEach(v => {
+          const isPast = isShiftPast(v);
+          printHtml += `
+            <tr>
+              <td class="font-bold">${formatDate(v.date)}</td>
+              <td>${getSectorName(v, sectors)}</td>
+              <td class="text-center font-bold">${v.start_time} - ${v.end_time}</td>
+              <td class="text-center ${isPast ? 'furo' : 'vago'}">${isPast ? 'NÃO OCUPADO (FALTA)' : 'VAGA PENDENTE'}</td>
+            </tr>
+          `;
+        });
+        printHtml += `</tbody></table>`;
+      }
+    }
+
+    if (mode === 'all' || activeTab === 'escalas') {
+      printHtml += `
+        <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Extrato Detalhado de Escalas (Cronológico)</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Setor Clínico</th>
+              <th>Profissional</th>
+              <th class="text-center">Horário</th>
+              <th class="text-center">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      filteredShifts.forEach(s => {
+        const isVago = isVacant(s);
+        const isPast = isShiftPast(s);
+        let profName = titleCase(s.professional_name);
+        let badgeText = s.status || 'Confirmado';
+        let rowClass = '';
+
+        if (isVago) {
+          if (isPast) { profName = 'NÃO OCUPADO (FURO)'; badgeText = 'Sem Cobertura'; rowClass = 'furo'; }
+          else { profName = 'VAGA EM ABERTO'; badgeText = 'Vago'; rowClass = 'vago'; }
+        }
+
+        printHtml += `
+          <tr>
+            <td class="font-bold">${formatDate(s.date)}</td>
+            <td>${getSectorName(s, sectors)}</td>
+            <td class="${rowClass}">${profName}</td>
+            <td class="text-center font-bold">${s.start_time} - ${s.end_time}</td>
+            <td class="text-center ${rowClass}">${badgeText.toUpperCase()}</td>
+          </tr>
+        `;
+      });
+      printHtml += `</tbody></table>`;
+    }
+
+    if (mode === 'all' || activeTab === 'base_profissionais') {
+      printHtml += `
+        <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Base do Corpo Clínico (${filteredProfessionals.length} profissionais)</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Nome Completo</th>
+              <th>Especialidade</th>
+              <th>Documento (CRM)</th>
+              <th>Vencimento Doc.</th>
+              <th class="text-center">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      filteredProfessionals.forEach(p => {
+        const expiryDate = p.document_expiry || p.documentExpiry || p.valid_until;
+        const isExpired = expiryDate && new Date(expiryDate) < new Date();
+        printHtml += `
+          <tr>
+            <td class="font-bold">${titleCase(p.name)}</td>
+            <td>${p.specialty}</td>
+            <td>${p.document || '—'}</td>
+            <td class="${isExpired ? 'furo' : ''}">${formatDate(expiryDate)}</td>
+            <td class="text-center">${(p.status || 'Ativo').toUpperCase()}</td>
+          </tr>
+        `;
+      });
+      printHtml += `</tbody></table>`;
+    }
+
+    if (mode === 'all' || activeTab === 'profissionais') {
+      printHtml += `
+        <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Matriz de Produtividade Médica</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Profissional</th>
+              <th>Especialidade</th>
+              <th class="text-center">Nº Plantões</th>
+              <th class="text-center">Horas Realizadas</th>
+              <th class="text-right">Honorários Brutos (R$)</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      professionalMetrics.forEach(doc => {
+        printHtml += `
+          <tr>
+            <td class="font-bold">${doc.name}</td>
+            <td>${doc.specialty}</td>
+            <td class="text-center font-bold">${doc.shifts}</td>
+            <td class="text-center">${doc.hours}h</td>
+            <td class="text-right font-bold">${formatCurrency(doc.cost)}</td>
+          </tr>
+        `;
+      });
+      printHtml += `</tbody></table>`;
+    }
+
+    if (mode === 'all' || activeTab === 'financeiro') {
+      printHtml += `
+        <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Relatório Financeiro Operacional</div>
+        
+        <div class="grid-4 break-inside-avoid" style="margin-bottom: 30px;">
+          <div class="grid-card">
+            <div class="card-title">Valor Total Previsão</div>
+            <div class="card-value">${formatCurrency(financialSummary.totalCost)}</div>
+          </div>
+          <div class="grid-card" style="background-color: #f0fdf4; border-color: #86efac;">
+            <div class="card-title" style="color: #047857;">Realizado Concluído</div>
+            <div class="card-value" style="color: #047857;">${formatCurrency(financialSummary.executedCost)}</div>
+          </div>
+          <div class="grid-card" style="background-color: #fffbeb; border-color: #fcd34d;">
+            <div class="card-title" style="color: #b45309;">Pendente a Realizar</div>
+            <div class="card-value" style="color: #b45309;">${formatCurrency(financialSummary.pendingCost)}</div>
+          </div>
+          <div class="grid-card" style="background-color: #fff1f2; border-color: #fda4af;">
+            <div class="card-title" style="color: #be123c;">Vagas e Furos</div>
+            <div class="card-value" style="color: #be123c;">${formatCurrency(financialSummary.vacantCost)}</div>
           </div>
         </div>
 
-        {/* PAINEL DE FILTROS PERSONALIZÁVEL */}
-        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-md space-y-4 transition-colors">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-3">
-            <span className="text-xs font-black uppercase tracking-wider text-sky-600 dark:text-cyan-400 flex items-center gap-2">
-              <Filter className="w-4 h-4 text-sky-600 dark:text-cyan-400" /> Parâmetros Analíticos Livres
-            </span>
-          </div>
+        <div class="section-title break-inside-avoid">Desdobramento de Custos por Setor</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Setor Clínico / Unidade</th>
+              <th class="text-center">Horas Assistenciais</th>
+              <th class="text-right">Alocação Orçamentária (R$)</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      sectorMetrics.forEach(sec => {
+        printHtml += `
+          <tr>
+            <td class="font-bold">${sec.name}</td>
+            <td class="text-center">${sec.hours}h</td>
+            <td class="text-right font-bold">${formatCurrency(sec.cost)}</td>
+          </tr>
+        `;
+      });
+      printHtml += `</tbody></table>`;
+    }
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
-            <div className="space-y-1.5">
-              <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Data Inicial</Label>
-              <Input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 dark:[color-scheme:dark] transition-colors" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Data Final</Label>
-              <Input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 dark:[color-scheme:dark] transition-colors" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Setor Clínico</Label>
-              <Select value={selectedSector} onValueChange={setSelectedSector}>
-                <SelectTrigger className="h-11 text-xs font-bold bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white z-[99999] max-h-[300px]">
-                  <SelectItem value="todos">🏥 Todos (Consolidado)</SelectItem>
-                  {(sectors || []).map(s => {
-                    const sName = (s.name || '').trim();
-                    if (!sName || sName.toLowerCase() === 'setor' || sName.toLowerCase() === 'setor geral') return null;
-                    return <SelectItem key={s.id} value={String(s.id)}>{sName}</SelectItem>;
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Status do Médico</Label>
-              <Select value={profStatusFilter} onValueChange={setProfStatusFilter}>
-                <SelectTrigger className="h-11 text-xs font-bold bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white z-[99999]">
-                  <SelectItem value="todos">Todos</SelectItem>
-                  <SelectItem value="ativo">Somente Ativos</SelectItem>
-                  <SelectItem value="inativo">Somente Inativos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Busca Específica</Label>
-              <Input placeholder="Médico ou setor..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:border-sky-500 dark:focus:border-cyan-500 transition-colors" />
-            </div>
-            <div>
-              <Button onClick={handleApplyFilters} className="w-full h-11 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs rounded-xl shadow-lg gap-2 cursor-pointer transition-colors border-none dark:border-solid dark:border-cyan-500/50">
-                <Check className="w-4 h-4" /> Extrair Dados
-              </Button>
-            </div>
+    printHtml += `
+        <div class="footer">
+          Documento processado eletronicamente através do sistema Meditech Hospital Admin.<br/>
+          Informações confidenciais - Uso exclusivo da Diretoria Médica e Operacional.
+        </div>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(printHtml);
+    printWindow.document.close();
+
+    // Aguarda o HTML e o CSS serem processados no printWindow antes de invocar a tela de impressão
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 400);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans print:hidden transition-colors duration-300">
+      
+      {/* TOPO EXECUTIVO */}
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 md:p-8 shadow-xl flex flex-col xl:flex-row xl:items-center justify-between gap-6 transition-colors duration-300">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-sky-600 dark:text-cyan-400">
+            <Activity className="w-4 h-4 text-sky-600 dark:text-cyan-400 animate-pulse" /> {hospitalName} • Intelligence CCO
           </div>
+          <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+            Central de Relatórios & BI Hospitalar
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium max-w-2xl">
+            Filtre períodos personalizados para auditoria de produtividade, furos de escala, corpo clínico e consolidação de custos.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button onClick={() => triggerExcelExport('current')} variant="outline" disabled={!hasSearched} className="flex-1 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-white font-bold text-[11px] px-4 rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer shadow-sm disabled:opacity-50 transition-colors">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Excel (Aba)
+            </Button>
+            <Button onClick={() => triggerExcelExport('all')} variant="outline" disabled={!hasSearched} className="flex-1 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-white font-bold text-[11px] px-4 rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer shadow-sm disabled:opacity-50 transition-colors">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Excel (Tudo)
+            </Button>
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button onClick={() => triggerPrint('current')} disabled={!hasSearched} className="flex-1 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-700 dark:hover:bg-cyan-600 text-white font-bold text-[11px] px-4 rounded-xl shadow-md gap-2 cursor-pointer disabled:opacity-50 border border-sky-500 dark:border-cyan-500/50 transition-colors">
+              <PrinterIcon className="w-4 h-4" /> PDF (Aba)
+            </Button>
+            <Button onClick={() => triggerPrint('all')} disabled={!hasSearched} className="flex-1 bg-sky-700 hover:bg-sky-800 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-[11px] px-4 rounded-xl shadow-md gap-2 cursor-pointer transition-all disabled:opacity-50 border border-sky-600 dark:border-cyan-500">
+              <PrinterIcon className="w-4 h-4" /> Dossiê (Tudo)
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* PAINEL DE FILTROS PERSONALIZÁVEL */}
+      <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-md space-y-4 transition-colors">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-3">
+          <span className="text-xs font-black uppercase tracking-wider text-sky-600 dark:text-cyan-400 flex items-center gap-2">
+            <Filter className="w-4 h-4 text-sky-600 dark:text-cyan-400" /> Parâmetros Analíticos Livres
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Data Inicial</Label>
+            <Input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 dark:[color-scheme:dark] transition-colors" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Data Final</Label>
+            <Input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 dark:[color-scheme:dark] transition-colors" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Setor Clínico</Label>
+            <Select value={selectedSector} onValueChange={setSelectedSector}>
+              <SelectTrigger className="h-11 text-xs font-bold bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white z-[99999] max-h-[300px]">
+                <SelectItem value="todos">🏥 Todos (Consolidado)</SelectItem>
+                {(sectors || []).map(s => {
+                  const sName = (s.name || '').trim();
+                  if (!sName || sName.toLowerCase() === 'setor' || sName.toLowerCase() === 'setor geral') return null;
+                  return <SelectItem key={s.id} value={String(s.id)}>{sName}</SelectItem>;
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Status do Médico</Label>
+            <Select value={profStatusFilter} onValueChange={setProfStatusFilter}>
+              <SelectTrigger className="h-11 text-xs font-bold bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white z-[99999]">
+                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="ativo">Somente Ativos</SelectItem>
+                <SelectItem value="inativo">Somente Inativos</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Busca Específica</Label>
+            <Input placeholder="Médico ou setor..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:border-sky-500 dark:focus:border-cyan-500 transition-colors" />
+          </div>
+          <div>
+            <Button onClick={handleApplyFilters} className="w-full h-11 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs rounded-xl shadow-lg gap-2 cursor-pointer transition-colors border-none dark:border-solid dark:border-cyan-500/50">
+              <Check className="w-4 h-4" /> Extrair Dados
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {/* ESTADO INICIAL */}
+      {!hasSearched ? (
+        <Card className="p-16 md:p-24 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-[#1e293b]/50 text-center space-y-4 shadow-sm transition-colors">
+          <div className="w-20 h-20 rounded-full bg-sky-50 dark:bg-cyan-500/10 text-sky-500 dark:text-cyan-400 flex items-center justify-center mx-auto border border-sky-100 dark:border-cyan-500/20">
+            <Filter className="w-10 h-10 animate-pulse" />
+          </div>
+          <h3 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">Pronto para Análise</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">Defina o período desejado e os parâmetros de busca acima e clique em <b>Extrair Dados</b>.</p>
         </Card>
+      ) : (
+        <>
+          {/* ABAS DE NAVEGAÇÃO DA TELA */}
+          <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide">
+            {[
+              { id: 'executivo', label: 'Dashboard Executivo', icon: BarChart3 },
+              { id: 'escalas', label: 'Extrato de Plantões', icon: CalendarDays },
+              { id: 'base_profissionais', label: 'Base de Profissionais', icon: Contact2 },
+              { id: 'profissionais', label: 'Produtividade Médica', icon: Users },
+              { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
+            ].map(tab => {
+              const isActive = activeTab === tab.id;
+              const Icon = tab.icon;
+              return (
+                <button 
+                  key={tab.id} 
+                  onClick={() => setActiveTab(tab.id)} 
+                  className={`px-6 py-4 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center gap-2.5 shrink-0 border ${
+                    isActive 
+                      ? 'bg-sky-600 dark:bg-cyan-600 text-white border-sky-600 dark:border-cyan-500 shadow-md shadow-sky-600/20 dark:shadow-cyan-900/50' 
+                      : 'bg-white dark:bg-[#1e293b] border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" /> {tab.label}
+                </button>
+              );
+            })}
+          </div>
 
-        {/* ESTADO INICIAL */}
-        {!hasSearched ? (
-          <Card className="p-16 md:p-24 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-[#1e293b]/50 text-center space-y-4 shadow-sm transition-colors">
-            <div className="w-20 h-20 rounded-full bg-sky-50 dark:bg-cyan-500/10 text-sky-500 dark:text-cyan-400 flex items-center justify-center mx-auto border border-sky-100 dark:border-cyan-500/20">
-              <Filter className="w-10 h-10 animate-pulse" />
-            </div>
-            <h3 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">Pronto para Análise</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">Defina o período desejado e os parâmetros de busca acima e clique em <b>Extrair Dados</b>.</p>
-          </Card>
-        ) : (
-          <>
-            {/* ABAS DE NAVEGAÇÃO DA TELA */}
-            <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide">
-              {[
-                { id: 'executivo', label: 'Dashboard Executivo', icon: BarChart3 },
-                { id: 'escalas', label: 'Extrato de Plantões', icon: CalendarDays },
-                { id: 'base_profissionais', label: 'Base de Profissionais', icon: Contact2 },
-                { id: 'profissionais', label: 'Produtividade Médica', icon: Users },
-                { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
-              ].map(tab => {
-                const isActive = activeTab === tab.id;
-                const Icon = tab.icon;
-                return (
-                  <button 
-                    key={tab.id} 
-                    onClick={() => setActiveTab(tab.id)} 
-                    className={`px-6 py-4 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center gap-2.5 shrink-0 border ${
-                      isActive 
-                        ? 'bg-sky-600 dark:bg-cyan-600 text-white border-sky-600 dark:border-cyan-500 shadow-md shadow-sky-600/20 dark:shadow-cyan-900/50' 
-                        : 'bg-white dark:bg-[#1e293b] border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" /> {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="space-y-6">
-              {/* ABA EXECUTIVO */}
-              {activeTab === 'executivo' && (
-                <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg relative overflow-hidden group transition-colors">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Total de Plantões</p>
-                      <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{formatNumber(totalShiftsCount)}</p>
-                      <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-bold flex flex-col gap-1">
-                        <span className="text-emerald-600 dark:text-teal-400">{filledShiftsCount} Ocupados</span>
-                        {vacantShiftsCount > 0 && <span className="text-rose-600 dark:text-rose-400">{vacantShiftsCount} Furos/Vagos</span>}
-                      </div>
-                    </Card>
-                    <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg relative overflow-hidden group transition-colors">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Taxa de Ocupação Real</p>
-                      <p className={`mt-2 text-3xl font-black font-mono tracking-tight ${coverageRate >= 98 ? 'text-emerald-600 dark:text-emerald-400' : coverageRate >= 90 ? 'text-amber-500 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>{coverageRate}%</p>
-                      <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-bold">Meta Hospitalar: &gt; 98%</div>
-                    </Card>
-                    <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg relative overflow-hidden group transition-colors">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Custo Total Global</p>
-                      <p className="mt-2 text-3xl font-black text-amber-600 dark:text-amber-400 font-mono tracking-tight">{formatCurrency(financialSummary.totalCost)}</p>
-                      <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-bold">{formatNumber(financialSummary.hours)} Horas Calculadas</div>
-                    </Card>
-                    <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg relative overflow-hidden group transition-colors">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Profissionais Filtrados</p>
-                      <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{filteredProfessionals.length}</p>
-                      <div className="mt-3 text-[10px] text-slate-500 dark:text-slate-400 font-bold flex flex-col gap-0.5">
-                         <span className={credentialAudit.expired > 0 ? 'text-rose-600 dark:text-rose-400' : ''}>{credentialAudit.expired} Docs Vencidos</span>
-                         <span className="text-amber-600 dark:text-amber-400">{credentialAudit.nearExpiry} Vencem em 30d</span>
-                      </div>
-                    </Card>
-                  </div>
-
-                  {vacantShiftItems.length > 0 && (
-                    <Card className="rounded-3xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-950/20 p-6 shadow-sm dark:shadow-lg transition-colors">
-                      <div className="flex items-center gap-3 border-b border-rose-200 dark:border-rose-500/20 pb-4">
-                        <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-500 animate-pulse" />
-                        <h3 className="text-sm font-black uppercase tracking-widest text-rose-800 dark:text-rose-400">Ocorrências: Furos de Escala ou Vagas em Aberto ({vacantShiftItems.length})</h3>
-                      </div>
-                      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {vacantShiftItems.slice(0, 15).map((v, i) => {
-                          const isPast = isShiftPast(v);
-                          return (
-                            <div key={i} className={`p-3 rounded-2xl border flex items-center justify-between shadow-sm transition-colors ${
-                              isPast 
-                                ? 'bg-rose-100 dark:bg-rose-950/50 border-rose-300 dark:border-rose-500/50' 
-                                : 'bg-amber-50 dark:bg-[#1e293b] border-amber-200 dark:border-amber-500/30'
-                            }`}>
-                              <div>
-                                <strong className="text-xs text-slate-900 dark:text-white block">{getSectorName(v, sectors)}</strong>
-                                <span className="text-[10px] text-slate-500 dark:text-slate-400">Data: {formatDate(v.date)}</span>
-                              </div>
-                              <span className={`font-mono text-[10px] font-bold px-2 py-1 rounded-lg border ${
-                                isPast 
-                                  ? 'bg-rose-200 dark:bg-rose-500/20 text-rose-800 dark:text-rose-400 border-rose-300 dark:border-rose-500/30' 
-                                  : 'bg-amber-100 dark:bg-amber-500/10 text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-500/30'
-                              }`}>
-                                {isPast ? 'NÃO OCUPADO' : 'EM ABERTO'}
-                              </span>
-                            </div>
-                          );
-                        })}
-                        {vacantShiftItems.length > 15 && (
-                          <div className="p-3 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-xs text-slate-500 dark:text-slate-400 font-bold transition-colors">
-                            + {vacantShiftItems.length - 15} registros na aba Escalas
-                          </div>
-                        )}
-                      </div>
-                    </Card>
-                  )}
+          <div className="space-y-6">
+            {/* ABA EXECUTIVO */}
+            {activeTab === 'executivo' && (
+              <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg relative overflow-hidden group transition-colors">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Total de Plantões</p>
+                    <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{formatNumber(totalShiftsCount)}</p>
+                    <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-bold flex flex-col gap-1">
+                      <span className="text-emerald-600 dark:text-teal-400">{filledShiftsCount} Ocupados</span>
+                      {vacantShiftsCount > 0 && <span className="text-rose-600 dark:text-rose-400">{vacantShiftsCount} Furos/Vagos</span>}
+                    </div>
+                  </Card>
+                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg relative overflow-hidden group transition-colors">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Taxa de Ocupação Real</p>
+                    <p className={`mt-2 text-3xl font-black font-mono tracking-tight ${coverageRate >= 98 ? 'text-emerald-600 dark:text-emerald-400' : coverageRate >= 90 ? 'text-amber-500 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>{coverageRate}%</p>
+                    <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-bold">Meta Hospitalar: &gt; 98%</div>
+                  </Card>
+                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg relative overflow-hidden group transition-colors">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Custo Total Global</p>
+                    <p className="mt-2 text-3xl font-black text-amber-600 dark:text-amber-400 font-mono tracking-tight">{formatCurrency(financialSummary.totalCost)}</p>
+                    <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-bold">{formatNumber(financialSummary.hours)} Horas Calculadas</div>
+                  </Card>
+                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg relative overflow-hidden group transition-colors">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Profissionais Filtrados</p>
+                    <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{filteredProfessionals.length}</p>
+                    <div className="mt-3 text-[10px] text-slate-500 dark:text-slate-400 font-bold flex flex-col gap-0.5">
+                       <span className={credentialAudit.expired > 0 ? 'text-rose-600 dark:text-rose-400' : ''}>{credentialAudit.expired} Docs Vencidos</span>
+                       <span className="text-amber-600 dark:text-amber-400">{credentialAudit.nearExpiry} Vencem em 30d</span>
+                    </div>
+                  </Card>
                 </div>
-              )}
 
-              {/* ABA ESCALAS */}
-              {activeTab === 'escalas' && (
-                <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
-                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                    <h3 className="font-black text-sm uppercase tracking-widest text-sky-600 dark:text-cyan-400 flex items-center gap-2">
-                      <CalendarDays className="w-5 h-5" /> Extrato de Escalas ({filteredShifts.length})
-                    </h3>
-                  </div>
-                  <div className="overflow-x-auto mt-4">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 dark:text-slate-500 tracking-wider">
-                          <th className="py-3 px-3">Data</th>
-                          <th className="py-3 px-3">Setor</th>
-                          <th className="py-3 px-3">Profissional Alocado</th>
-                          <th className="py-3 px-3">Horário</th>
-                          <th className="py-3 px-3">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
-                        {filteredShifts.map((s, idx) => {
-                          const isVago = isVacant(s);
-                          const isPast = isShiftPast(s);
-                          let profNameRender = titleCase(s.professional_name) || 'Não Identificado';
-                          let badgeClass = 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30';
-                          let badgeText = s.status || 'Confirmado';
+                {vacantShiftItems.length > 0 && (
+                  <Card className="rounded-3xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-950/20 p-6 shadow-sm dark:shadow-lg transition-colors">
+                    <div className="flex items-center gap-3 border-b border-rose-200 dark:border-rose-500/20 pb-4">
+                      <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-500 animate-pulse" />
+                      <h3 className="text-sm font-black uppercase tracking-widest text-rose-800 dark:text-rose-400">Ocorrências: Furos de Escala ou Vagas em Aberto ({vacantShiftItems.length})</h3>
+                    </div>
+                    <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {vacantShiftItems.slice(0, 15).map((v, i) => {
+                        const isPast = isShiftPast(v);
+                        return (
+                          <div key={i} className={`p-3 rounded-2xl border flex items-center justify-between shadow-sm transition-colors ${
+                            isPast 
+                              ? 'bg-rose-100 dark:bg-rose-950/50 border-rose-300 dark:border-rose-500/50' 
+                              : 'bg-amber-50 dark:bg-[#1e293b] border-amber-200 dark:border-amber-500/30'
+                          }`}>
+                            <div>
+                              <strong className="text-xs text-slate-900 dark:text-white block">{getSectorName(v, sectors)}</strong>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400">Data: {formatDate(v.date)}</span>
+                            </div>
+                            <span className={`font-mono text-[10px] font-bold px-2 py-1 rounded-lg border ${
+                              isPast 
+                                ? 'bg-rose-200 dark:bg-rose-500/20 text-rose-800 dark:text-rose-400 border-rose-300 dark:border-rose-500/30' 
+                                : 'bg-amber-100 dark:bg-amber-500/10 text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-500/30'
+                            }`}>
+                              {isPast ? 'NÃO OCUPADO' : 'EM ABERTO'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {vacantShiftItems.length > 15 && (
+                        <div className="p-3 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-xs text-slate-500 dark:text-slate-400 font-bold transition-colors">
+                          + {vacantShiftItems.length - 15} registros na aba Escalas
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                )}
+              </div>
+            )}
 
-                          if (isVago) {
-                            if (isPast) {
-                              profNameRender = <span className="text-rose-600 dark:text-rose-500">⚠️ FALTA / NÃO OCUPADO</span>;
-                              badgeClass = 'bg-rose-100 dark:bg-rose-500/20 text-rose-800 dark:text-rose-500 border-rose-200 dark:border-rose-500/50';
-                              badgeText = 'Furo de Escala';
-                            } else {
-                              profNameRender = <span className="text-amber-600 dark:text-amber-400">⚠️ VAGA EM ABERTO</span>;
-                              badgeClass = 'bg-amber-100 dark:bg-amber-500/10 text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-500/30';
-                              badgeText = 'Vago';
-                            }
+            {/* ABA ESCALAS */}
+            {activeTab === 'escalas' && (
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
+                  <h3 className="font-black text-sm uppercase tracking-widest text-sky-600 dark:text-cyan-400 flex items-center gap-2">
+                    <CalendarDays className="w-5 h-5" /> Extrato de Escalas ({filteredShifts.length})
+                  </h3>
+                </div>
+                <div className="overflow-x-auto mt-4">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 dark:text-slate-500 tracking-wider">
+                        <th className="py-3 px-3">Data</th>
+                        <th className="py-3 px-3">Setor</th>
+                        <th className="py-3 px-3">Profissional Alocado</th>
+                        <th className="py-3 px-3">Horário</th>
+                        <th className="py-3 px-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
+                      {filteredShifts.map((s, idx) => {
+                        const isVago = isVacant(s);
+                        const isPast = isShiftPast(s);
+                        let profNameRender = titleCase(s.professional_name) || 'Não Identificado';
+                        let badgeClass = 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30';
+                        let badgeText = s.status || 'Confirmado';
+
+                        if (isVago) {
+                          if (isPast) {
+                            profNameRender = <span className="text-rose-600 dark:text-rose-500">⚠️ FALTA / NÃO OCUPADO</span>;
+                            badgeClass = 'bg-rose-100 dark:bg-rose-500/20 text-rose-800 dark:text-rose-500 border-rose-200 dark:border-rose-500/50';
+                            badgeText = 'Furo de Escala';
+                          } else {
+                            profNameRender = <span className="text-amber-600 dark:text-amber-400">⚠️ VAGA EM ABERTO</span>;
+                            badgeClass = 'bg-amber-100 dark:bg-amber-500/10 text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-500/30';
+                            badgeText = 'Vago';
                           }
+                        }
 
-                          return (
-                            <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                              <td className="py-3 px-3 font-bold font-mono text-slate-700 dark:text-slate-300">{formatDate(s.date)}</td>
-                              <td className="py-3 px-3 text-slate-600 dark:text-slate-300">{getSectorName(s, sectors)}</td>
-                              <td className={`py-3 px-3 font-black text-slate-900 dark:text-white`}>{profNameRender}</td>
-                              <td className="py-3 px-3 font-mono text-slate-500 dark:text-slate-400">{s.start_time || '07:00'} - {s.end_time || '19:00'}</td>
-                              <td className="py-3 px-3"><span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${badgeClass}`}>{badgeText}</span></td>
-                            </tr>
-                          );
-                        })}
-                        {filteredShifts.length === 0 && (
-                          <tr><td colSpan="5" className="py-8 text-center text-slate-500">Nenhum plantão filtrado no período.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
-              )}
+                        return (
+                          <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                            <td className="py-3 px-3 font-bold font-mono text-slate-700 dark:text-slate-300">{formatDate(s.date)}</td>
+                            <td className="py-3 px-3 text-slate-600 dark:text-slate-300">{getSectorName(s, sectors)}</td>
+                            <td className={`py-3 px-3 font-black text-slate-900 dark:text-white`}>{profNameRender}</td>
+                            <td className="py-3 px-3 font-mono text-slate-500 dark:text-slate-400">{s.start_time || '07:00'} - {s.end_time || '19:00'}</td>
+                            <td className="py-3 px-3"><span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${badgeClass}`}>{badgeText}</span></td>
+                          </tr>
+                        );
+                      })}
+                      {filteredShifts.length === 0 && (
+                        <tr><td colSpan="5" className="py-8 text-center text-slate-500">Nenhum plantão filtrado no período.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
 
-              {/* ABA BASE DE PROFISSIONAIS (NOVA) */}
-              {activeTab === 'base_profissionais' && (
-                <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
-                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                    <h3 className="font-black text-sm uppercase tracking-widest text-sky-600 dark:text-sky-400 flex items-center gap-2">
-                      <Contact2 className="w-5 h-5" /> Base do Corpo Clínico ({filteredProfessionals.length})
-                    </h3>
-                  </div>
-                  <div className="overflow-x-auto mt-4">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                          <th className="py-3 px-3">Nome Completo</th>
-                          <th className="py-3 px-3">Especialidade</th>
-                          <th className="py-3 px-3">Documento (CRM)</th>
-                          <th className="py-3 px-3">Vencimento Doc.</th>
-                          <th className="py-3 px-3">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
-                        {filteredProfessionals.map((p, idx) => {
-                          const expiryDate = p.document_expiry || p.documentExpiry || p.valid_until;
-                          const isExpired = expiryDate && new Date(expiryDate) < new Date();
-                          return (
-                            <tr key={p.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                              <td className="py-3 px-3 font-bold text-slate-900 dark:text-white">{titleCase(p.name)}</td>
-                              <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{p.specialty}</td>
-                              <td className="py-3 px-3 text-slate-700 dark:text-slate-300 font-mono">{p.document || '—'}</td>
-                              <td className={`py-3 px-3 font-mono ${isExpired ? 'text-rose-600 dark:text-rose-500 font-bold' : 'text-slate-500 dark:text-slate-400'}`}>
-                                {formatDate(expiryDate)}
-                              </td>
-                              <td className="py-3 px-3">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${normalize(p.status) === 'inativo' ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-400' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>
-                                  {p.status || 'Ativo'}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                        {filteredProfessionals.length === 0 && (
-                          <tr><td colSpan="5" className="py-8 text-center text-slate-500">Nenhum profissional encontrado com os filtros atuais.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
-              )}
-
-              {/* ABA PROFISSIONAIS (PRODUTIVIDADE) */}
-              {activeTab === 'profissionais' && (
-                <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
-                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                    <h3 className="font-black text-sm uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                      <Stethoscope className="w-5 h-5" /> Matriz de Produtividade Clínica ({professionalMetrics.length})
-                    </h3>
-                  </div>
-                  <div className="overflow-x-auto mt-4">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                          <th className="py-3 px-3">Profissional</th>
-                          <th className="py-3 px-3">Especialidade</th>
-                          <th className="py-3 px-3 text-center">Nº Plantões</th>
-                          <th className="py-3 px-3 text-right">Carga Horária</th>
-                          <th className="py-3 px-3 text-right">Honorários (R$)</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
-                        {professionalMetrics.map((doc, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                            <td className="py-3 px-3 font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
-                              <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-sky-600 dark:text-cyan-400 font-black flex items-center justify-center text-[10px] border border-slate-200 dark:border-slate-700">
-                                {doc.name.substring(0,2).toUpperCase()}
-                              </div>
-                              {doc.name}
+            {/* ABA BASE DE PROFISSIONAIS (NOVA) */}
+            {activeTab === 'base_profissionais' && (
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
+                  <h3 className="font-black text-sm uppercase tracking-widest text-sky-600 dark:text-sky-400 flex items-center gap-2">
+                    <Contact2 className="w-5 h-5" /> Base do Corpo Clínico ({filteredProfessionals.length})
+                  </h3>
+                </div>
+                <div className="overflow-x-auto mt-4">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                        <th className="py-3 px-3">Nome Completo</th>
+                        <th className="py-3 px-3">Especialidade</th>
+                        <th className="py-3 px-3">Documento (CRM)</th>
+                        <th className="py-3 px-3">Vencimento Doc.</th>
+                        <th className="py-3 px-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
+                      {filteredProfessionals.map((p, idx) => {
+                        const expiryDate = p.document_expiry || p.documentExpiry || p.valid_until;
+                        const isExpired = expiryDate && new Date(expiryDate) < new Date();
+                        return (
+                          <tr key={p.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                            <td className="py-3 px-3 font-bold text-slate-900 dark:text-white">{titleCase(p.name)}</td>
+                            <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{p.specialty}</td>
+                            <td className="py-3 px-3 text-slate-700 dark:text-slate-300 font-mono">{p.document || '—'}</td>
+                            <td className={`py-3 px-3 font-mono ${isExpired ? 'text-rose-600 dark:text-rose-500 font-bold' : 'text-slate-500 dark:text-slate-400'}`}>
+                              {formatDate(expiryDate)}
                             </td>
-                            <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{doc.specialty}</td>
-                            <td className="py-3 px-3 text-center font-mono font-bold text-slate-900 dark:text-white">{doc.shifts}</td>
-                            <td className="py-3 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{doc.hours}h</td>
-                            <td className="py-3 px-3 text-right font-mono font-bold text-amber-600 dark:text-amber-400">{formatCurrency(doc.cost)}</td>
+                            <td className="py-3 px-3">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${normalize(p.status) === 'inativo' ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-400' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>
+                                {p.status || 'Ativo'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {filteredProfessionals.length === 0 && (
+                        <tr><td colSpan="5" className="py-8 text-center text-slate-500">Nenhum profissional encontrado com os filtros atuais.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {/* ABA PROFISSIONAIS (PRODUTIVIDADE) */}
+            {activeTab === 'profissionais' && (
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
+                  <h3 className="font-black text-sm uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                    <Stethoscope className="w-5 h-5" /> Matriz de Produtividade Clínica ({professionalMetrics.length})
+                  </h3>
+                </div>
+                <div className="overflow-x-auto mt-4">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                        <th className="py-3 px-3">Profissional</th>
+                        <th className="py-3 px-3">Especialidade</th>
+                        <th className="py-3 px-3 text-center">Nº Plantões</th>
+                        <th className="py-3 px-3 text-right">Carga Horária</th>
+                        <th className="py-3 px-3 text-right">Honorários (R$)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
+                      {professionalMetrics.map((doc, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                          <td className="py-3 px-3 font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-sky-600 dark:text-cyan-400 font-black flex items-center justify-center text-[10px] border border-slate-200 dark:border-slate-700">
+                              {doc.name.substring(0,2).toUpperCase()}
+                            </div>
+                            {doc.name}
+                          </td>
+                          <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{doc.specialty}</td>
+                          <td className="py-3 px-3 text-center font-mono font-bold text-slate-900 dark:text-white">{doc.shifts}</td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{doc.hours}h</td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-amber-600 dark:text-amber-400">{formatCurrency(doc.cost)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {/* ABA FINANCEIRO */}
+            {activeTab === 'financeiro' && (
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
+                  <h3 className="font-black text-sm uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                    <DollarSign className="w-5 h-5" /> Inteligência Financeira e Orçamento
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
+                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-inner">
+                    <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Total Previsão Global</span>
+                    <div className="text-2xl font-black font-mono text-slate-900 dark:text-white mt-2">{formatCurrency(financialSummary.totalCost)}</div>
+                  </div>
+                  <div className="p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 shadow-sm dark:shadow-inner">
+                    <span className="text-[10px] font-black uppercase text-emerald-800 dark:text-emerald-400">Valor Realizado</span>
+                    <div className="text-2xl font-black font-mono text-emerald-700 dark:text-emerald-400 mt-2">{formatCurrency(financialSummary.executedCost)}</div>
+                  </div>
+                  <div className="p-5 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 shadow-sm dark:shadow-inner">
+                    <span className="text-[10px] font-black uppercase text-amber-800 dark:text-amber-400">Valor Pendente</span>
+                    <div className="text-2xl font-black font-mono text-amber-700 dark:text-amber-400 mt-2">{formatCurrency(financialSummary.pendingCost)}</div>
+                  </div>
+                  <div className="p-5 rounded-2xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 shadow-sm dark:shadow-inner">
+                    <span className="text-[10px] font-black uppercase text-rose-800 dark:text-rose-400">Desfalques (Vagas)</span>
+                    <div className="text-2xl font-black font-mono text-rose-700 dark:text-rose-400 mt-2">{formatCurrency(financialSummary.vacantCost)}</div>
+                  </div>
+                </div>
+                <div className="mt-8 border-t border-slate-100 dark:border-slate-700/50 pt-6">
+                  <h4 className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 mb-4">Orçamento por Setor Clínico</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                          <th className="py-2 px-2">Setor Clínico</th>
+                          <th className="py-2 px-2 text-right">Horas Assistenciais</th>
+                          <th className="py-2 px-2 text-right">Custo Projetado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
+                        {sectorMetrics.map((sec, idx) => (
+                          <tr key={idx}>
+                            <td className="py-3 px-2 font-bold text-slate-900 dark:text-white">{sec.name}</td>
+                            <td className="py-3 px-2 text-right font-mono text-slate-600 dark:text-slate-400">{sec.hours}h</td>
+                            <td className="py-3 px-2 text-right font-mono font-black text-amber-600 dark:text-amber-400">{formatCurrency(sec.cost)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </Card>
-              )}
-
-              {/* ABA FINANCEIRO */}
-              {activeTab === 'financeiro' && (
-                <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
-                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                    <h3 className="font-black text-sm uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                      <DollarSign className="w-5 h-5" /> Inteligência Financeira e Orçamento
-                    </h3>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
-                    <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-inner">
-                      <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Total Previsão Global</span>
-                      <div className="text-2xl font-black font-mono text-slate-900 dark:text-white mt-2">{formatCurrency(financialSummary.totalCost)}</div>
-                    </div>
-                    <div className="p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 shadow-sm dark:shadow-inner">
-                      <span className="text-[10px] font-black uppercase text-emerald-800 dark:text-emerald-400">Valor Realizado</span>
-                      <div className="text-2xl font-black font-mono text-emerald-700 dark:text-emerald-400 mt-2">{formatCurrency(financialSummary.executedCost)}</div>
-                    </div>
-                    <div className="p-5 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 shadow-sm dark:shadow-inner">
-                      <span className="text-[10px] font-black uppercase text-amber-800 dark:text-amber-400">Valor Pendente</span>
-                      <div className="text-2xl font-black font-mono text-amber-700 dark:text-amber-400 mt-2">{formatCurrency(financialSummary.pendingCost)}</div>
-                    </div>
-                    <div className="p-5 rounded-2xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 shadow-sm dark:shadow-inner">
-                      <span className="text-[10px] font-black uppercase text-rose-800 dark:text-rose-400">Desfalques (Vagas)</span>
-                      <div className="text-2xl font-black font-mono text-rose-700 dark:text-rose-400 mt-2">{formatCurrency(financialSummary.vacantCost)}</div>
-                    </div>
-                  </div>
-                  <div className="mt-8 border-t border-slate-100 dark:border-slate-700/50 pt-6">
-                    <h4 className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 mb-4">Orçamento por Setor Clínico</h4>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
-                          <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                            <th className="py-2 px-2">Setor Clínico</th>
-                            <th className="py-2 px-2 text-right">Horas Assistenciais</th>
-                            <th className="py-2 px-2 text-right">Custo Projetado</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
-                          {sectorMetrics.map((sec, idx) => (
-                            <tr key={idx}>
-                              <td className="py-3 px-2 font-bold text-slate-900 dark:text-white">{sec.name}</td>
-                              <td className="py-3 px-2 text-right font-mono text-slate-600 dark:text-slate-400">{sec.hours}h</td>
-                              <td className="py-3 px-2 text-right font-mono font-black text-amber-600 dark:text-amber-400">{formatCurrency(sec.cost)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </Card>
-              )}
-            </div>
+                </div>
+              </Card>
+            )}
           </>
         )}
       </div>
-
-      {/* ========================================== */}
-      {/* MODO IMPRESSÃO (NATIVO BROWSER)              */}
-      {/* ========================================== */}
-      <div className="hidden print:block w-full text-black bg-white font-sans text-xs">
-        {hasSearched ? (
-          <>
-            <div className="border-b-2 border-slate-900 pb-4 mb-6">
-              <h1 className="text-2xl font-black uppercase text-slate-900">{hospitalName}</h1>
-              <p className="text-sm font-bold text-slate-700 uppercase tracking-wider">
-                {printMode === 'all' ? 'Dossiê Executivo de Gestão' : `Relatório - ${document.title || 'Módulo Atual'}`}
-              </p>
-              <div className="flex justify-between mt-2 pt-2 border-t border-slate-300 text-[10px]">
-                <span><b>Período Filtrado:</b> {periodLabel}</span>
-                <span><b>Emissão:</b> {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR')}</span>
-              </div>
-            </div>
-            
-            {(printMode === 'all' || activeTab === 'executivo') && (
-              <div className="mb-8 break-inside-avoid">
-                <h2 className="text-sm font-black bg-slate-100 p-2 border border-slate-300 uppercase mb-4">1. Resumo Operacional Global</h2>
-                <table className="w-full text-left border-collapse border border-slate-300 mb-6 text-[11px]">
-                  <tbody>
-                    <tr className="border-b border-slate-300">
-                      <th className="p-2 border-r border-slate-300 bg-slate-50 w-1/4">Total de Plantões:</th>
-                      <td className="p-2 border-r border-slate-300 font-bold">{totalShiftsCount}</td>
-                      <th className="p-2 border-r border-slate-300 bg-slate-50 w-1/4">Preenchidos / Vagos:</th>
-                      <td className="p-2 font-bold">{filledShiftsCount} / <span className="text-rose-600">{vacantShiftsCount}</span></td>
-                    </tr>
-                    <tr>
-                      <th className="p-2 border-r border-slate-300 bg-slate-50">Taxa de Cobertura:</th>
-                      <td className="p-2 border-r border-slate-300 font-bold">{coverageRate}%</td>
-                      <th className="p-2 border-r border-slate-300 bg-slate-50">Custo Total Projetado:</th>
-                      <td className="p-2 font-bold">{formatCurrency(financialSummary.totalCost)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                {vacantShiftItems.length > 0 && (
-                  <>
-                    <h2 className="text-sm font-black bg-rose-100 text-rose-900 p-2 border border-rose-300 uppercase mb-4">Atenção: Furos e Vagas em Aberto ({vacantShiftItems.length})</h2>
-                    <table className="w-full text-left border-collapse border border-slate-300 mb-8 text-[10px]">
-                      <thead>
-                        <tr className="bg-slate-100 border-b border-slate-300 uppercase">
-                          <th className="p-2 border-r border-slate-300">Data</th>
-                          <th className="p-2 border-r border-slate-300">Setor Clínico</th>
-                          <th className="p-2 border-r border-slate-300 text-center">Horário</th>
-                          <th className="p-2 text-center">Diagnóstico</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {vacantShiftItems.map((v, i) => {
-                          const isPast = isShiftPast(v);
-                          return (
-                            <tr key={i} className="border-b border-slate-300 break-inside-avoid">
-                              <td className="p-2 border-r border-slate-300 font-bold">{formatDate(v.date)}</td>
-                              <td className="p-2 border-r border-slate-300">{getSectorName(v, sectors)}</td>
-                              <td className="p-2 border-r border-slate-300 font-mono text-center">{v.start_time} - {v.end_time}</td>
-                              <td className={`p-2 font-bold text-center ${isPast ? 'text-rose-700 bg-rose-50' : 'text-amber-700 bg-amber-50'}`}>
-                                {isPast ? 'NÃO OCUPADO (FURO DE ESCALA)' : 'VAGA PENDENTE NO FUTURO'}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </>
-                )}
-              </div>
-            )}
-
-            {(printMode === 'all' || activeTab === 'escalas') && (
-              <div className="mb-8 break-before-page">
-                <h2 className="text-sm font-black bg-slate-100 p-2 border border-slate-300 uppercase mb-4">Extrato Detalhado de Escalas de Trabalho (Cronológico)</h2>
-                <table className="w-full text-left border-collapse border border-slate-300 text-[10px]">
-                  <thead>
-                    <tr className="bg-slate-100 border-b border-slate-300 uppercase">
-                      <th className="p-2 border-r border-slate-300">Data</th>
-                      <th className="p-2 border-r border-slate-300">Setor Clínico</th>
-                      <th className="p-2 border-r border-slate-300">Profissional</th>
-                      <th className="p-2 border-r border-slate-300 text-center">Horário</th>
-                      <th className="p-2 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredShifts.map((s, idx) => {
-                      const isVago = isVacant(s);
-                      const isPast = isShiftPast(s);
-                      let profNameRender = titleCase(s.professional_name);
-                      let badgeText = s.status || 'Confirmado';
-                      let cssClass = '';
-
-                      if (isVago) {
-                        if (isPast) { profNameRender = 'NÃO OCUPADO (FURO)'; badgeText = 'Sem Cobertura'; cssClass = 'text-rose-700 font-bold bg-rose-50'; }
-                        else { profNameRender = 'VAGA EM ABERTO'; badgeText = 'Vago'; cssClass = 'text-amber-700 font-bold bg-amber-50'; }
-                      }
-
-                      return (
-                        <tr key={s.id || idx} className="border-b border-slate-300 break-inside-avoid">
-                          <td className="p-2 border-r border-slate-300 font-bold">{formatDate(s.date)}</td>
-                          <td className="p-2 border-r border-slate-300">{getSectorName(s, sectors)}</td>
-                          <td className={`p-2 border-r border-slate-300 ${cssClass}`}>{profNameRender}</td>
-                          <td className="p-2 border-r border-slate-300 font-mono text-center">{s.start_time} - {s.end_time}</td>
-                          <td className={`p-2 text-center uppercase ${cssClass}`}>{badgeText}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {(printMode === 'all' || activeTab === 'base_profissionais') && (
-              <div className="mb-8 break-before-page">
-                <h2 className="text-sm font-black bg-slate-100 p-2 border border-slate-300 uppercase mb-4">Base do Corpo Clínico</h2>
-                <table className="w-full text-left border-collapse border border-slate-300 text-[10px]">
-                  <thead>
-                    <tr className="bg-slate-100 border-b border-slate-300 uppercase">
-                      <th className="p-2 border-r border-slate-300">Profissional</th>
-                      <th className="p-2 border-r border-slate-300">Especialidade</th>
-                      <th className="p-2 border-r border-slate-300">Documento (CRM)</th>
-                      <th className="p-2 border-r border-slate-300">Vencimento Doc.</th>
-                      <th className="p-2 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProfessionals.map((p, idx) => {
-                      const expiryDate = p.document_expiry || p.documentExpiry || p.valid_until;
-                      const isExpired = expiryDate && new Date(expiryDate) < new Date();
-                      return (
-                        <tr key={p.id || idx} className="border-b border-slate-300 break-inside-avoid">
-                          <td className="p-2 border-r border-slate-300 font-bold">{titleCase(p.name)}</td>
-                          <td className="p-2 border-r border-slate-300">{p.specialty}</td>
-                          <td className="p-2 border-r border-slate-300 font-mono">{p.document || '—'}</td>
-                          <td className={`p-2 border-r border-slate-300 font-mono ${isExpired ? 'text-rose-700 font-bold' : ''}`}>{formatDate(expiryDate)}</td>
-                          <td className="p-2 text-center uppercase">{p.status || 'Ativo'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {(printMode === 'all' || activeTab === 'profissionais') && (
-              <div className="mb-8 break-before-page">
-                <h2 className="text-sm font-black bg-slate-100 p-2 border border-slate-300 uppercase mb-4">Matriz de Produtividade Médica</h2>
-                <table className="w-full text-left border-collapse border border-slate-300 text-[10px]">
-                  <thead>
-                    <tr className="bg-slate-100 border-b border-slate-300 uppercase">
-                      <th className="p-2 border-r border-slate-300">Profissional</th>
-                      <th className="p-2 border-r border-slate-300">Especialidade</th>
-                      <th className="p-2 border-r border-slate-300 text-center">Nº Plantões</th>
-                      <th className="p-2 border-r border-slate-300 text-center">Horas</th>
-                      <th className="p-2 text-right">Honorários Brutos (R$)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {professionalMetrics.map((doc, idx) => (
-                      <tr key={idx} className="border-b border-slate-300 break-inside-avoid">
-                        <td className="p-2 border-r border-slate-300 font-bold">{doc.name}</td>
-                        <td className="p-2 border-r border-slate-300">{doc.specialty}</td>
-                        <td className="p-2 border-r border-slate-300 text-center font-bold">{doc.shifts}</td>
-                        <td className="p-2 border-r border-slate-300 text-center font-mono">{doc.hours}h</td>
-                        <td className="p-2 text-right font-mono font-bold">{formatCurrency(doc.cost)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {(printMode === 'all' || activeTab === 'financeiro') && (
-              <div className="mb-8 break-before-page">
-                <h2 className="text-sm font-black bg-slate-100 p-2 border border-slate-300 uppercase mb-4">Relatório Financeiro Operacional</h2>
-                <table className="w-full text-left border-collapse border border-slate-300 mb-6 text-[11px]">
-                  <tbody>
-                    <tr className="border-b border-slate-300">
-                      <th className="p-2 border-r border-slate-300 bg-slate-50 w-1/4">Valor Total Previsão Global:</th>
-                      <td className="p-2 border-r border-slate-300 font-bold">{formatCurrency(financialSummary.totalCost)}</td>
-                      <th className="p-2 border-r border-slate-300 bg-emerald-50 w-1/4 text-emerald-800">Valor Realizado Concluído:</th>
-                      <td className="p-2 font-bold text-emerald-800 bg-emerald-50">{formatCurrency(financialSummary.executedCost)}</td>
-                    </tr>
-                    <tr className="border-b border-slate-300">
-                      <th className="p-2 border-r border-slate-300 bg-amber-50 text-amber-800">Valor Pendente a Realizar:</th>
-                      <td className="p-2 border-r border-slate-300 font-bold text-amber-800 bg-amber-50">{formatCurrency(financialSummary.pendingCost)}</td>
-                      <th className="p-2 border-r border-slate-300 bg-rose-50 text-rose-800">Valor Retido (Vagas/Furos):</th>
-                      <td className="p-2 font-bold text-rose-800 bg-rose-50">{formatCurrency(financialSummary.vacantCost)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <h3 className="text-xs font-black uppercase mb-2 mt-6">Custos Desdobrados por Setor</h3>
-                <table className="w-full text-left border-collapse border border-slate-300 text-[10px]">
-                  <thead>
-                    <tr className="bg-slate-100 border-b border-slate-300 uppercase">
-                      <th className="p-2 border-r border-slate-300">Setor Clínico / Unidade</th>
-                      <th className="p-2 border-r border-slate-300 text-center">Horas Assistenciais</th>
-                      <th className="p-2 text-right">Alocação Orçamentária (R$)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sectorMetrics.map((sec, idx) => (
-                      <tr key={idx} className="border-b border-slate-300 break-inside-avoid">
-                        <td className="p-2 border-r border-slate-300 font-bold">{sec.name}</td>
-                        <td className="p-2 border-r border-slate-300 text-center font-mono">{sec.hours}h</td>
-                        <td className="p-2 text-right font-mono font-bold">{formatCurrency(sec.cost)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <div className="mt-12 pt-4 border-t border-slate-400 text-center text-[10px] text-slate-500">
-              Documento processado eletronicamente através do sistema Meditech Hospital Admin.<br/>
-              Informações confidenciais - Uso exclusivo da Diretoria Médica e Operacional.
-            </div>
-          </>
-        ) : (
-          <div className="text-center p-20 text-xl font-bold border-2 border-dashed border-slate-300 m-8">
-            Nenhum filtro aplicado. Retorne ao painel, selecione o período e gere o relatório para impressão.
-          </div>
-        )}
-      </div>
-
     </>
   );
 }
