@@ -114,6 +114,10 @@ function getProfessionalCost(professional, hours) {
   return safeNumber(meta.monthly_salary ?? meta.monthlySalary ?? meta.salary ?? meta.salario, 0) / 20;
 }
 
+function csvCell(value) {
+  return `"${String(value ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
+}
+
 export default function Relatorios() {
   const { shifts = [], sectors = [], professionals = [], company } = useAppData();
 
@@ -165,6 +169,7 @@ export default function Relatorios() {
     return profMap[String(shift.professional_id)] || profMap[normalize(getShiftName(shift))];
   }, [profMap]);
 
+  // Filtragem flexível com ORDENAÇÃO CRESCENTE DE DATA/HORA
   const filteredShifts = useMemo(() => {
     if (!hasSearched) return [];
     const term = normalize(appliedFilters.search);
@@ -288,6 +293,27 @@ export default function Relatorios() {
     return Object.values(map).filter(item => item.total > 0).sort((a, b) => b.total - a.total);
   }, [sectors, filteredShifts, getProf]);
 
+  const enrichedSectors = useMemo(() => {
+    if (!hasSearched) return [];
+    const term = normalize(appliedFilters.search);
+
+    return sectors.filter(s => {
+      const n = normalize(s.name);
+      const spec = normalize(s.specialty);
+      if (term && !n.includes(term) && !spec.includes(term)) return false;
+      if (appliedFilters.sector !== 'todos' && String(s.id) !== String(appliedFilters.sector)) return false;
+      return true;
+    }).map(s => {
+      const metric = sectorMetrics.find(m => String(m.id) === String(s.id));
+      return {
+        ...s,
+        shiftsCount: metric ? metric.total : 0,
+        totalCost: metric ? metric.cost : 0,
+        totalHours: metric ? metric.hours : 0
+      };
+    }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [sectors, sectorMetrics, appliedFilters, hasSearched]);
+
   const professionalMetrics = useMemo(() => {
     const map = {};
     filteredProfessionals.forEach(p => {
@@ -392,15 +418,14 @@ export default function Relatorios() {
       <body>
         <table>
           <tr>
-            <td colspan="10" class="header-main">
+            <td colspan="7" class="header-main">
               <div class="h1">${hospitalName} - Relatório de Gestão Hospitalar</div>
               <div class="h2">Período: ${periodLabel}</div>
             </td>
           </tr>
-          <tr><td colspan="10" style="border:none;"></td></tr>
+          <tr><td colspan="7" style="border:none;"></td></tr>
     `;
 
-    // BLOCO: ESCALAS
     if (mode === 'all' || activeTab === 'escalas') {
       html += `
           <tr><td colspan="7" class="section-title">EXTRATO DETALHADO DE ESCALAS (Cronológico)</td></tr>
@@ -442,7 +467,32 @@ export default function Relatorios() {
       html += `<tr><td colspan="7" style="border:none; height:20px;"></td></tr>`;
     }
 
-    // BLOCO: BASE DE PROFISSIONAIS
+    if (mode === 'all' || activeTab === 'base_setores') {
+      html += `
+          <tr><td colspan="5" class="section-title">ESTRUTURA DE SETORES</td></tr>
+          <tr>
+            <th>Nome do Setor</th>
+            <th>Especialidade Exigida</th>
+            <th>Status</th>
+            <th>Plantões no Período</th>
+            <th>Custo Projetado (R$)</th>
+          </tr>
+      `;
+      enrichedSectors.forEach((s, i) => {
+        const rowClass = i % 2 === 0 ? '' : 'class="row-alt"';
+        html += `
+          <tr ${rowClass}>
+            <td style="font-weight:bold;">${titleCase(s.name)}</td>
+            <td>${s.specialty || 'Não def.'}</td>
+            <td>${(s.status || 'Ativo').toUpperCase()}</td>
+            <td>${s.shiftsCount}</td>
+            <td class="money">${s.totalCost.toFixed(2).replace('.', ',')}</td>
+          </tr>
+        `;
+      });
+      html += `<tr><td colspan="5" style="border:none; height:20px;"></td></tr>`;
+    }
+
     if (mode === 'all' || activeTab === 'base_profissionais') {
       html += `
           <tr><td colspan="10" class="section-title">BASE DE PROFISSIONAIS (CORPO CLÍNICO)</td></tr>
@@ -481,7 +531,6 @@ export default function Relatorios() {
       html += `<tr><td colspan="10" style="border:none; height:20px;"></td></tr>`;
     }
 
-    // BLOCO: PRODUTIVIDADE
     if (mode === 'all' || activeTab === 'profissionais') {
       html += `
           <tr><td colspan="6" class="section-title">MATRIZ DE PRODUTIVIDADE MÉDICA (No Período)</td></tr>
@@ -510,7 +559,6 @@ export default function Relatorios() {
       html += `<tr><td colspan="6" style="border:none; height:20px;"></td></tr>`;
     }
 
-    // BLOCO: FINANCEIRO (ESTE ERA O QUE ESTAVA FALTANDO E CAUSOU O ARQUIVO VAZIO!)
     if (mode === 'all' || activeTab === 'financeiro') {
       html += `
           <tr><td colspan="4" class="section-title">RELATÓRIO FINANCEIRO OPERACIONAL</td></tr>
@@ -728,6 +776,35 @@ export default function Relatorios() {
             <td class="${rowClass}">${profName}</td>
             <td class="text-center font-bold">${s.start_time} - ${s.end_time}</td>
             <td class="text-center ${rowClass}">${badgeText.toUpperCase()}</td>
+          </tr>
+        `;
+      });
+      printHtml += `</tbody></table>`;
+    }
+
+    if (mode === 'all' || activeTab === 'base_setores') {
+      printHtml += `
+        <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Estrutura de Setores</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Nome do Setor</th>
+              <th>Especialidade Exigida</th>
+              <th>Status</th>
+              <th class="text-center">Plantões no Período</th>
+              <th class="text-right">Custo Projetado (R$)</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      enrichedSectors.forEach(s => {
+        printHtml += `
+          <tr>
+            <td class="font-bold">${titleCase(s.name)}</td>
+            <td>${s.specialty || 'Não def.'}</td>
+            <td>${(s.status || 'Ativo').toUpperCase()}</td>
+            <td class="text-center">${s.shiftsCount}</td>
+            <td class="text-right font-bold">${formatCurrency(s.totalCost)}</td>
           </tr>
         `;
       });
@@ -971,6 +1048,7 @@ export default function Relatorios() {
             {[
               { id: 'executivo', label: 'Dashboard Executivo', icon: BarChart3 },
               { id: 'escalas', label: 'Extrato de Plantões', icon: CalendarDays },
+              { id: 'base_setores', label: 'Estrutura de Setores', icon: Building2 },
               { id: 'base_profissionais', label: 'Base de Profissionais', icon: Contact2 },
               { id: 'profissionais', label: 'Produtividade Médica', icon: Users },
               { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
@@ -1124,7 +1202,49 @@ export default function Relatorios() {
               </Card>
             )}
 
-            {/* ABA BASE DE PROFISSIONAIS (NOVA) */}
+            {/* ABA BASE DE SETORES */}
+            {activeTab === 'base_setores' && (
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
+                  <h3 className="font-black text-sm uppercase tracking-widest text-sky-600 dark:text-sky-400 flex items-center gap-2">
+                    <Building2 className="w-5 h-5" /> Estrutura de Setores ({enrichedSectors.length})
+                  </h3>
+                </div>
+                <div className="overflow-x-auto mt-4">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                        <th className="py-3 px-3">Nome do Setor</th>
+                        <th className="py-3 px-3">Especialidade Exigida</th>
+                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-3 text-center">Plantões no Período</th>
+                        <th className="py-3 px-3 text-right">Custo Projetado (R$)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
+                      {enrichedSectors.map((s, idx) => (
+                        <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                          <td className="py-3 px-3 font-bold text-slate-900 dark:text-white">{titleCase(s.name)}</td>
+                          <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{s.specialty || 'Não definida'}</td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${normalize(s.status) === 'inativo' ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-400' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>
+                              {s.status || 'Ativo'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-center font-mono font-bold text-slate-900 dark:text-white">{s.shiftsCount}</td>
+                          <td className="py-3 px-3 text-right font-mono font-bold text-amber-600 dark:text-amber-400">{formatCurrency(s.totalCost)}</td>
+                        </tr>
+                      ))}
+                      {enrichedSectors.length === 0 && (
+                        <tr><td colSpan="5" className="py-8 text-center text-slate-500">Nenhum setor atende aos filtros atuais.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {/* ABA BASE DE PROFISSIONAIS */}
             {activeTab === 'base_profissionais' && (
               <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
@@ -1260,8 +1380,7 @@ export default function Relatorios() {
                       </tbody>
                     </table>
                   </div>
-                </div>
-              </Card>
+                </Card>
             )}
           </div>
         </>
