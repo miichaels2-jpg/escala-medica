@@ -415,8 +415,9 @@ export default function Escalas() {
     return alerts.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }, [shifts, selectedSectorId, currentYear, currentMonth, liveNow]);
 
+
   // =========================================================================
-  // TV CCO & IMPRESSÃO - ATUALIZADO PARA EXIBIR TODOS COM NOME VÁLIDO
+  // TV CCO & IMPRESSÃO - LOGICA CORRIGIDA (ESPELHO DA MENSAL 100%)
   // =========================================================================
   const tvData = useMemo(() => {
     const emAndamento = [];
@@ -424,30 +425,26 @@ export default function Escalas() {
     const tableDayShifts = [];
 
     (shifts || []).forEach(shift => {
-      // Impede que escalas explicitamente deletadas ou canceladas subam
       if (!shift || shift.status === 'cancelado') return;
       if (selectedSectorId !== 'todos' && String(shift.sector_id) !== String(selectedSectorId)) return;
 
       const lifecycle = computeShiftHospitalLifecycle(shift, liveNow);
       const sDate = (shift.date || '').split('T')[0];
 
-      // Joga para a lista do dia (Impressão / Plantão do Dia) tudo de hoje ou tudo que estiver ao vivo
+      // Inclui tudo do dia de hoje (ou de plantões varando a madrugada ao vivo)
       if (sDate === todayLocalStr || lifecycle.isLive) {
         tableDayShifts.push(shift);
       }
 
-      // Verificação de Identidade (mesmo que ID esteja vazio, se tiver nome, é válido)
-      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-      const validName = prof?.name || shift.professional_name;
+      // Se for vaga aberta (isVacant = true), ignoramos das listas da TV (pois a TV é de profissionais)
+      if (isVacant(shift)) return;
 
-      if (shift.status === 'vago' || !validName || String(validName).toLowerCase().includes('vaga')) return;
-
-      // Se a regra diz que é ao vivo (ex: 07:00 as 19:00 e são 14h), exibe na TV
+      // Se está ao vivo agora, vai pra lista de ativos
       if (lifecycle.isLive) {
         emAndamento.push({ ...shift, lifecycle, detail: lifecycle.detail });
       }
 
-      // Se está programado para o futuro e a data é hoje, joga no painel da direita da TV
+      // Se está programado pro futuro no dia de hoje, vai pra direita
       if (lifecycle.isProgrammed && sDate === todayLocalStr) {
         programadosHoje.push({ shift, lifecycle, startsIn: lifecycle.startsInMinutes });
       }
@@ -464,9 +461,11 @@ export default function Escalas() {
     programadosHoje.sort((a, b) => (a.shift.start_time || '07:00').localeCompare(b.shift.start_time || '07:00'));
 
     return { emAndamento, programadosHoje, tableDayShifts };
-  }, [shifts, selectedSectorId, liveNow, todayLocalStr, professionalMap]);
+  }, [shifts, selectedSectorId, liveNow, todayLocalStr]);
 
-  // IMPRESSÃO A4 PAISAGEM LIMPA DO PLANTÃO DO DIA
+  // =========================================================================
+  // IMPRESSÃO A4 PAISAGEM LIMPA DO PLANTÃO DO DIA (FILTRA O QUE É VAGO)
+  // =========================================================================
   const handlePrintA4Landscape = () => {
     const printWindow = window.open('', '_blank', 'width=1100,height=800');
     if (!printWindow) {
@@ -479,14 +478,11 @@ export default function Escalas() {
     const dataVigencia = liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
     const dataEmissao = liveNow.toLocaleDateString('pt-BR') + ' às ' + liveNow.toLocaleTimeString('pt-BR');
 
-    const activeShiftsOnly = tvData.tableDayShifts.filter(shift => {
-      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-      const validName = prof?.name || shift.professional_name;
-      return shift.status !== 'vago' && validName && !String(validName).toLowerCase().includes('vaga');
-    });
+    // Remove as vagas abertas para a listagem da prancheta
+    const activeShiftsOnly = tvData.tableDayShifts.filter(shift => !isVacant(shift));
 
     const tableRowsHtml = activeShiftsOnly.length === 0
-      ? `<tr><td colspan="6" style="padding: 24px; text-align: center; color: #666; font-size: 11px;">Nenhum profissional com plantão ativo para esta data.</td></tr>`
+      ? `<tr><td colspan="6" style="padding: 24px; text-align: center; color: #666; font-size: 11px;">Nenhum profissional escalado e ativo para esta data.</td></tr>`
       : activeShiftsOnly.map((shift, idx) => {
           const prof = professionalMap[String(shift.professional_id)];
           const sector = sectorMap[String(shift.sector_id)];
@@ -627,6 +623,7 @@ export default function Escalas() {
     const available = [];
     const unavailable = [];
 
+    // Trazemos todos os profissionais ativos
     (professionals || []).filter(p => p?.status === 'ativo').forEach(prof => {
       const conflict = checkProfessionalConflict(
         prof.id, 
@@ -828,7 +825,6 @@ export default function Escalas() {
     const monthStr = String(currentMonth + 1).padStart(2, '0');
     const prefix = `${currentYear}-${monthStr}`;
     return (shifts || []).filter(s => {
-      // Ignora cancelados na grade também
       if (!s?.date || !s.date.startsWith(prefix) || s.status === 'cancelado') return false;
       if (startDateFilter && s.date < startDateFilter) return false;
       if (selectedSectorId !== 'todos' && String(s.sector_id) !== String(selectedSectorId)) return false;
@@ -1036,7 +1032,7 @@ export default function Escalas() {
         </div>
 
         <div className="flex-1 my-6 grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-hidden">
-          {/* ATIVOS NO MOMENTO (INCLUSIVE NOTURNOS QUE VIRARAM A NOITE) */}
+          {/* ATIVOS NO MOMENTO */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
@@ -1081,7 +1077,7 @@ export default function Escalas() {
             </div>
           </div>
 
-          {/* PLANTÕES PROGRAMADOS (RESTANTE DO DIA INTEIRO) */}
+          {/* PLANTÕES PROGRAMADOS */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
@@ -1135,7 +1131,7 @@ export default function Escalas() {
   return (
     <div className="relative p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
-      {/* BOTÃO LATERAL FIXADO NA BORDA ESQUERDA */}
+      {/* BOTÃO LATERAL FIXADO */}
       <button
         onClick={toggleMainSidebar}
         title={sidebarHidden ? "Expandir Menu Lateral Principal" : "Recolher Menu Lateral"}
