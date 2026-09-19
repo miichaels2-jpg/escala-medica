@@ -19,13 +19,12 @@ function safeNumber(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
-// FUNÇÃO RESTAURADA QUE CAUSOU O ERRO
-function formatNumber(value) {
-  return new Intl.NumberFormat('pt-BR').format(safeNumber(value));
-}
-
 function formatCurrency(value) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(safeNumber(value));
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat('pt-BR').format(safeNumber(value));
 }
 
 function formatDate(value) {
@@ -68,11 +67,10 @@ function isVacant(shift) {
 
 // Verifica se o plantão já passou comparando a data+hora final com o momento atual
 function isShiftPast(shift) {
-  if (!shift.date) return false;
+  if (!shift || !shift.date) return false;
   try {
     const dateStr = shift.date.split('T')[0];
     const endStr = shift.end_time || '23:59';
-    // Adicionando um tratamento simples para data ISO
     const shiftEnd = new Date(`${dateStr}T${endStr}:00`);
     return shiftEnd < new Date();
   } catch (e) {
@@ -121,6 +119,7 @@ export default function Relatorios() {
   const { shifts = [], sectors = [], professionals = [], company } = useAppData();
 
   const [activeTab, setActiveTab] = useState('executivo');
+  const [printMode, setPrintMode] = useState('current'); // 'current' | 'all'
   
   // Datas padrão: Primeiro e Último dia do mês atual
   const today = new Date();
@@ -165,13 +164,13 @@ export default function Relatorios() {
     return profMap[String(shift.professional_id)] || profMap[normalize(getShiftName(shift))];
   }, [profMap]);
 
-  // Filtragem flexível baseada em Período Personalizado
+  // Filtragem flexível baseada em Período Personalizado com ORDENAÇÃO CRESCENTE
   const filteredShifts = useMemo(() => {
     if (!hasSearched) return [];
     
     const term = normalize(appliedFilters.search);
 
-    return shifts.filter(shift => {
+    const filtered = shifts.filter(shift => {
       if (!shift || normalize(shift.status) === 'cancelado') return false;
 
       // Limpeza de lixo e orfãos
@@ -181,7 +180,7 @@ export default function Relatorios() {
 
       if (appliedFilters.sector !== 'todos' && String(shift.sector_id) !== String(appliedFilters.sector)) return false;
 
-      // Filtro de Data Flexível (Maior ou igual a Start / Menor ou igual a End)
+      // Filtro de Data Flexível
       const shiftDate = String(shift.date || shift.start_date || shift.data || '').slice(0, 10);
       if (shiftDate) {
         if (appliedFilters.start && shiftDate < appliedFilters.start) return false;
@@ -195,6 +194,17 @@ export default function Relatorios() {
 
       return true;
     });
+
+    // ORDENAÇÃO CRESCENTE POR DATA E HORA DE INÍCIO
+    return filtered.sort((a, b) => {
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      const timeA = a.start_time || '00:00';
+      const timeB = b.start_time || '00:00';
+      return timeA.localeCompare(timeB);
+    });
+
   }, [shifts, sectors, appliedFilters, hasSearched]);
 
   // Indicadores
@@ -276,32 +286,49 @@ export default function Relatorios() {
     return Object.values(map).filter(item => item.total > 0).sort((a, b) => b.total - a.total);
   }, [sectors, filteredShifts, getProf]);
 
-  // Exibir TODOS os profissionais (até quem tem 0 plantões)
+  // Exibir TODOS os profissionais
   const professionalMetrics = useMemo(() => {
     const map = {};
     
-    // Inicia a lista com todos os médicos cadastrados no hospital
+    // Alimenta todos os profissionais ativos
     professionals.forEach(p => {
+      const meta = getProfessionalMeta(p);
       const name = normalize(p.name);
-      map[name] = { 
-        id: p.id, 
-        name: titleCase(p.name), 
-        shifts: 0, 
-        hours: 0, 
-        sectors: new Set(), 
-        cost: 0 
-      };
+      if (name) {
+        map[name] = { 
+          id: p.id || name, 
+          name: titleCase(p.name), 
+          specialty: titleCase(meta.specialty || meta.main_sector || 'Clínico Geral'),
+          shifts: 0, 
+          hours: 0, 
+          sectors: new Set(), 
+          cost: 0 
+        };
+      }
     });
 
-    // Processa os plantões filtrados adicionando aos médicos
     filteredShifts.forEach(shift => {
       if (isVacant(shift)) return;
       
-      const name = getShiftName(shift);
-      const normName = normalize(name);
+      let rawName = getShiftName(shift);
+      let normName = normalize(rawName);
       
+      if (!normName) {
+        normName = `desconhecido_${shift.id}`;
+        rawName = 'Profissional Não Identificado';
+      }
+
       if (!map[normName]) {
-        map[normName] = { id: shift.professional_id || normName, name: titleCase(name), shifts: 0, hours: 0, sectors: new Set(), cost: 0 };
+        const prof = getProf(shift);
+        map[normName] = { 
+          id: shift.professional_id || normName, 
+          name: titleCase(prof?.name || rawName), 
+          specialty: titleCase(prof?.specialty || 'Não Informada'),
+          shifts: 0, 
+          hours: 0, 
+          sectors: new Set(), 
+          cost: 0 
+        };
       }
       
       const item = map[normName];
@@ -315,7 +342,6 @@ export default function Relatorios() {
       item.cost += getProfessionalCost(getProf(shift), h);
     });
 
-    // Retorna todos formatados, ordenados por quem fez mais plantões
     return Object.values(map).map(item => ({ 
       ...item, 
       sectors: item.sectors.size > 0 ? Array.from(item.sectors).join(', ') : '—' 
@@ -349,81 +375,115 @@ export default function Relatorios() {
   const periodLabel = `${formatDate(appliedFilters.start)} até ${formatDate(appliedFilters.end)}`;
 
   // ==========================================
-  // EXPORTAÇÃO EXCEL NATIVA
+  // EXPORTAÇÃO EXCEL NATIVA COM ESTILO (CSS in XLS)
   // ==========================================
-  const handleExportXLS = () => {
+  const triggerExcelExport = (mode) => {
     if (!hasSearched) {
       alert('Atenção: Aplique os filtros antes de exportar a planilha.');
       return;
     }
-    
+
+    const hospitalName = company?.name || 'Hospital Principal';
+
     let html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
       <meta charset="utf-8">
       <style>
-        table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 12px; }
-        th { background-color: #0891b2; color: #ffffff; font-weight: bold; padding: 10px; border: 1px solid #cbd5e1; text-align: left; }
-        td { padding: 8px; border: 1px solid #cbd5e1; vertical-align: middle; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; }
+        table { border-collapse: collapse; width: 100%; font-size: 13px; }
+        th { background-color: #0e7490; color: #ffffff; font-weight: bold; padding: 12px; border: 1px solid #cbd5e1; text-align: left; text-transform: uppercase; }
+        td { padding: 10px; border: 1px solid #cbd5e1; vertical-align: middle; }
+        .row-alt { background-color: #f8fafc; }
         .vago { color: #d97706; font-weight: bold; background-color: #fef3c7; }
         .furo { color: #be123c; font-weight: bold; background-color: #ffe4e6; }
-        .title { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #0f172a; }
+        .header-main { background-color: #ffffff; text-align: center; padding: 15px; border: none; }
+        .h1 { font-size: 24px; font-weight: bold; color: #0f172a; margin: 0; }
+        .h2 { font-size: 14px; color: #475569; margin: 5px 0 0 0; }
+        .money { mso-number-format:"_-* #\\,##0\\.00_-\\;\\-* #\\,##0\\.00_-\\;_-* &quot;-&quot;??_-\\;_-@_-"; }
+        .section-title { font-size: 16px; font-weight: bold; color: #0f172a; background-color: #e2e8f0; padding: 10px; text-align: left; border: 1px solid #cbd5e1; }
       </style>
       </head>
       <body>
-        <div class="title">Dossiê Executivo de Escalas e Plantões - ${periodLabel}</div>
         <table>
-          <thead>
-            <tr>
-              <th>Data do Plantão</th>
-              <th>Setor de Atuação</th>
-              <th>Profissional Alocado</th>
-              <th>Horário</th>
-              <th>Status Operacional</th>
-              <th>Carga Horária</th>
-              <th>Custo Estimado (R$)</th>
-            </tr>
-          </thead>
-          <tbody>
+          <tr>
+            <td colspan="7" class="header-main">
+              <div class="h1">${hospitalName} - Dossiê de Inteligência Corporativa</div>
+              <div class="h2">Período de Análise Filtrado: ${periodLabel}</div>
+            </td>
+          </tr>
+          <tr><td colspan="7" style="border:none;"></td></tr>
     `;
 
-    filteredShifts.forEach(s => {
-      const isVago = isVacant(s);
-      const isPast = isShiftPast(s);
-      
-      let statusTexto = s.status || 'Confirmado';
-      let profName = titleCase(s.professional_name);
-      let rowClass = '';
-
-      if (isVago) {
-        if (isPast) {
-          profName = 'FALTA / NÃO OCUPADO';
-          statusTexto = 'Furo de Escala';
-          rowClass = 'class="furo"';
-        } else {
-          profName = 'VAGA EM ABERTO';
-          statusTexto = 'Vago';
-          rowClass = 'class="vago"';
-        }
-      }
-
-      const cost = getProfessionalCost(getProf(s), getShiftHours(s));
-      
+    if (mode === 'all' || activeTab === 'escalas') {
       html += `
-        <tr ${rowClass}>
-          <td>${formatDate(s.date)}</td>
-          <td>${getSectorName(s, sectors)}</td>
-          <td>${profName}</td>
-          <td>${s.start_time || ''} às ${s.end_time || ''}</td>
-          <td>${statusTexto}</td>
-          <td>${getShiftHours(s)}h</td>
-          <td>${cost.toFixed(2).replace('.', ',')}</td>
-        </tr>
+          <tr><td colspan="7" class="section-title">1. EXTRATO DETALHADO DE ESCALAS (ORDEM CRESCENTE)</td></tr>
+          <tr>
+            <th>Data do Plantão</th>
+            <th>Setor de Atuação</th>
+            <th>Profissional Alocado</th>
+            <th>Horário</th>
+            <th>Status Operacional</th>
+            <th>Carga (h)</th>
+            <th>Custo Estimado (R$)</th>
+          </tr>
       `;
-    });
+      filteredShifts.forEach((s, i) => {
+        const isVago = isVacant(s);
+        const isPast = isShiftPast(s);
+        let statusTexto = s.status || 'Confirmado';
+        let profName = titleCase(getShiftName(s)) || 'Não Identificado';
+        let rowClass = i % 2 === 0 ? '' : 'class="row-alt"';
+
+        if (isVago) {
+          if (isPast) { profName = 'FALTA / NÃO OCUPADO'; statusTexto = 'Furo de Escala'; rowClass = 'class="furo"'; }
+          else { profName = 'VAGA EM ABERTO'; statusTexto = 'Vago'; rowClass = 'class="vago"'; }
+        }
+
+        const cost = getProfessionalCost(getProf(s), getShiftHours(s));
+        html += `
+          <tr ${rowClass}>
+            <td>${formatDate(s.date)}</td>
+            <td>${getSectorName(s, sectors)}</td>
+            <td>${profName}</td>
+            <td>${s.start_time || ''} às ${s.end_time || ''}</td>
+            <td>${statusTexto}</td>
+            <td>${getShiftHours(s)}h</td>
+            <td class="money">${cost.toFixed(2).replace('.', ',')}</td>
+          </tr>
+        `;
+      });
+      html += `<tr><td colspan="7" style="border:none;"></td></tr>`;
+    }
+
+    if (mode === 'all' || activeTab === 'profissionais') {
+      html += `
+          <tr><td colspan="6" class="section-title">2. MATRIZ DE PRODUTIVIDADE MÉDICA (CORPO CLÍNICO)</td></tr>
+          <tr>
+            <th>Nome do Profissional</th>
+            <th>Especialidade Principal</th>
+            <th>Setores Atuados no Período</th>
+            <th>Nº Plantões</th>
+            <th>Horas Realizadas</th>
+            <th>Honorários Brutos (R$)</th>
+          </tr>
+      `;
+      professionalMetrics.forEach((doc, i) => {
+        const rowClass = i % 2 === 0 ? '' : 'class="row-alt"';
+        html += `
+          <tr ${rowClass}>
+            <td style="font-weight:bold;">${doc.name}</td>
+            <td>${doc.specialty}</td>
+            <td>${doc.sectors}</td>
+            <td style="text-align:center;">${doc.shifts}</td>
+            <td style="text-align:center;">${doc.hours}h</td>
+            <td class="money">${doc.cost.toFixed(2).replace('.', ',')}</td>
+          </tr>
+        `;
+      });
+    }
 
     html += `
-          </tbody>
         </table>
       </body>
       </html>
@@ -433,30 +493,33 @@ export default function Relatorios() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Relatorio_Escalas_${appliedFilters.start}_ate_${appliedFilters.end}.xls`;
+    link.download = `Dossie_${mode === 'all' ? 'Completo' : activeTab}_${appliedFilters.start}_a_${appliedFilters.end}.xls`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
-  const handlePrint = () => {
+  const triggerPrint = (mode) => {
     if (!hasSearched) {
-      alert('Atenção: Aplique os filtros para gerar a impressão.');
+      alert('Atenção: Aplique os filtros para renderizar a telemetria antes de imprimir.');
       return;
     }
-    window.print();
+    setPrintMode(mode);
+    setTimeout(() => {
+      window.print();
+    }, 300);
   };
 
   return (
     <>
       {/* ========================================== */}
-      {/* MODO TELA (DARK THEME)                     */}
+      {/* MODO TELA (DARK THEME / APP)                 */}
       {/* ========================================== */}
       <div className="min-h-screen bg-[#0B1120] text-slate-100 p-4 md:p-8 space-y-6 font-sans print:hidden">
         
-        {/* TOPO EXECUTIVO */}
-        <div className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 md:p-8 text-white shadow-2xl flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        {/* TOPO EXECUTIVO PREMIUM MEDITECH */}
+        <div className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 md:p-8 text-white shadow-2xl flex flex-col xl:flex-row xl:items-center justify-between gap-6">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-cyan-400">
               <Activity className="w-4 h-4 text-cyan-400 animate-pulse" /> {company?.name || 'Meditech CCO'} • Intelligence
@@ -470,20 +533,22 @@ export default function Relatorios() {
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
-            <Button 
-              onClick={handleExportXLS}
-              variant="outline" disabled={!hasSearched}
-              className="w-full sm:w-auto h-11 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-5 rounded-2xl border-slate-700 gap-2 cursor-pointer disabled:opacity-50 shadow-md"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Exportar Planilha (.xls)
-            </Button>
-
-            <Button 
-              onClick={handlePrint} disabled={!hasSearched}
-              className="w-full sm:w-auto h-11 bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs px-6 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105 disabled:opacity-50 border border-cyan-500"
-            >
-              <PrinterIcon className="w-4 h-4" /> Imprimir Dossiê (PDF)
-            </Button>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Button onClick={() => triggerExcelExport('current')} variant="outline" disabled={!hasSearched} className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] px-4 rounded-xl border-slate-700 gap-2 cursor-pointer shadow-md disabled:opacity-50">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Excel (Aba)
+              </Button>
+              <Button onClick={() => triggerExcelExport('all')} variant="outline" disabled={!hasSearched} className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] px-4 rounded-xl border-slate-700 gap-2 cursor-pointer shadow-md disabled:opacity-50">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Excel (Tudo)
+              </Button>
+            </div>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Button onClick={() => triggerPrint('current')} disabled={!hasSearched} className="flex-1 bg-cyan-700 hover:bg-cyan-600 text-white font-bold text-[11px] px-4 rounded-xl shadow-lg gap-2 cursor-pointer disabled:opacity-50 border border-cyan-500/50">
+                <PrinterIcon className="w-4 h-4" /> PDF (Aba)
+              </Button>
+              <Button onClick={() => triggerPrint('all')} disabled={!hasSearched} className="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white font-black text-[11px] px-4 rounded-xl shadow-lg gap-2 cursor-pointer transition-all disabled:opacity-50 border border-cyan-500">
+                <PrinterIcon className="w-4 h-4" /> Dossiê Completo
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -491,31 +556,19 @@ export default function Relatorios() {
         <Card className="p-5 rounded-3xl border border-slate-800 bg-[#1e293b] shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-slate-700/50 pb-3">
             <span className="text-xs font-black uppercase tracking-wider text-cyan-400 flex items-center gap-2">
-              <Filter className="w-4 h-4 text-cyan-400" /> Parâmetros Analíticos Personalizados
+              <Filter className="w-4 h-4 text-cyan-400" /> Parâmetros Analíticos Livres
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
             <div className="space-y-1.5">
               <Label className="text-[10px] font-black uppercase text-slate-400">Data Inicial</Label>
-              <Input 
-                type="date"
-                value={dateStart}
-                onChange={e => setDateStart(e.target.value)}
-                className="h-11 text-xs bg-[#0B1120] border-slate-700 text-white rounded-xl focus:ring-cyan-500 [color-scheme:dark]"
-              />
+              <Input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="h-11 text-xs bg-[#0B1120] border-slate-700 text-white rounded-xl focus:ring-cyan-500 [color-scheme:dark]" />
             </div>
-
             <div className="space-y-1.5">
               <Label className="text-[10px] font-black uppercase text-slate-400">Data Final</Label>
-              <Input 
-                type="date"
-                value={dateEnd}
-                onChange={e => setDateEnd(e.target.value)}
-                className="h-11 text-xs bg-[#0B1120] border-slate-700 text-white rounded-xl focus:ring-cyan-500 [color-scheme:dark]"
-              />
+              <Input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)} className="h-11 text-xs bg-[#0B1120] border-slate-700 text-white rounded-xl focus:ring-cyan-500 [color-scheme:dark]" />
             </div>
-
             <div className="space-y-1.5">
               <Label className="text-[10px] font-black uppercase text-slate-400">Setor Clínico</Label>
               <Select value={selectedSector} onValueChange={setSelectedSector}>
@@ -532,22 +585,12 @@ export default function Relatorios() {
                 </SelectContent>
               </Select>
             </div>
-
             <div className="space-y-1.5">
-              <Label className="text-[10px] font-black uppercase text-slate-400">Busca Específica</Label>
-              <Input 
-                placeholder="Nome do médico..." 
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="h-11 text-xs bg-[#0B1120] border-slate-700 text-white rounded-xl focus:border-cyan-500"
-              />
+              <Label className="text-[10px] font-black uppercase text-slate-400">Busca Rápida</Label>
+              <Input placeholder="Nome do médico..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="h-11 text-xs bg-[#0B1120] border-slate-700 text-white rounded-xl focus:border-cyan-500" />
             </div>
-
             <div>
-              <Button 
-                onClick={handleApplyFilters}
-                className="w-full h-11 bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs rounded-xl shadow-lg gap-2 cursor-pointer transition-all border border-cyan-500/50"
-              >
+              <Button onClick={handleApplyFilters} className="w-full h-11 bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs rounded-xl shadow-lg gap-2 cursor-pointer transition-all border border-cyan-500/50">
                 <Check className="w-4 h-4" /> Extrair Dados
               </Button>
             </div>
@@ -561,13 +604,10 @@ export default function Relatorios() {
               <Filter className="w-10 h-10 animate-pulse" />
             </div>
             <h3 className="text-xl md:text-2xl font-black text-white tracking-tight">Pronto para Análise</h3>
-            <p className="text-sm text-slate-400 max-w-lg mx-auto leading-relaxed">
-              Defina as datas e parâmetros de busca acima e clique em <b>Extrair Dados</b> para gerar o relatório atualizado em tempo real.
-            </p>
+            <p className="text-sm text-slate-400 max-w-lg mx-auto leading-relaxed">Defina o período desejado e os parâmetros de busca acima e clique em <b>Extrair Dados</b>.</p>
           </Card>
         ) : (
           <>
-            {/* ABAS */}
             <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide">
               {[
                 { id: 'executivo', label: 'Dashboard Executivo', icon: BarChart3 },
@@ -578,242 +618,219 @@ export default function Relatorios() {
                 const isActive = activeTab === tab.id;
                 const Icon = tab.icon;
                 return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`px-6 py-4 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center gap-2.5 shrink-0 border ${
-                      isActive 
-                        ? 'bg-cyan-600 text-white border-cyan-500 shadow-lg shadow-cyan-900/50' 
-                        : 'bg-[#1e293b] border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
-                    }`}
-                  >
+                  <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-6 py-4 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center gap-2.5 shrink-0 border ${isActive ? 'bg-cyan-600 text-white border-cyan-500 shadow-lg shadow-cyan-900/50' : 'bg-[#1e293b] border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'}`}>
                     <Icon className="w-4 h-4" /> {tab.label}
                   </button>
                 );
               })}
             </div>
 
-            {/* ABA: EXECUTIVO */}
-            {activeTab === 'executivo' && (
-              <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-5 shadow-lg relative overflow-hidden group">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total de Plantões</p>
-                    <p className="mt-2 text-3xl font-black text-white font-mono tracking-tight">{formatNumber(totalShiftsCount)}</p>
-                    <div className="mt-3 text-xs text-slate-400 font-bold flex flex-col gap-1">
-                      <span className="text-teal-400">{filledShiftsCount} Ocupados</span>
-                      {vacantShiftsCount > 0 && <span className="text-rose-400">{vacantShiftsCount} Vagos / Não Ocupados</span>}
-                    </div>
-                  </Card>
-
-                  <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-5 shadow-lg relative overflow-hidden group">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Taxa de Ocupação Real</p>
-                    <p className={`mt-2 text-3xl font-black font-mono tracking-tight ${coverageRate >= 98 ? 'text-emerald-400' : coverageRate >= 90 ? 'text-amber-400' : 'text-rose-400'}`}>
-                      {coverageRate}%
-                    </p>
-                    <div className="mt-3 text-xs text-slate-400 font-bold">Meta Hospitalar: &gt; 98%</div>
-                  </Card>
-
-                  <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-5 shadow-lg relative overflow-hidden group">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Custo Total Global</p>
-                    <p className="mt-2 text-3xl font-black text-amber-400 font-mono tracking-tight">{formatCurrency(financialSummary.totalCost)}</p>
-                    <div className="mt-3 text-xs text-slate-400 font-bold">{formatNumber(financialSummary.hours)} Horas Calculadas</div>
-                  </Card>
-
-                  <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-5 shadow-lg relative overflow-hidden group">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Profissionais Cadastrados</p>
-                    <p className="mt-2 text-3xl font-black text-white font-mono tracking-tight">{professionals.length}</p>
-                    <div className="mt-3 text-[10px] text-slate-400 font-bold flex flex-col gap-0.5">
-                       <span className={credentialAudit.expired > 0 ? 'text-rose-400' : ''}>{credentialAudit.expired} Documentos Vencidos</span>
-                       <span className="text-amber-400">{credentialAudit.nearExpiry} Vencem em 30d</span>
-                    </div>
-                  </Card>
-                </div>
-
-                {vacantShiftItems.length > 0 && (
-                  <Card className="rounded-3xl border border-rose-500/30 bg-rose-950/20 p-6 shadow-lg">
-                    <div className="flex items-center gap-3 border-b border-rose-500/20 pb-4">
-                      <AlertTriangle className="w-5 h-5 text-rose-500 animate-pulse" />
-                      <h3 className="text-sm font-black uppercase tracking-widest text-rose-400">Alerta: Plantões Descobertos ({vacantShiftItems.length})</h3>
-                    </div>
-                    <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {vacantShiftItems.slice(0, 12).map((v, i) => {
-                        const isPast = isShiftPast(v);
-                        return (
-                          <div key={i} className={`p-3 rounded-2xl border flex items-center justify-between shadow-sm ${isPast ? 'bg-rose-950/50 border-rose-500/50' : 'bg-[#1e293b] border-amber-500/30'}`}>
-                            <div>
-                              <strong className="text-xs text-white block">{getSectorName(v, sectors)}</strong>
-                              <span className="text-[10px] text-slate-400">Data: {formatDate(v.date)}</span>
-                            </div>
-                            <span className={`font-mono text-[10px] font-bold px-2 py-1 rounded-lg border ${isPast ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'}`}>
-                              {isPast ? 'NÃO OCUPADO' : 'EM ABERTO'}
-                            </span>
-                          </div>
-                        );
-                      })}
-                      {vacantShiftItems.length > 12 && (
-                        <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-xs text-slate-400 font-bold">
-                          + {vacantShiftItems.length - 12} registros na aba Escalas
-                        </div>
-                      )}
-                    </div>
-                  </Card>
-                )}
-              </div>
-            )}
-
-            {/* ABA: ESCALAS */}
-            {activeTab === 'escalas' && (
-              <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 shadow-lg animate-in fade-in zoom-in-95 duration-300">
-                <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
-                  <h3 className="font-black text-sm uppercase tracking-widest text-cyan-400 flex items-center gap-2">
-                    <CalendarDays className="w-5 h-5" /> Extrato de Escalas ({filteredShifts.length})
-                  </h3>
-                </div>
-                <div className="overflow-x-auto mt-4">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                        <th className="py-3 px-3">Data</th>
-                        <th className="py-3 px-3">Setor</th>
-                        <th className="py-3 px-3">Profissional Alocado</th>
-                        <th className="py-3 px-3">Horário</th>
-                        <th className="py-3 px-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50 font-medium">
-                      {filteredShifts.map((s, idx) => {
-                        const isVago = isVacant(s);
-                        const isPast = isShiftPast(s);
-                        
-                        let profNameRender = titleCase(s.professional_name);
-                        let badgeClass = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
-                        let badgeText = s.status || 'Confirmado';
-
-                        if (isVago) {
-                          if (isPast) {
-                            profNameRender = <span className="text-rose-500">⚠️ NÃO OCUPADO (FURO)</span>;
-                            badgeClass = 'bg-rose-500/20 text-rose-500 border-rose-500/50';
-                            badgeText = 'Sem Cobertura';
-                          } else {
-                            profNameRender = <span className="text-amber-400">⚠️ VAGA EM ABERTO</span>;
-                            badgeClass = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
-                            badgeText = 'Vago';
-                          }
-                        }
-
-                        return (
-                          <tr key={s.id || idx} className="hover:bg-slate-900/50 transition-colors">
-                            <td className="py-3 px-3 font-bold font-mono text-slate-300">{formatDate(s.date)}</td>
-                            <td className="py-3 px-3 text-slate-300">{getSectorName(s, sectors)}</td>
-                            <td className={`py-3 px-3 font-black text-white`}>{profNameRender}</td>
-                            <td className="py-3 px-3 font-mono text-slate-400">{s.start_time || '07:00'} - {s.end_time || '19:00'}</td>
-                            <td className="py-3 px-3">
-                              <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${badgeClass}`}>
-                                {badgeText}
+            <div className="space-y-6">
+              {/* ABA EXECUTIVO */}
+              {activeTab === 'executivo' && (
+                <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-5 shadow-lg relative overflow-hidden group">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total de Plantões</p>
+                      <p className="mt-2 text-3xl font-black text-white font-mono tracking-tight">{formatNumber(totalShiftsCount)}</p>
+                      <div className="mt-3 text-[11px] text-slate-400 font-bold flex flex-col gap-1">
+                        <span className="text-teal-400">{filledShiftsCount} Ocupados</span>
+                        {vacantShiftsCount > 0 && <span className="text-rose-400">{vacantShiftsCount} Furos/Vagos</span>}
+                      </div>
+                    </Card>
+                    <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-5 shadow-lg relative overflow-hidden group">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Taxa de Ocupação Real</p>
+                      <p className={`mt-2 text-3xl font-black font-mono tracking-tight ${coverageRate >= 98 ? 'text-emerald-400' : coverageRate >= 90 ? 'text-amber-400' : 'text-rose-400'}`}>{coverageRate}%</p>
+                      <div className="mt-3 text-[11px] text-slate-400 font-bold">Meta Hospitalar: &gt; 98%</div>
+                    </Card>
+                    <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-5 shadow-lg relative overflow-hidden group">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Custo Total Global</p>
+                      <p className="mt-2 text-3xl font-black text-amber-400 font-mono tracking-tight">{formatCurrency(financialSummary.totalCost)}</p>
+                      <div className="mt-3 text-[11px] text-slate-400 font-bold">{formatNumber(financialSummary.hours)} Horas Calculadas</div>
+                    </Card>
+                    <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-5 shadow-lg relative overflow-hidden group">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Profissionais Cadastrados</p>
+                      <p className="mt-2 text-3xl font-black text-white font-mono tracking-tight">{professionals.length}</p>
+                      <div className="mt-3 text-[10px] text-slate-400 font-bold flex flex-col gap-0.5">
+                         <span className={credentialAudit.expired > 0 ? 'text-rose-400' : ''}>{credentialAudit.expired} Docs Vencidos</span>
+                         <span className="text-amber-400">{credentialAudit.nearExpiry} Vencem em 30d</span>
+                      </div>
+                    </Card>
+                  </div>
+                  {vacantShiftItems.length > 0 && (
+                    <Card className="rounded-3xl border border-rose-500/30 bg-rose-950/20 p-6 shadow-lg">
+                      <div className="flex items-center gap-3 border-b border-rose-500/20 pb-4">
+                        <AlertTriangle className="w-5 h-5 text-rose-500 animate-pulse" />
+                        <h3 className="text-sm font-black uppercase tracking-widest text-rose-400">Ocorrências: Furos de Escala ou Vagas em Aberto ({vacantShiftItems.length})</h3>
+                      </div>
+                      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {vacantShiftItems.slice(0, 15).map((v, i) => {
+                          const isPast = isShiftPast(v);
+                          return (
+                            <div key={i} className={`p-3 rounded-2xl border flex items-center justify-between shadow-sm ${isPast ? 'bg-rose-950/50 border-rose-500/50' : 'bg-[#1e293b] border-amber-500/30'}`}>
+                              <div>
+                                <strong className="text-xs text-white block">{getSectorName(v, sectors)}</strong>
+                                <span className="text-[10px] text-slate-400">Data: {formatDate(v.date)}</span>
+                              </div>
+                              <span className={`font-mono text-[10px] font-bold px-2 py-1 rounded-lg border ${isPast ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'}`}>
+                                {isPast ? 'NÃO OCUPADO' : 'EM ABERTO'}
                               </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {filteredShifts.length === 0 && (
-                        <tr><td colSpan="5" className="py-8 text-center text-slate-500">Nenhum plantão filtrado no período.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            )}
-
-            {/* ABA: PROFISSIONAIS */}
-            {activeTab === 'profissionais' && (
-              <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 shadow-lg animate-in fade-in zoom-in-95 duration-300">
-                <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
-                  <h3 className="font-black text-sm uppercase tracking-widest text-emerald-400 flex items-center gap-2">
-                    <Stethoscope className="w-5 h-5" /> Todos os Médicos ({professionalMetrics.length})
-                  </h3>
-                </div>
-                <div className="overflow-x-auto mt-4">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                        <th className="py-3 px-3">Profissional</th>
-                        <th className="py-3 px-3 text-center">Nº Plantões</th>
-                        <th className="py-3 px-3 text-right">Carga Horária</th>
-                        <th className="py-3 px-3 text-right">Custo Gerado</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50 font-medium">
-                      {professionalMetrics.map((doc, idx) => (
-                        <tr key={idx} className="hover:bg-slate-900/50 transition-colors">
-                          <td className="py-3 px-3 font-bold text-white flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-slate-800 text-cyan-400 font-black flex items-center justify-center text-[10px] border border-slate-700">
-                              {doc.name.substring(0,2).toUpperCase()}
                             </div>
-                            {doc.name}
-                          </td>
-                          <td className="py-3 px-3 text-center font-mono font-bold text-white">{doc.shifts}</td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-emerald-400">{doc.hours}h</td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-amber-400">{formatCurrency(doc.cost)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          );
+                        })}
+                      </div>
+                    </Card>
+                  )}
                 </div>
-              </Card>
-            )}
+              )}
 
-            {/* ABA: FINANCEIRO */}
-            {activeTab === 'financeiro' && (
-              <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 shadow-lg animate-in fade-in zoom-in-95 duration-300">
-                <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
-                  <h3 className="font-black text-sm uppercase tracking-widest text-amber-400 flex items-center gap-2">
-                    <DollarSign className="w-5 h-5" /> Inteligência Financeira (Período Filtrado)
-                  </h3>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
-                  <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
-                    <span className="text-[10px] font-black uppercase text-slate-400">Total Previsão</span>
-                    <div className="text-2xl font-black font-mono text-white mt-2">{formatCurrency(financialSummary.totalCost)}</div>
+              {/* ABA ESCALAS */}
+              {activeTab === 'escalas' && (
+                <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 shadow-lg animate-in fade-in zoom-in-95 duration-300">
+                  <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
+                    <h3 className="font-black text-sm uppercase tracking-widest text-cyan-400 flex items-center gap-2">
+                      <CalendarDays className="w-5 h-5" /> Extrato de Escalas ({filteredShifts.length})
+                    </h3>
                   </div>
-                  <div className="p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30">
-                    <span className="text-[10px] font-black uppercase text-emerald-400">Realizado</span>
-                    <div className="text-2xl font-black font-mono text-emerald-400 mt-2">{formatCurrency(financialSummary.executedCost)}</div>
-                  </div>
-                  <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30">
-                    <span className="text-[10px] font-black uppercase text-amber-400">Pendente</span>
-                    <div className="text-2xl font-black font-mono text-amber-400 mt-2">{formatCurrency(financialSummary.pendingCost)}</div>
-                  </div>
-                  <div className="p-5 rounded-2xl bg-rose-500/10 border border-rose-500/30">
-                    <span className="text-[10px] font-black uppercase text-rose-400">Desfalques (Vagas)</span>
-                    <div className="text-2xl font-black font-mono text-rose-400 mt-2">{formatCurrency(financialSummary.vacantCost)}</div>
-                  </div>
-                </div>
-                <div className="mt-8 border-t border-slate-700/50 pt-6">
-                  <h4 className="text-xs font-black uppercase text-slate-400 mb-4">Orçamento por Setor</h4>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto mt-4">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
                         <tr className="border-b border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                          <th className="py-2 px-2">Setor Clínico</th>
-                          <th className="py-2 px-2 text-right">Horas Assistenciais</th>
-                          <th className="py-2 px-2 text-right">Custo Projetado</th>
+                          <th className="py-3 px-3">Data</th>
+                          <th className="py-3 px-3">Setor</th>
+                          <th className="py-3 px-3">Profissional Alocado</th>
+                          <th className="py-3 px-3">Horário</th>
+                          <th className="py-3 px-3">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/50 font-medium">
-                        {sectorMetrics.map((sec, idx) => (
-                          <tr key={idx}>
-                            <td className="py-3 px-2 font-bold text-white">{sec.name}</td>
-                            <td className="py-3 px-2 text-right font-mono text-slate-400">{sec.hours}h</td>
-                            <td className="py-3 px-2 text-right font-mono font-black text-amber-400">{formatCurrency(sec.cost)}</td>
+                        {filteredShifts.map((s, idx) => {
+                          const isVago = isVacant(s);
+                          const isPast = isShiftPast(s);
+                          let profNameRender = titleCase(s.professional_name) || 'Não Identificado';
+                          let badgeClass = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+                          let badgeText = s.status || 'Confirmado';
+
+                          if (isVago) {
+                            if (isPast) {
+                              profNameRender = <span className="text-rose-500">⚠️ FALTA / NÃO OCUPADO</span>;
+                              badgeClass = 'bg-rose-500/20 text-rose-500 border-rose-500/50';
+                              badgeText = 'Furo de Escala';
+                            } else {
+                              profNameRender = <span className="text-amber-400">⚠️ VAGA EM ABERTO</span>;
+                              badgeClass = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+                              badgeText = 'Vago';
+                            }
+                          }
+
+                          return (
+                            <tr key={s.id || idx} className="hover:bg-slate-900/50 transition-colors">
+                              <td className="py-3 px-3 font-bold font-mono text-slate-300">{formatDate(s.date)}</td>
+                              <td className="py-3 px-3 text-slate-300">{getSectorName(s, sectors)}</td>
+                              <td className={`py-3 px-3 font-black text-white`}>{profNameRender}</td>
+                              <td className="py-3 px-3 font-mono text-slate-400">{s.start_time || '07:00'} - {s.end_time || '19:00'}</td>
+                              <td className="py-3 px-3"><span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${badgeClass}`}>{badgeText}</span></td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              )}
+
+              {/* ABA PROFISSIONAIS */}
+              {activeTab === 'profissionais' && (
+                <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 shadow-lg animate-in fade-in zoom-in-95 duration-300">
+                  <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
+                    <h3 className="font-black text-sm uppercase tracking-widest text-emerald-400 flex items-center gap-2">
+                      <Stethoscope className="w-5 h-5" /> Matriz de Produtividade Clínica ({professionalMetrics.length})
+                    </h3>
+                  </div>
+                  <div className="overflow-x-auto mt-4">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                          <th className="py-3 px-3">Profissional</th>
+                          <th className="py-3 px-3">Especialidade</th>
+                          <th className="py-3 px-3 text-center">Nº Plantões</th>
+                          <th className="py-3 px-3 text-right">Carga Horária</th>
+                          <th className="py-3 px-3 text-right">Honorários (R$)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/50 font-medium">
+                        {professionalMetrics.map((doc, idx) => (
+                          <tr key={idx} className="hover:bg-slate-900/50 transition-colors">
+                            <td className="py-3 px-3 font-bold text-white flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-lg bg-slate-800 text-cyan-400 font-black flex items-center justify-center text-[10px] border border-slate-700">
+                                {doc.name.substring(0,2).toUpperCase()}
+                              </div>
+                              {doc.name}
+                            </td>
+                            <td className="py-3 px-3 text-slate-400">{doc.specialty}</td>
+                            <td className="py-3 px-3 text-center font-mono font-bold text-white">{doc.shifts}</td>
+                            <td className="py-3 px-3 text-right font-mono font-bold text-emerald-400">{doc.hours}h</td>
+                            <td className="py-3 px-3 text-right font-mono font-bold text-amber-400">{formatCurrency(doc.cost)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </div>
-              </Card>
-            )}
+                </Card>
+              )}
+
+              {/* ABA FINANCEIRO */}
+              {activeTab === 'financeiro' && (
+                <Card className="rounded-3xl border border-slate-800 bg-[#1e293b] p-6 shadow-lg animate-in fade-in zoom-in-95 duration-300">
+                  <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
+                    <h3 className="font-black text-sm uppercase tracking-widest text-amber-400 flex items-center gap-2">
+                      <DollarSign className="w-5 h-5" /> Inteligência Financeira e Orçamento
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
+                    <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-inner">
+                      <span className="text-[10px] font-black uppercase text-slate-400">Total Previsão Global</span>
+                      <div className="text-2xl font-black font-mono text-white mt-2">{formatCurrency(financialSummary.totalCost)}</div>
+                    </div>
+                    <div className="p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 shadow-inner">
+                      <span className="text-[10px] font-black uppercase text-emerald-400">Valor Realizado</span>
+                      <div className="text-2xl font-black font-mono text-emerald-400 mt-2">{formatCurrency(financialSummary.executedCost)}</div>
+                    </div>
+                    <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 shadow-inner">
+                      <span className="text-[10px] font-black uppercase text-amber-400">Valor Pendente</span>
+                      <div className="text-2xl font-black font-mono text-amber-400 mt-2">{formatCurrency(financialSummary.pendingCost)}</div>
+                    </div>
+                    <div className="p-5 rounded-2xl bg-rose-500/10 border border-rose-500/30 shadow-inner">
+                      <span className="text-[10px] font-black uppercase text-rose-400">Custo de Vagas / Furos</span>
+                      <div className="text-2xl font-black font-mono text-rose-400 mt-2">{formatCurrency(financialSummary.vacantCost)}</div>
+                    </div>
+                  </div>
+                  <div className="mt-8 border-t border-slate-700/50 pt-6">
+                    <h4 className="text-xs font-black uppercase text-slate-400 mb-4">Orçamento por Setor Clínico</h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                            <th className="py-2 px-2">Setor Clínico</th>
+                            <th className="py-2 px-2 text-right">Horas Assistenciais</th>
+                            <th className="py-2 px-2 text-right">Custo Projetado</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/50 font-medium">
+                          {sectorMetrics.map((sec, idx) => (
+                            <tr key={idx}>
+                              <td className="py-3 px-2 font-bold text-white">{sec.name}</td>
+                              <td className="py-3 px-2 text-right font-mono text-slate-400">{sec.hours}h</td>
+                              <td className="py-3 px-2 text-right font-mono font-black text-amber-400">{formatCurrency(sec.cost)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -834,55 +851,163 @@ export default function Relatorios() {
               </div>
             </div>
 
-            {/* SEÇÃO 1: RESUMO */}
-            <h2 className="text-sm font-black bg-slate-100 p-2 border border-slate-300 uppercase mb-4">1. Resumo Operacional</h2>
-            <table className="w-full text-left border-collapse border border-slate-300 mb-8 text-[11px]">
-              <tbody>
-                <tr className="border-b border-slate-300">
-                  <th className="p-2 border-r border-slate-300 bg-slate-50 w-1/4">Total de Plantões:</th>
-                  <td className="p-2 border-r border-slate-300 font-bold">{totalShiftsCount}</td>
-                  <th className="p-2 border-r border-slate-300 bg-slate-50 w-1/4">Preenchidos / Vagos:</th>
-                  <td className="p-2 font-bold">{filledShiftsCount} / <span className="text-rose-600">{vacantShiftsCount}</span></td>
-                </tr>
-                <tr className="border-b border-slate-300">
-                  <th className="p-2 border-r border-slate-300 bg-slate-50">Taxa de Cobertura:</th>
-                  <td className="p-2 border-r border-slate-300 font-bold">{coverageRate}%</td>
-                  <th className="p-2 border-r border-slate-300 bg-slate-50">Total Profissionais Cadastrados:</th>
-                  <td className="p-2 font-bold">{professionals.length}</td>
-                </tr>
-                <tr>
-                  <th className="p-2 border-r border-slate-300 bg-slate-50">Custo Total Projetado:</th>
-                  <td className="p-2 border-r border-slate-300 font-bold">{formatCurrency(financialSummary.totalCost)}</td>
-                  <th className="p-2 border-r border-slate-300 bg-slate-50">Horas Assistenciais:</th>
-                  <td className="p-2 font-bold">{financialSummary.hours}h</td>
-                </tr>
-              </tbody>
-            </table>
+            {/* SEÇÃO RENDERIZADA BASEADA NO PRINTMODE (ABA OU TUDO) */}
+            {(printMode === 'all' || activeTab === 'executivo') && (
+              <div className="mb-8 break-inside-avoid">
+                <h2 className="text-sm font-black bg-slate-100 p-2 border border-slate-300 uppercase mb-4">1. Resumo Operacional Global</h2>
+                <table className="w-full text-left border-collapse border border-slate-300 mb-6 text-[11px]">
+                  <tbody>
+                    <tr className="border-b border-slate-300">
+                      <th className="p-2 border-r border-slate-300 bg-slate-50 w-1/4">Total de Plantões:</th>
+                      <td className="p-2 border-r border-slate-300 font-bold">{totalShiftsCount}</td>
+                      <th className="p-2 border-r border-slate-300 bg-slate-50 w-1/4">Preenchidos / Vagos:</th>
+                      <td className="p-2 font-bold">{filledShiftsCount} / <span className="text-rose-600">{vacantShiftsCount}</span></td>
+                    </tr>
+                    <tr>
+                      <th className="p-2 border-r border-slate-300 bg-slate-50">Taxa de Cobertura:</th>
+                      <td className="p-2 border-r border-slate-300 font-bold">{coverageRate}%</td>
+                      <th className="p-2 border-r border-slate-300 bg-slate-50">Custo Total Projetado:</th>
+                      <td className="p-2 font-bold">{formatCurrency(financialSummary.totalCost)}</td>
+                    </tr>
+                  </tbody>
+                </table>
 
-            {/* SEÇÃO 2: VAGAS CRÍTICAS */}
-            {vacantShiftItems.length > 0 && (
-              <div className="break-inside-avoid mb-8">
-                <h2 className="text-sm font-black bg-rose-100 text-rose-900 p-2 border border-rose-300 uppercase mb-4">2. Ocorrências: Furos de Escala e Vagas em Aberto ({vacantShiftItems.length})</h2>
+                {vacantShiftItems.length > 0 && (
+                  <>
+                    <h2 className="text-sm font-black bg-rose-100 text-rose-900 p-2 border border-rose-300 uppercase mb-4">Atenção: Ocorrências de Furos e Vagas em Aberto ({vacantShiftItems.length})</h2>
+                    <table className="w-full text-left border-collapse border border-slate-300 mb-8 text-[10px]">
+                      <thead>
+                        <tr className="bg-slate-100 border-b border-slate-300 uppercase">
+                          <th className="p-2 border-r border-slate-300">Data</th>
+                          <th className="p-2 border-r border-slate-300">Setor Clínico</th>
+                          <th className="p-2 border-r border-slate-300 text-center">Horário</th>
+                          <th className="p-2 text-center">Diagnóstico</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {vacantShiftItems.map((v, i) => {
+                          const isPast = isShiftPast(v);
+                          return (
+                            <tr key={i} className="border-b border-slate-300 break-inside-avoid">
+                              <td className="p-2 border-r border-slate-300 font-bold">{formatDate(v.date)}</td>
+                              <td className="p-2 border-r border-slate-300">{getSectorName(v, sectors)}</td>
+                              <td className="p-2 border-r border-slate-300 font-mono text-center">{v.start_time} - {v.end_time}</td>
+                              <td className={`p-2 font-bold text-center ${isPast ? 'text-rose-700 bg-rose-50' : 'text-amber-700 bg-amber-50'}`}>
+                                {isPast ? 'NÃO OCUPADO (FURO DE ESCALA)' : 'VAGA PENDENTE NO FUTURO'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+              </div>
+            )}
+
+            {(printMode === 'all' || activeTab === 'profissionais') && (
+              <div className="mb-8 break-inside-avoid">
+                <h2 className="text-sm font-black bg-slate-100 p-2 border border-slate-300 uppercase mb-4">Matriz de Produtividade Médica (Todos os Profissionais)</h2>
+                <table className="w-full text-left border-collapse border border-slate-300 text-[10px]">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-300 uppercase">
+                      <th className="p-2 border-r border-slate-300">Profissional</th>
+                      <th className="p-2 border-r border-slate-300">Especialidade</th>
+                      <th className="p-2 border-r border-slate-300 text-center">Nº Plantões</th>
+                      <th className="p-2 border-r border-slate-300 text-center">Horas</th>
+                      <th className="p-2 text-right">Honorários (R$)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {professionalMetrics.map((doc, idx) => (
+                      <tr key={idx} className="border-b border-slate-300 break-inside-avoid">
+                        <td className="p-2 border-r border-slate-300 font-bold">{doc.name}</td>
+                        <td className="p-2 border-r border-slate-300">{doc.specialty}</td>
+                        <td className="p-2 border-r border-slate-300 text-center font-bold">{doc.shifts}</td>
+                        <td className="p-2 border-r border-slate-300 text-center font-mono">{doc.hours}h</td>
+                        <td className="p-2 text-right font-mono font-bold">{formatCurrency(doc.cost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {(printMode === 'all' || activeTab === 'financeiro') && (
+              <div className="mb-8 break-inside-avoid">
+                <h2 className="text-sm font-black bg-slate-100 p-2 border border-slate-300 uppercase mb-4">Relatório de Inteligência Financeira e Custos</h2>
+                <table className="w-full text-left border-collapse border border-slate-300 mb-6 text-[11px]">
+                  <tbody>
+                    <tr className="border-b border-slate-300">
+                      <th className="p-2 border-r border-slate-300 bg-slate-50 w-1/4">Valor Total Previsão Global:</th>
+                      <td className="p-2 border-r border-slate-300 font-bold">{formatCurrency(financialSummary.totalCost)}</td>
+                      <th className="p-2 border-r border-slate-300 bg-emerald-50 w-1/4 text-emerald-800">Valor Realizado Concluído:</th>
+                      <td className="p-2 font-bold text-emerald-800 bg-emerald-50">{formatCurrency(financialSummary.executedCost)}</td>
+                    </tr>
+                    <tr className="border-b border-slate-300">
+                      <th className="p-2 border-r border-slate-300 bg-amber-50 text-amber-800">Valor Pendente a Realizar:</th>
+                      <td className="p-2 border-r border-slate-300 font-bold text-amber-800 bg-amber-50">{formatCurrency(financialSummary.pendingCost)}</td>
+                      <th className="p-2 border-r border-slate-300 bg-rose-50 text-rose-800">Valor Retido (Vagas e Furos):</th>
+                      <td className="p-2 font-bold text-rose-800 bg-rose-50">{formatCurrency(financialSummary.vacantCost)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <h2 className="text-sm font-black bg-slate-100 p-2 border border-slate-300 uppercase mb-4">Desdobramento de Custos por Setor</h2>
+                <table className="w-full text-left border-collapse border border-slate-300 text-[10px]">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-300 uppercase">
+                      <th className="p-2 border-r border-slate-300">Setor Clínico / Unidade</th>
+                      <th className="p-2 border-r border-slate-300 text-center">Horas Assistenciais</th>
+                      <th className="p-2 text-right">Alocação Orçamentária (R$)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sectorMetrics.map((sec, idx) => (
+                      <tr key={idx} className="border-b border-slate-300 break-inside-avoid">
+                        <td className="p-2 border-r border-slate-300 font-bold">{sec.name}</td>
+                        <td className="p-2 border-r border-slate-300 text-center font-mono">{sec.hours}h</td>
+                        <td className="p-2 text-right font-mono font-bold">{formatCurrency(sec.cost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {(printMode === 'all' || activeTab === 'escalas') && (
+              <div className="mb-8 break-inside-avoid">
+                <h2 className="text-sm font-black bg-slate-100 p-2 border border-slate-300 uppercase mb-4">Extrato Detalhado de Escalas de Trabalho</h2>
                 <table className="w-full text-left border-collapse border border-slate-300 text-[10px]">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300 uppercase">
                       <th className="p-2 border-r border-slate-300">Data</th>
                       <th className="p-2 border-r border-slate-300">Setor Clínico</th>
-                      <th className="p-2 border-r border-slate-300">Horário</th>
+                      <th className="p-2 border-r border-slate-300">Profissional</th>
+                      <th className="p-2 border-r border-slate-300 text-center">Horário</th>
                       <th className="p-2 text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {vacantShiftItems.map((v, i) => {
-                      const isPast = isShiftPast(v);
+                    {filteredShifts.map((s, idx) => {
+                      const isVago = isVacant(s);
+                      const isPast = isShiftPast(s);
+                      let profNameRender = titleCase(s.professional_name);
+                      let badgeText = s.status || 'Confirmado';
+                      let cssClass = '';
+
+                      if (isVago) {
+                        if (isPast) { profNameRender = 'NÃO OCUPADO (FURO)'; badgeText = 'Sem Cobertura'; cssClass = 'text-rose-700 font-bold'; }
+                        else { profNameRender = 'VAGA EM ABERTO'; badgeText = 'Vago'; cssClass = 'text-amber-700 font-bold'; }
+                      }
+
                       return (
-                        <tr key={i} className="border-b border-slate-300 break-inside-avoid">
-                          <td className="p-2 border-r border-slate-300 font-bold">{formatDate(v.date)}</td>
-                          <td className="p-2 border-r border-slate-300">{getSectorName(v, sectors)}</td>
-                          <td className="p-2 border-r border-slate-300 font-mono">{v.start_time} - {v.end_time}</td>
-                          <td className={`p-2 font-bold text-center ${isPast ? 'text-rose-700 bg-rose-50' : 'text-amber-700 bg-amber-50'}`}>
-                            {isPast ? 'NÃO OCUPADO (FALTA)' : 'VAGA PENDENTE'}
-                          </td>
+                        <tr key={s.id || idx} className="border-b border-slate-300 break-inside-avoid">
+                          <td className="p-2 border-r border-slate-300 font-bold">{formatDate(s.date)}</td>
+                          <td className="p-2 border-r border-slate-300">{getSectorName(s, sectors)}</td>
+                          <td className={`p-2 border-r border-slate-300 ${cssClass}`}>{profNameRender}</td>
+                          <td className="p-2 border-r border-slate-300 font-mono text-center">{s.start_time} - {s.end_time}</td>
+                          <td className={`p-2 text-center uppercase ${cssClass}`}>{badgeText}</td>
                         </tr>
                       );
                     })}
@@ -891,64 +1016,10 @@ export default function Relatorios() {
               </div>
             )}
 
-            {/* SEÇÃO 3: PRODUTIVIDADE */}
-            <div className="break-before-page mb-8">
-              <h2 className="text-sm font-black bg-slate-100 p-2 border border-slate-300 uppercase mb-4">3. Matriz de Produtividade do Corpo Clínico</h2>
-              <table className="w-full text-left border-collapse border border-slate-300 text-[10px]">
-                <thead>
-                  <tr className="bg-slate-100 border-b border-slate-300 uppercase">
-                    <th className="p-2 border-r border-slate-300">Profissional</th>
-                    <th className="p-2 border-r border-slate-300 text-center">Nº Plantões</th>
-                    <th className="p-2 border-r border-slate-300 text-center">Horas Realizadas</th>
-                    <th className="p-2 text-right">Custo Bruto (R$)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {professionalMetrics.map((doc, idx) => (
-                    <tr key={idx} className="border-b border-slate-300 break-inside-avoid">
-                      <td className="p-2 border-r border-slate-300 font-bold">{doc.name}</td>
-                      <td className="p-2 border-r border-slate-300 text-center">{doc.shifts}</td>
-                      <td className="p-2 border-r border-slate-300 text-center">{doc.hours}h</td>
-                      <td className="p-2 text-right font-mono">{formatCurrency(doc.cost)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* SEÇÃO 4: SETORES */}
-            <div className="break-inside-avoid">
-              <h2 className="text-sm font-black bg-slate-100 p-2 border border-slate-300 uppercase mb-4">4. Fechamento por Setor Assistencial</h2>
-              <table className="w-full text-left border-collapse border border-slate-300 text-[10px]">
-                <thead>
-                  <tr className="bg-slate-100 border-b border-slate-300 uppercase">
-                    <th className="p-2 border-r border-slate-300">Unidade/Setor</th>
-                    <th className="p-2 border-r border-slate-300 text-center">Total Turnos</th>
-                    <th className="p-2 border-r border-slate-300 text-center">Cobertura %</th>
-                    <th className="p-2 text-right">Alocação Orçamentária</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sectorMetrics.map((sec, idx) => {
-                    const pct = sec.total > 0 ? Math.round((sec.filled / sec.total) * 100) : 0;
-                    return (
-                      <tr key={idx} className="border-b border-slate-300 break-inside-avoid">
-                        <td className="p-2 border-r border-slate-300 font-bold">{sec.name}</td>
-                        <td className="p-2 border-r border-slate-300 text-center">{sec.total}</td>
-                        <td className="p-2 border-r border-slate-300 text-center">{pct}%</td>
-                        <td className="p-2 text-right font-mono">{formatCurrency(sec.cost)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
             <div className="mt-12 text-center text-[10px] text-slate-500">
               Documento gerado eletronicamente através do sistema Meditech Hospital Admin.<br/>
               Confidencial - Uso restrito à diretoria médica.
             </div>
-
           </>
         ) : (
           <div className="text-center p-20 text-xl font-bold">Nenhum filtro aplicado. Impossível gerar dossiê.</div>
