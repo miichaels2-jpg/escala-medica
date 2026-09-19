@@ -807,7 +807,7 @@ export default function Escalas() {
   const handleDeleteShift = async (shiftId) => { if (!confirm('Excluir plantão?')) return; try { await base44.entities.Shift.delete(shiftId); setModalOpen(false); await syncGlobalData(); } catch (err) { alert(err.message); } };
 
   // =========================================================================
-  // MODO TV CCO EM TELA CHEIA ISOLADA
+  // 1. MODO TV CCO EM TELA CHEIA ISOLADA (RESPONSIVO E COM BOTÃO FLUTUANTE)
   // =========================================================================
   if (activeTab === 'tv') {
     return (
@@ -816,7 +816,7 @@ export default function Escalas() {
         {/* BOTÃO FLUTUANTE EXCLUSIVO PARA MOBILE (FECHAR TV) */}
         <button 
           onClick={() => setActiveTab('mensal')} 
-          className="lg:hidden fixed top-4 right-4 z-[99999] p-2.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 shadow-xl cursor-pointer hover:bg-slate-700"
+          className="md:hidden fixed top-4 right-4 z-[99999] p-2.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 shadow-xl cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -836,19 +836,19 @@ export default function Escalas() {
                 Centro de Comando
               </h1>
               <p className="text-[9px] sm:text-xs text-slate-400 font-bold truncate">
-                {liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} · Escalas
+                {liveNow.toLocaleDateString('pt-BR')} · Escalas em Tempo Real
               </p>
             </div>
           </div>
 
-          <div className="hidden lg:flex items-center gap-5">
+          {/* ÁREA DIREITA (DESKTOP) */}
+          <div className="hidden md:flex items-center gap-5">
             <div className="bg-slate-900 border border-slate-800 px-6 py-2.5 rounded-2xl text-right">
               <div className="text-3xl lg:text-4xl font-black font-mono tracking-tight text-cyan-400">
                 {liveNow.toLocaleTimeString('pt-BR')}
               </div>
               <div className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Horário Oficial CCO</div>
             </div>
-
             <button 
               onClick={() => setActiveTab('mensal')} 
               className="p-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors cursor-pointer"
@@ -936,20 +936,28 @@ export default function Escalas() {
           </div>
         </div>
 
-        <div className="hidden lg:flex border-t border-slate-800 pt-3 shrink-0 flex items-center justify-between text-xs text-slate-400 font-bold">
+        <div className="hidden md:flex border-t border-slate-800 pt-3 shrink-0 items-center justify-between text-xs text-slate-400 font-bold">
           <div>ScaleMedic Enterprise CCO • Hospital Santa Clara</div>
+          <Button onClick={() => setActiveTab('mensal')} variant="outline" className="h-8 text-xs border-slate-700 text-slate-300 cursor-pointer">
+            Fechar Modo TV
+          </Button>
         </div>
       </div>
     );
   }
 
   // =========================================================================
-  // TELA NORMAL DE ESCALAS
+  // TELA NORMAL DE ESCALAS & PLANTÕES
   // =========================================================================
   return (
     <div className="relative p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
-      <button onClick={toggleMainSidebar} className="fixed left-0 z-[50] bg-slate-900 border border-slate-700 text-sky-400 hover:text-white hover:bg-sky-600 shadow-2xl px-1.5 py-3 rounded-r-xl transition-all flex items-center justify-center cursor-pointer" style={{ top: '480px' }}>
+      <button
+        onClick={toggleMainSidebar}
+        title={sidebarHidden ? "Expandir Menu Lateral Principal" : "Recolher Menu Lateral"}
+        style={{ top: '480px' }}
+        className="fixed left-0 z-[50] bg-slate-900 border border-slate-700 text-sky-400 hover:text-white hover:bg-sky-600 shadow-2xl px-1.5 py-3 rounded-r-xl transition-all duration-200 flex items-center justify-center cursor-pointer"
+      >
         {sidebarHidden ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
 
@@ -957,18 +965,35 @@ export default function Escalas() {
       {vacantShiftAlerts.length > 0 && isManager && (
         <div className="p-4 rounded-3xl bg-rose-500/15 border-2 border-rose-500/60 shadow-lg animate-in fade-in flex flex-col gap-3">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0"><AlertTriangle className="w-5 h-5 animate-pulse" /></div>
+            <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0">
+              <AlertTriangle className="w-5 h-5 animate-pulse" />
+            </div>
             <div>
-              <strong className="text-sm font-black text-rose-500 uppercase tracking-wider block">Alerta Crítico: Plantões Descobertos ({vacantShiftAlerts.length})</strong>
-              <p className="text-xs text-rose-600 dark:text-rose-300">Os turnos abaixo estão sem profissional alocado.</p>
+              <strong className="text-sm font-black text-rose-500 uppercase tracking-wider block">
+                Alerta Crítico: Plantões Descobertos ({vacantShiftAlerts.length})
+              </strong>
+              <p className="text-xs text-rose-600 dark:text-rose-300">
+                Os turnos abaixo estão sem profissional alocado e precisam de atenção imediata da coordenação.
+              </p>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-2">
             {vacantShiftAlerts.slice(0, 8).map(v => {
               const isPast = isShiftPast(v, liveNow);
               return (
-                <div key={v.id} onClick={() => { setEditingShiftId(v.id); setFormData({ date: v.date, sector_id: v.sector_id, target_specialty: v.target_specialty, start_time: v.start_time, end_time: v.end_time, shift_type: v.shift_type || 'diurno', action_type: 'alocar', professional_id: '', notes: v.notes || '', retroactive_justification: extractRetroactiveJustification(v.notes) }); setModalOpen(true); }} className={`p-2 rounded-xl text-xs font-bold border cursor-pointer transition-all flex flex-col gap-1 shadow-sm hover:scale-[1.02] ${isPast ? 'bg-rose-100 border-rose-400 text-rose-800 dark:bg-rose-950/80 dark:border-rose-500 dark:text-rose-300' : 'bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-950/60 dark:border-amber-500/60 dark:text-amber-300'}`}>
-                  <div className="flex justify-between items-center"><span className="truncate">{sectorMap[v.sector_id]?.name || 'Setor'}</span><span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase ${isPast ? 'bg-rose-500 text-white' : 'bg-amber-500 text-white'}`}>{isPast ? 'Falta / Furo' : 'Vaga Futura'}</span></div>
+                <div 
+                  key={v.id} 
+                  onClick={() => { setEditingShiftId(v.id); setFormData({ date: v.date, sector_id: v.sector_id, target_specialty: v.target_specialty, start_time: v.start_time, end_time: v.end_time, shift_type: v.shift_type || 'diurno', action_type: 'alocar', professional_id: '', notes: v.notes || '', retroactive_justification: extractRetroactiveJustification(v.notes) }); setModalOpen(true); }}
+                  className={`p-2 rounded-xl text-xs font-bold border cursor-pointer transition-all flex flex-col gap-1 shadow-sm hover:scale-[1.02] ${
+                    isPast ? 'bg-rose-100 border-rose-400 text-rose-800 dark:bg-rose-950/80 dark:border-rose-500 dark:text-rose-300' : 'bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-950/60 dark:border-amber-500/60 dark:text-amber-300'
+                  }`}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="truncate">{sectorMap[v.sector_id]?.name || 'Setor'}</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase ${isPast ? 'bg-rose-500 text-white' : 'bg-amber-500 text-white'}`}>
+                      {isPast ? 'Falta / Furo' : 'Vaga Futura'}
+                    </span>
+                  </div>
                   <div className="font-mono opacity-80">{formatDateBR(v.date)} • {v.start_time} às {v.end_time}</div>
                 </div>
               );
@@ -977,13 +1002,49 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* SELETORES E BARRA PRINCIPAL */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+      {/* BANNER 1: ALERTA DE CONFLITO */}
+      {allScaleConflicts.length > 0 && isManager && (
+        <div className="p-4 rounded-3xl bg-rose-500/15 border-2 border-rose-500/60 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0">
+              <ShieldAlert className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <strong className="text-sm font-black text-rose-500 uppercase tracking-wider block">
+                Alerta de Choque de Horário ({allScaleConflicts.length} ocorrências)
+              </strong>
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                Existem profissionais escalados em mais de um setor no mesmo dia e horário. Regularize pelo Mural ou edite o plantão.
+              </p>
+            </div>
+          </div>
+          <Button 
+            onClick={() => {
+              const firstConflict = allScaleConflicts[0];
+              if (firstConflict?.b?.id) {
+                if (confirm(`Liberar vaga conflitante de ${professionalMap[firstConflict.b.professional_id]?.name || 'profissional'} em ${sectorMap[firstConflict.b.sector_id]?.name || 'setor'} no dia ${firstConflict.b.date}?`)) {
+                  autoHealingSaveShift(firstConflict.b.id, { professional_id: null, professional_name: null, status: 'vago' }).then(() => syncGlobalData());
+                }
+              }
+            }}
+            className="h-9 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs px-4 rounded-xl shadow-md shrink-0 cursor-pointer"
+          >
+            Resolver Conflito
+          </Button>
+        </div>
+      )}
+
+      {/* SELETOR DE SEÇÕES E TABS */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 print:hidden">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 shrink-0"><Building2 className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Setor:</div>
+          <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 shrink-0">
+            <Building2 className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Setor:
+          </div>
           <div className="w-full max-w-xs">
             <Select value={selectedSectorId} onValueChange={handleSelectSector}>
-              <SelectTrigger className="h-9 text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-2xl"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+              <SelectTrigger className="h-9 text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-2xl">
+                <SelectValue placeholder="Selecione..." />
+              </SelectTrigger>
               <SelectContent className="bg-white dark:bg-slate-900">
                 <SelectItem value="todos" className="font-bold text-sky-600">🏥 Todos os Setores</SelectItem>
                 {(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)} className="text-xs">{s.name}</SelectItem>)}
@@ -991,30 +1052,48 @@ export default function Escalas() {
             </Select>
           </div>
         </div>
+
         <div className="flex items-center gap-2">
           {isManager && (
-            <Button onClick={() => { setGeneratorConfig(prev => ({ ...prev, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '') })); setGeneratorModalOpen(true); }} className="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-4 rounded-2xl shadow-md gap-1.5 cursor-pointer"><SlidersHorizontal className="w-4 h-4" /> Configurar & Gerar</Button>
+            <Button onClick={() => { setGeneratorConfig(prev => ({ ...prev, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '') })); setGeneratorModalOpen(true); }} className="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-4 rounded-2xl shadow-md gap-1.5 shrink-0 cursor-pointer">
+              <SlidersHorizontal className="w-4 h-4" /> Configurar & Gerar
+            </Button>
           )}
+
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shrink-0">
+            <button onClick={() => setFilterTurno('todos')} className={`px-3 py-1 rounded-xl text-xs font-black cursor-pointer ${filterTurno === 'todos' ? 'bg-white dark:bg-slate-800 shadow-sm' : 'text-slate-500'}`}>Todos</button>
+            <button onClick={() => setFilterTurno('diurno')} className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer ${filterTurno === 'diurno' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300' : 'text-slate-500'}`}><Sun className="w-3 h-3 text-amber-500" /> Dia</button>
+            <button onClick={() => setFilterTurno('noturno')} className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer ${filterTurno === 'noturno' ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300' : 'text-slate-500'}`}><Moon className="w-3 h-3 text-indigo-500" /> Noite</button>
+          </div>
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      {/* BARRA DE COMANDO DA DATA */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 rounded-2xl p-1 border border-slate-200 dark:border-slate-800">
             <button onClick={handlePrevMonth} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl cursor-pointer"><ChevronLeft className="w-4 h-4" /></button>
             <button onClick={handleToday} className="px-3 py-1 text-xs font-black cursor-pointer">Hoje</button>
             <button onClick={handleNextMonth} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl cursor-pointer"><ChevronRight className="w-4 h-4" /></button>
           </div>
-          <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2"><CalendarDays className="w-5 h-5 text-sky-600" /> {MONTH_NAMES[currentMonth]} {currentYear}</h2>
+
+          <div>
+            <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <CalendarDays className="w-5 h-5 text-sky-600" /> {MONTH_NAMES[currentMonth]} {currentYear}
+            </h2>
+          </div>
         </div>
+
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
             <button onClick={() => setActiveTab('mensal')} className={`px-3 py-1.5 rounded-xl text-xs font-black cursor-pointer ${activeTab === 'mensal' ? 'bg-white dark:bg-sky-600 shadow-sm text-sky-600 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}>Mensal</button>
             <button onClick={() => setActiveTab('dia')} className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer ${activeTab === 'dia' ? 'bg-white dark:bg-sky-600 shadow-sm text-sky-600 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}><Clock className="w-3.5 h-3.5" /> Dia</button>
           </div>
+
           <Button variant="outline" onClick={() => setActiveTab('tv')} className="h-9 px-4 text-xs font-black rounded-2xl gap-2 bg-slate-50 dark:bg-slate-950 text-amber-600 border-slate-200 hover:bg-slate-100 cursor-pointer">
             <MonitorPlay className="w-4 h-4" /> <span>TV CCO</span>
           </Button>
+
           {isManager && (
             <Button onClick={() => { setEditingShiftId(null); setFormData({ date: getLocalDateString(), sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || ''), target_specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar', professional_id: '', notes: '', retroactive_justification: '' }); setModalOpen(true); }} className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-5 rounded-2xl gap-1.5 cursor-pointer">
               <Plus className="w-4 h-4" /> Lançar
@@ -1023,62 +1102,59 @@ export default function Escalas() {
         </div>
       </div>
 
-      {/* GRADE MENSAL */}
       {activeTab === 'mensal' && (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
-          {isManager && (
-            <aside className={`transition-all duration-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3 roll-professionals ${trayCollapsed ? 'w-full lg:w-14 p-2.5 items-center' : 'w-full lg:w-72'}`}>
-              <div className="flex items-center justify-between">
-                {!trayCollapsed && <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5 truncate"><HeartPulse className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Profissionais</span>}
-                <Button size="sm" variant="ghost" onClick={toggleTray} className="h-8 w-8 p-0 rounded-xl text-slate-500 cursor-pointer">{trayCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}</Button>
-              </div>
-              {!trayCollapsed && (
-                <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
-                  {filteredTrayProfs.map(prof => (
-                    <div key={prof.id} draggable onDragStart={(e) => handleDragStart(e, prof.id)} className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:border-sky-500 transition-all cursor-grab active:cursor-grabbing select-none shadow-sm flex items-center gap-2.5">
-                      <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <div className="min-w-0 flex-1"><div className="font-black text-xs text-slate-900 dark:text-white truncate">{formatFullName(prof.name)}</div><div className="text-[10px] text-slate-500 truncate">{prof.specialty || 'Clínica Geral'}</div></div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </aside>
-          )}
-
           <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
             <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-center py-2.5">
               {WEEKDAYS.map(day => (<div key={day.short} className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400"><span className={day.weekend ? 'text-indigo-600 font-black' : ''}>{day.short}</span></div>))}
             </div>
+            
             <div className="grid grid-cols-7 divide-x divide-y divide-slate-200 dark:divide-slate-800">
               {Array.from({ length: (daysInMonth[0]?.getDay() || 0) }).map((_, idx) => (<div key={`empty-${idx}`} className="min-h-[190px] bg-slate-50/60 dark:bg-slate-950/40"></div>))}
+              
               {daysInMonth.map(dateObj => {
                 const dateStr = getLocalDateString(dateObj);
                 const isToday = todayLocalStr === dateStr;
                 const isSelected = selectedDays.includes(dateStr);
                 const dayShifts = shiftsByDate[dateStr] || [];
 
+                const manha = dayShifts.filter(s => { const h = parseInt((s.start_time || '07:00').split(':')[0]); return h >= 6 && h < 13; });
+                const tarde = dayShifts.filter(s => { const h = parseInt((s.start_time || '07:00').split(':')[0]); return h >= 13 && h < 18; });
+                const noite = dayShifts.filter(s => { const h = parseInt((s.start_time || '07:00').split(':')[0]); return h >= 18 || h < 6; });
+
+                const renderCard = (shift) => {
+                  const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+                  const status = getStatusBadge(shift);
+                  const realSpec = extractSpecialty(shift, prof);
+                  const validName = prof?.name || shift.professional_name;
+
+                  return (
+                    <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date, sector_id: shift.sector_id, target_specialty: realSpec, start_time: shift.start_time, end_time: shift.end_time, shift_type: shift.shift_type || 'diurno', action_type: (shift.status === 'vago' || !validName) ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '', retroactive_justification: extractRetroactiveJustification(shift.notes) }); setModalOpen(true); } }} className={`p-1.5 rounded-xl border border-l-4 shadow-sm cursor-pointer transition-all hover:brightness-95 ${status.wrapper}`}>
+                      <div className="flex justify-between font-mono text-[9px] mb-0.5 opacity-80">
+                        <span>{shift.start_time}-{shift.end_time}</span>
+                        <span className={`font-black uppercase tracking-tight flex items-center gap-1 ${status.text}`}>{status.icon} {status.label}</span>
+                      </div>
+                      <div className="font-black truncate leading-tight text-slate-900 dark:text-white">
+                        {status.label.includes('FALTA') || status.label.includes('VAGA') || status.label.includes('ABERTA') ? `⚠️ ${status.label}` : formatFullName(validName)}
+                      </div>
+                      <div className="text-[9px] font-semibold opacity-70 truncate flex items-center justify-between">
+                        <span>{realSpec}</span>
+                      </div>
+                    </div>
+                  );
+                };
+
                 return (
                   <div key={dateStr} onClick={(e) => handleDayClick(dateStr, e)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnDay(e, dateStr)} className={`min-h-[220px] p-2 transition-all flex flex-col justify-between select-none cursor-pointer ${isSelected ? 'bg-indigo-50 dark:bg-indigo-950/50 ring-2 ring-indigo-500 z-10' : isToday ? 'bg-sky-50/60 dark:bg-sky-950/20' : 'hover:bg-slate-50 dark:hover:bg-slate-850/50'}`}>
                     <div className={`flex items-center justify-between p-1 px-2 rounded-xl mb-1.5 border shadow-sm ${isToday ? 'bg-gradient-to-r from-sky-600 to-cyan-600 border-sky-400 text-white font-black' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 text-slate-800 dark:text-slate-200 font-bold'}`}>
-                      <span className="text-xs font-black">{dateObj.getDate()}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-black">{dateObj.getDate()}</span>
+                      </div>
                     </div>
                     <div className="space-y-2 flex-1 overflow-y-auto max-h-[240px] pr-0.5 text-[11px]">
-                      {dayShifts.map((shift) => {
-                        const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-                        const status = getStatusBadge(shift);
-                        const validName = prof?.name || shift.professional_name;
-
-                        return (
-                          <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date, sector_id: shift.sector_id, target_specialty: extractSpecialty(shift, prof), start_time: shift.start_time, end_time: shift.end_time, shift_type: shift.shift_type || 'diurno', action_type: (shift.status === 'vago' || !validName) ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '', retroactive_justification: extractRetroactiveJustification(shift.notes) }); setModalOpen(true); } }} className={`p-1.5 rounded-xl border border-l-4 shadow-sm cursor-pointer transition-all hover:brightness-95 ${status.wrapper}`}>
-                            <div className="flex justify-between font-mono text-[9px] mb-0.5 opacity-80">
-                              <span>{shift.start_time}-{shift.end_time}</span>
-                            </div>
-                            <div className="font-black truncate leading-tight text-slate-900 dark:text-white">
-                              {status.label.includes('FALTA') || status.label.includes('VAGA') || status.label.includes('ABERTA') ? `⚠️ ${status.label}` : formatFullName(validName)}
-                            </div>
-                          </div>
-                        );
-                      })}
+                      {manha.length > 0 && <div className="space-y-1"><span className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 block">☀️ Manhã</span>{manha.map(renderCard)}</div>}
+                      {tarde.length > 0 && <div className="space-y-1"><span className="text-[9px] font-black uppercase text-orange-600 dark:text-orange-400 block">🌇 Tarde</span>{tarde.map(renderCard)}</div>}
+                      {noite.length > 0 && <div className="space-y-1"><span className="text-[9px] font-black uppercase text-indigo-600 dark:text-indigo-400 block">🌙 Noite</span>{noite.map(renderCard)}</div>}
                     </div>
                   </div>
                 );
@@ -1088,17 +1164,18 @@ export default function Escalas() {
         </div>
       )}
 
-      {/* PLANTÃO DO DIA */}
       {activeTab === 'dia' && (
         <div className="space-y-5 animate-in fade-in">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
                 <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400 tracking-wider block">Escala Oficial Diária</span>
-                <h3 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">Plantões de Hoje</h3>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
+                  Plantões de Hoje ({liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })})
+                </h3>
               </div>
-              <Button onClick={handlePrintA4Landscape} className="h-10 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black px-5 rounded-2xl gap-2 cursor-pointer">
-                <Printer className="w-4 h-4" /> Imprimir
+              <Button onClick={handlePrintA4Landscape} className="h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 text-xs font-black px-5 rounded-2xl gap-2 shadow-md cursor-pointer">
+                <Printer className="w-4 h-4" /> Imprimir Plantão do Dia (A4 Paisagem)
               </Button>
             </div>
 
@@ -1109,28 +1186,35 @@ export default function Escalas() {
                     <th className="py-3 px-4">Seção / Setor</th>
                     <th className="py-3 px-4 text-center">Data & Horário</th>
                     <th className="py-3 px-4">Profissional Escalado</th>
+                    <th className="py-3 px-4">Especialidade / Atuação</th>
                     <th className="py-3 px-4 text-center">Situação / Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                   {tvData.tableDayShifts.length === 0 ? (
-                    <tr><td colSpan="4" className="py-8 text-center text-slate-400">Nenhum plantão.</td></tr>
+                    <tr><td colSpan="5" className="py-8 text-center text-slate-400">Nenhum plantão registrado tocando o dia de hoje.</td></tr>
                   ) : (
                     tvData.tableDayShifts.map(shift => {
                       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
                       const sector = sectorMap[String(shift.sector_id)];
                       const status = getStatusBadge(shift);
+                      const realSpecialty = extractSpecialty(shift, prof);
                       const validName = prof?.name || shift.professional_name;
+
+                      const [sYear, sMonth, sDay] = (shift.date || '').split('-');
+                      const formattedDate = sDay && sMonth ? `${sDay}/${sMonth}/${sYear}` : shift.date;
 
                       return (
                         <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
                           <td className="py-3 px-4 font-black text-slate-900 dark:text-white">{sector?.name || 'Setor'}</td>
                           <td className="py-3 px-4 font-mono font-bold text-sky-600 dark:text-sky-400 text-center whitespace-nowrap">
-                            {shift.date.split('-').reverse().join('/')}<br /><span className="text-[10px] text-slate-400">{shift.start_time} às {shift.end_time}</span>
+                            {formattedDate}<br />
+                            <span className="text-[10px] text-slate-400">{shift.start_time} às {shift.end_time}</span>
                           </td>
                           <td className="py-3 px-4 font-black text-slate-900 dark:text-slate-100">
                             {status.label.includes('FALTA') || status.label.includes('VAGA') ? <span className="text-rose-600 dark:text-rose-400">⚠️ {status.label}</span> : formatFullName(validName)}
                           </td>
+                          <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-semibold">{realSpecialty}</td>
                           <td className="py-3 px-4 text-center">
                             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-wider ${status.wrapper} ${status.text} border-none`}>
                               {status.icon} {status.label}
@@ -1148,190 +1232,148 @@ export default function Escalas() {
       )}
 
       {/* ========================================================================= */}
-      {/* 5. MODAL LANÇAR / EDITAR PLANTÃO (REESTRUTURADO PARA MOBILE C/ FLEX)      */}
+      {/* 5. MODAL LANÇAR / EDITAR PLANTÃO COM ALTURA RESPONSIVA (MAX-H-85VH)       */}
       {/* ========================================================================= */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-lg h-auto max-h-[90dvh] flex flex-col bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-4 sm:p-6 rounded-3xl gap-0">
-          
-          <DialogHeader className="shrink-0 flex flex-row items-center justify-between pb-3 border-b border-slate-800 mb-2">
+        <DialogContent className="w-[95vw] sm:max-w-lg max-h-[85vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-4 sm:p-6 rounded-3xl">
+          <DialogHeader className="flex flex-row items-center justify-between pb-2 border-b border-slate-800">
             <DialogTitle className="text-base font-black text-sky-400">
               {editingShiftId ? 'Editar Plantão da Escala' : 'Lançar Novo Plantão'}
             </DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={handleSaveShift} className="flex flex-col flex-1 overflow-hidden text-xs">
-            
-            {/* ÁREA INTERNA COM SCROLL INDEPENDENTE NO MOBILE */}
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
-                <div className="space-y-1">
-                  <Label className="text-xs font-bold text-slate-300">Data do Plantão *</Label>
-                  <Input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl cursor-pointer" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-bold text-slate-300">Setor / Seção *</Label>
-                  <Select value={formData.sector_id} onValueChange={v => setFormData({ ...formData, sector_id: v })}>
-                    <SelectTrigger className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl">
-                      <SelectValue placeholder="Selecione o setor..." />
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
-                      {(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              
+          <form onSubmit={handleSaveShift} className="space-y-3.5 py-2 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-300">Especialidade Exigida *</Label>
-                <Input placeholder="Ex: Ginecologista, Cirurgião Geral..." value={formData.target_specialty} onChange={e => setFormData({ ...formData, target_specialty: e.target.value })} className="h-10 bg-slate-900 border-slate-700 font-bold text-sky-400 rounded-xl" list="modal-specs" />
-                <datalist id="modal-specs">{registeredSpecialties.map(spec => <option key={spec} value={spec} />)}</datalist>
+                <Label className="text-xs font-bold text-slate-300">Data do Plantão *</Label>
+                <Input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl cursor-pointer" />
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs font-bold text-slate-300">Horário Entrada</Label>
-                  <Input type="time" value={formData.start_time} onChange={e => setFormData({ ...formData, start_time: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-bold text-slate-300">Horário Saída</Label>
-                  <Input type="time" value={formData.end_time} onChange={e => setFormData({ ...formData, end_time: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl" />
-                </div>
-              </div>
-
-              <div className="p-3.5 sm:p-4 bg-slate-900/90 rounded-2xl border border-slate-800 space-y-3">
-                <Label className="text-xs font-black uppercase text-slate-400 block">Modo de Alocação</Label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setFormData({ ...formData, action_type: 'alocar' })} className={`p-2.5 rounded-xl border text-xs font-black transition-all cursor-pointer ${formData.action_type === 'alocar' ? 'bg-sky-600 border-sky-600 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}>
-                    Alocar Pessoal
-                  </button>
-                  <button type="button" onClick={() => setFormData({ ...formData, action_type: 'mural', professional_id: '' })} className={`p-2.5 rounded-xl border text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${formData.action_type === 'mural' ? 'bg-rose-600 border-rose-600 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}>
-                    <Flame className="w-3.5 h-3.5" /> Vaga no Mural
-                  </button>
-                </div>
-                
-                {formData.action_type === 'alocar' ? (
-                  <div className="space-y-1.5 pt-1 w-full">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs font-bold text-slate-300">Profissional Disponível *</Label>
-                      <span className="text-[10px] font-bold text-emerald-400">{categorizedProfessionalsForModal.available.length} livre(s)</span>
-                    </div>
-
-                    <div className="relative w-full">
-                      <select
-                        value={formData.professional_id || ''}
-                        onChange={(e) => { const v = e.target.value; const p = professionalMap[v]; setFormData({ ...formData, professional_id: v, target_specialty: p?.specialty || formData.target_specialty }); }}
-                        className="w-full h-11 px-3.5 py-2 bg-slate-900 border border-slate-700 text-white text-xs font-bold rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none appearance-none truncate pr-9 cursor-pointer"
-                      >
-                        <option value="">Selecione o profissional...</option>
-                        <optgroup label="🟢 PROFISSIONAIS DISPONÍVEIS">
-                          {categorizedProfessionalsForModal.available.map(p => <option key={p.id} value={String(p.id)} className="bg-slate-900 text-white py-1.5">✓ {p.name} • {p.specialty || 'Geral'} ({p.document || 'CRM'})</option>)}
-                        </optgroup>
-                        {categorizedProfessionalsForModal.unavailable.length > 0 && (
-                          <optgroup label="⛔ INDISPONÍVEIS">
-                            {categorizedProfessionalsForModal.unavailable.map(p => <option key={p.id} value={String(p.id)} disabled className="bg-slate-950 text-rose-400 py-1 opacity-70">✕ {p.name} • {p.conflictReason}</option>)}
-                          </optgroup>
-                        )}
-                      </select>
-                      <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">▼</div>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-rose-400 bg-rose-950/40 p-3 rounded-xl border border-rose-900/60 leading-tight">O plantão será disponibilizado no <b>Mural de Oportunidades</b> para que os profissionais assumam.</p>
-                )}
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-300">Setor / Seção *</Label>
+                <Select value={formData.sector_id} onValueChange={v => setFormData({ ...formData, sector_id: v })}>
+                  <SelectTrigger className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl">
+                    <SelectValue placeholder="Selecione o setor..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
+                    {(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             
-            {/* FOOTER FIXO (NÃO ROLA COM O FORM) */}
-            <DialogFooter className="shrink-0 pt-3 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between border-t border-slate-800 mt-3 gap-2 pb-1">
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-300">Especialidade Exigida *</Label>
+              <Input placeholder="Ex: Ginecologista, Cirurgião Geral..." value={formData.target_specialty} onChange={e => setFormData({ ...formData, target_specialty: e.target.value })} className="h-10 bg-slate-900 border-slate-700 font-bold text-sky-400 rounded-xl" list="modal-specs" />
+              <datalist id="modal-specs">{registeredSpecialties.map(spec => <option key={spec} value={spec} />)}</datalist>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-300">Horário Entrada</Label>
+                <Input type="time" value={formData.start_time} onChange={e => setFormData({ ...formData, start_time: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-300">Horário Saída</Label>
+                <Input type="time" value={formData.end_time} onChange={e => setFormData({ ...formData, end_time: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl" />
+              </div>
+            </div>
+
+            <div className="p-3.5 sm:p-4 bg-slate-900/90 rounded-2xl border border-slate-800 space-y-3">
+              <Label className="text-xs font-black uppercase text-slate-400 block">Modo de Alocação</Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button 
+                  type="button" 
+                  onClick={() => setFormData({ ...formData, action_type: 'alocar' })} 
+                  className={`p-2.5 rounded-xl border text-xs font-black transition-all cursor-pointer ${formData.action_type === 'alocar' ? 'bg-sky-600 border-sky-600 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}
+                >
+                  Alocar Pessoal
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setFormData({ ...formData, action_type: 'mural', professional_id: '' })} 
+                  className={`p-2.5 rounded-xl border text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${formData.action_type === 'mural' ? 'bg-rose-600 border-rose-600 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}
+                >
+                  <Flame className="w-3.5 h-3.5" /> Vaga no Mural
+                </button>
+              </div>
+              
+              {formData.action_type === 'alocar' ? (
+                <div className="space-y-1.5 pt-1 w-full">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-slate-300">Profissional Disponível *</Label>
+                    <span className="text-[10px] font-bold text-emerald-400">
+                      {categorizedProfessionalsForModal.available.length} livre(s)
+                    </span>
+                  </div>
+
+                  <div className="relative w-full">
+                    <select
+                      value={formData.professional_id || ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const p = professionalMap[v];
+                        setFormData({
+                          ...formData,
+                          professional_id: v,
+                          target_specialty: p?.specialty || formData.target_specialty
+                        });
+                      }}
+                      className="w-full h-11 px-3.5 py-2 bg-slate-900 border border-slate-700 text-white text-xs font-bold rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none appearance-none truncate pr-9 cursor-pointer"
+                    >
+                      <option value="">Selecione o profissional...</option>
+                      
+                      <optgroup label="🟢 PROFISSIONAIS DISPONÍVEIS">
+                        {categorizedProfessionalsForModal.available.map(p => (
+                          <option key={p.id} value={String(p.id)} className="bg-slate-900 text-white py-1.5">
+                            ✓ {p.name} • {p.specialty || 'Geral'} ({p.document || 'CRM'})
+                          </option>
+                        ))}
+                      </optgroup>
+
+                      {categorizedProfessionalsForModal.unavailable.length > 0 && (
+                        <optgroup label="⛔ INDISPONÍVEIS">
+                          {categorizedProfessionalsForModal.unavailable.map(p => (
+                            <option key={p.id} value={String(p.id)} disabled className="bg-slate-950 text-rose-400 py-1 opacity-70">
+                              ✕ {p.name} • {p.conflictReason}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">
+                      ▼
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[11px] text-rose-400 bg-rose-950/40 p-3 rounded-xl border border-rose-900/60 leading-tight">
+                  O plantão será disponibilizado no <b>Mural de Oportunidades</b> para que os profissionais assumam.
+                </p>
+              )}
+            </div>
+            
+            <DialogFooter className="pt-3 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between border-t border-slate-800 mt-2 gap-2">
               <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
-                {editingShiftId && <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-10 text-xs font-bold text-rose-400 hover:bg-rose-950/30 rounded-xl px-3 cursor-pointer"><Trash2 className="w-4 h-4 mr-1" /> Excluir</Button>}
-                {editingShiftId && formData.action_type === 'alocar' && <Button type="button" variant="outline" onClick={handleSendToMuralFromModal} className="h-10 text-xs font-bold border-slate-700 text-slate-300 hover:bg-slate-800 rounded-xl px-3 cursor-pointer"><ArrowLeftRight className="w-3.5 h-3.5 mr-1 text-amber-400" /> Mural</Button>}
+                {editingShiftId && (
+                  <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-10 text-xs font-bold text-rose-400 hover:bg-rose-950/30 rounded-xl px-3 cursor-pointer">
+                    <Trash2 className="w-4 h-4 mr-1" /> Excluir
+                  </Button>
+                )}
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="flex-1 sm:flex-none h-10 text-xs font-bold border-slate-700 text-slate-300 rounded-xl px-4 cursor-pointer">Cancelar</Button>
-                <Button type="submit" disabled={submitting} className="flex-1 sm:flex-none h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-xl shadow-md cursor-pointer">Confirmar</Button>
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="flex-1 sm:flex-none h-10 text-xs font-bold border-slate-700 text-slate-300 rounded-xl px-4 cursor-pointer">
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={submitting} className="flex-1 sm:flex-none h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-xl shadow-md cursor-pointer">
+                  Confirmar
+                </Button>
               </div>
             </DialogFooter>
-
           </form>
         </DialogContent>
       </Dialog>
-
-      {/* MODAL CONFIGURAR & GERAR ESCALA (REESTRUTURADO PARA MOBILE C/ FLEX) */}
-      <Dialog open={generatorModalOpen} onOpenChange={setGeneratorModalOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90dvh] flex flex-col bg-slate-950 border border-slate-800 text-white rounded-3xl p-4 sm:p-6 shadow-2xl z-[9999] gap-0">
-          
-          <DialogHeader className="shrink-0 flex flex-row items-center justify-between pb-3 border-b border-slate-800 mb-2">
-            <DialogTitle className="text-base font-black flex items-center gap-2 text-indigo-400">
-              <SlidersHorizontal className="w-5 h-5 text-indigo-400" /> Configurar & Gerar Escala
-            </DialogTitle>
-          </DialogHeader>
-
-          <form onSubmit={handleExecuteGenerator} className="flex flex-col flex-1 overflow-hidden text-xs">
-            
-            {/* ÁREA INTERNA COM SCROLL */}
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-              <div className="p-3.5 bg-slate-900 rounded-2xl border border-slate-800 space-y-3 mt-1">
-                <span className="text-xs font-black uppercase text-slate-400 block">1. Setor & Período</span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs font-bold text-slate-300">Setor *</Label>
-                    <Select value={generatorConfig.sector_id} onValueChange={v => setGeneratorConfig({ ...generatorConfig, sector_id: v })}>
-                      <SelectTrigger className="h-9 bg-slate-950 border-slate-700 text-white rounded-xl"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                      <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">{(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-bold text-slate-300">Início *</Label>
-                    <Input type="date" value={generatorConfig.start_date} onChange={e => setGeneratorConfig({ ...generatorConfig, start_date: e.target.value })} className="h-9 bg-slate-950 border-slate-700 text-white rounded-xl" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-bold text-slate-300">Dias</Label>
-                    <Select value={String(generatorConfig.duration_days)} onValueChange={v => setGeneratorConfig({ ...generatorConfig, duration_days: parseInt(v) })}>
-                      <SelectTrigger className="h-9 bg-slate-950 border-slate-700 text-white rounded-xl"><SelectValue /></SelectTrigger>
-                      <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
-                        <SelectItem value="7">7 Dias</SelectItem>
-                        <SelectItem value="15">15 Dias</SelectItem>
-                        <SelectItem value="30">30 Dias</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-3.5 bg-slate-900 rounded-2xl border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black uppercase text-slate-200">2. Especialidades & Vagas</span>
-                  <Button type="button" size="sm" onClick={handleAddSlot} className="h-8 bg-sky-600 text-white font-black text-xs px-3 rounded-xl gap-1 cursor-pointer"><Plus className="w-3.5 h-3.5" /> Adicionar</Button>
-                </div>
-
-                <div className="space-y-2">
-                  {generatorConfig.slots.map(slot => (
-                    <div key={slot.id} className="p-3 rounded-2xl bg-slate-950 border border-slate-800 grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
-                      <div className="sm:col-span-3 space-y-1"><Label className="text-[10px] text-slate-400">Especialidade</Label><Input value={slot.specialty} onChange={e => handleUpdateSlot(slot.id, 'specialty', e.target.value)} className="h-8 text-xs font-bold bg-slate-900 border-slate-700 text-white" list="specialties-datalist" /></div>
-                      <div className="sm:col-span-2 space-y-1"><Label className="text-[10px] text-slate-400">Turno</Label><Select value={slot.shift_type} onValueChange={v => handleUpdateSlot(slot.id, 'shift_type', v)}><SelectTrigger className="h-8 bg-slate-900 border-slate-700 text-white"><SelectValue /></SelectTrigger><SelectContent className="bg-slate-900 border-slate-800 text-white"><SelectItem value="diurno">Diurno</SelectItem><SelectItem value="noturno">Noturno</SelectItem></SelectContent></Select></div>
-                      <div className="sm:col-span-2 space-y-1"><Label className="text-[10px] text-slate-400">Entrada</Label><Input type="time" value={slot.start_time} onChange={e => handleUpdateSlot(slot.id, 'start_time', e.target.value)} className="h-8 text-xs bg-slate-900 border-slate-700 text-white" /></div>
-                      <div className="sm:col-span-2 space-y-1"><Label className="text-[10px] text-slate-400">Saída</Label><Input type="time" value={slot.end_time} onChange={e => handleUpdateSlot(slot.id, 'end_time', e.target.value)} className="h-8 text-xs bg-slate-900 border-slate-700 text-white" /></div>
-                      <div className="sm:col-span-2 space-y-1"><Label className="text-[10px] text-slate-400">Qtd.</Label><Input type="number" min="1" value={slot.quantity} onChange={e => handleUpdateSlot(slot.id, 'quantity', parseInt(e.target.value) || 1)} className="h-8 text-xs bg-slate-900 border-slate-700 text-white" /></div>
-                      <div className="sm:col-span-1 flex justify-end"><Button type="button" variant="ghost" onClick={() => handleRemoveSlot(slot.id)} className="h-8 w-8 p-0 text-rose-500 hover:bg-rose-950/30 cursor-pointer"><Trash2 className="w-4 h-4" /></Button></div>
-                    </div>
-                  ))}
-                </div>
-                <datalist id="specialties-datalist">{registeredSpecialties.map(spec => <option key={spec} value={spec} />)}</datalist>
-              </div>
-            </div>
-
-            {/* FOOTER FIXO */}
-            <DialogFooter className="shrink-0 pt-3 flex flex-row items-center justify-end border-t border-slate-800 mt-3 gap-2 pb-1">
-              <Button type="button" variant="outline" onClick={() => setGeneratorModalOpen(false)} className="h-9 text-xs border-slate-700 text-slate-300 cursor-pointer">Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-6 rounded-xl shadow-md cursor-pointer">Gerar Vagas</Button>
-            </DialogFooter>
-
-          </form>
-        </DialogContent>
-      </Dialog>
-
+      
     </div>
   );
 }
