@@ -151,9 +151,9 @@ export default function AppLayout({ children }) {
   const formattedDate = currentTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const formattedTime = currentTime.toLocaleTimeString('pt-BR');
 
-  // NAVEGAÇÃO: RENOMEADO DE "TROCAS & MURAL" PARA "MURAL DE OPORTUNIDADES"
+  // ROTA DO PAINEL GERAL CORRIGIDA PARA /dashboard PARA FICAR AZUL QUANDO ATIVA
   const navItems = [
-    { label: 'Painel Geral', path: '/', icon: LayoutDashboard, visible: true },
+    { label: 'Painel Geral', path: '/dashboard', icon: LayoutDashboard, visible: true },
     { label: 'Escalas & Plantões', path: '/escalas', icon: CalendarDays, visible: true },
     { label: 'Mural de Oportunidades', path: '/trocas', icon: Flame, visible: true, badge: unreadMuralShifts.length },
     { label: 'Minha Escala', path: '/minha-escala', icon: Activity, visible: true },
@@ -196,7 +196,7 @@ export default function AppLayout({ children }) {
               <NavLink
                 key={item.path}
                 to={item.path}
-                end={item.path === '/'}
+                end={item.path === '/dashboard'}
                 className={({ isActive }) =>
                   `flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all ${
                     isActive 
