@@ -9,36 +9,44 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
   Building2, Save, UserPlus, Users, Trash2, 
-  Settings, Hospital, Activity, ShieldCheck, 
-  Mail, MapPin, Edit, Plus, X, Phone
+  Settings, Hospital, ShieldCheck, FileText,
+  Mail, MapPin, Edit, Plus, Clock, RotateCcw
 } from 'lucide-react';
 
+function getLocalDateString(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function Configuracoes() {
-  const { user, company, units = [], loading, refresh } = useAppData();
+  const { user, company, units = [], selectedUnitId, loading, refresh } = useAppData();
   
-  const [activeTab, setActiveTab] = useState('instituicao');
-  const [companies, setCompanies] = useState([]);
+  const [activeTab, setActiveTab] = useState('unidade_atual');
   const [companyUsers, setCompanyUsers] = useState([]);
   const [saving, setSaving] = useState(false);
   
-  // Form da Instituição Principal
-  const [form, setForm] = useState({ name: '', app_name: '', cnpj: '', phone: '', address: '', primary_contact: '', logo_url: '', accent_color: '#0ea5e9' });
+  // Unidade Atual (Dinâmico conforme selecionado no Menu Superior)
+  const currentUnit = units.find(u => String(u.id) === String(selectedUnitId));
+  const [unitForm, setUnitForm] = useState({ name: '', address: '', phone: '', primary_contact: '', status: 'ativo' });
+
+  // Contrato Matriz (Company)
+  const [contractForm, setContractForm] = useState({ 
+    name: '', cnpj: '', billing_cycle: 'mensal', contract_start: '', contract_end: '' 
+  });
   
-  // Form de Convites
+  // Convites
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('user');
 
-  // Controle de Modal de Hospitais (Unidades)
+  // Controle de Modal de Cadastro de Novas Unidades
   const [unitModalOpen, setUnitModalOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState(null);
-  const [unitForm, setUnitForm] = useState({ name: '', address: '', status: 'ativo' });
+  const [newUnitForm, setNewUnitForm] = useState({ name: '', address: '', status: 'ativo' });
 
   const isAdmin = user?.role === 'admin';
   const companyId = user?.data?.company_id || company?.id;
-
-  const loadCompanies = async () => {
-    try { setCompanies(await base44.entities.Company.list('-created_date', 100)); } catch (e) {}
-  };
 
   const loadUsers = async () => {
     if (!companyId) return;
@@ -47,105 +55,126 @@ export default function Configuracoes() {
 
   useEffect(() => {
     if (loading) return;
-    if (isAdmin) loadCompanies();
     loadUsers();
     if (company) {
-      setForm({ 
+      setContractForm({ 
         name: company.name || '', 
-        app_name: company.app_name || '', 
         cnpj: company.cnpj || '', 
-        phone: company.phone || '', 
-        address: company.address || '', 
-        primary_contact: company.primary_contact || '', 
-        logo_url: company.logo_url || '', 
-        accent_color: company.accent_color || '#0ea5e9' 
+        billing_cycle: company.billing_cycle || 'mensal',
+        contract_start: company.contract_start || '',
+        contract_end: company.contract_end || ''
       });
     }
-  }, [loading, company, isAdmin]);
+  }, [loading, company]);
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  useEffect(() => {
+    if (currentUnit) {
+      setUnitForm({
+        name: currentUnit.name || '',
+        address: currentUnit.address || '',
+        phone: currentUnit.phone || '',
+        primary_contact: currentUnit.primary_contact || '',
+        status: currentUnit.status || 'ativo'
+      });
+    }
+  }, [currentUnit, selectedUnitId]);
 
   // =========================================================================
-  // LOGICA: INSTITUIÇÃO
+  // SALVAR DADOS DA UNIDADE (HOSPITAL ATUAL)
   // =========================================================================
-  const handleSaveCompany = async (e) => {
+  const handleSaveCurrentUnit = async (e) => {
+    e.preventDefault();
+    if (!currentUnit) return;
+    setSaving(true);
+    try {
+      await base44.entities.Unit.update(currentUnit.id, unitForm);
+      refresh();
+      alert(`Dados do hospital "${unitForm.name}" atualizados com sucesso!`);
+    } catch (err) {
+      alert(err.message || 'Erro ao salvar unidade');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // =========================================================================
+  // SALVAR / RENOVAR CONTRATO MATRIZ
+  // =========================================================================
+  const handleSaveContract = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
       if (company) {
-        await base44.entities.Company.update(company.id, form);
+        await base44.entities.Company.update(company.id, contractForm);
       } else {
-        const created = await base44.entities.Company.create(form);
+        const created = await base44.entities.Company.create(contractForm);
         await base44.auth.updateMe({ data: { company_id: created.id, app_role: 'manager' } });
       }
       refresh();
-      alert('Dados da instituição salvos com sucesso!');
-    } catch (err) {
-      alert(err.message || 'Erro ao salvar');
-    } finally {
-      setSaving(false);
-    }
+      alert('Contrato atualizado com sucesso!');
+    } catch (err) { alert(err.message || 'Erro ao salvar'); } 
+    finally { setSaving(false); }
   };
 
-  const handleSelectCompany = async (id) => {
-    await base44.auth.updateMe({ data: { company_id: id } });
-    refresh();
+  const handleRenewContract = async () => {
+    if (!company || !contractForm.contract_end) {
+      alert('Defina uma Data de Vencimento atual antes de renovar.');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      const end = new Date(contractForm.contract_end + 'T12:00:00');
+      if (contractForm.billing_cycle === 'mensal') end.setMonth(end.getMonth() + 1);
+      else if (contractForm.billing_cycle === 'trimestral') end.setMonth(end.getMonth() + 3);
+      else if (contractForm.billing_cycle === 'semestral') end.setMonth(end.getMonth() + 6);
+      else if (contractForm.billing_cycle === 'anual') end.setFullYear(end.getFullYear() + 1);
+
+      const newEnd = getLocalDateString(end);
+      await base44.entities.Company.update(company.id, { contract_end: newEnd });
+      setContractForm(prev => ({ ...prev, contract_end: newEnd }));
+      refresh();
+      alert(`Contrato renovado com sucesso! Novo vencimento: ${newEnd.split('-').reverse().join('/')}`);
+    } catch (err) { alert(err.message); } 
+    finally { setSaving(false); }
   };
 
   // =========================================================================
-  // LOGICA: HOSPITAIS / UNIDADES DE ATENDIMENTO
+  // LOGICA: CADASTRO DE MÚLTIPLOS HOSPITAIS
   // =========================================================================
   const openUnitModal = (unit = null) => {
     if (unit) {
       setEditingUnit(unit);
-      setUnitForm({ name: unit.name || '', address: unit.address || '', status: unit.status || 'ativo' });
+      setNewUnitForm({ name: unit.name || '', address: unit.address || '', status: unit.status || 'ativo' });
     } else {
       setEditingUnit(null);
-      setUnitForm({ name: '', address: '', status: 'ativo' });
+      setNewUnitForm({ name: '', address: '', status: 'ativo' });
     }
     setUnitModalOpen(true);
   };
 
-  const handleSaveUnit = async (e) => {
+  const handleSaveNewUnit = async (e) => {
     e.preventDefault();
-    if (!unitForm.name.trim()) return alert('O nome do hospital é obrigatório.');
-    
+    if (!newUnitForm.name.trim()) return alert('O nome do hospital é obrigatório.');
     setSaving(true);
     try {
-      const payload = { 
-        company_id: companyId, 
-        name: unitForm.name.trim(), 
-        address: unitForm.address, 
-        status: unitForm.status 
-      };
-
-      if (editingUnit?.id) {
-        await base44.entities.Unit.update(editingUnit.id, payload);
-      } else {
-        await base44.entities.Unit.create(payload);
-      }
+      const payload = { company_id: companyId, name: newUnitForm.name.trim(), address: newUnitForm.address, status: newUnitForm.status };
+      if (editingUnit?.id) await base44.entities.Unit.update(editingUnit.id, payload);
+      else await base44.entities.Unit.create(payload);
       
       setUnitModalOpen(false);
       refresh();
-    } catch (err) {
-      alert('Erro ao salvar hospital: ' + err.message);
-    } finally {
-      setSaving(false);
-    }
+    } catch (err) { alert('Erro ao salvar hospital: ' + err.message); } 
+    finally { setSaving(false); }
   };
 
   const handleDeleteUnit = async (id, name) => {
-    if (!confirm(`Tem certeza que deseja remover o hospital "${name}"? Todas as escalas atreladas a ele ficarão órfãs.`)) return;
-    try {
-      await base44.entities.Unit.delete(id);
-      refresh();
-    } catch (err) {
-      alert('Erro ao excluir: ' + err.message);
-    }
+    if (!confirm(`Deseja remover o hospital "${name}"? Suas escalas ficarão órfãs.`)) return;
+    try { await base44.entities.Unit.delete(id); refresh(); } catch (err) { alert('Erro ao excluir: ' + err.message); }
   };
 
   // =========================================================================
-  // LOGICA: USUÁRIOS E CONVITES
+  // USUÁRIOS E CONVITES
   // =========================================================================
   const handleInvite = async (e) => {
     e.preventDefault();
@@ -156,11 +185,8 @@ export default function Configuracoes() {
       setInviteEmail('');
       loadUsers();
       alert('Convite enviado com sucesso para ' + inviteEmail);
-    } catch (err) {
-      alert(err.message || 'Erro ao convidar');
-    } finally {
-      setSaving(false);
-    }
+    } catch (err) { alert(err.message || 'Erro ao convidar'); } 
+    finally { setSaving(false); }
   };
 
   if (loading) {
@@ -184,7 +210,7 @@ export default function Configuracoes() {
             Painel de Configurações
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium max-w-2xl">
-            Gerencie os dados da instituição matriz, cadastre múltiplos hospitais vinculados ao seu contrato e controle os acessos da equipe.
+            Gerencie o contrato da sua empresa com o ScaleMedic, edite os dados do Hospital selecionado ou convide sua equipe.
           </p>
         </div>
       </div>
@@ -192,8 +218,9 @@ export default function Configuracoes() {
       {/* ABAS DE NAVEGAÇÃO */}
       <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide">
         {[
-          { id: 'instituicao', label: 'Dados da Instituição', icon: Building2 },
-          { id: 'unidades', label: 'Hospitais (Unidades)', icon: Hospital },
+          { id: 'unidade_atual', label: 'Hospital Atual', icon: Hospital },
+          { id: 'contrato', label: 'Contrato Matriz', icon: FileText },
+          { id: 'unidades', label: 'Gerenciar Hospitais', icon: Building2 },
           { id: 'usuarios', label: 'Equipe & Acessos', icon: ShieldCheck },
         ].map(tab => {
           const isActive = activeTab === tab.id;
@@ -217,132 +244,138 @@ export default function Configuracoes() {
       <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
         
         {/* ========================================================================= */}
-        {/* ABA: DADOS DA INSTITUIÇÃO (MATRIZ) */}
+        {/* ABA 1: DADOS DA UNIDADE (HOSPITAL ATUAL DINÂMICO) */}
         {/* ========================================================================= */}
-        {activeTab === 'instituicao' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
-                <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
+        {activeTab === 'unidade_atual' && (
+          <div className="max-w-4xl">
+            <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
+              <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-4 flex items-start justify-between">
+                <div>
                   <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
-                    <Building2 className="w-5 h-5 text-sky-600 dark:text-cyan-400" /> Instituição / Contrato Matriz
+                    <Hospital className="w-5 h-5 text-sky-600 dark:text-cyan-400" /> Dados do Hospital Selecionado
                   </h3>
-                  <p className="text-xs text-slate-500 mt-1">Estas informações representam a empresa principal (CNPJ matriz) que gerencia os hospitais.</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Você está editando as informações da unidade ativada no menu superior. Elas aparecerão nos relatórios deste hospital.
+                  </p>
                 </div>
+                {currentUnit && (
+                  <span className="text-[10px] font-black uppercase px-3 py-1 rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                    Sincronizado
+                  </span>
+                )}
+              </div>
 
-                <form onSubmit={handleSaveCompany} className="space-y-5">
+              {!currentUnit ? (
+                <div className="py-12 text-center text-sm font-bold text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50 dark:bg-slate-900/50">
+                  Nenhum hospital selecionado no topo da tela.
+                </div>
+              ) : (
+                <form onSubmit={handleSaveCurrentUnit} className="space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     <div className="space-y-1.5 sm:col-span-2">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Razão Social (Nome da Empresa) *</Label>
-                      <Input value={form.name} onChange={(e) => set('name', e.target.value)} required className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nome Oficial do Hospital *</Label>
+                      <Input value={unitForm.name} onChange={(e) => setUnitForm(p => ({...p, name: e.target.value}))} required className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nome de Exibição (Marca)</Label>
-                      <Input value={form.app_name} onChange={(e) => set('app_name', e.target.value)} placeholder="Ex: ScaleMedic Hospitais" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">CNPJ Matriz</Label>
-                      <Input value={form.cnpj} onChange={(e) => set('cnpj', e.target.value)} placeholder="00.000.000/0000-00" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-mono" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Telefone Principal</Label>
-                      <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="(00) 0000-0000" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Responsável Legal (Contato)</Label>
-                      <Input value={form.primary_contact} onChange={(e) => set('primary_contact', e.target.value)} placeholder="Nome do Gestor" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
-                    </div>
-                    
                     <div className="space-y-1.5 sm:col-span-2">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Logomarca do Relatório</Label>
-                      <div className="flex items-center gap-4 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-4">
-                        {form.logo_url ? (
-                          <img src={form.logo_url} alt="Logo" className="h-16 w-16 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm shrink-0 bg-white" />
-                        ) : (
-                          <div className="h-16 w-16 rounded-xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
-                            Sem Logo
-                          </div>
-                        )}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (!file) return;
-                            const reader = new FileReader();
-                            reader.onload = (e) => set('logo_url', e.target?.result || '');
-                            reader.readAsDataURL(file);
-                          }}
-                          className="block w-full text-xs text-slate-600 dark:text-slate-400 file:mr-4 file:rounded-xl file:border-0 file:bg-sky-100 dark:file:bg-sky-900/30 file:px-4 file:py-2 file:text-xs file:font-black file:text-sky-700 dark:file:text-sky-400 hover:file:bg-sky-200 transition-colors cursor-pointer"
-                        />
-                      </div>
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Endereço Completo</Label>
+                      <Input value={unitForm.address} onChange={(e) => setUnitForm(p => ({...p, address: e.target.value}))} placeholder="Ex: Av. Paulista, 1000 - Bela Vista" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
                     </div>
-                    
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Endereço Sede</Label>
-                      <Input value={form.address} onChange={(e) => set('address', e.target.value)} placeholder="Endereço fiscal completo" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Telefone da Recepção / Posto</Label>
+                      <Input value={unitForm.phone} onChange={(e) => setUnitForm(p => ({...p, phone: e.target.value}))} placeholder="(00) 0000-0000" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Coordenador/Responsável Local</Label>
+                      <Input value={unitForm.primary_contact} onChange={(e) => setUnitForm(p => ({...p, primary_contact: e.target.value}))} placeholder="Nome do médico chefe" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
                     </div>
                   </div>
 
                   <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
                     <Button type="submit" disabled={saving} className="h-11 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs px-8 rounded-xl shadow-md cursor-pointer transition-all">
-                      {saving ? 'Processando...' : <><Save className="w-4 h-4 mr-1.5" /> Salvar Configurações</>}
+                      {saving ? 'Processando...' : <><Save className="w-4 h-4 mr-1.5" /> Salvar Hospital</>}
                     </Button>
                   </div>
                 </form>
-              </Card>
-            </div>
-
-            {isAdmin && (
-              <div className="space-y-4">
-                <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
-                  <h3 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2 mb-2">
-                    <Activity className="w-4 h-4 text-rose-500" /> Modo Super Admin
-                  </h3>
-                  <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">
-                    Você tem privilégios totais. Abaixo estão todas as empresas/contratos isolados no sistema. Selecione para "entrar" na visão de cada um.
-                  </p>
-                  
-                  <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                    {companies.length === 0 ? (
-                      <p className="text-xs text-slate-400 text-center py-4">Nenhuma empresa mapeada.</p>
-                    ) : (
-                      companies.map((c) => (
-                        <div key={c.id} className="p-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="text-xs font-black text-slate-900 dark:text-white truncate">{c.name}</div>
-                            <div className="text-[9px] text-slate-500 font-mono mt-0.5">{c.cnpj || 'Sem CNPJ'}</div>
-                          </div>
-                          <Button 
-                            variant={company?.id === c.id ? 'default' : 'outline'} 
-                            size="sm" 
-                            onClick={() => handleSelectCompany(c.id)}
-                            className={`h-7 text-[10px] font-black rounded-lg shrink-0 cursor-pointer ${company?.id === c.id ? 'bg-sky-600 text-white border-transparent' : 'border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300'}`}
-                          >
-                            {company?.id === c.id ? 'Em Uso' : 'Acessar'}
-                          </Button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </Card>
-              </div>
-            )}
+              )}
+            </Card>
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* ABA: HOSPITAIS / UNIDADES DE ATENDIMENTO */}
+        {/* ABA 2: CONTRATO MATRIZ */}
+        {/* ========================================================================= */}
+        {activeTab === 'contrato' && (
+          <div className="max-w-4xl">
+            <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
+              <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
+                <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Gestão de Contrato & Matriz
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">Dados de faturamento e vigência do seu contrato com a ScaleMedic.</p>
+              </div>
+
+              <form onSubmit={handleSaveContract} className="space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Razão Social (Empresa Pagadora) *</Label>
+                    <Input value={contractForm.name} onChange={(e) => setContractForm(p => ({...p, name: e.target.value}))} required className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-bold" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">CNPJ</Label>
+                    <Input value={contractForm.cnpj} onChange={(e) => setContractForm(p => ({...p, cnpj: e.target.value}))} placeholder="00.000.000/0000-00" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-mono" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Ciclo de Faturamento</Label>
+                    <Select value={contractForm.billing_cycle} onValueChange={v => setContractForm(p => ({...p, billing_cycle: v}))}>
+                      <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-bold">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
+                        <SelectItem value="mensal">Mensal</SelectItem>
+                        <SelectItem value="trimestral">Trimestral</SelectItem>
+                        <SelectItem value="semestral">Semestral</SelectItem>
+                        <SelectItem value="anual">Anual</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/50 sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-indigo-800 dark:text-indigo-300">Início do Contrato</Label>
+                      <Input type="date" value={contractForm.contract_start} onChange={(e) => setContractForm(p => ({...p, contract_start: e.target.value}))} className="h-10 bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800 text-slate-900 dark:text-white rounded-xl" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-indigo-800 dark:text-indigo-300">Vencimento do Contrato</Label>
+                      <Input type="date" value={contractForm.contract_end} onChange={(e) => setContractForm(p => ({...p, contract_end: e.target.value}))} className="h-10 bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800 text-slate-900 dark:text-white rounded-xl font-bold" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between gap-3">
+                  <Button type="button" onClick={handleRenewContract} disabled={saving} variant="outline" className="h-11 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border-indigo-200 font-black text-xs px-6 rounded-xl cursor-pointer">
+                    <RotateCcw className="w-4 h-4 mr-1.5" /> Renovar Automaticamente
+                  </Button>
+                  <Button type="submit" disabled={saving} className="h-11 bg-slate-900 hover:bg-slate-800 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 font-black text-xs px-8 rounded-xl shadow-md cursor-pointer transition-all">
+                    {saving ? 'Processando...' : <><Save className="w-4 h-4 mr-1.5" /> Salvar Contrato</>}
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* ABA 3: HOSPITAIS / UNIDADES DE ATENDIMENTO */}
         {/* ========================================================================= */}
         {activeTab === 'unidades' && (
           <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 mb-6 gap-4">
               <div>
                 <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
-                  <Hospital className="w-5 h-5 text-sky-600 dark:text-cyan-400" /> Múltiplos Hospitais (Unidades)
+                  <Building2 className="w-5 h-5 text-sky-600 dark:text-cyan-400" /> Cadastrar Múltiplos Hospitais
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Se você atende diferentes hospitais no mesmo contrato, cadastre-os aqui. Eles aparecerão no seletor de "Unidade" no topo da tela para organizar as escalas sem misturar dados.
+                  Adicione novos hospitais que pertencem a este contrato. Eles aparecerão no seletor de "Unidade" no topo da tela.
                 </p>
               </div>
               <Button onClick={() => openUnitModal()} className="shrink-0 h-10 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs px-5 rounded-xl shadow-md cursor-pointer">
@@ -355,7 +388,6 @@ export default function Configuracoes() {
                 <div className="col-span-full py-16 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-3xl bg-slate-50 dark:bg-slate-900/50">
                   <Hospital className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
                   <h4 className="text-sm font-black text-slate-600 dark:text-slate-400">Nenhum hospital cadastrado</h4>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Clique no botão acima para adicionar sua primeira unidade de atendimento.</p>
                 </div>
               ) : (
                 units.map(u => (
@@ -390,7 +422,7 @@ export default function Configuracoes() {
               )}
             </div>
 
-            {/* MODAL DE HOSPITAL */}
+            {/* MODAL DE CADASTRAR NOVO HOSPITAL */}
             <Dialog open={unitModalOpen} onOpenChange={setUnitModalOpen}>
               <DialogContent className="w-[95vw] sm:max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-2xl rounded-3xl p-6">
                 <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -398,18 +430,18 @@ export default function Configuracoes() {
                     <Hospital className="w-5 h-5" /> {editingUnit ? 'Editar Hospital' : 'Adicionar Novo Hospital'}
                   </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleSaveUnit} className="space-y-4 py-2">
+                <form onSubmit={handleSaveNewUnit} className="space-y-4 py-2">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nome do Hospital / Unidade *</Label>
-                    <Input value={unitForm.name} onChange={e => setUnitForm({...unitForm, name: e.target.value})} placeholder="Ex: Hospital Municipal Central" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-bold" required autoFocus />
+                    <Input value={newUnitForm.name} onChange={e => setNewUnitForm({...newUnitForm, name: e.target.value})} placeholder="Ex: Hospital Municipal Central" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-bold" required autoFocus />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Endereço de Localização</Label>
-                    <Input value={unitForm.address} onChange={e => setUnitForm({...unitForm, address: e.target.value})} placeholder="Rua, Número, Bairro, Cidade" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl" />
+                    <Input value={newUnitForm.address} onChange={e => setNewUnitForm({...newUnitForm, address: e.target.value})} placeholder="Rua, Número, Bairro, Cidade" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl" />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Status Operacional</Label>
-                    <Select value={unitForm.status} onValueChange={v => setUnitForm({...unitForm, status: v})}>
+                    <Select value={newUnitForm.status} onValueChange={v => setNewUnitForm({...newUnitForm, status: v})}>
                       <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-bold">
                         <SelectValue />
                       </SelectTrigger>
@@ -430,11 +462,10 @@ export default function Configuracoes() {
         )}
 
         {/* ========================================================================= */}
-        {/* ABA: EQUIPE & ACESSOS */}
+        {/* ABA 4: EQUIPE & ACESSOS */}
         {/* ========================================================================= */}
         {activeTab === 'usuarios' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-            
             <div className="lg:col-span-1 space-y-6">
               <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
                 <div className="border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
@@ -469,7 +500,7 @@ export default function Configuracoes() {
                   </div>
 
                   <Button type="submit" disabled={saving || !inviteEmail} className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer transition-colors">
-                    {saving ? 'Enviando...' : 'Enviar Convite Exclusivo'}
+                    {saving ? 'Enviando...' : 'Enviar Convite'}
                   </Button>
                 </form>
               </Card>

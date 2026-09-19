@@ -1,5 +1,5 @@
 import React, { Component, useState, useEffect } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAppData } from '@/lib/useAppData';
 import { base44 } from '@/api/base44Client';
 import { 
@@ -56,14 +56,11 @@ export default function AppLayout({ children }) {
   } = useAppData();
 
   const navigate = useNavigate();
+  const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [readNotifIds, setReadNotifIds] = useState(() => {
-    try {
-      return JSON.parse(window.localStorage.getItem('scale_read_notifs') || '[]');
-    } catch {
-      return [];
-    }
+    try { return JSON.parse(window.localStorage.getItem('scale_read_notifs') || '[]'); } catch { return []; }
   });
 
   const [theme, setTheme] = useState('dark');
@@ -78,34 +75,23 @@ export default function AppLayout({ children }) {
     try {
       const savedTheme = window.localStorage.getItem('hospital-intelligence-theme') || 'dark';
       setTheme(savedTheme);
-      if (savedTheme === 'dark') {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
+      if (savedTheme === 'dark') document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
     } catch {
-      setTheme('dark');
-      document.documentElement.classList.add('dark');
+      setTheme('dark'); document.documentElement.classList.add('dark');
     }
   }, []);
 
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
     setTheme(nextTheme);
-    if (nextTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    try {
-      window.localStorage.setItem('hospital-intelligence-theme', nextTheme);
-    } catch {}
+    if (nextTheme === 'dark') document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+    try { window.localStorage.setItem('hospital-intelligence-theme', nextTheme); } catch {}
   };
 
   const handleLogout = async () => {
-    try {
-      if (base44?.auth?.logout) await base44.auth.logout();
-    } catch {}
+    try { if (base44?.auth?.logout) await base44.auth.logout(); } catch {}
     window.localStorage.removeItem('scale_logged_user');
     window.location.href = '/login';
   };
@@ -118,7 +104,6 @@ export default function AppLayout({ children }) {
     const isCancelado = String(s.status || '').toLowerCase().includes('cancel') || String(s.notes || '').toLowerCase().includes('cancel');
     if (!isVago || isCancelado) return false;
     if (s.date && s.date < todayStr) return false;
-
     if (!isManager) {
       const targetCat = s.target_category || 'medico';
       if (targetCat !== userCategory) return false;
@@ -131,27 +116,21 @@ export default function AppLayout({ children }) {
   const handleMarkAsRead = (shiftId) => {
     const updated = [...readNotifIds, shiftId];
     setReadNotifIds(updated);
-    try {
-      window.localStorage.setItem('scale_read_notifs', JSON.stringify(updated));
-    } catch {}
-    setNotifOpen(false);
-    navigate('/trocas');
+    try { window.localStorage.setItem('scale_read_notifs', JSON.stringify(updated)); } catch {}
+    setNotifOpen(false); navigate('/trocas');
   };
 
   const handleMarkAllAsRead = () => {
     const allIds = rawMuralShifts.map(s => s.id);
     const merged = Array.from(new Set([...readNotifIds, ...allIds]));
     setReadNotifIds(merged);
-    try {
-      window.localStorage.setItem('scale_read_notifs', JSON.stringify(merged));
-    } catch {}
+    try { window.localStorage.setItem('scale_read_notifs', JSON.stringify(merged)); } catch {}
   };
 
   const dayName = WEEKDAYS_LONG[currentTime.getDay()];
   const formattedDate = currentTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const formattedTime = currentTime.toLocaleTimeString('pt-BR');
 
-  // ROTA DO PAINEL GERAL CORRIGIDA PARA /dashboard PARA FICAR AZUL QUANDO ATIVA
   const navItems = [
     { label: 'Painel Geral', path: '/dashboard', icon: LayoutDashboard, visible: true },
     { label: 'Escalas & Plantões', path: '/escalas', icon: CalendarDays, visible: true },
@@ -165,12 +144,11 @@ export default function AppLayout({ children }) {
   ].filter(item => item.visible);
 
   const roleBadgeLabel = {
-    gestor: 'Gestor Geral',
-    coordenador: 'Coordenador',
-    faturamento: 'Faturamento',
-    assistencial: 'Plantonista',
-    medico: 'Médico'
+    gestor: 'Gestor Geral', coordenador: 'Coordenador', faturamento: 'Faturamento', assistencial: 'Plantonista', medico: 'Médico'
   }[userAppRole] || 'Profissional';
+
+  // Obtém o nome da unidade para o menu lateral 
+  const currentHospitalName = units?.find(u => String(u.id) === String(selectedUnitId))?.name || company?.name || 'Hospital Principal';
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200">
@@ -185,7 +163,7 @@ export default function AppLayout({ children }) {
             <h1 className="text-base font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-1">
               ScaleMedic <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-600 dark:text-sky-400 font-mono">PRO</span>
             </h1>
-            <p className="text-[10px] text-slate-400 font-bold truncate">{company?.name || 'Hospital Principal'}</p>
+            <p className="text-[10px] text-slate-400 font-bold truncate">{currentHospitalName}</p>
           </div>
         </div>
 
@@ -196,10 +174,9 @@ export default function AppLayout({ children }) {
               <NavLink
                 key={item.path}
                 to={item.path}
-                end={item.path === '/dashboard'}
                 className={({ isActive }) =>
                   `flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all ${
-                    isActive 
+                    isActive || (item.path === '/dashboard' && location.pathname === '/')
                       ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-lg shadow-sky-600/30' 
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
                   }`
@@ -230,11 +207,7 @@ export default function AppLayout({ children }) {
                 {roleBadgeLabel}
               </span>
             </div>
-            <button 
-              onClick={handleLogout} 
-              title="Sair do sistema" 
-              className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-colors"
-            >
+            <button onClick={handleLogout} title="Sair do sistema" className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-colors">
               <LogOut className="w-4 h-4" />
             </button>
           </div>
@@ -249,9 +222,7 @@ export default function AppLayout({ children }) {
           
           <div className="flex items-center gap-3">
             <div className="md:hidden flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-sky-600 flex items-center justify-center text-white">
-                <Activity className="w-4 h-4" />
-              </div>
+              <div className="w-8 h-8 rounded-xl bg-sky-600 flex items-center justify-center text-white"><Activity className="w-4 h-4" /></div>
               <span className="font-black text-sm text-slate-900 dark:text-white">ScaleMedic</span>
             </div>
 
@@ -264,142 +235,71 @@ export default function AppLayout({ children }) {
                   <SelectValue placeholder="Unidade..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-                  {units.map(u => (
-                    <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold">
-                      {u.name}
-                    </SelectItem>
-                  ))}
+                  {units.map(u => <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold">{u.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            
-            {/* RELÓGIO AO VIVO */}
             <div className="hidden lg:flex items-center gap-2.5 px-3.5 py-1.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs shadow-inner">
-              <span className="text-slate-600 dark:text-slate-400 font-bold">
-                {dayName}, {formattedDate}
-              </span>
+              <span className="text-slate-600 dark:text-slate-400 font-bold">{dayName}, {formattedDate}</span>
               <span className="text-slate-300 dark:text-slate-700">•</span>
               <span className="font-mono font-black text-sky-600 dark:text-cyan-400 flex items-center gap-1.5 tracking-wider">
-                <Clock className="w-3.5 h-3.5 animate-pulse" />
-                {formattedTime}
+                <Clock className="w-3.5 h-3.5 animate-pulse" />{formattedTime}
               </span>
             </div>
 
-            {/* SINO DE NOTIFICAÇÕES INTELIGENTE */}
             <div className="relative">
-              <button
-                type="button"
-                onClick={() => setNotifOpen(!notifOpen)}
-                className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300 transition-all relative shadow-sm"
-                title="Notificações"
-              >
+              <button type="button" onClick={() => setNotifOpen(!notifOpen)} className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300 transition-all relative shadow-sm" title="Notificações">
                 <Bell className="w-4 h-4" />
-                {unreadMuralShifts.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-500 text-white font-mono font-black text-[10px] flex items-center justify-center animate-bounce shadow-lg shadow-rose-500/50">
-                    {unreadMuralShifts.length}
-                  </span>
-                )}
+                {unreadMuralShifts.length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-500 text-white font-mono font-black text-[10px] flex items-center justify-center animate-bounce shadow-lg shadow-rose-500/50">{unreadMuralShifts.length}</span>}
               </button>
 
               {notifOpen && (
                 <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2">
                   <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                    <div className="flex items-center gap-2">
-                      <Bell className="w-4 h-4 text-sky-600" />
-                      <span className="text-xs font-black uppercase text-slate-900 dark:text-white">Central de Vagas</span>
-                    </div>
-                    {unreadMuralShifts.length > 0 && (
-                      <button 
-                        onClick={handleMarkAllAsRead} 
-                        className="text-[10px] font-bold text-sky-600 hover:underline flex items-center gap-1"
-                      >
-                        <CheckCheck className="w-3 h-3" /> Limpar todas
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2"><Bell className="w-4 h-4 text-sky-600" /><span className="text-xs font-black uppercase text-slate-900 dark:text-white">Central de Vagas</span></div>
+                    {unreadMuralShifts.length > 0 && <button onClick={handleMarkAllAsRead} className="text-[10px] font-bold text-sky-600 hover:underline flex items-center gap-1"><CheckCheck className="w-3 h-3" /> Limpar todas</button>}
                   </div>
 
                   <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
                     {unreadMuralShifts.length === 0 ? (
-                      <div className="text-center py-6 space-y-1">
-                        <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto opacity-80" />
-                        <p className="text-xs font-bold text-slate-900 dark:text-white">Nenhuma notificação pendente</p>
-                        <p className="text-[11px] text-slate-500">Você já visualizou todas as vagas abertas.</p>
-                      </div>
+                      <div className="text-center py-6 space-y-1"><CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto opacity-80" /><p className="text-xs font-bold text-slate-900 dark:text-white">Nenhuma notificação pendente</p><p className="text-[11px] text-slate-500">Você já visualizou todas as vagas abertas.</p></div>
                     ) : (
                       unreadMuralShifts.map(shift => (
-                        <div 
-                          key={shift.id} 
-                          onClick={() => handleMarkAsRead(shift.id)}
-                          className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-amber-500 transition-all cursor-pointer space-y-1 group"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                              <Flame className="w-3 h-3" /> Vaga Disponível
-                            </span>
-                            <span className="text-[10px] font-mono text-slate-400">{shift.date}</span>
-                          </div>
-                          <p className="text-xs font-black text-slate-900 dark:text-white group-hover:text-sky-600 transition-colors">
-                            Plantão {shift.shift_type === 'diurno' ? '07h às 19h' : '19h às 07h'}
-                          </p>
+                        <div key={shift.id} onClick={() => handleMarkAsRead(shift.id)} className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-amber-500 transition-all cursor-pointer space-y-1 group">
+                          <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 flex items-center gap-1"><Flame className="w-3 h-3" /> Vaga Disponível</span><span className="text-[10px] font-mono text-slate-400">{shift.date}</span></div>
+                          <p className="text-xs font-black text-slate-900 dark:text-white group-hover:text-sky-600 transition-colors">Plantão {shift.shift_type === 'diurno' ? '07h às 19h' : '19h às 07h'}</p>
                           <span className="text-[10px] text-slate-500 block">Clique para assumir este plantão no Mural.</span>
                         </div>
                       ))
                     )}
                   </div>
 
-                  <Button 
-                    size="sm" 
-                    onClick={() => { setNotifOpen(false); navigate('/trocas'); }}
-                    className="w-full h-8 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl"
-                  >
+                  <Button size="sm" onClick={() => { setNotifOpen(false); navigate('/trocas'); }} className="w-full h-8 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl">
                     Ir para o Mural de Oportunidades <ChevronRight className="w-3.5 h-3.5 ml-1" />
                   </Button>
                 </div>
               )}
             </div>
 
-            {/* BOTÃO MODO CLARO / ESCURO */}
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-all shadow-sm"
-              title={theme === 'dark' ? 'Alternar para Modo Diurno (Claro)' : 'Alternar para Modo Noturno (Escuro)'}
-            >
+            <button type="button" onClick={toggleTheme} className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-all shadow-sm" title={theme === 'dark' ? 'Modo Diurno' : 'Modo Noturno'}>
               {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
             </button>
 
-            {/* BOTÃO MENU MOBILE */}
-            <button 
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
-              className="md:hidden p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl"
-            >
+            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl">
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </header>
 
-        {/* MENU MOBILE */}
         {mobileMenuOpen && (
           <div className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 space-y-2 z-50 shadow-2xl print:hidden">
             {navItems.map(item => (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-between p-2.5 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <div className="flex items-center gap-3">
-                  <item.icon className="w-4 h-4 text-sky-600" />
-                  <span>{item.label}</span>
-                </div>
-                {item.badge > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white">
-                    {item.badge}
-                  </span>
-                )}
+              <NavLink key={item.path} to={item.path} onClick={() => setMobileMenuOpen(false)} className="flex items-center justify-between p-2.5 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <div className="flex items-center gap-3"><item.icon className="w-4 h-4 text-sky-600" /><span>{item.label}</span></div>
+                {item.badge > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white">{item.badge}</span>}
               </NavLink>
             ))}
           </div>
