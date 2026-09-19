@@ -1,5 +1,5 @@
 import React, { Component, useState, useEffect } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAppData } from '@/lib/useAppData';
 import { base44 } from '@/api/base44Client';
 import { 
@@ -56,6 +56,7 @@ export default function AppLayout({ children }) {
   } = useAppData();
 
   const navigate = useNavigate();
+  const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [readNotifIds, setReadNotifIds] = useState(() => {
@@ -107,7 +108,23 @@ export default function AppLayout({ children }) {
       if (base44?.auth?.logout) await base44.auth.logout();
     } catch {}
     window.localStorage.removeItem('scale_logged_user');
+    window.localStorage.removeItem('escala_medica_session');
     window.location.href = '/login';
+  };
+
+  // GARANTE QUE A UNIDADE ESCOLHIDA NÃO MUDE AO TROCAR DE TELA
+  const handleUnitChange = async (newUnitId) => {
+    setSelectedUnitId(newUnitId);
+    try {
+      window.localStorage.setItem('scale_selected_unit', newUnitId);
+      if (user?.id) {
+        await base44.auth.updateMe({ data: { selected_unit_id: newUnitId } });
+      }
+    } catch (e) {
+      console.error('Erro ao salvar unidade padrão', e);
+    }
+    // Força recarregamento leve para aplicar o isolamento em toda a tela
+    window.location.reload();
   };
 
   const userCategory = currentProfessional?.category || (currentProfessional?.specialty?.toLowerCase().includes('enferm') ? 'enfermeiro' : 'medico');
@@ -118,6 +135,9 @@ export default function AppLayout({ children }) {
     const isCancelado = String(s.status || '').toLowerCase().includes('cancel') || String(s.notes || '').toLowerCase().includes('cancel');
     if (!isVago || isCancelado) return false;
     if (s.date && s.date < todayStr) return false;
+
+    // Isola as notificações do mural apenas para o hospital que está selecionado
+    if (String(s.unit_id) !== String(selectedUnitId)) return false;
 
     if (!isManager) {
       const targetCat = s.target_category || 'medico';
@@ -151,7 +171,6 @@ export default function AppLayout({ children }) {
   const formattedDate = currentTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const formattedTime = currentTime.toLocaleTimeString('pt-BR');
 
-  // ROTA DO PAINEL GERAL CORRIGIDA PARA /dashboard PARA FICAR AZUL QUANDO ATIVA
   const navItems = [
     { label: 'Painel Geral', path: '/dashboard', icon: LayoutDashboard, visible: true },
     { label: 'Escalas & Plantões', path: '/escalas', icon: CalendarDays, visible: true },
@@ -172,6 +191,8 @@ export default function AppLayout({ children }) {
     medico: 'Médico'
   }[userAppRole] || 'Profissional';
 
+  const currentHospitalName = units?.find(u => String(u.id) === String(selectedUnitId))?.name || company?.name || 'Hospital Principal';
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
@@ -185,7 +206,7 @@ export default function AppLayout({ children }) {
             <h1 className="text-base font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-1">
               ScaleMedic <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-600 dark:text-sky-400 font-mono">PRO</span>
             </h1>
-            <p className="text-[10px] text-slate-400 font-bold truncate">{company?.name || 'Hospital Principal'}</p>
+            <p className="text-[10px] text-slate-400 font-bold truncate">{currentHospitalName}</p>
           </div>
         </div>
 
@@ -196,10 +217,9 @@ export default function AppLayout({ children }) {
               <NavLink
                 key={item.path}
                 to={item.path}
-                end={item.path === '/dashboard'}
                 className={({ isActive }) =>
                   `flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all ${
-                    isActive 
+                    isActive || (item.path === '/dashboard' && location.pathname === '/')
                       ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-lg shadow-sky-600/30' 
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
                   }`
@@ -233,7 +253,7 @@ export default function AppLayout({ children }) {
             <button 
               onClick={handleLogout} 
               title="Sair do sistema" 
-              className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-colors"
+              className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -244,7 +264,7 @@ export default function AppLayout({ children }) {
       {/* ÁREA PRINCIPAL */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-100 dark:bg-slate-950 transition-colors">
         
-        {/* HEADER SUPERIOR */}
+        {/* HEADER SUPERIOR COM SELETOR DE UNIDADE BLINDADO */}
         <header className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4 shrink-0 shadow-sm z-30 print:hidden transition-colors">
           
           <div className="flex items-center gap-3">
@@ -259,9 +279,9 @@ export default function AppLayout({ children }) {
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
                 <Hospital className="w-3.5 h-3.5 text-sky-600 dark:text-sky-500" /> Unidade:
               </span>
-              <Select value={selectedUnitId} onValueChange={setSelectedUnitId}>
-                <SelectTrigger className="h-8 w-52 text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl">
-                  <SelectValue placeholder="Unidade..." />
+              <Select value={selectedUnitId} onValueChange={handleUnitChange}>
+                <SelectTrigger className="h-8 w-64 text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl">
+                  <SelectValue placeholder="Selecione o Hospital..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
                   {units.map(u => (
@@ -276,7 +296,6 @@ export default function AppLayout({ children }) {
 
           <div className="flex items-center gap-3">
             
-            {/* RELÓGIO AO VIVO */}
             <div className="hidden lg:flex items-center gap-2.5 px-3.5 py-1.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs shadow-inner">
               <span className="text-slate-600 dark:text-slate-400 font-bold">
                 {dayName}, {formattedDate}
@@ -288,12 +307,11 @@ export default function AppLayout({ children }) {
               </span>
             </div>
 
-            {/* SINO DE NOTIFICAÇÕES INTELIGENTE */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setNotifOpen(!notifOpen)}
-                className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300 transition-all relative shadow-sm"
+                className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300 transition-all relative shadow-sm cursor-pointer"
                 title="Notificações"
               >
                 <Bell className="w-4 h-4" />
@@ -314,7 +332,7 @@ export default function AppLayout({ children }) {
                     {unreadMuralShifts.length > 0 && (
                       <button 
                         onClick={handleMarkAllAsRead} 
-                        className="text-[10px] font-bold text-sky-600 hover:underline flex items-center gap-1"
+                        className="text-[10px] font-bold text-sky-600 hover:underline flex items-center gap-1 cursor-pointer"
                       >
                         <CheckCheck className="w-3 h-3" /> Limpar todas
                       </button>
@@ -353,7 +371,7 @@ export default function AppLayout({ children }) {
                   <Button 
                     size="sm" 
                     onClick={() => { setNotifOpen(false); navigate('/trocas'); }}
-                    className="w-full h-8 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl"
+                    className="w-full h-8 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl cursor-pointer"
                   >
                     Ir para o Mural de Oportunidades <ChevronRight className="w-3.5 h-3.5 ml-1" />
                   </Button>
@@ -361,29 +379,42 @@ export default function AppLayout({ children }) {
               )}
             </div>
 
-            {/* BOTÃO MODO CLARO / ESCURO */}
             <button
               type="button"
               onClick={toggleTheme}
-              className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-all shadow-sm"
+              className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-all shadow-sm cursor-pointer"
               title={theme === 'dark' ? 'Alternar para Modo Diurno (Claro)' : 'Alternar para Modo Noturno (Escuro)'}
             >
               {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
             </button>
 
-            {/* BOTÃO MENU MOBILE */}
             <button 
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
-              className="md:hidden p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl"
+              className="md:hidden p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl cursor-pointer"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </header>
 
-        {/* MENU MOBILE */}
         {mobileMenuOpen && (
           <div className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 space-y-2 z-50 shadow-2xl print:hidden">
+            <div className="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+              <Label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Hospital Atual</Label>
+              <Select value={selectedUnitId} onValueChange={handleUnitChange}>
+                <SelectTrigger className="h-10 w-full text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl">
+                  <SelectValue placeholder="Selecione o Hospital..." />
+                </SelectTrigger>
+                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                  {units.map(u => (
+                    <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold">
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
             {navItems.map(item => (
               <NavLink
                 key={item.path}
