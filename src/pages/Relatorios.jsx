@@ -420,7 +420,7 @@ export default function Relatorios() {
           <tr>
             <td colspan="7" class="header-main">
               <div class="h1">${hospitalName} - Relatório de Gestão Hospitalar</div>
-              <div class="h2">Período: ${periodLabel}</div>
+              <div class="h2">Período Filtrado: ${periodLabel}</div>
             </td>
           </tr>
           <tr><td colspan="7" style="border:none;"></td></tr>
@@ -436,7 +436,7 @@ export default function Relatorios() {
             <th>Horário</th>
             <th>Status Operacional</th>
             <th>Carga (h)</th>
-            <th>Custo Est. (R$)</th>
+            <th>Custo Estimado (R$)</th>
           </tr>
       `;
       filteredShifts.forEach((s, i) => {
@@ -1380,7 +1380,8 @@ export default function Relatorios() {
                       </tbody>
                     </table>
                   </div>
-                </Card>
+                </div>
+              </Card>
             )}
           </div>
         </>
