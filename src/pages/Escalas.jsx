@@ -13,7 +13,7 @@ import {
   Flame, ArrowRight, MonitorPlay, GripVertical, 
   Printer, Sun, Moon, AlertTriangle, CheckCircle2, Radio, Calendar as CalendarIcon,
   PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight, Minimize2, Target, ShieldAlert,
-  BellRing, Check, Layers, History, ArrowRightLeft
+  BellRing, Check, Layers, History
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -45,9 +45,9 @@ function getShiftInterval(startStr, endStr) {
   return { startMin, endMin };
 }
 
-// Verifica se uma vaga em aberto já passou do horário (Furo/Não Ocupado)
+// Verifica se o plantão já passou comparando a data+hora final com o momento atual
 function isShiftPast(shift, liveNowDate) {
-  if (!shift.date) return false;
+  if (!shift || !shift.date) return false;
   try {
     const dateStr = shift.date.split('T')[0];
     const endStr = shift.end_time || '23:59';
@@ -56,6 +56,11 @@ function isShiftPast(shift, liveNowDate) {
   } catch (e) {
     return false;
   }
+}
+
+function extractRetroactiveJustification(notes) {
+  const match = (notes || '').match(/\[AJUSTE_RETROATIVO:([^\]]+)\]/i);
+  return match ? match[1].trim() : '';
 }
 
 function normalize(value) {
@@ -77,7 +82,7 @@ function isVacant(shift) {
   return false;
 }
 
-// MOTOR RIGOROSO DE CICLO DE VIDA HOSPITALAR (CONSIDERA VIRADA NOTURNA E PASSAGEM DE PLANTÃO)
+// MOTOR RIGOROSO DE CICLO DE VIDA HOSPITALAR
 function computeShiftHospitalLifecycle(shift, liveNowDate) {
   if (!shift || !shift.date) {
     return { isLive: false, isConcluded: false, isProgrammed: true, isHandover: false, statusText: 'PROGRAMADO', detail: '' };
@@ -90,7 +95,6 @@ function computeShiftHospitalLifecycle(shift, liveNowDate) {
   const startExact = new Date(sYear, sMonth - 1, sDay, startH || 0, startM || 0, 0);
   let endExact = new Date(sYear, sMonth - 1, sDay, endH || 0, endM || 0, 0);
 
-  // Se o horário de término for menor ou igual ao de início, vira a noite para o dia seguinte
   if (endExact.getTime() <= startExact.getTime()) {
     endExact.setDate(endExact.getDate() + 1);
   }
@@ -99,7 +103,6 @@ function computeShiftHospitalLifecycle(shift, liveNowDate) {
   const startMs = startExact.getTime();
   const endMs = endExact.getTime();
 
-  // 1. REGRA ABSOLUTA: Só é CONCLUÍDO depois que o relógio ultrapassar o horário final exato!
   if (nowMs >= endMs) {
     return {
       isLive: false,
@@ -111,12 +114,9 @@ function computeShiftHospitalLifecycle(shift, liveNowDate) {
     };
   }
 
-  // 2. REGRA AO VIVO / EM ANDAMENTO
   if (nowMs >= startMs && nowMs < endMs) {
     const remainingMs = endMs - nowMs;
     const remainingMin = Math.max(1, Math.round(remainingMs / 60000));
-    
-    // Se estiver nos últimos 60 minutos do plantão, entra na janela de PASSAGEM DE PLANTÃO
     const isHandover = remainingMin <= 60;
 
     return {
@@ -130,7 +130,6 @@ function computeShiftHospitalLifecycle(shift, liveNowDate) {
     };
   }
 
-  // 3. PROGRAMADO (AINDA NÃO INICIOU)
   const toStartMin = Math.round((startMs - nowMs) / 60000);
   const isIncomingHandover = toStartMin <= 60 && toStartMin > 0;
 
@@ -188,7 +187,7 @@ export default function Escalas() {
   const { shifts = [], sectors = [], professionals = [], selectedUnitId, company, isManager, syncGlobalData } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
-  const [activeTab, setActiveTab] = useState('mensal'); // 'mensal' | 'dia' | 'tv'
+  const [activeTab, setActiveTab] = useState('mensal'); 
   const [filterTurno, setFilterTurno] = useState('todos'); 
   const [startDateFilter, setStartDateFilter] = useState('');
 
@@ -392,7 +391,7 @@ export default function Escalas() {
   const [formData, setFormData] = useState({
     date: getLocalDateString(), sector_id: '', target_specialty: 'Clínica Médica',
     start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar',
-    professional_id: '', notes: ''
+    professional_id: '', notes: '', retroactive_justification: ''
   });
 
   const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if(s) m[String(s.id)] = s; }); return m; }, [sectors]);
@@ -400,7 +399,7 @@ export default function Escalas() {
 
   const todayLocalStr = useMemo(() => getLocalDateString(liveNow), [liveNow]);
 
-  // INJEÇÃO DA LÓGICA DE ALERTAS CRÍTICOS (MESMO DO RELATÓRIO)
+  // INJEÇÃO DA LÓGICA DE ALERTAS CRÍTICOS (NÃO INCLUI FUROS PASSADOS AQUI)
   const vacantShiftAlerts = useMemo(() => {
     const alerts = [];
     (shifts || []).forEach(s => {
@@ -411,22 +410,17 @@ export default function Escalas() {
       const mStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
       
       // Checa vagas ativas apenas do mês que está sendo visto na tela
-      if (sMonth === mStr && isVacant(s)) {
+      // E garante que NÃO estão no passado (furo) para não poluir como "alerta imediato"
+      if (sMonth === mStr && isVacant(s) && !isShiftPast(s, liveNow)) {
         alerts.push(s);
       }
     });
 
-    // Ordena do mais urgente pro mais antigo/futuro
-    return alerts.sort((a, b) => {
-      const aPast = isShiftPast(a, liveNow) ? 1 : 0;
-      const bPast = isShiftPast(b, liveNow) ? 1 : 0;
-      if (aPast !== bPast) return bPast - aPast;
-      return (a.date || '').localeCompare(b.date || '');
-    });
+    return alerts.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }, [shifts, selectedSectorId, currentYear, currentMonth, liveNow]);
 
   // =========================================================================
-  // MOTOR COMPARTILHADO: MODO TV CCO E PLANTÃO DO DIA (100% SINCRONIZADOS)
+  // MOTOR COMPARTILHADO: MODO TV CCO E PLANTÃO DO DIA
   // =========================================================================
   const tvData = useMemo(() => {
     const emAndamento = [];
@@ -439,7 +433,6 @@ export default function Escalas() {
 
       const lifecycle = computeShiftHospitalLifecycle(shift, liveNow);
 
-      // Pertence à grade do dia se: é da data de hoje OU se iniciou ontem e ainda está em andamento nesta madrugada
       const sDate = (shift.date || '').split('T')[0];
       if (sDate === todayLocalStr || lifecycle.isLive) {
         tableDayShifts.push(shift);
@@ -448,26 +441,15 @@ export default function Escalas() {
       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
       if (shift.status === 'vago' || !prof) return;
 
-      // Se está ao vivo agora (inclusive virando a noite): entra nos plantões ativos
       if (lifecycle.isLive) {
-        emAndamento.push({
-          ...shift,
-          lifecycle,
-          detail: lifecycle.detail
-        });
+        emAndamento.push({ ...shift, lifecycle, detail: lifecycle.detail });
       }
 
-      // Rendição / Próxima Passagem: plantões que assumirão nos próximos 120 minutos
       if (lifecycle.isProgrammed && lifecycle.startsInMinutes > 0 && lifecycle.startsInMinutes <= 120) {
-        proximoRendimento.push({
-          shift,
-          lifecycle,
-          startsIn: lifecycle.startsInMinutes
-        });
+        proximoRendimento.push({ shift, lifecycle, startsIn: lifecycle.startsInMinutes });
       }
     });
 
-    // Ordenação: ativos no topo, seguidos pelos próximos turnos
     tableDayShifts.sort((a, b) => {
       const aLife = computeShiftHospitalLifecycle(a, liveNow);
       const bLife = computeShiftHospitalLifecycle(b, liveNow);
@@ -790,7 +772,7 @@ export default function Escalas() {
     return days;
   }, [currentYear, currentMonth, startDateFilter]);
 
-  // STATUS COM O MOTOR HOSPITALAR COMPLETO E IDENTIFICAÇÃO DE FURO (VAGA QUE JÁ PASSOU)
+  // STATUS COM O MOTOR HOSPITALAR COMPLETO (IDENTIFICAÇÃO DE FURO/FALTA)
   const getStatusBadge = (shift) => {
     const isVago = isVacant(shift);
     const life = computeShiftHospitalLifecycle(shift, liveNow);
@@ -802,7 +784,6 @@ export default function Escalas() {
       return { dot: 'bg-amber-500 animate-pulse', label: 'VAGA ABERTA', text: 'text-amber-600 dark:text-amber-400', wrapper: 'border-l-amber-500 bg-amber-50 dark:bg-amber-950/30', icon: <Flame className="w-3 h-3 text-amber-500 animate-pulse" /> };
     }
     
-    // Plantão ativo ou na passagem
     if (life.isLive) {
       return { 
         dot: 'bg-emerald-500 animate-ping', 
@@ -928,7 +909,13 @@ export default function Escalas() {
     e.preventDefault();
     if (!formData.sector_id || !formData.date) return;
 
+    const isPast = isShiftPast({ date: formData.date, end_time: formData.end_time }, liveNow);
     const isMural = formData.action_type === 'mural';
+
+    if (isPast && !isMural && (!formData.retroactive_justification || !formData.retroactive_justification.trim())) {
+      alert("Atenção: O plantão já foi encerrado. Você deve preencher a justificativa para o ajuste retroativo.");
+      return;
+    }
 
     if (!isMural && formData.professional_id) {
       const conflict = checkProfessionalConflict(
@@ -951,6 +938,14 @@ export default function Escalas() {
       const finalSpecialty = (formData.target_specialty || prof?.specialty || 'Clínica Médica').trim();
       const sType = formData.start_time >= '18:00' || formData.start_time < '06:00' ? 'noturno' : 'diurno';
 
+      // Preserva notas antigas sem sujar
+      let baseNotes = (formData.notes || '').replace(/\[ESP:[^\]]+\]/gi, '').replace(/\[AJUSTE_RETROATIVO:[^\]]+\]/gi, '').trim();
+      let newNotes = `[ESP:${finalSpecialty}] ${baseNotes}`;
+      
+      if (isPast && formData.action_type === 'alocar' && formData.retroactive_justification) {
+        newNotes += ` [AJUSTE_RETROATIVO:${formData.retroactive_justification.replace(/\[|\]/g, '')}]`;
+      }
+
       const payload = {
         company_id: company?.id || 'cmp_principal',
         unit_id: selectedUnitId || 'unit_h1',
@@ -962,8 +957,8 @@ export default function Escalas() {
         shift_type: sType,
         start_time: formData.start_time,
         end_time: formData.end_time,
-        status: isMural ? 'vago' : 'confirmado',
-        notes: `[ESP:${finalSpecialty}]`
+        status: isMural ? 'vago' : (isPast ? 'realizado' : 'confirmado'),
+        notes: newNotes.trim()
       };
 
       const saved = await autoHealingSaveShift(editingShiftId, payload);
@@ -986,6 +981,10 @@ export default function Escalas() {
     if (!confirm('Excluir plantão?')) return;
     try { await base44.entities.Shift.delete(shiftId); setModalOpen(false); await syncGlobalData(); } catch (err) { alert(err.message); }
   };
+
+  const isEditingPastShift = useMemo(() => {
+    return isShiftPast({ date: formData.date, end_time: formData.end_time }, liveNow);
+  }, [formData.date, formData.end_time, liveNow]);
 
   // =========================================================================
   // 1. MODO TV CCO EM TELA CHEIA ISOLADA (TOTALMENTE OPERACIONAL)
@@ -1161,7 +1160,7 @@ export default function Escalas() {
               return (
                 <div 
                   key={v.id} 
-                  onClick={() => { setEditingShiftId(v.id); setFormData({ date: v.date, sector_id: v.sector_id, target_specialty: v.target_specialty, start_time: v.start_time, end_time: v.end_time, shift_type: v.shift_type || 'diurno', action_type: 'alocar', professional_id: '', notes: v.notes || '' }); setModalOpen(true); }}
+                  onClick={() => { setEditingShiftId(v.id); setFormData({ date: v.date, sector_id: v.sector_id, target_specialty: v.target_specialty, start_time: v.start_time, end_time: v.end_time, shift_type: v.shift_type || 'diurno', action_type: 'alocar', professional_id: '', notes: v.notes || '', retroactive_justification: extractRetroactiveJustification(v.notes) }); setModalOpen(true); }}
                   className={`p-2 rounded-xl text-xs font-bold border cursor-pointer transition-all flex flex-col gap-1 shadow-sm hover:scale-[1.02] ${
                     isPast ? 'bg-rose-100 border-rose-400 text-rose-800 dark:bg-rose-950/80 dark:border-rose-500 dark:text-rose-300' : 'bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-950/60 dark:border-amber-500/60 dark:text-amber-300'
                   }`}
@@ -1374,7 +1373,7 @@ export default function Escalas() {
           </Button>
 
           {isManager && (
-            <Button onClick={() => { setEditingShiftId(null); setFormData({ date: getLocalDateString(), sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || ''), target_specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar', professional_id: '', notes: '' }); setModalOpen(true); }} className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-5 rounded-2xl gap-1.5 cursor-pointer">
+            <Button onClick={() => { setEditingShiftId(null); setFormData({ date: getLocalDateString(), sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || ''), target_specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar', professional_id: '', notes: '', retroactive_justification: '' }); setModalOpen(true); }} className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-5 rounded-2xl gap-1.5 cursor-pointer">
               <Plus className="w-4 h-4" /> Lançar Plantão
             </Button>
           )}
@@ -1460,7 +1459,7 @@ export default function Escalas() {
                   const realSpec = extractSpecialty(shift, prof);
 
                   return (
-                    <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date, sector_id: shift.sector_id, target_specialty: realSpec, start_time: shift.start_time, end_time: shift.end_time, shift_type: shift.shift_type || 'diurno', action_type: (shift.status === 'vago' || !prof) ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '' }); setModalOpen(true); } }} className={`p-1.5 rounded-xl border border-l-4 shadow-sm cursor-pointer transition-all hover:brightness-95 ${status.wrapper}`}>
+                    <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date, sector_id: shift.sector_id, target_specialty: realSpec, start_time: shift.start_time, end_time: shift.end_time, shift_type: shift.shift_type || 'diurno', action_type: (shift.status === 'vago' || !prof) ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '', retroactive_justification: extractRetroactiveJustification(shift.notes) }); setModalOpen(true); } }} className={`p-1.5 rounded-xl border border-l-4 shadow-sm cursor-pointer transition-all hover:brightness-95 ${status.wrapper}`}>
                       <div className="flex justify-between font-mono text-[9px] mb-0.5 opacity-80">
                         <span>{shift.start_time}-{shift.end_time}</span>
                         <span className={`font-black uppercase tracking-tight flex items-center gap-1 ${status.text}`}>{status.icon} {status.label}</span>
@@ -1797,10 +1796,25 @@ export default function Escalas() {
                       ▼
                     </div>
                   </div>
+                  
+                  {isMemoEditingPastShift && (
+                    <div className="space-y-1.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 col-span-1 sm:col-span-2 mt-3">
+                      <Label className="text-[10px] font-black uppercase text-amber-500">Justificativa de Ajuste Retroativo *</Label>
+                      <Input
+                        value={formData.retroactive_justification || ''}
+                        onChange={e => setFormData({ ...formData, retroactive_justification: e.target.value })}
+                        className="h-9 bg-slate-950 border-slate-700 text-white rounded-xl placeholder-slate-600"
+                        placeholder="Ex: Profissional cobriu a falta de última hora..."
+                      />
+                      <p className="text-[9px] text-amber-500/70 leading-tight">O plantão já foi encerrado. É obrigatório informar a justificativa para fins de auditoria em relatórios.</p>
+                    </div>
+                  )}
 
-                  <p className="text-[10px] text-slate-400 leading-tight pt-0.5">
-                    Profissionais em choque de horário aparecem desabilitados para prevenir duplicidade de escala.
-                  </p>
+                  {!isMemoEditingPastShift && (
+                    <p className="text-[10px] text-slate-400 leading-tight pt-0.5">
+                      Profissionais em choque de horário aparecem desabilitados para prevenir duplicidade de escala.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="text-[11px] text-rose-400 bg-rose-950/40 p-3 rounded-xl border border-rose-900/60 leading-tight">
@@ -1926,6 +1940,12 @@ export default function Escalas() {
           </form>
         </DialogContent>
       </Dialog>
+
     </div>
   );
+
+  // Helper Memo used locally to conditionally render the required Justification input
+  function useMemoEditingPastShift() {
+    return useMemo(() => isShiftPast({ date: formData.date, end_time: formData.end_time }, liveNow), [formData.date, formData.end_time, liveNow]);
+  }
 }
