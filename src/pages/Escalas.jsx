@@ -13,7 +13,7 @@ import {
   Flame, ArrowRight, MonitorPlay, GripVertical, 
   Printer, Sun, Moon, AlertTriangle, CheckCircle2, Radio, Calendar as CalendarIcon,
   PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight, Minimize2, Target, ShieldAlert,
-  BellRing, Check, Layers, History
+  BellRing, Check, Layers, History, ArrowRightLeft
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
