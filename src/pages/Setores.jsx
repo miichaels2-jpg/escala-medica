@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   Building2, Plus, Search, Edit, Trash2, 
   Activity, CheckCircle2, AlertTriangle, 
-  MapPin, Stethoscope, Save, X, Network
+  MapPin, Save, X
 } from 'lucide-react';
 
 export default function Setores() {
@@ -21,21 +21,11 @@ export default function Setores() {
   const [editingSector, setEditingSector] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Estado do Formulário (Sem capacidade de leitos)
+  // Estado do Formulário focado apenas no Setor
   const [formData, setFormData] = useState({
     name: '',
-    specialty: '',
     status: 'ativo'
   });
-
-  // Extrair especialidades únicas para o Datalist (Autocompletar)
-  const registeredSpecialties = useMemo(() => {
-    const set = new Set();
-    sectors.forEach(s => {
-      if (s.specialty && s.specialty.trim()) set.add(s.specialty.trim());
-    });
-    return Array.from(set).sort();
-  }, [sectors]);
 
   // Filtragem e Ordenação
   const filteredSectors = useMemo(() => {
@@ -44,8 +34,7 @@ export default function Setores() {
     return sectors.filter(s => {
       if (!term) return true;
       const name = (s.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const spec = (s.specialty || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      return name.includes(term) || spec.includes(term);
+      return name.includes(term);
     }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }, [sectors, searchQuery]);
 
@@ -59,8 +48,8 @@ export default function Setores() {
       else ativos++;
     });
 
-    return { total: sectors.length, ativos, inativos, especialidades: registeredSpecialties.length };
-  }, [sectors, registeredSpecialties]);
+    return { total: sectors.length, ativos, inativos };
+  }, [sectors]);
 
   // Ações do CRUD
   const handleOpenModal = (sector = null) => {
@@ -68,14 +57,12 @@ export default function Setores() {
       setEditingSector(sector);
       setFormData({
         name: sector.name || '',
-        specialty: sector.specialty || '',
         status: sector.status || 'ativo'
       });
     } else {
       setEditingSector(null);
       setFormData({
         name: '',
-        specialty: '',
         status: 'ativo'
       });
     }
@@ -95,7 +82,7 @@ export default function Setores() {
         company_id: company?.id || 'cmp_principal',
         unit_id: selectedUnitId || 'unit_h1',
         name: formData.name.trim(),
-        specialty: formData.specialty.trim() || 'Geral',
+        specialty: 'Geral', // Mantemos 'Geral' internamente no banco para retrocompatibilidade
         status: formData.status
       };
 
@@ -136,10 +123,10 @@ export default function Setores() {
             <Activity className="w-4 h-4 text-sky-600 dark:text-cyan-400 animate-pulse" /> Estrutura Organizacional
           </div>
           <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
-            Gestão de Setores & Especialidades
+            Cadastro de Setor
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium max-w-2xl">
-            Cadastre as unidades de atendimento, alas hospitalares e parametrize as especialidades clínicas exigidas para cada posto.
+            Cadastre as unidades de atendimento e alas hospitalares para organização das escalas.
           </p>
         </div>
 
@@ -154,7 +141,7 @@ export default function Setores() {
       </div>
 
       {/* MÉTRICAS (CARDS) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in zoom-in-95 duration-300">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-in fade-in zoom-in-95 duration-300">
         <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg transition-colors">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 rounded-xl bg-sky-100 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400">
@@ -184,24 +171,13 @@ export default function Setores() {
           </div>
           <p className="text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{metrics.inativos}</p>
         </Card>
-
-        <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg transition-colors">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400">
-              <Network className="w-5 h-5" />
-            </div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Especialidades Exigidas</p>
-          </div>
-          <p className="text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{metrics.especialidades}</p>
-          <p className="text-[10px] text-slate-400 mt-1 font-bold">Mapeadas no hospital</p>
-        </Card>
       </div>
 
       {/* BARRA DE PESQUISA */}
       <div className="relative animate-in fade-in duration-500">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
         <Input 
-          placeholder="Buscar setor ou especialidade..." 
+          placeholder="Buscar setor pelo nome..." 
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full h-14 pl-12 bg-white dark:bg-[#1e293b] border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl shadow-sm focus:border-sky-500 dark:focus:border-cyan-500 transition-colors font-medium"
@@ -245,13 +221,6 @@ export default function Setores() {
                           {sector.status || 'Ativo'}
                         </span>
                       </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 mt-5">
-                    <div className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-900/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800/50">
-                      <Stethoscope className="w-4 h-4 text-sky-500 dark:text-cyan-500 shrink-0" />
-                      <span className="truncate"><b>Especialidade:</b> {sector.specialty || 'Não definida'}</span>
                     </div>
                   </div>
                 </div>
@@ -301,20 +270,6 @@ export default function Setores() {
               />
             </div>
             
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Especialidade Principal Exigida</Label>
-              <Input 
-                placeholder="Ex: Intensivista, Cirurgião Geral..." 
-                value={formData.specialty} 
-                onChange={e => setFormData({ ...formData, specialty: e.target.value })} 
-                className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-medium" 
-                list="specialty-options" 
-              />
-              <datalist id="specialty-options">
-                {registeredSpecialties.map(spec => <option key={spec} value={spec} />)}
-              </datalist>
-            </div>
-
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Status</Label>
               <Select value={formData.status} onValueChange={v => setFormData({ ...formData, status: v })}>

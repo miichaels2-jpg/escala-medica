@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -8,12 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
   CalendarDays, Plus, Search, ChevronLeft, ChevronRight, 
-  Clock, Building2, Trash2, X, Sparkles, CheckCheck, Send, 
-  MousePointerClick, HeartPulse, UserPlus, SlidersHorizontal,
-  Flame, ArrowRight, MonitorPlay, GripVertical, 
-  Printer, Sun, Moon, AlertTriangle, CheckCircle2, Radio, Calendar as CalendarIcon,
-  PanelLeftClose, PanelLeftOpen, Filter, ArrowLeftRight, ArrowRightLeft, Minimize2, Target, ShieldAlert,
-  BellRing, Check, Layers, History
+  Clock, Building2, Trash2, X, CheckCheck, Send, 
+  HeartPulse, SlidersHorizontal, Flame, ArrowRight, MonitorPlay, 
+  GripVertical, Printer, Sun, Moon, AlertTriangle, CheckCircle2, 
+  Radio, Calendar as CalendarIcon, PanelLeftClose, PanelLeftOpen, 
+  Filter, ArrowLeftRight, Minimize2, Target, ShieldAlert,
+  BellRing, Check, History
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -45,9 +45,8 @@ function getShiftInterval(startStr, endStr) {
   return { startMin, endMin };
 }
 
-// Verifica se o plantão já passou comparando a data+hora final com o momento atual
 function isShiftPast(shift, liveNowDate) {
-  if (!shift || !shift.date) return false;
+  if (!shift.date) return false;
   try {
     const dateStr = shift.date.split('T')[0];
     const endStr = shift.end_time || '23:59';
@@ -56,11 +55,6 @@ function isShiftPast(shift, liveNowDate) {
   } catch (e) {
     return false;
   }
-}
-
-function extractRetroactiveJustification(notes) {
-  const match = (notes || '').match(/\[AJUSTE_RETROATIVO:([^\]]+)\]/i);
-  return match ? match[1].trim() : '';
 }
 
 function normalize(value) {
@@ -82,7 +76,6 @@ function isVacant(shift) {
   return false;
 }
 
-// MOTOR RIGOROSO DE CICLO DE VIDA HOSPITALAR
 function computeShiftHospitalLifecycle(shift, liveNowDate) {
   if (!shift || !shift.date) {
     return { isLive: false, isConcluded: false, isProgrammed: true, isHandover: false, statusText: 'PROGRAMADO', detail: '' };
@@ -181,6 +174,11 @@ function extractSpecialty(shift, prof) {
   }
   try { const cached = window.localStorage.getItem(`shift_spec_${shift?.id}`); if (cached) return cached; } catch {}
   return prof?.specialty || shift?.target_specialty || 'Clínica Médica';
+}
+
+function extractRetroactiveJustification(notes) {
+  const match = (notes || '').match(/\[AJUSTE_RETROATIVO:([^\]]+)\]/i);
+  return match ? match[1].trim() : '';
 }
 
 export default function Escalas() {
@@ -409,8 +407,6 @@ export default function Escalas() {
       const sMonth = String(s.date || '').slice(0, 7);
       const mStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
       
-      // Checa vagas ativas apenas do mês que está sendo visto na tela
-      // E garante que NÃO estão no passado (furo) para não poluir como "alerta imediato"
       if (sMonth === mStr && isVacant(s) && !isShiftPast(s, liveNow)) {
         alerts.push(s);
       }
@@ -420,11 +416,11 @@ export default function Escalas() {
   }, [shifts, selectedSectorId, currentYear, currentMonth, liveNow]);
 
   // =========================================================================
-  // MOTOR COMPARTILHADO: MODO TV CCO E PLANTÃO DO DIA
+  // MOTOR MODO TV CCO ATUALIZADO (TODOS DO DIA)
   // =========================================================================
   const tvData = useMemo(() => {
     const emAndamento = [];
-    const proximoRendimento = [];
+    const programadosHoje = [];
     const tableDayShifts = [];
 
     (shifts || []).forEach(shift => {
@@ -432,8 +428,8 @@ export default function Escalas() {
       if (selectedSectorId !== 'todos' && String(shift.sector_id) !== String(selectedSectorId)) return;
 
       const lifecycle = computeShiftHospitalLifecycle(shift, liveNow);
-
       const sDate = (shift.date || '').split('T')[0];
+
       if (sDate === todayLocalStr || lifecycle.isLive) {
         tableDayShifts.push(shift);
       }
@@ -441,12 +437,14 @@ export default function Escalas() {
       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
       if (shift.status === 'vago' || !prof) return;
 
+      // Todos os ativos neste exato momento (1 ou 10, entram todos aqui)
       if (lifecycle.isLive) {
         emAndamento.push({ ...shift, lifecycle, detail: lifecycle.detail });
       }
 
-      if (lifecycle.isProgrammed && lifecycle.startsInMinutes > 0 && lifecycle.startsInMinutes <= 120) {
-        proximoRendimento.push({ shift, lifecycle, startsIn: lifecycle.startsInMinutes });
+      // Toda a grade de plantões programados para o dia de hoje (Removemos a trava de 2 horas)
+      if (lifecycle.isProgrammed && sDate === todayLocalStr) {
+        programadosHoje.push({ shift, lifecycle, startsIn: lifecycle.startsInMinutes });
       }
     });
 
@@ -458,7 +456,10 @@ export default function Escalas() {
       return (a.start_time || '07:00').localeCompare(b.start_time || '07:00');
     });
 
-    return { emAndamento, proximoRendimento, tableDayShifts };
+    // Ordenar Programados do mais cedo para o mais tarde
+    programadosHoje.sort((a, b) => (a.shift.start_time || '07:00').localeCompare(b.shift.start_time || '07:00'));
+
+    return { emAndamento, programadosHoje, tableDayShifts };
   }, [shifts, selectedSectorId, liveNow, todayLocalStr, professionalMap]);
 
   // IMPRESSÃO A4 PAISAGEM LIMPA DO PLANTÃO DO DIA
@@ -987,7 +988,7 @@ export default function Escalas() {
   };
 
   // =========================================================================
-  // 1. MODO TV CCO EM TELA CHEIA ISOLADA (TOTALMENTE OPERACIONAL)
+  // 1. MODO TV CCO EM TELA CHEIA ISOLADA
   // =========================================================================
   if (activeTab === 'tv') {
     return (
@@ -1036,7 +1037,7 @@ export default function Escalas() {
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
                 <span className="text-sm font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" /> Plantões em Atendimento no Posto ({tvData.emAndamento.length})
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" /> Profissionais no Posto Agora ({tvData.emAndamento.length})
                 </span>
                 <span className="text-xs font-mono font-bold text-slate-400">AO VIVO</span>
               </div>
@@ -1045,13 +1046,13 @@ export default function Escalas() {
                 {tvData.emAndamento.length === 0 ? (
                   <div className="py-24 text-center text-xs text-slate-500">Nenhum profissional em atendimento neste exato momento.</div>
                 ) : (
-                  tvData.emAndamento.map(shift => {
+                  tvData.emAndamento.map((shift, idx) => {
                     const prof = professionalMap[String(shift.professional_id)];
                     const sector = sectorMap[String(shift.sector_id)];
                     const realSpecialty = extractSpecialty(shift, prof);
 
                     return (
-                      <div key={shift.id} className="p-4 bg-slate-950 border border-emerald-500/40 rounded-2xl shadow-lg flex items-center justify-between">
+                      <div key={shift.id || `em-${idx}`} className="p-4 bg-slate-950 border border-emerald-500/40 rounded-2xl shadow-lg flex items-center justify-between">
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-black text-emerald-400 uppercase">{sector?.name}</span>
@@ -1075,33 +1076,33 @@ export default function Escalas() {
             </div>
           </div>
 
-          {/* PRÓXIMAS RENDIÇÕES E TROCAS */}
+          {/* PLANTÕES PROGRAMADOS (RESTANTE DO DIA INTEIRO) */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
                 <span className="text-sm font-black uppercase text-sky-400 tracking-wider flex items-center gap-2">
-                  <ArrowRightLeft className="w-4 h-4" /> Próxima Rendição & Passagem (Próximas 2 Horas)
+                  <CalendarIcon className="w-4 h-4" /> Plantões Programados (Hoje)
                 </span>
-                <span className="text-xs font-mono font-bold text-slate-400">{tvData.proximoRendimento.length} programado(s)</span>
+                <span className="text-xs font-mono font-bold text-slate-400">{tvData.programadosHoje.length} programado(s)</span>
               </div>
 
               <div className="flex-1 space-y-3 overflow-y-auto pr-1">
-                {tvData.proximoRendimento.length === 0 ? (
-                  <div className="py-24 text-center text-xs text-slate-500">Nenhuma troca de turno programada para as próximas 2 horas.</div>
+                {tvData.programadosHoje.length === 0 ? (
+                  <div className="py-24 text-center text-xs text-slate-500">Nenhum plantão futuro programado para a data de hoje.</div>
                 ) : (
-                  tvData.proximoRendimento.map(({ shift, startsIn }) => {
+                  tvData.programadosHoje.map(({ shift, lifecycle }, idx) => {
                     const prof = professionalMap[String(shift.professional_id)];
                     const sector = sectorMap[String(shift.sector_id)];
 
                     return (
-                      <div key={shift.id} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between">
+                      <div key={shift.id || `prog-${idx}`} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between">
                         <div>
                           <span className="text-xs font-black text-slate-400 uppercase">{sector?.name}</span>
                           <div className="text-base font-black text-white">{formatFullName(prof?.name)}</div>
                           <span className="text-xs text-sky-400 font-mono">{shift.start_time} às {shift.end_time}</span>
                         </div>
                         <span className="text-xs font-black uppercase bg-sky-500/20 text-sky-300 px-3 py-1.5 rounded-xl font-mono">
-                          Assume em {startsIn}m
+                          {lifecycle.detail}
                         </span>
                       </div>
                     );
