@@ -22,6 +22,7 @@ import Configuracoes from '@/pages/Configuracoes';
 import MinhaEscala from '@/pages/MinhaEscala';
 import Trocas from '@/pages/Trocas';
 import MobilePreview from '@/pages/MobilePreview';
+import AutoLogout from '@/components/AutoLogout'; // <-- IMPORT DO VIGIA AQUI
 
 const AuthenticatedApp = () => {
   const { isAuthenticated, isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
@@ -39,39 +40,48 @@ const AuthenticatedApp = () => {
   }
 
   return (
-    <Routes>
-      {/* Se já estiver logado e tentar abrir a raiz, vai pro dashboard. Se não, abre o Login/Home */}
-      <Route 
-        path="/" 
-        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
-      />
+    <>
+      {/* 
+        MOTOR DE SEGURANÇA E LGPD:
+        Se o usuário ficar logado e sem mexer o mouse ou teclado por 60 minutos,
+        ele é desconectado automaticamente para proteger os dados.
+      */}
+      {isAuthenticated && <AutoLogout timeoutMinutes={60} />}
 
-      {/* Rotas Públicas */}
-      <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
-      <Route path="/mobile-preview" element={<MobilePreview />} />
+      <Routes>
+        {/* Se já estiver logado e tentar abrir a raiz, vai pro dashboard. Se não, abre o Login/Home */}
+        <Route 
+          path="/" 
+          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
+        />
 
-      {/* Rotas Protegidas (se deslogado, vai para /) */}
-      <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/" replace />} />}>
-        <Route element={<AppLayout />}>
-          {/* Suporta tanto /dashboard quanto / para não quebrar cliques no menu */}
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/escalas" element={<Escalas />} />
-          <Route path="/corpo-clinico" element={<CorpoClinico />} />
-          <Route path="/setores" element={<Setores />} />
-          <Route path="/relatorios" element={<Relatorios />} />
-          <Route path="/faturamento" element={<Faturamento />} />
-          <Route path="/minha-escala" element={<MinhaEscala />} />
-          <Route path="/trocas" element={<Trocas />} />
-          <Route path="/configuracoes" element={<Configuracoes />} />
+        {/* Rotas Públicas */}
+        <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/mobile-preview" element={<MobilePreview />} />
+
+        {/* Rotas Protegidas (se deslogado, vai para /) */}
+        <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/" replace />} />}>
+          <Route element={<AppLayout />}>
+            {/* Suporta tanto /dashboard quanto / para não quebrar cliques no menu */}
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/escalas" element={<Escalas />} />
+            <Route path="/corpo-clinico" element={<CorpoClinico />} />
+            <Route path="/setores" element={<Setores />} />
+            <Route path="/relatorios" element={<Relatorios />} />
+            <Route path="/faturamento" element={<Faturamento />} />
+            <Route path="/minha-escala" element={<MinhaEscala />} />
+            <Route path="/trocas" element={<Trocas />} />
+            <Route path="/configuracoes" element={<Configuracoes />} />
+          </Route>
         </Route>
-      </Route>
 
-      {/* Rota 404 */}
-      <Route path="*" element={<PageNotFound />} />
-    </Routes>
+        {/* Rota 404 */}
+        <Route path="*" element={<PageNotFound />} />
+      </Routes>
+    </>
   );
 };
 
