@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
 import { Bell, CheckCheck } from 'lucide-react';
 
 export default function NotificationBell() {
@@ -10,28 +10,51 @@ export default function NotificationBell() {
 
   const load = async (pid) => {
     try {
-      const notifs = await base44.entities.Notification.filter({ professional_id: pid }, '-created_date', 50);
-      setNotifications(notifs);
-    } catch (e) {}
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('professional_id', pid)
+        .order('created_date', { ascending: false })
+        .limit(50);
+
+      if (!error && data) {
+        setNotifications(data);
+      }
+    } catch (e) {
+      console.error('Erro ao carregar notificações:', e);
+    }
   };
 
   useEffect(() => {
     (async () => {
       try {
-        const user = await base44.auth.me();
-        if (!user) { setLoaded(true); return; }
-        const profs = await base44.entities.Professional.filter({}, '-created_date', 500);
-        const me = profs.find((p) => p.user_id === user.id || (p.email && p.email === user.email));
-        if (me) {
-          setProfId(me.id);
-          await load(me.id);
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError || !user) {
+          setLoaded(true);
+          return;
         }
-      } catch (e) {}
+
+        // Busca o professional associado ao usuário logado
+        const { data: profs, error: profError } = await supabase
+          .from('professionals')
+          .select('*')
+          .limit(500);
+
+        if (!profError && profs) {
+          const me = profs.find((p) => p.user_id === user.id || (p.email && p.email === user.email));
+          if (me) {
+            setProfId(me.id);
+            await load(me.id);
+          }
+        }
+      } catch (e) {
+        console.error('Erro na inicialização de notificações:', e);
+      }
       setLoaded(true);
     })();
   }, []);
 
-  // realtime: refresh when dropdown opens
+  // Atualiza as notificações quando o dropdown é aberto
   useEffect(() => {
     if (open && profId) load(profId);
   }, [open, profId]);
@@ -39,9 +62,16 @@ export default function NotificationBell() {
   const unread = notifications.filter((n) => !n.read);
 
   const markAllRead = async () => {
-    const updates = unread.map((n) => ({ id: n.id, read: true }));
-    if (updates.length) {
-      try { await base44.entities.Notification.bulkUpdate(updates); } catch (e) {}
+    const unreadIds = unread.map((n) => n.id);
+    if (unreadIds.length > 0) {
+      try {
+        await supabase
+          .from('notifications')
+          .update({ read: true })
+          .in('id', unreadIds);
+      } catch (e) {
+        console.error('Erro ao marcar notificações como lidas:', e);
+      }
     }
     setNotifications((list) => list.map((n) => ({ ...n, read: true })));
   };
@@ -52,7 +82,7 @@ export default function NotificationBell() {
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="relative p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        className="relative p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
         aria-label="Alertas"
       >
         <Bell className="w-5 h-5 text-slate-600 dark:text-slate-200" />
@@ -69,7 +99,7 @@ export default function NotificationBell() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex-shrink-0">
               <span className="font-semibold text-sm text-slate-800 dark:text-slate-100">Meus Alertas</span>
               {unread.length > 0 && (
-                <button onClick={markAllRead} className="text-xs text-sky-600 hover:underline flex items-center gap-1 dark:text-sky-400">
+                <button onClick={markAllRead} className="text-xs text-sky-600 hover:underline flex items-center gap-1 dark:text-sky-400 cursor-pointer">
                   <CheckCheck className="w-3.5 h-3.5" /> Marcar como lidas
                 </button>
               )}
