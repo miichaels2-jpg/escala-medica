@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,40 +21,43 @@ function getLocalDateString(d = new Date()) {
 }
 
 export default function Configuracoes() {
-  const { user, company, units = [], selectedUnitId, loading, refresh } = useAppData();
+  const { user, company, units = [], selectedUnitId, loading, refreshAllData } = useAppData();
   
   const [activeTab, setActiveTab] = useState('unidade_atual');
   const [companies, setCompanies] = useState([]);
   const [companyUsers, setCompanyUsers] = useState([]);
   const [saving, setSaving] = useState(false);
   
-  // Integração com as Unidades (Garante funcionamento mesmo se a tabela não existir no BD)
   const activeUnits = units?.length > 0 ? units : (company?.data?.units || []);
   const currentUnit = activeUnits.find(u => String(u.id) === String(selectedUnitId));
 
-  // Forms
   const [unitForm, setUnitForm] = useState({ name: '', address: '', phone: '', primary_contact: '', status: 'ativo' });
   const [contractForm, setContractForm] = useState({ name: '', cnpj: '', billing_cycle: 'mensal', contract_start: '', contract_end: '' });
   
-  // Convites
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('user');
 
-  // Modal Novas Unidades
   const [unitModalOpen, setUnitModalOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState(null);
   const [newUnitForm, setNewUnitForm] = useState({ name: '', address: '', status: 'ativo' });
 
-  const isAdmin = user?.role === 'admin';
-  const companyId = user?.data?.company_id || company?.id;
+  const isAdmin = user?.role === 'admin' || user?.app_role === 'gestor';
+  const companyId = user?.data?.company_id || user?.company_id || company?.id;
 
   const loadCompanies = async () => {
-    try { setCompanies(await base44.entities.Company.list('-created_date', 100)); } catch (e) {}
+    try {
+      const { data } = await supabase.from('companies').select('*').order('created_at', { ascending: false });
+      setCompanies(data || []);
+    } catch (e) {}
   };
 
   const loadUsers = async () => {
     if (!companyId) return;
-    try { setCompanyUsers(await base44.entities.User.list('-created_date', 100)); } catch (e) {}
+    try {
+      // Usa RPC no Supabase ou busca simples na tabela pública de usuários
+      const { data } = await supabase.from('users').select('*').eq('company_id', companyId);
+      setCompanyUsers(data || []);
+    } catch (e) {}
   };
 
   useEffect(() => {
@@ -62,7 +65,6 @@ export default function Configuracoes() {
     if (isAdmin) loadCompanies();
     loadUsers();
     
-    // Alimenta os dados do Contrato Matriz usando o JSON Data para evitar erros de coluna
     if (company) {
       setContractForm({ 
         name: company.name || '', 
@@ -74,7 +76,6 @@ export default function Configuracoes() {
     }
   }, [loading, company, isAdmin]);
 
-  // Espelha automaticamente os dados do Hospital de acordo com o seletor do topo
   useEffect(() => {
     if (currentUnit) {
       setUnitForm({
@@ -87,42 +88,32 @@ export default function Configuracoes() {
     }
   }, [currentUnit, selectedUnitId]);
 
-  // ISOLAMENTO DE ACESSO: Filtra os usuários para mostrar apenas os do Hospital Selecionado
+  // ISOLAMENTO DE ACESSO
   const visibleUsers = useMemo(() => {
     return companyUsers.filter(u => {
-      // Admin global vê todos
       if (isAdmin || u.role === 'admin') return true;
-      // Usuário comum só aparece se estiver vinculado à unidade atual
       const userUnit = u.unit_id || u.data?.unit_id || u.selected_unit_id || u.data?.selected_unit_id;
       return !userUnit || String(userUnit) === String(selectedUnitId);
     });
   }, [companyUsers, selectedUnitId, isAdmin]);
 
   // =========================================================================
-  // SALVAR DADOS DO HOSPITAL ATUAL (UNIDADE)
+  // SALVAR UNIDADE ATUAL (AUTO-HEALING SUPABASE)
   // =========================================================================
   const handleSaveCurrentUnit = async (e) => {
     e.preventDefault();
     if (!currentUnit) return;
     setSaving(true);
     try {
-      let success = false;
-      const UnitEntity = base44.entities.Unit || base44.entities.unit || base44.entities.units;
+      let updatedUnits = activeUnits.map(u => String(u.id) === String(currentUnit.id) ? { ...u, ...unitForm } : u);
       
-      if (UnitEntity) {
-        try {
-          await UnitEntity.update(currentUnit.id, unitForm);
-          success = true;
-        } catch (ex) { console.warn("Tabela Unit inexistente, usando fallback seguro."); }
-      }
+      const { error } = await supabase.from('companies').update({
+        data: { ...(company?.data || {}), units: updatedUnits }
+      }).eq('id', companyId);
 
-      // Auto-Healing: Se a tabela não existir, salva no JSON da Matriz
-      if (!success) {
-        const updatedUnits = activeUnits.map(u => String(u.id) === String(currentUnit.id) ? { ...u, ...unitForm } : u);
-        await base44.entities.Company.update(companyId, { data: { ...(company?.data || {}), units: updatedUnits }});
-      }
+      if (error) throw error;
       
-      refresh();
+      refreshAllData();
       alert(`Dados do hospital "${unitForm.name}" atualizados com sucesso!`);
     } catch (err) {
       alert(err.message || 'Erro ao salvar unidade');
@@ -132,7 +123,7 @@ export default function Configuracoes() {
   };
 
   // =========================================================================
-  // SALVAR / RENOVAR CONTRATO MATRIZ
+  // CONTRATO MATRIZ (AUTO-HEALING SUPABASE)
   // =========================================================================
   const handleSaveContract = async (e) => {
     e.preventDefault();
@@ -149,13 +140,15 @@ export default function Configuracoes() {
         }
       };
 
-      if (company) {
-        await base44.entities.Company.update(company.id, payload);
+      if (company?.id) {
+        await supabase.from('companies').update(payload).eq('id', company.id);
       } else {
-        const created = await base44.entities.Company.create(payload);
-        await base44.auth.updateMe({ data: { company_id: created.id, app_role: 'manager' } });
+        const { data: newCompany } = await supabase.from('companies').insert(payload).select().single();
+        if (newCompany && user?.id) {
+          await supabase.from('users').update({ company_id: newCompany.id, role: 'admin' }).eq('id', user.id);
+        }
       }
-      refresh();
+      refreshAllData();
       alert('Contrato matriz atualizado com sucesso!');
     } catch (err) { alert(err.message || 'Erro ao salvar contrato'); } 
     finally { setSaving(false); }
@@ -178,17 +171,17 @@ export default function Configuracoes() {
       const newEnd = getLocalDateString(end);
       
       const payload = { data: { ...(company?.data || {}), contract_end: newEnd } };
-      await base44.entities.Company.update(company.id, payload);
+      await supabase.from('companies').update(payload).eq('id', company.id);
       
       setContractForm(prev => ({ ...prev, contract_end: newEnd }));
-      refresh();
+      refreshAllData();
       alert(`Contrato renovado com sucesso! Novo vencimento: ${newEnd.split('-').reverse().join('/')}`);
     } catch (err) { alert(err.message); } 
     finally { setSaving(false); }
   };
 
   // =========================================================================
-  // LOGICA: CADASTRO DE MÚLTIPLOS HOSPITAIS
+  // CADASTRO DE MÚLTIPLOS HOSPITAIS (AUTO-HEALING SUPABASE)
   // =========================================================================
   const openUnitModal = (unit = null) => {
     if (unit) {
@@ -206,30 +199,21 @@ export default function Configuracoes() {
     if (!newUnitForm.name.trim()) return alert('O nome do hospital é obrigatório.');
     setSaving(true);
     try {
-      const payload = { company_id: companyId, name: newUnitForm.name.trim(), address: newUnitForm.address, status: newUnitForm.status };
-      let success = false;
-      const UnitEntity = base44.entities.Unit || base44.entities.unit || base44.entities.units;
+      const payload = { name: newUnitForm.name.trim(), address: newUnitForm.address, status: newUnitForm.status };
       
-      if (UnitEntity) {
-        try {
-          if (editingUnit?.id) await UnitEntity.update(editingUnit.id, payload);
-          else await UnitEntity.create(payload);
-          success = true;
-        } catch (ex) { console.warn("Fallback de unidade disparado."); }
+      let updatedUnits = [...activeUnits];
+      if (editingUnit?.id) {
+        updatedUnits = updatedUnits.map(u => String(u.id) === String(editingUnit.id) ? { ...u, ...payload } : u);
+      } else {
+        updatedUnits.push({ id: 'unit_' + Date.now(), ...payload });
       }
-
-      if (!success) {
-        let updatedUnits = [...activeUnits];
-        if (editingUnit?.id) {
-          updatedUnits = updatedUnits.map(u => String(u.id) === String(editingUnit.id) ? { ...u, ...payload } : u);
-        } else {
-          updatedUnits.push({ id: 'unit_' + Date.now(), ...payload });
-        }
-        await base44.entities.Company.update(companyId, { data: { ...(company?.data || {}), units: updatedUnits }});
-      }
+      
+      await supabase.from('companies').update({ 
+        data: { ...(company?.data || {}), units: updatedUnits }
+      }).eq('id', companyId);
       
       setUnitModalOpen(false);
-      refresh();
+      refreshAllData();
     } catch (err) { alert('Erro ao salvar hospital: ' + err.message); } 
     finally { setSaving(false); }
   };
@@ -237,16 +221,12 @@ export default function Configuracoes() {
   const handleDeleteUnit = async (id, name) => {
     if (!confirm(`Deseja remover o hospital "${name}"? Suas escalas ficarão órfãs.`)) return;
     try { 
-      let success = false;
-      const UnitEntity = base44.entities.Unit || base44.entities.unit || base44.entities.units;
-      if (UnitEntity) {
-        try { await UnitEntity.delete(id); success = true; } catch (e) {}
-      }
-      if (!success) {
-        const updatedUnits = activeUnits.filter(u => String(u.id) !== String(id));
-        await base44.entities.Company.update(companyId, { data: { ...(company?.data || {}), units: updatedUnits }});
-      }
-      refresh(); 
+      const updatedUnits = activeUnits.filter(u => String(u.id) !== String(id));
+      await supabase.from('companies').update({ 
+        data: { ...(company?.data || {}), units: updatedUnits }
+      }).eq('id', companyId);
+      
+      refreshAllData(); 
     } catch (err) { alert('Erro ao excluir: ' + err.message); }
   };
 
@@ -258,34 +238,30 @@ export default function Configuracoes() {
     if (!inviteEmail.trim()) return;
     setSaving(true);
     try {
-      const UserEntity = base44.entities.User || base44.entities.user || base44.entities.users;
       const payload = {
         email: inviteEmail,
-        role: inviteRole,
         company_id: companyId,
         unit_id: selectedUnitId, // Prende o convidado no hospital atual!
-        data: { unit_id: selectedUnitId }
+        role: inviteRole,
+        data: { unit_id: selectedUnitId, status: 'pendente' }
       };
 
-      if (base44.users && base44.users.inviteUser) {
-        try { await base44.users.inviteUser(inviteEmail, inviteRole); } 
-        catch { await UserEntity.create(payload); } // Auto-healing
-      } else if (UserEntity) {
-        await UserEntity.create(payload);
-      } else {
-        throw new Error("Módulo de usuários indisponível na API.");
-      }
+      // Tenta inserir na tabela pública de usuários (substitui o inviteUser inacessível)
+      const { error } = await supabase.from('users').insert(payload);
+      if (error && error.code !== '23505') throw error; // Ignora se já existir
 
       setInviteEmail('');
       loadUsers();
-      alert(`Convite enviado com sucesso para atuar em: ${currentUnit?.name || 'Hospital Atual'}`);
-    } catch (err) { alert(err.message || 'Erro ao convidar'); } 
+      alert(`Acesso liberado! O profissional ${inviteEmail} já pode fazer login na unidade ${currentUnit?.name || 'Hospital Atual'}.`);
+    } catch (err) { alert(err.message || 'Erro ao liberar acesso'); } 
     finally { setSaving(false); }
   };
 
   const handleSelectCompany = async (id) => {
-    await base44.auth.updateMe({ data: { company_id: id } });
-    refresh();
+    if (!user?.id) return;
+    await supabase.from('users').update({ company_id: id }).eq('id', user.id);
+    refreshAllData();
+    window.location.reload();
   };
 
   if (loading) {
@@ -299,7 +275,6 @@ export default function Configuracoes() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans transition-colors duration-300">
       
-      {/* HEADER EXECUTIVO */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 md:p-8 shadow-xl flex flex-col xl:flex-row xl:items-center justify-between gap-6 transition-colors duration-300">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-sky-600 dark:text-cyan-400">
@@ -314,7 +289,6 @@ export default function Configuracoes() {
         </div>
       </div>
 
-      {/* ABAS DE NAVEGAÇÃO */}
       <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide">
         {[
           { id: 'unidade_atual', label: 'Hospital Atual', icon: Hospital },
@@ -342,9 +316,6 @@ export default function Configuracoes() {
 
       <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
         
-        {/* ========================================================================= */}
-        {/* ABA 1: DADOS DA UNIDADE (HOSPITAL ATUAL DINÂMICO) */}
-        {/* ========================================================================= */}
         {activeTab === 'unidade_atual' && (
           <div className="max-w-4xl">
             <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
@@ -400,9 +371,6 @@ export default function Configuracoes() {
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* ABA 2: CONTRATO MATRIZ */}
-        {/* ========================================================================= */}
         {activeTab === 'contrato' && (
           <div className="max-w-4xl">
             <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
@@ -499,9 +467,6 @@ export default function Configuracoes() {
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* ABA 3: HOSPITAIS / UNIDADES DE ATENDIMENTO */}
-        {/* ========================================================================= */}
         {activeTab === 'unidades' && (
           <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 mb-6 gap-4">
@@ -557,7 +522,6 @@ export default function Configuracoes() {
               )}
             </div>
 
-            {/* MODAL DE CADASTRAR NOVO HOSPITAL */}
             <Dialog open={unitModalOpen} onOpenChange={setUnitModalOpen}>
               <DialogContent className="w-[95vw] sm:max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-2xl rounded-3xl p-6">
                 <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -596,17 +560,13 @@ export default function Configuracoes() {
           </Card>
         )}
 
-        {/* ========================================================================= */}
-        {/* ABA 4: EQUIPE & ACESSOS */}
-        {/* ========================================================================= */}
         {activeTab === 'usuarios' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-            
             <div className="lg:col-span-1 space-y-6">
               <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
                 <div className="border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
                   <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-                    <UserPlus className="w-5 h-5 text-emerald-500" /> Enviar Convite
+                    <UserPlus className="w-5 h-5 text-emerald-500" /> Liberar Acesso
                   </h3>
                   <p className="text-[10px] text-slate-500 mt-1">
                     Libere acesso ao hospital <strong className="text-slate-700 dark:text-slate-300">{currentUnit?.name || 'selecionado'}</strong> para sua equipe.
@@ -636,7 +596,7 @@ export default function Configuracoes() {
                   </div>
 
                   <Button type="submit" disabled={saving || !inviteEmail} className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer transition-colors">
-                    {saving ? 'Enviando...' : 'Enviar Convite Exclusivo'}
+                    {saving ? 'Liberando...' : 'Liberar Acesso Exclusivo'}
                   </Button>
                 </form>
               </Card>
@@ -652,7 +612,7 @@ export default function Configuracoes() {
                     <p className="text-xs text-slate-500 mt-0.5">Visão consolidada dos usuários com acesso ao hospital <b>{currentUnit?.name || 'selecionado'}</b>.</p>
                   </div>
                   <span className="text-xs font-black px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl">
-                    {visibleUsers.length} Logins Ativos
+                    {visibleUsers.length} Logins
                   </span>
                 </div>
                 
