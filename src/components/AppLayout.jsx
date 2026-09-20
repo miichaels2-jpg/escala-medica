@@ -1,7 +1,7 @@
 import React, { Component, useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAppData } from '@/lib/useAppData';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
 import { 
   Activity, LayoutDashboard, CalendarDays, Repeat, 
   DollarSign, Users, Building2, LogOut, Menu, X, 
@@ -9,6 +9,7 @@ import {
   Clock, Hospital, Bell, Flame, CheckCircle2, ChevronRight, CheckCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
@@ -31,7 +32,7 @@ class LayoutErrorBoundary extends Component {
           <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
           <h2 className="text-lg font-black">Instabilidade no Módulo</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 my-3">{this.state.error?.message || 'Erro inesperado na visualização.'}</p>
-          <Button onClick={() => window.location.reload()} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-10 px-6">
+          <Button onClick={() => window.location.reload()} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-10 px-6 cursor-pointer">
             Recarregar Página
           </Button>
         </div>
@@ -105,7 +106,7 @@ export default function AppLayout({ children }) {
 
   const handleLogout = async () => {
     try {
-      if (base44?.auth?.logout) await base44.auth.logout();
+      await supabase.auth.signOut();
     } catch {}
     window.localStorage.removeItem('scale_logged_user');
     window.localStorage.removeItem('escala_medica_session');
@@ -118,12 +119,12 @@ export default function AppLayout({ children }) {
     try {
       window.localStorage.setItem('scale_selected_unit', newUnitId);
       if (user?.id) {
-        await base44.auth.updateMe({ data: { selected_unit_id: newUnitId } });
+        // Atualiza preferência na tabela profiles do Supabase, se aplicável
+        await supabase.from('profiles').update({ selected_unit_id: newUnitId }).eq('id', user.id);
       }
     } catch (e) {
       console.error('Erro ao salvar unidade padrão', e);
     }
-    // Força recarregamento leve para aplicar o isolamento em toda a tela
     window.location.reload();
   };
 
@@ -136,7 +137,6 @@ export default function AppLayout({ children }) {
     if (!isVago || isCancelado) return false;
     if (s.date && s.date < todayStr) return false;
 
-    // Isola as notificações do mural apenas para o hospital que está selecionado
     if (String(s.unit_id) !== String(selectedUnitId)) return false;
 
     if (!isManager) {
@@ -280,12 +280,12 @@ export default function AppLayout({ children }) {
                 <Hospital className="w-3.5 h-3.5 text-sky-600 dark:text-sky-500" /> Unidade:
               </span>
               <Select value={selectedUnitId} onValueChange={handleUnitChange}>
-                <SelectTrigger className="h-8 w-64 text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl">
+                <SelectTrigger className="h-8 w-64 text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl cursor-pointer">
                   <SelectValue placeholder="Selecione o Hospital..." />
                 </SelectTrigger>
-                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                   {units.map(u => (
-                    <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold">
+                    <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold cursor-pointer">
                       {u.name}
                     </SelectItem>
                   ))}
@@ -402,12 +402,12 @@ export default function AppLayout({ children }) {
             <div className="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
               <Label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Hospital Atual</Label>
               <Select value={selectedUnitId} onValueChange={handleUnitChange}>
-                <SelectTrigger className="h-10 w-full text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl">
+                <SelectTrigger className="h-10 w-full text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl cursor-pointer">
                   <SelectValue placeholder="Selecione o Hospital..." />
                 </SelectTrigger>
-                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                   {units.map(u => (
-                    <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold">
+                    <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold cursor-pointer">
                       {u.name}
                     </SelectItem>
                   ))}
@@ -420,7 +420,7 @@ export default function AppLayout({ children }) {
                 key={item.path}
                 to={item.path}
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-between p-2.5 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="flex items-center justify-between p-2.5 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <item.icon className="w-4 h-4 text-sky-600" />
