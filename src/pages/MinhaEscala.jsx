@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -67,19 +67,18 @@ const MONTH_NAMES = [
 
 async function autoHealingSaveShift(id, initialPayload) {
   let payload = { ...initialPayload };
-  for (let attempt = 0; attempt < 10; attempt++) {
-    try {
-      if (id) return await base44.entities.Shift.update(id, payload);
-      else return await base44.entities.Shift.create(payload);
-    } catch (err) {
-      const msg = err.message || '';
-      const match = msg.match(/Could not find the '([^']+)' column/i);
-      if (match && match[1]) { 
-        delete payload[match[1]]; 
-        continue; 
-      }
-      throw err;
+  try {
+    if (id) {
+      const { data, error } = await supabase.from('shifts').update(payload).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    } else {
+      const { data, error } = await supabase.from('shifts').insert([payload]).select().single();
+      if (error) throw error;
+      return data;
     }
+  } catch (err) {
+    throw err;
   }
 }
 
@@ -99,7 +98,7 @@ export default function MinhaEscala() {
     return () => clearInterval(id);
   }, []);
 
-  const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
+  const companyId = user?.data?.company_id || user?.company_id || company?.id || 'cmp_principal';
   const myProfId = user?.data?.professional_id || user?.id;
 
   const currentYear = currentDate.getFullYear();
@@ -125,8 +124,10 @@ export default function MinhaEscala() {
   const loadMyShifts = useCallback(async () => {
     setLoading(true);
     try {
-      const query = companyId ? { company_id: companyId } : {};
-      const allShifts = await base44.entities.Shift.filter(query, '-date', 1000);
+      let query = supabase.from('shifts').select('*').eq('company_id', companyId);
+      
+      // Filtramos na base ou filtramos localmente para mais segurança
+      const { data: allShifts } = await query;
       
       const myShifts = (allShifts || []).filter(s => {
         if (!s || s.status === 'cancelado') return false;
