@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -106,7 +106,7 @@ export default function ProfessionalFormDialog({
       setDocument(professional.document || '');
       setEmail(professional.email || '');
       setPhone(professional.phone || '');
-      setUnitId(String(professional.unit_id || units[0]?.id || 'unit_h1'));
+      setUnitId(String(professional.unit_id || units[0]?.id || ''));
 
       setRegistrationCode(professional.registration_code || professional.matricula || `MED-${String(professional.id || '').slice(-4).toUpperCase()}`);
 
@@ -132,7 +132,7 @@ export default function ProfessionalFormDialog({
         try {
           const userEmail = (professional.email || '').toLowerCase().trim();
           if (userEmail) {
-            const usersFound = await base44.entities.User.filter({ email: userEmail });
+            const { data: usersFound } = await supabase.from('users').select('*').eq('email', userEmail);
             if (usersFound && usersFound.length > 0) {
               const u = usersFound[0];
               setUsername(u.username || '');
@@ -174,7 +174,7 @@ export default function ProfessionalFormDialog({
       setPhone('');
       setUsername('');
       setPassword('123456');
-      setUnitId(String(units[0]?.id || 'unit_h1'));
+      setUnitId(String(units[0]?.id || ''));
 
       setRemunerationType('hora');
       setHourlyRate('120');
@@ -255,8 +255,8 @@ export default function ProfessionalFormDialog({
       ].filter(Boolean).join(' | ');
 
       const cleanProfPayload = {
-        company_id: companyId,
-        unit_id: unitId || units[0]?.id,
+        company_id: companyId || 'cmp_principal',
+        unit_id: unitId || units[0]?.id || null,
         name,
         specialty,
         category: specialty,
@@ -272,45 +272,39 @@ export default function ProfessionalFormDialog({
         pix_type: pixType,
         pix_key: pixKey.trim(),
         bank_info: bankInfo.trim(),
-        notes: contractSummary
+        notes: contractSummary,
+        registration_code: registrationCode,
+        contract_type: contractType,
+        cooperative_name: cooperativeName,
+        coop_tax_rate: numTaxRate,
+        pj_cnpj: pjCnpj,
+        pj_corporate_name: pjCorporateName
       };
 
       if (cpf) cleanProfPayload.cpf = cpf;
       if (birthDate) cleanProfPayload.birth_date = birthDate;
       if (section) cleanProfPayload.section = section;
 
-      const payloadToSend = { ...cleanProfPayload };
-      let saved = false;
-
-      for (let attempt = 0; attempt < 5; attempt++) {
-        try {
-          if (professional?.id) {
-            await base44.entities.Professional.update(professional.id, payloadToSend);
-          } else {
-            await base44.entities.Professional.create(payloadToSend);
-          }
-          saved = true;
-          break;
-        } catch (dbErr) {
-          const colMatch = dbErr.message?.match(/Could not find the '(\w+)' column/i);
-          if (colMatch && colMatch[1]) {
-            delete payloadToSend[colMatch[1]];
-          } else {
-            throw dbErr;
-          }
-        }
+      if (professional?.id) {
+        const { error: updateErr } = await supabase
+          .from('professionals')
+          .update(cleanProfPayload)
+          .eq('id', professional.id);
+        if (updateErr) throw updateErr;
+      } else {
+        const { error: insertErr } = await supabase
+          .from('professionals')
+          .insert([cleanProfPayload]);
+        if (insertErr) throw insertErr;
       }
 
-      if (!saved) {
-        throw new Error('Falha ao persistir dados do profissional no banco.');
-      }
-
+      // Sincronização opcional com a tabela de usuários do sistema
       const userNick = (username || (email ? email.split('@')[0] : name.toLowerCase().replace(/\s+/g, ''))).trim();
       const finalPass = password || (birthDate ? computeDefaultPassword(birthDate, name) : '123456');
       const userEmail = (email || `${userNick}@scalemedic.local`).toLowerCase().trim();
 
       const userData = {
-        company_id: companyId,
+        company_id: companyId || 'cmp_principal',
         selected_unit_id: unitId,
         app_role: role,
         registration_code: registrationCode,
@@ -329,18 +323,18 @@ export default function ProfessionalFormDialog({
       };
 
       try {
-        const existingUsers = await base44.entities.User.filter({ email: userEmail });
-        if (existingUsers.length > 0) {
-          await base44.entities.User.update(existingUsers[0].id, {
+        const { data: existingUsers } = await supabase.from('users').select('*').eq('email', userEmail);
+        if (existingUsers && existingUsers.length > 0) {
+          await supabase.from('users').update({
             username: userNick,
             password: finalPass,
             full_name: name,
             role: role === 'gestor' ? 'admin' : 'user',
             is_active: isActive,
             data: { ...(existingUsers[0].data || {}), ...userData }
-          });
+          }).eq('id', existingUsers[0].id);
         } else {
-          await base44.entities.User.create({
+          await supabase.from('users').insert([{
             email: userEmail,
             username: userNick,
             password: finalPass,
@@ -348,10 +342,10 @@ export default function ProfessionalFormDialog({
             role: role === 'gestor' ? 'admin' : 'user',
             is_active: isActive,
             data: userData
-          });
+          }]);
         }
       } catch (uErr) {
-        console.warn('Aviso: Sincronização secundária de usuário:', uErr);
+        console.warn('Aviso na sincronização de usuário:', uErr);
       }
 
       if (onSaved) onSaved();
@@ -365,18 +359,18 @@ export default function ProfessionalFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-3xl p-6 shadow-2xl z-[9999]">
+        <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center justify-between pr-6">
-            <DialogTitle className="text-xl font-bold">
+            <DialogTitle className="text-lg font-black text-sky-600 dark:text-cyan-400">
               {professional ? `Editar Perfil Mestre: ${name}` : 'Cadastrar Novo Profissional'}
             </DialogTitle>
           </div>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-5 py-2">
+        <form onSubmit={handleSubmit} className="space-y-4 py-2 text-xs">
           {/* BLOCO DE STATUS: ATIVO / INATIVO */}
-          <div className={`p-4 rounded-xl border flex items-center justify-between transition-colors ${
+          <div className={`p-4 rounded-2xl border flex items-center justify-between transition-colors ${
             isActive 
               ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800' 
               : 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-300 dark:border-rose-800'
@@ -388,13 +382,13 @@ export default function ProfessionalFormDialog({
                 {isActive ? <UserCheck className="w-5 h-5" /> : <UserX className="w-5 h-5" />}
               </div>
               <div>
-                <div className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <div className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-2">
                   Status da Conta: 
                   <span className={isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
                     {isActive ? 'ATIVO' : 'INATIVO (ACESSO BLOQUEADO)'}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500">
+                <p className="text-[11px] text-slate-500">
                   {isActive 
                     ? 'O profissional pode fazer login no aplicativo e ser escalado nos plantões.' 
                     : 'O profissional NÃO poderá acessar o sistema e ficará oculto em novas escalas.'}
@@ -408,9 +402,9 @@ export default function ProfessionalFormDialog({
           </div>
 
           {/* MATRÍCULA E DADOS PESSOAIS */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
-              <Label className="text-xs font-semibold flex items-center gap-1">
+              <Label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                 <Hash className="w-3.5 h-3.5 text-sky-600" /> Matrícula / ID *
               </Label>
               <Input 
@@ -418,44 +412,45 @@ export default function ProfessionalFormDialog({
                 placeholder="Ex: MED-1042" 
                 value={registrationCode} 
                 onChange={(e) => setRegistrationCode(e.target.value.toUpperCase())} 
-                className="font-mono font-bold"
+                className="h-10 font-mono font-bold bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl uppercase"
               />
             </div>
             <div className="md:col-span-2">
-              <Label className="text-xs font-semibold">Nome completo *</Label>
-              <Input required value={name} onChange={(e) => handleNameChange(e.target.value)} />
+              <Label className="font-bold text-slate-700 dark:text-slate-300">Nome completo *</Label>
+              <Input required value={name} onChange={(e) => handleNameChange(e.target.value)} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl" />
             </div>
             <div>
-              <Label className="text-xs font-semibold">CPF *</Label>
-              <Input required placeholder="000.000.000-00" value={cpf} onChange={(e) => setCpf(e.target.value)} />
+              <Label className="font-bold text-slate-700 dark:text-slate-300">CPF *</Label>
+              <Input required placeholder="000.000.000-00" value={cpf} onChange={(e) => setCpf(e.target.value)} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-mono" />
             </div>
 
             <div>
-              <Label className="text-xs font-semibold">Data de Nascimento *</Label>
+              <Label className="font-bold text-slate-700 dark:text-slate-300">Data de Nascimento *</Label>
               <Input 
                 type="date" 
                 required 
                 value={birthDate} 
                 onChange={(e) => handleBirthDateChange(e.target.value)} 
+                className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl cursor-pointer"
               />
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <Label className="text-xs font-semibold">Especialidade Principal *</Label>
+                <Label className="font-bold text-slate-700 dark:text-slate-300">Especialidade Principal *</Label>
                 {onOpenNewSpecialty && (
                   <button
                     type="button"
                     onClick={onOpenNewSpecialty}
-                    className="text-[11px] text-sky-600 hover:underline flex items-center gap-1 font-medium"
+                    className="text-[11px] text-sky-600 hover:underline flex items-center gap-1 font-medium cursor-pointer"
                   >
                     <PlusCircle className="w-3 h-3" /> Criar
                   </button>
                 )}
               </div>
               <Select value={String(specialty || '')} onValueChange={setSpecialty}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
+                <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-bold"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                   {specialties.map((esp) => (
                     <SelectItem key={esp.id || esp.name} value={String(esp.name)}>{esp.name}</SelectItem>
                   ))}
@@ -467,30 +462,30 @@ export default function ProfessionalFormDialog({
             </div>
 
             <div>
-              <Label className="text-xs font-semibold">Seção / Setor Habilitado</Label>
-              <Input placeholder="Ex: UTI Adulto, PA" value={section} onChange={(e) => setSection(e.target.value)} />
+              <Label className="font-bold text-slate-700 dark:text-slate-300">Seção / Setor Habilitado</Label>
+              <Input placeholder="Ex: UTI Adulto, PA" value={section} onChange={(e) => setSection(e.target.value)} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl" />
             </div>
 
             <div>
-              <Label className="text-xs font-semibold">CRM / COREN (com UF) *</Label>
-              <Input required placeholder="Ex: CRM-SP 123456" value={document} onChange={(e) => setDocument(e.target.value)} />
+              <Label className="font-bold text-slate-700 dark:text-slate-300">CRM / COREN (com UF) *</Label>
+              <Input required placeholder="Ex: CRM-SP 123456" value={document} onChange={(e) => setDocument(e.target.value)} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-mono" />
             </div>
 
             <div className="md:col-span-2">
-              <Label className="text-xs font-semibold">E-mail Profissional</Label>
-              <Input type="email" placeholder="medico@hospital.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Label className="font-bold text-slate-700 dark:text-slate-300">E-mail Profissional</Label>
+              <Input type="email" placeholder="medico@hospital.com" value={email} onChange={(e) => setEmail(e.target.value)} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl" />
             </div>
 
             <div className="md:col-span-2">
-              <Label className="text-xs font-semibold">WhatsApp / Telefone *</Label>
-              <Input required placeholder="(00) 00000-0000" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Label className="font-bold text-slate-700 dark:text-slate-300">WhatsApp / Telefone *</Label>
+              <Input required placeholder="(00) 00000-0000" value={phone} onChange={(e) => setPhone(e.target.value)} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-mono" />
             </div>
           </div>
 
           {/* BLOCO SOCIETÁRIO: COOPERATIVAS & PJ */}
-          <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+          <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <h4 className="font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-sky-600" /> Vínculo Societário & Contratual (Cooperativas e Terceirizados)
               </h4>
               <span className="text-[11px] text-slate-400 font-semibold">Configuração Fiscal</span>
@@ -498,10 +493,10 @@ export default function ProfessionalFormDialog({
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <Label className="text-xs font-semibold">Regime de Contrato</Label>
+                <Label className="font-bold text-slate-700 dark:text-slate-300">Regime de Contrato</Label>
                 <Select value={contractType} onValueChange={setContractType}>
-                  <SelectTrigger className="h-10 text-xs font-bold"><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-bold"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                     <SelectItem value="cooperado">Sócio Cooperado (Cooperativa Médica)</SelectItem>
                     <SelectItem value="pj">Pessoa Jurídica (Empresa Médica / PJ)</SelectItem>
                     <SelectItem value="rpa">Autônomo (RPA)</SelectItem>
@@ -513,15 +508,16 @@ export default function ProfessionalFormDialog({
               {contractType === 'cooperado' && (
                 <>
                   <div>
-                    <Label className="text-xs font-semibold">Nome da Cooperativa</Label>
+                    <Label className="font-bold text-slate-700 dark:text-slate-300">Nome da Cooperativa</Label>
                     <Input 
                       placeholder="Ex: Unimed, Coopego, etc." 
                       value={cooperativeName} 
                       onChange={(e) => setCooperativeName(e.target.value)} 
+                      className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs font-semibold flex items-center gap-1">
+                    <Label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                       <Percent className="w-3 h-3 text-emerald-600" /> Taxa Cooperativa / Fundo (%)
                     </Label>
                     <Input 
@@ -529,6 +525,7 @@ export default function ProfessionalFormDialog({
                       placeholder="Ex: 5" 
                       value={coopTaxRate} 
                       onChange={(e) => setCoopTaxRate(e.target.value)} 
+                      className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-mono"
                     />
                   </div>
                 </>
@@ -537,19 +534,21 @@ export default function ProfessionalFormDialog({
               {contractType === 'pj' && (
                 <>
                   <div>
-                    <Label className="text-xs font-semibold">CNPJ da Empresa Médica</Label>
+                    <Label className="font-bold text-slate-700 dark:text-slate-300">CNPJ da Empresa Médica</Label>
                     <Input 
                       placeholder="00.000.000/0001-00" 
                       value={pjCnpj} 
                       onChange={(e) => setPjCnpj(e.target.value)} 
+                      className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-mono"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs font-semibold">Razão Social da Clínica</Label>
+                    <Label className="font-bold text-slate-700 dark:text-slate-300">Razão Social da Clínica</Label>
                     <Input 
                       placeholder="Clínica Médica LTDA" 
                       value={pjCorporateName} 
                       onChange={(e) => setPjCorporateName(e.target.value)} 
+                      className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl"
                     />
                   </div>
                 </>
@@ -558,17 +557,17 @@ export default function ProfessionalFormDialog({
           </div>
 
           {/* SEÇÃO 1: CONTRATO & REPASSE FINANCEIRO */}
-          <div className="p-4 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-xl border border-emerald-200 dark:border-emerald-800 space-y-3">
-            <h4 className="text-sm font-bold text-emerald-950 dark:text-emerald-200 flex items-center gap-2">
+          <div className="p-4 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-2xl border border-emerald-200 dark:border-emerald-800 space-y-3">
+            <h4 className="font-black text-emerald-950 dark:text-emerald-200 flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-emerald-600" /> Parâmetros Financeiros do Contrato (Repasse Automático)
             </h4>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs font-semibold">Modelo de Remuneração</Label>
+                <Label className="font-bold text-slate-700 dark:text-slate-300">Modelo de Remuneração</Label>
                 <Select value={String(remunerationType || 'hora')} onValueChange={setRemunerationType}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectTrigger className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-bold"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                     <SelectItem value="hora">Horista (Valor por Hora Trabalhada)</SelectItem>
                     <SelectItem value="diaria">Diarista (Valor Fixo por Plantão)</SelectItem>
                     <SelectItem value="mensal">Salário Fixo Mensal (Contrato Fechado)</SelectItem>
@@ -578,36 +577,39 @@ export default function ProfessionalFormDialog({
 
               {remunerationType === 'hora' && (
                 <div>
-                  <Label className="text-xs font-semibold">Valor da Hora (R$)</Label>
+                  <Label className="font-bold text-slate-700 dark:text-slate-300">Valor da Hora (R$)</Label>
                   <Input
                     type="number"
                     placeholder="Ex: 120.00"
                     value={hourlyRate}
                     onChange={(e) => setHourlyRate(e.target.value)}
+                    className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-mono"
                   />
                 </div>
               )}
 
               {remunerationType === 'diaria' && (
                 <div>
-                  <Label className="text-xs font-semibold">Valor por Plantão / Diária (R$)</Label>
+                  <Label className="font-bold text-slate-700 dark:text-slate-300">Valor por Plantão / Diária (R$)</Label>
                   <Input
                     type="number"
                     placeholder="Ex: 1500.00"
                     value={dailyRate}
                     onChange={(e) => setDailyRate(e.target.value)}
+                    className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-mono"
                   />
                 </div>
               )}
 
               {remunerationType === 'mensal' && (
                 <div>
-                  <Label className="text-xs font-semibold">Salário Fixo Mensal (R$)</Label>
+                  <Label className="font-bold text-slate-700 dark:text-slate-300">Salário Fixo Mensal (R$)</Label>
                   <Input
                     type="number"
                     placeholder="Ex: 18000.00"
                     value={monthlySalary}
                     onChange={(e) => setMonthlySalary(e.target.value)}
+                    className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-mono"
                   />
                 </div>
               )}
@@ -615,9 +617,9 @@ export default function ProfessionalFormDialog({
           </div>
 
           {/* SEÇÃO 2: DADOS BANCÁRIOS & CHAVE PIX */}
-          <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+          <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <h4 className="font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 <Landmark className="w-4 h-4 text-emerald-600" /> Dados para Pagamento & Chave PIX
               </h4>
               <span className="text-[11px] text-slate-400">Utilizado no fechamento do faturamento</span>
@@ -625,10 +627,10 @@ export default function ProfessionalFormDialog({
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <Label className="text-xs font-semibold">Tipo da Chave PIX</Label>
+                <Label className="font-bold text-slate-700 dark:text-slate-300">Tipo da Chave PIX</Label>
                 <Select value={String(pixType || 'cpf')} onValueChange={setPixType}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-bold"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                     <SelectItem value="cpf">CPF</SelectItem>
                     <SelectItem value="cnpj">CNPJ (PJ)</SelectItem>
                     <SelectItem value="email">E-mail</SelectItem>
@@ -639,33 +641,35 @@ export default function ProfessionalFormDialog({
               </div>
 
               <div className="sm:col-span-2">
-                <Label className="text-xs font-semibold">Chave PIX Oficial</Label>
+                <Label className="font-bold text-slate-700 dark:text-slate-300">Chave PIX Oficial</Label>
                 <Input
                   placeholder="Digite a chave PIX exata para recebimento..."
                   value={pixKey}
                   onChange={(e) => setPixKey(e.target.value)}
+                  className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl"
                 />
               </div>
 
               <div className="sm:col-span-3">
-                <Label className="text-xs font-semibold">Dados Bancários / Cooperativa de Crédito (Sicoob, Sicredi, Unicred, etc.)</Label>
+                <Label className="font-bold text-slate-700 dark:text-slate-300">Dados Bancários / Cooperativa de Crédito (Sicoob, Sicredi, Unicred, etc.)</Label>
                 <Input
                   placeholder="Ex: Sicoob (756) - Cooperativa: 4321 - Conta Corrente / Capital: 12345-6"
                   value={bankInfo}
                   onChange={(e) => setBankInfo(e.target.value)}
+                  className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl"
                 />
               </div>
             </div>
           </div>
 
           {/* SEÇÃO 3: CONTROLE DE ACESSO & PERMISSÕES */}
-          <div className="p-4 bg-sky-50/50 dark:bg-sky-950/20 rounded-xl border border-sky-200 dark:border-sky-800 space-y-4">
+          <div className="p-4 bg-sky-50/50 dark:bg-sky-950/20 rounded-2xl border border-sky-200 dark:border-sky-800 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <h4 className="font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
                   <User className="w-4 h-4 text-sky-600" /> Acesso ao Sistema & Perfil de Permissões
                 </h4>
-                <p className="text-xs text-slate-500">
+                <p className="text-[11px] text-slate-500">
                   Defina o papel do profissional e as telas que ele poderá acessar.
                 </p>
               </div>
@@ -675,7 +679,7 @@ export default function ProfessionalFormDialog({
                   variant="outline"
                   size="sm"
                   onClick={handleResetPassword}
-                  className="text-xs font-medium gap-1.5 bg-amber-50 dark:bg-slate-900 border-amber-300 text-amber-800 hover:bg-amber-100"
+                  className="text-xs font-bold gap-1.5 bg-amber-50 dark:bg-slate-900 border-amber-300 text-amber-800 hover:bg-amber-100 cursor-pointer rounded-xl h-9"
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
                   Resetar Senha
@@ -685,7 +689,7 @@ export default function ProfessionalFormDialog({
                   variant="outline"
                   size="sm"
                   onClick={handleCopyAccess}
-                  className="text-xs font-medium gap-1.5 bg-white dark:bg-slate-900 border-sky-300 text-sky-700 hover:bg-sky-50"
+                  className="text-xs font-bold gap-1.5 bg-white dark:bg-slate-900 border-sky-300 text-sky-700 hover:bg-sky-50 cursor-pointer rounded-xl h-9"
                 >
                   <Share2 className="w-3.5 h-3.5" />
                   Copiar Acesso & Matrícula
@@ -695,10 +699,10 @@ export default function ProfessionalFormDialog({
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <Label className="text-xs font-semibold">Perfil de Acesso (Papel)</Label>
+                <Label className="font-bold text-slate-700 dark:text-slate-300">Perfil de Acesso (Papel)</Label>
                 <Select value={role} onValueChange={handleRoleChange}>
-                  <SelectTrigger className="h-10 text-xs font-bold"><SelectValue /></SelectTrigger>
-                  <SelectContent>
+                  <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-bold"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                     <SelectItem value="medico">Plantonista (Acesso Próprio & Trocas)</SelectItem>
                     <SelectItem value="coordenador">Coordenador de Setor (Gestão Local)</SelectItem>
                     <SelectItem value="gestor">Diretor / Gestor Geral (Acesso Total)</SelectItem>
@@ -707,23 +711,23 @@ export default function ProfessionalFormDialog({
               </div>
 
               <div>
-                <Label className="text-xs font-semibold">Usuário / Apelido</Label>
-                <Input required value={username} onChange={(e) => setUsername(e.target.value)} />
+                <Label className="font-bold text-slate-700 dark:text-slate-300">Usuário / Apelido</Label>
+                <Input required value={username} onChange={(e) => setUsername(e.target.value)} className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl" />
               </div>
 
               <div>
-                <Label className="text-xs font-semibold">Senha Inicial</Label>
-                <Input required type="text" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <Label className="font-bold text-slate-700 dark:text-slate-300">Senha Inicial</Label>
+                <Input required type="text" value={password} onChange={(e) => setPassword(e.target.value)} className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-mono" />
               </div>
             </div>
 
             <div className="pt-3 border-t border-sky-200/60 dark:border-sky-800/60 space-y-2">
-              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+              <Label className="font-black text-slate-700 dark:text-slate-300 block">
                 Telas e Módulos Liberados para este Profissional:
               </Label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                 {SYSTEM_MODULES.map((mod) => (
-                  <label key={mod.id} className="flex items-center gap-2 text-slate-600 dark:text-slate-300 cursor-pointer">
+                  <label key={mod.id} className="flex items-center gap-2 text-slate-600 dark:text-slate-300 cursor-pointer font-medium">
                     <input
                       type="checkbox"
                       checked={allowedModules.includes(mod.id) || role === 'gestor'}
@@ -734,7 +738,7 @@ export default function ProfessionalFormDialog({
                           : allowedModules.filter(m => m !== mod.id);
                         setAllowedModules(next);
                       }}
-                      className="rounded border-slate-300 text-sky-600 focus:ring-0"
+                      className="rounded border-slate-300 text-sky-600 focus:ring-0 cursor-pointer"
                     />
                     <span>{mod.label}</span>
                   </label>
@@ -744,13 +748,13 @@ export default function ProfessionalFormDialog({
           </div>
 
           {/* Unidade Hospitalar */}
-          <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-            <Label className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
+          <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+            <Label className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <Building2 className="w-4 h-4 text-sky-600" /> Unidade Hospitalar Vinculada
             </Label>
             <Select value={String(unitId || '')} onValueChange={setUnitId}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
+              <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-bold"><SelectValue placeholder="Selecione a unidade..." /></SelectTrigger>
+              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                 {units.map((u) => (
                   <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
                 ))}
@@ -758,9 +762,9 @@ export default function ProfessionalFormDialog({
             </Select>
           </div>
 
-          <DialogFooter className="gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" disabled={saving} className="bg-sky-600 hover:bg-sky-700 text-white px-6 font-bold text-xs h-10">
+          <DialogFooter className="pt-3 border-t border-slate-100 dark:border-slate-800 gap-2">
+            <Button type="button" variant="outline" onClick={onClose} className="h-10 text-xs font-bold border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl px-5 cursor-pointer">Cancelar</Button>
+            <Button type="submit" disabled={saving} className="h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-xl shadow-md cursor-pointer transition-all">
               {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Gravando...</> : (professional ? 'Salvar Alterações' : 'Concluir Cadastro')}
             </Button>
           </DialogFooter>
