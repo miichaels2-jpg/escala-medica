@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -91,10 +91,9 @@ export default function Painel() {
   const [tvMode, setTvMode] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
-  const companyId = user?.data?.company_id || company?.id || 'cmp_principal';
+  const companyId = user?.data?.company_id || user?.company_id || company?.id || 'cmp_principal';
   const unitId = selectedUnitId || user?.data?.selected_unit_id || company?.selected_unit_id || 'unit_h1';
 
-  // Identifica o Hospital Selecionado
   const currentUnit = units.find(u => String(u.id) === String(unitId));
   const dashboardTitle = currentUnit ? currentUnit.name : (company?.name || 'Hospital Principal');
 
@@ -102,24 +101,25 @@ export default function Painel() {
     if (!companyId) return;
     setLoading(true);
     try {
-      const f = { company_id: companyId };
-      const [s, sec, p] = await Promise.all([
-        base44.entities.Shift.filter(f, '-date', 1000),
-        base44.entities.Sector.filter(f, '-created_date', 100),
-        base44.entities.Professional.filter(f, '-created_date', 400),
+      // Usamos chamadas diretas ao Supabase, limitando as linhas para performance
+      const [sRes, secRes, pRes] = await Promise.all([
+        supabase.from('shifts').select('*').eq('company_id', companyId).limit(1000),
+        supabase.from('sectors').select('*').eq('company_id', companyId).limit(100),
+        supabase.from('professionals').select('*').eq('company_id', companyId).limit(400)
       ]);
+
+      const s = sRes.data || [];
+      const sec = secRes.data || [];
+      const p = pRes.data || [];
       
-      // ========================================================
       // TRAVA DE SEGURANÇA: ISOLAMENTO BLINDADO DE DADOS
-      // Somente escalas e setores da unidade selecionada.
-      // ========================================================
       const strictUnitId = String(unitId);
-      const sIsolated = (s || []).filter(x => String(x.unit_id) === strictUnitId);
-      const secIsolated = (sec || []).filter(x => String(x.unit_id) === strictUnitId);
+      const sIsolated = s.filter(x => !unitId || String(x.unit_id) === strictUnitId);
+      const secIsolated = sec.filter(x => !unitId || String(x.unit_id) === strictUnitId);
 
       setShifts(sIsolated);
       setSectors(secIsolated);
-      setProfessionals(p || []);
+      setProfessionals(p);
     } catch (e) {
       console.error('Erro ao carregar dados do painel:', e);
     } finally {
@@ -308,9 +308,6 @@ export default function Painel() {
   const openTvMode = async () => { setTvMode(true); try { await document.documentElement.requestFullscreen?.(); } catch {} };
   const closeTvMode = async () => { setTvMode(false); if (document.fullscreenElement) await document.exitFullscreen?.(); };
 
-  // =========================================================================
-  // MODO TV CCO
-  // =========================================================================
   if (tvMode) {
     return (
       <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col justify-between p-4 sm:p-5 lg:p-7 select-none overflow-hidden font-sans">
