@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
 
 export default function AutoLogout({ timeoutMinutes = 60 }) {
   useEffect(() => {
@@ -9,13 +9,11 @@ export default function AutoLogout({ timeoutMinutes = 60 }) {
     const fazerLogout = async () => {
       console.log('Tempo de inatividade atingido. Encerrando sessão por segurança...');
       
-      // 1. Tenta deslogar do servidor (backend)
+      // 1. Desloga do Supabase
       try {
-        if (base44?.auth?.logout) {
-          await base44.auth.logout();
-        }
+        await supabase.auth.signOut();
       } catch (err) {
-        console.error('Erro ao deslogar no backend:', err);
+        console.error('Erro ao encerrar sessão no Supabase:', err);
       }
 
       // 2. Limpa todos os dados locais
@@ -23,7 +21,7 @@ export default function AutoLogout({ timeoutMinutes = 60 }) {
       window.localStorage.removeItem('escala_medica_session');
       window.localStorage.clear();
       
-      // 3. Força um reload completo da página para destruir a sessão em memória (AuthContext)
+      // 3. Força um reload completo da página para redirecionar ao login
       window.location.href = '/login';
     };
 
@@ -32,7 +30,7 @@ export default function AutoLogout({ timeoutMinutes = 60 }) {
       timeoutId = setTimeout(fazerLogout, tempoLimite);
     };
 
-    // Monitora qualquer interação do usuário com a página
+    // Monitora interações do usuário
     window.addEventListener('mousemove', resetarTimer);
     window.addEventListener('mousedown', resetarTimer);
     window.addEventListener('keypress', resetarTimer);
@@ -54,6 +52,5 @@ export default function AutoLogout({ timeoutMinutes = 60 }) {
     };
   }, [timeoutMinutes]);
 
-  // Componente fantasma (não renderiza nada na tela)
   return null;
 }
