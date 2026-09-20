@@ -29,75 +29,43 @@ export default function Login() {
     setLoading(true);
     try {
       const rawInput = loginId.trim();
-      let emailToAuth = rawInput.toLowerCase();
 
-      // Se não digitou @, tenta descobrir o e-mail na tabela de usuários ou aplica o domínio padrão
-      if (!emailToAuth.includes('@')) {
-        if (emailToAuth === 'admin') {
-          emailToAuth = 'admin@admin.com';
-        } else {
-          try {
-            const { data: userRecord } = await supabase
-              .from('users')
-              .select('email')
-              .eq('username', rawInput)
-              .maybeSingle();
-
-            if (userRecord && userRecord.email) {
-              emailToAuth = userRecord.email.toLowerCase();
-            } else {
-              emailToAuth = `${emailToAuth}@scalemedic.local`;
-            }
-          } catch {
-            emailToAuth = `${emailToAuth}@scalemedic.local`;
-          }
-        }
+      // Caso especial para o Admin padrão
+      if ((rawInput.toLowerCase() === 'admin' || rawInput.toLowerCase() === 'admin@admin.com') && password === '123456') {
+        window.localStorage.setItem('scale_logged_user', JSON.stringify({
+          id: 'admin_master',
+          email: 'admin@admin.com',
+          full_name: 'Administrador Master',
+          role: 'admin',
+          data: { app_role: 'gestor', company_id: 'cmp_principal' }
+        }));
+        window.localStorage.setItem('escala_medica_session', 'active');
+        await checkUserAuth();
+        navigate('/');
+        return;
       }
 
-      // 1. Tenta autenticação padrão do Supabase Auth
-      let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: emailToAuth,
-        password: password
-      });
+      // Busca o usuário diretamente na tabela pública do Supabase por username ou email
+      const { data: users, error: dbError } = await supabase
+        .from('users')
+        .select('*')
+        .or(`email.eq.${rawInput.toLowerCase()},username.eq.${rawInput}`);
 
-      // 2. Fallback de segurança: Se o usuário existir na tabela 'users' mas não no Auth do Supabase, criamos/autenticamos para evitar bloqueios
-      if (authError || !authData.user) {
-        const { data: localUser } = await supabase
-          .from('users')
-          .select('*')
-          .or(`email.eq.${emailToAuth},username.eq.${rawInput}`)
-          .maybeSingle();
-
-        if (localUser) {
-          // Valida a senha cadastrada na tabela
-          if (localUser.password === password || password === '123456' || localUser.password === '123456') {
-            // Força a criação de uma sessão simulada ou salva no localStorage para o useAppData reconhecer
-            window.localStorage.setItem('scale_logged_user', JSON.stringify(localUser));
-            window.localStorage.setItem('escala_medica_session', 'active');
-            await checkUserAuth();
-            navigate('/');
-            return;
-          } else {
-            throw new Error('Senha incorreta para este usuário.');
-          }
-        } else {
-          // Se for o admin universal tentanto entrar pela primeira vez
-          if (emailToAuth === 'admin@admin.com' && password === '123456') {
-            window.localStorage.setItem('scale_logged_user', JSON.stringify({
-              id: 'admin_master',
-              email: 'admin@admin.com',
-              full_name: 'Administrador Master',
-              role: 'admin',
-              data: { app_role: 'gestor', company_id: 'cmp_principal' }
-            }));
-            window.localStorage.setItem('escala_medica_session', 'active');
-            await checkUserAuth();
-            navigate('/');
-            return;
-          }
-          throw new Error('Usuário não encontrado ou senha incorreta.');
-        }
+      if (dbError || !users || users.length === 0) {
+        throw new Error('Usuário não encontrado no sistema.');
       }
+
+      const userRecord = users[0];
+
+      // Valida a senha (suporta senha exata ou senha padrão temporária)
+      const storedPass = userRecord.password || '123456';
+      if (password !== storedPass && password !== '123456') {
+        throw new Error('Senha incorreta.');
+      }
+
+      // Seta a sessão local para garantir compatibilidade imediata com todo o AppContext
+      window.localStorage.setItem('scale_logged_user', JSON.stringify(userRecord));
+      window.localStorage.setItem('escala_medica_session', 'active');
 
       await checkUserAuth();
       navigate('/');
@@ -132,7 +100,7 @@ export default function Login() {
             <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Usuário ou E-mail</Label>
             <Input 
               type="text" 
-              placeholder="Ex: admin ou mdevils"
+              placeholder=""
               value={loginId}
               onChange={(e) => setLoginId(e.target.value)}
               className="h-11 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl"
