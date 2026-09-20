@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,9 +13,6 @@ export default function Register() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  const [identifiedCompanyId, setIdentifiedCompanyId] = useState('cmp_principal'); 
-  const [availableUnits, setAvailableUnits] = useState([]);
-
   const [formData, setFormData] = useState({
     fullName: '',
     cpf: '',
@@ -24,25 +21,9 @@ export default function Register() {
     documentNumber: '',
     councilState: 'RJ',
     specialty: '',
-    unitId: '',
     password: '',
     confirmPassword: ''
   });
-
-  useEffect(() => {
-    const fetchCompanyData = async () => {
-      try {
-        const comp = await base44.entities.Company?.get(identifiedCompanyId).catch(() => null);
-        if (comp && comp.units) {
-          setAvailableUnits(comp.units);
-          if (comp.units.length > 0) setFormData(prev => ({ ...prev, unitId: comp.units[0].id }));
-        }
-      } catch (e) {
-        console.warn('Unidades não carregadas:', e);
-      }
-    };
-    fetchCompanyData();
-  }, [identifiedCompanyId]);
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -55,7 +36,7 @@ export default function Register() {
       return;
     }
 
-    if (!formData.fullName || !formData.cpf || !formData.email || !formData.documentNumber) {
+    if (!formData.fullName || !formData.cpf || !formData.email || !formData.documentNumber || !formData.password) {
       setError('Preencha todos os campos obrigatórios (*).');
       return;
     }
@@ -63,67 +44,64 @@ export default function Register() {
     setLoading(true);
     try {
       const loginEmail = formData.email.trim().toLowerCase();
-      
-      // 1. Verifica se já existe usuário com esse e-mail
-      const existing = await base44.entities.User.filter({ email: loginEmail }).catch(() => []);
-      if (existing && existing.length > 0) {
-        throw new Error('Este e-mail já está cadastrado. Volte ao login ou use outro.');
-      }
 
-      // 2. Gravação na tabela User com status pendente
-      const newUser = await base44.entities.User.create({
+      // 1. Cria a conta de autenticação oficial no Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: loginEmail,
-        username: loginEmail.split('@')[0],
         password: formData.password,
-        full_name: formData.fullName.trim(),
-        role: 'user', 
-        data: {
-          company_id: identifiedCompanyId,
-          selected_unit_id: formData.unitId || 'unit_h1',
-          status: 'pendente',
-          phone: formData.phone,
-          document_cpf: formData.cpf,
+        options: {
+          data: {
+            full_name: formData.fullName.trim(),
+            cpf: formData.cpf.trim()
+          }
         }
       });
 
-      // 3. Gravação na tabela Professional
-      if (newUser && base44.entities.Professional?.create) {
-        await base44.entities.Professional.create({
-          user_id: newUser.id,
-          company_id: identifiedCompanyId,
-          unit_id: formData.unitId || 'unit_h1',
-          name: formData.fullName.trim(),
-          cpf: formData.cpf,
-          email: loginEmail,
-          phone: formData.phone,
-          document: `${formData.documentNumber} - ${formData.councilState}`,
-          specialty: formData.specialty,
-          status: 'pendente',
-          remuneration_type: 'hora',
-          hourly_rate: 120
-        });
-
-        // 4. Notificação opcional e blindada contra ausência da tabela no banco
-        try {
-          if (base44.entities.Notification?.create) {
-            await base44.entities.Notification.create({
-              company_id: identifiedCompanyId,
-              unit_id: formData.unitId || 'unit_h1',
-              recipient_user_id: 'admin',
-              title: 'Novo Cadastro Médico',
-              message: `Dr(a). ${formData.fullName} solicitou acesso.`,
-              is_read: false,
-              created_date: new Date().toISOString()
-            }).catch(() => {});
-          }
-        } catch {
-          // Ignora silenciosamente caso a tabela notifications não exista
+      if (authError) {
+        if (authError.message.includes('User already registered')) {
+          throw new Error('Este e-mail já está cadastrado. Volte ao login ou use outro.');
         }
+        throw authError;
       }
+
+      const userId = authData?.user?.id;
+
+      // 2. Gravação de Perfil na tabela pública 'users' (Opcional, mas recomendado)
+      if (userId) {
+        await supabase.from('users').insert({
+          id: userId,
+          email: loginEmail,
+          username: loginEmail.split('@')[0],
+          full_name: formData.fullName.trim(),
+          role: 'user',
+          company_id: 'cmp_principal', // Associado à matriz principal por padrão (ajustável)
+          data: {
+            status: 'pendente',
+            phone: formData.phone,
+            document_cpf: formData.cpf,
+          }
+        });
+      }
+
+      // 3. Gravação na tabela Professionals para gestão da escala
+      await supabase.from('professionals').insert({
+        user_id: userId || null,
+        company_id: 'cmp_principal', // Substitua se quiser vincular a uma empresa dinâmica no futuro
+        unit_id: 'unit_h1',          // Unidade padrão
+        name: formData.fullName.trim(),
+        cpf: formData.cpf.trim(),
+        email: loginEmail,
+        phone: formData.phone.trim(),
+        document: `${formData.documentNumber.trim()} - ${formData.councilState}`,
+        specialty: formData.specialty.trim() || 'Clínica Médica',
+        status: 'pendente',
+        remuneration_type: 'hora',
+        hourly_rate: 120
+      });
 
       setSuccess(true);
     } catch (err) {
-      setError(err.message || 'Ocorreu um erro no credenciamento.');
+      setError(err.message || 'Ocorreu um erro no credenciamento. Verifique os dados e tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -138,7 +116,7 @@ export default function Register() {
           <p className="text-sm text-slate-500 mb-6 leading-relaxed">
             Seus dados foram enviados para a coordenação. Seu acesso estará liberado assim que for homologado na aba <b>Aguardando Aprovação</b>.
           </p>
-          <Button onClick={() => navigate('/login')} className="w-full h-11 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl">
+          <Button onClick={() => navigate('/login')} className="w-full h-11 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl cursor-pointer">
             Ir para o Login
           </Button>
         </div>
@@ -147,7 +125,7 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center items-center p-4 py-12">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center items-center p-4 py-12 transition-colors duration-300">
       <div className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-10 shadow-2xl">
         <div className="flex items-center gap-4 mb-8 border-b border-slate-100 dark:border-slate-800 pb-6">
           <div className="w-12 h-12 bg-sky-600 rounded-xl flex items-center justify-center shadow-lg shrink-0">
@@ -170,29 +148,29 @@ export default function Register() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nome Completo *</Label>
-              <Input name="fullName" value={formData.fullName} onChange={handleChange} placeholder="Seu nome oficial" className="h-10 text-sm" disabled={loading} />
+              <Input name="fullName" value={formData.fullName} onChange={handleChange} placeholder="Seu nome oficial" className="h-10 text-sm bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl" disabled={loading} required />
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">CPF *</Label>
-              <Input name="cpf" value={formData.cpf} onChange={handleChange} placeholder="000.000.000-00" className="h-10 text-sm" disabled={loading} />
+              <Input name="cpf" value={formData.cpf} onChange={handleChange} placeholder="000.000.000-00" className="h-10 text-sm bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl" disabled={loading} required />
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Telefone / WhatsApp *</Label>
-              <Input name="phone" value={formData.phone} onChange={handleChange} placeholder="(00) 00000-0000" className="h-10 text-sm" disabled={loading} />
+              <Input name="phone" value={formData.phone} onChange={handleChange} placeholder="(00) 00000-0000" className="h-10 text-sm bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl" disabled={loading} required />
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Número do CRM/COREN *</Label>
-              <Input name="documentNumber" value={formData.documentNumber} onChange={handleChange} placeholder="Ex: 123456" className="h-10 text-sm" disabled={loading} />
+              <Input name="documentNumber" value={formData.documentNumber} onChange={handleChange} placeholder="Ex: 123456" className="h-10 text-sm bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl" disabled={loading} required />
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">UF do Conselho *</Label>
               <Select value={formData.councilState} onValueChange={(val) => setFormData({...formData, councilState: val})} disabled={loading}>
-                <SelectTrigger className="h-10 text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
+                <SelectTrigger className="h-10 text-sm bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                   {['RJ', 'SP', 'MG', 'ES', 'PR', 'SC', 'RS', 'BA', 'PE', 'CE', 'DF', 'GO'].map(uf => (
                     <SelectItem key={uf} value={uf}>{uf}</SelectItem>
                   ))}
@@ -202,30 +180,30 @@ export default function Register() {
 
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Especialidade Principal *</Label>
-              <Input name="specialty" value={formData.specialty} onChange={handleChange} placeholder="Ex: Clínica Médica, Pediatria" className="h-10 text-sm" disabled={loading} />
+              <Input name="specialty" value={formData.specialty} onChange={handleChange} placeholder="Ex: Clínica Médica, Pediatria" className="h-10 text-sm bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl" disabled={loading} />
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">E-mail Profissional *</Label>
-              <Input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="medico@hospital.com" className="h-10 text-sm" disabled={loading} />
+              <Input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="medico@hospital.com" className="h-10 text-sm bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl" disabled={loading} required />
             </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Senha de Acesso *</Label>
-              <Input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Mínimo 6 caracteres" className="h-10 text-sm" disabled={loading} />
+              <Input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="Mínimo 6 caracteres" className="h-10 text-sm bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl" disabled={loading} required minLength={6} />
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Confirme a Senha *</Label>
-              <Input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} placeholder="Repita a senha" className="h-10 text-sm" disabled={loading} />
+              <Input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} placeholder="Repita a senha" className="h-10 text-sm bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl" disabled={loading} required minLength={6} />
             </div>
           </div>
 
           <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <Link to="/login" className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors">
+            <Link to="/login" className="text-xs font-bold text-slate-500 hover:text-sky-600 transition-colors">
               Já tem cadastro? Voltar ao Login
             </Link>
-            <Button type="submit" disabled={loading} className="w-full sm:w-auto h-11 bg-sky-600 hover:bg-sky-700 text-white font-black text-sm px-8 rounded-xl shadow-md">
+            <Button type="submit" disabled={loading} className="w-full sm:w-auto h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-sm px-8 rounded-xl shadow-md cursor-pointer transition-all">
               {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processando...</> : 'Solicitar Credenciamento'}
             </Button>
           </div>
