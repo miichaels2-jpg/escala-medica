@@ -114,15 +114,10 @@ function getProfessionalCost(professional, hours) {
   return safeNumber(meta.monthly_salary ?? meta.monthlySalary ?? meta.salary ?? meta.salario, 0) / 20;
 }
 
-function csvCell(value) {
-  return `"${String(value ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
-}
-
 export default function Relatorios() {
   const { shifts = [], sectors = [], professionals = [], company } = useAppData();
 
   const [activeTab, setActiveTab] = useState('executivo');
-  const [printMode, setPrintMode] = useState('current'); 
   
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
@@ -364,8 +359,8 @@ export default function Relatorios() {
 
   const credentialAudit = useMemo(() => {
     let valid = 0, expired = 0, nearExpiry = 0, missing = 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const todayObj = new Date();
+    todayObj.setHours(0, 0, 0, 0);
 
     filteredProfessionals.forEach(p => {
       const expiry = p.document_expiry || p.documentExpiry || p.valid_until || '';
@@ -374,7 +369,7 @@ export default function Relatorios() {
       if (Number.isNaN(expiryDate.getTime())) { missing += 1; return; }
       
       expiryDate.setHours(0, 0, 0, 0);
-      const diffDays = Math.round((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const diffDays = Math.round((expiryDate.getTime() - todayObj.getTime()) / (1000 * 60 * 60 * 24));
       
       if (diffDays < 0) expired += 1;
       else if (diffDays <= 30) nearExpiry += 1;
