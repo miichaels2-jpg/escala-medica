@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
+import { Link, useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Activity, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
+  const navigate = useNavigate();
+  const { checkUserAuth } = useAuth();
+  
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -18,60 +22,44 @@ export default function Login() {
     setError('');
     
     if (!loginId || !password) {
-      setError('Preencha o usuário e a senha para continuar.');
+      setError('Preencha o usuário/e-mail e a senha para continuar.');
       return;
     }
 
     setLoading(true);
     try {
-      const rawInput = loginId.trim();
-      let emailToAuth = rawInput;
+      let emailToAuth = loginId.trim().toLowerCase();
 
-      // 1. Suporte a Login por Nome de Usuário (username)
-      if (!rawInput.includes('@')) {
-        const users = await base44.entities.User.filter({ username: rawInput.toLowerCase() }).catch(() => []);
-        if (users && users.length > 0 && users[0].email) {
-          emailToAuth = users[0].email;
+      // Suporte simples para login por nome de usuário (se não contiver @, assumimos o sufixo padrão cadastrado ou buscamos no banco)
+      if (!emailToAuth.includes('@')) {
+        // Verifica se é o admin master
+        if (emailToAuth === 'admin') {
+          emailToAuth = 'admin@admin.com';
         } else {
-          // Fallbacks comuns
-          emailToAuth = `${rawInput.toLowerCase()}@hospital.com`;
+          // Busca rápida do e-mail vinculado ao username na tabela public.users
+          const { data } = await supabase.from('users').select('email').eq('username', emailToAuth).single();
+          if (data && data.email) {
+            emailToAuth = data.email;
+          } else {
+            // Fallback genérico caso a busca falhe ou a tabela de users não esteja criada
+            emailToAuth = `${emailToAuth}@hospital.com`;
+          }
         }
       }
 
-      const authMethod = base44?.auth?.loginViaEmailPassword || base44?.auth?.signInWithPassword;
+      // Autenticação oficial e direta no motor do Supabase
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: emailToAuth,
+        password: password
+      });
 
-      if (!authMethod) {
-        throw new Error('Serviço de autenticação não inicializado.');
+      if (authError || !authData.user) {
+        throw new Error('Usuário ou senha incorretos.');
       }
 
-      let loggedIn = false;
-      let lastErr = null;
-
-      const candidates = [emailToAuth];
-      if (!candidates.includes(rawInput)) candidates.push(rawInput);
-      if (rawInput === 'admin') candidates.push('admin@admin.com');
-
-      for (const candidate of candidates) {
-        try {
-          await authMethod.call(base44.auth, candidate, password);
-          loggedIn = true;
-          break;
-        } catch (err) {
-          lastErr = err;
-        }
-      }
-
-      if (!loggedIn) {
-        throw new Error(lastErr?.message || 'Usuário ou senha incorretos.');
-      }
-
-      // Salva identificador e redireciona
-      const me = await base44.auth.me().catch(() => null);
-      if (me?.id) {
-        window.localStorage.setItem('scale_logged_user', me.id);
-      }
-
-      window.location.href = '/';
+      // Atualiza o contexto global e redireciona imediatamente
+      await checkUserAuth();
+      navigate('/');
 
     } catch (err) {
       setError(err.message || 'Falha ao autenticar. Tente novamente.');
@@ -81,7 +69,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center items-center p-4">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center items-center p-4 transition-colors duration-300">
       <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-2xl">
         <div className="flex flex-col items-center mb-8">
           <div className="w-14 h-14 bg-sky-600 rounded-2xl flex items-center justify-center shadow-lg mb-4">
@@ -106,7 +94,7 @@ export default function Login() {
               placeholder="Ex: admin ou dr.carlos"
               value={loginId}
               onChange={(e) => setLoginId(e.target.value)}
-              className="h-11 bg-slate-50 dark:bg-slate-950"
+              className="h-11 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl"
               disabled={loading}
               autoComplete="username"
             />
@@ -115,7 +103,7 @@ export default function Login() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Senha</Label>
-              <Link to="/forgot-password" className="text-[11px] font-bold text-sky-600 hover:underline">Esqueceu a senha?</Link>
+              <Link to="/forgot-password" className="text-[11px] font-bold text-sky-600 hover:text-sky-500 transition-colors">Esqueceu a senha?</Link>
             </div>
             <div className="relative">
               <Input 
@@ -123,14 +111,14 @@ export default function Login() {
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="h-11 bg-slate-50 dark:bg-slate-950 pr-10"
+                className="h-11 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl pr-10"
                 disabled={loading}
                 autoComplete="current-password"
               />
               <button 
                 type="button" 
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer transition-colors"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -140,7 +128,7 @@ export default function Login() {
           <Button 
             type="submit" 
             disabled={loading} 
-            className="w-full h-11 bg-sky-600 hover:bg-sky-700 text-white font-black text-sm rounded-xl shadow-md mt-2"
+            className="w-full h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-sm rounded-xl shadow-md mt-2 transition-all cursor-pointer"
           >
             {loading ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Autenticando...</> : 'Entrar no Sistema'}
           </Button>
@@ -149,7 +137,7 @@ export default function Login() {
         <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 text-center">
           <p className="text-xs text-slate-500 font-medium">
             Novo na plataforma? {' '}
-            <Link to="/register" className="font-bold text-sky-600 hover:underline">Solicite seu credenciamento</Link>
+            <Link to="/register" className="font-bold text-sky-600 hover:text-sky-500 transition-colors">Solicite seu credenciamento</Link>
           </p>
         </div>
       </div>
