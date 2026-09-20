@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,19 +44,18 @@ const ACCESS_ROLES = [
 
 async function autoHealingSave(id, initialPayload) {
   let payload = { ...initialPayload };
-  for (let attempt = 0; attempt < 8; attempt++) {
-    try {
-      if (id) {
-        return await base44.entities.Professional.update(id, payload);
-      } else {
-        return await base44.entities.Professional.create(payload);
-      }
-    } catch (err) {
-      const msg = err.message || '';
-      const match = msg.match(/Could not find the '([^']+)' column of 'professionals'/i);
-      if (match && match[1]) { delete payload[match[1]]; continue; }
-      throw err;
+  try {
+    if (id) {
+      const { data, error } = await supabase.from('professionals').update(payload).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    } else {
+      const { data, error } = await supabase.from('professionals').insert([payload]).select().single();
+      if (error) throw error;
+      return data;
     }
+  } catch (err) {
+    throw err;
   }
 }
 
@@ -687,7 +686,7 @@ export default function CorpoClinico() {
             </div>
 
             <DialogFooter className="pt-4 gap-2">
-              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-10 border-slate-200 dark:border-slate-700 cursor-pointer">Cancelar	</Button>
+              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-10 border-slate-200 dark:border-slate-700 cursor-pointer">Cancelar </Button>
               <Button type="submit" disabled={submitting} className="bg-sky-600 text-white font-black text-xs h-10 px-8 rounded-xl shadow-md cursor-pointer">Salvar Perfil Profissional</Button>
             </DialogFooter>
           </form>
