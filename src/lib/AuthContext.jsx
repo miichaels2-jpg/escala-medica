@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
 
 const defaultAuthState = {
   user: null,
@@ -30,6 +30,17 @@ export const AuthProvider = ({ children }) => {
     checkAppState();
   }, []);
 
+  const fetchUserProfile = async (authUser) => {
+    if (!authUser) return null;
+    try {
+      // Busca dados extras na tabela pública 'users' se ela existir
+      const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single();
+      return { ...authUser, ...(profile || {}) };
+    } catch {
+      return authUser;
+    }
+  };
+
   const checkAppState = async () => {
     try {
       setIsLoadingPublicSettings(true);
@@ -37,10 +48,17 @@ export const AuthProvider = ({ children }) => {
       setAppPublicSettings({ id: 'demo-local' });
 
       try {
-        const currentUser = await base44.auth.me();
-        setUser(currentUser);
-        setIsAuthenticated(Boolean(currentUser));
-      } catch {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const fullUser = await fetchUserProfile(session.user);
+          setUser(fullUser);
+          setIsAuthenticated(true);
+        } else {
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      } catch (err) {
+        console.warn('Sessão Supabase não encontrada.');
         setUser(null);
         setIsAuthenticated(false);
       }
@@ -59,12 +77,16 @@ export const AuthProvider = ({ children }) => {
   const checkUserAuth = async () => {
     try {
       setIsLoadingAuth(true);
-      const currentUser = await base44.auth.me();
-      setUser(currentUser);
-      setIsAuthenticated(Boolean(currentUser));
-      setAuthChecked(true);
-      setIsLoadingAuth(false);
-      return currentUser;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const fullUser = await fetchUserProfile(session.user);
+        setUser(fullUser);
+        setIsAuthenticated(true);
+        setAuthChecked(true);
+        setIsLoadingAuth(false);
+        return fullUser;
+      }
+      throw new Error('Sem sessão ativa');
     } catch {
       setUser(null);
       setIsAuthenticated(false);
@@ -74,10 +96,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = (shouldRedirect = true) => {
+  const logout = async (shouldRedirect = true) => {
     setUser(null);
     setIsAuthenticated(false);
-    base44.auth.logout(shouldRedirect ? window.location.origin : false);
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn('Erro ao encerrar sessão no servidor', e);
+    }
+    if (shouldRedirect) {
+      window.location.href = '/login';
+    }
   };
 
   const navigateToLogin = () => {
@@ -86,17 +115,9 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{
-      user,
-      isAuthenticated,
-      isLoadingAuth,
-      isLoadingPublicSettings,
-      authError,
-      appPublicSettings,
-      authChecked,
-      logout,
-      navigateToLogin,
-      checkUserAuth,
-      checkAppState
+      user, isAuthenticated, isLoadingAuth, isLoadingPublicSettings,
+      authError, appPublicSettings, authChecked,
+      logout, navigateToLogin, checkUserAuth, checkAppState
     }}>
       {children}
     </AuthContext.Provider>

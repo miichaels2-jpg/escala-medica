@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
 
 let globalState = {
   user: null,
@@ -22,23 +22,40 @@ function updateGlobal(patch) {
   listeners.forEach(fn => fn());
 }
 
+// ============================================================================
+// MOTOR DE BUSCA SEGURO DO SUPABASE (IGNORA TABELAS INEXISTENTES)
+// ============================================================================
+async function fetchTable(tableName, filterObj = {}, limit = 5000) {
+  try {
+    let query = supabase.from(tableName).select('*');
+    for (const key in filterObj) {
+      query = query.eq(key, filterObj[key]);
+    }
+    // Fazemos a busca de forma segura. Se der erro (ex: tabela não existe), retorna array vazio
+    const { data, error } = await query.limit(limit);
+    if (error) {
+      console.warn(`[Supabase] Erro/Tabela '${tableName}' ausente. (Ignorado).`);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    return [];
+  }
+}
+
 async function fetchAllData() {
   if (isFetching) return;
   isFetching = true;
 
   try {
     let currentUser = null;
-    const storedUserId = window.localStorage.getItem('scale_logged_user');
+    const { data: { session } } = await supabase.auth.getSession();
 
-    if (storedUserId && base44?.entities?.User?.get) {
-      currentUser = await base44.entities.User.get(storedUserId).catch(() => null);
+    if (session?.user) {
+      const { data: profile } = await supabase.from('users').select('*').eq('id', session.user.id).single();
+      currentUser = { ...session.user, ...(profile || {}) };
     }
 
-    if (!currentUser && base44?.auth?.me) {
-      currentUser = await base44.auth.me().catch(() => null);
-    }
-
-    // Fallback padrão se não houver usuário na sessão
     if (!currentUser) {
       currentUser = {
         id: 'usr_guest',
@@ -49,30 +66,35 @@ async function fetchAllData() {
       };
     }
 
-    const compId = currentUser?.data?.company_id || 'cmp_principal';
+    const compId = currentUser?.data?.company_id || currentUser?.company_id || 'cmp_principal';
+    
     let compData = null;
     try {
-      compData = await base44?.entities?.Company?.get(compId).catch(() => null);
+      const { data } = await supabase.from('companies').select('*').eq('id', compId).single();
+      compData = data;
     } catch {}
 
-    const company = compData || { id: compId, name: 'Hospital Principal', units: [{ id: 'unit_h1', name: 'Unidade Matriz' }] };
-    const units = Array.isArray(company.units) && company.units.length > 0 
+    const company = compData || { 
+      id: compId, 
+      name: 'Hospital Principal', 
+      data: { units: [{ id: 'unit_h1', name: 'Unidade Matriz' }] } 
+    };
+    
+    const activeUnits = Array.isArray(company.units) && company.units.length > 0 
       ? company.units 
-      : [{ id: 'unit_h1', name: 'Unidade Matriz' }];
+      : (company.data?.units || [{ id: 'unit_h1', name: 'Unidade Matriz' }]);
 
-    const selectedUnitId = currentUser?.data?.selected_unit_id || units[0].id;
+    const savedUnitId = window.localStorage.getItem('scale_selected_unit');
+    const selectedUnitId = savedUnitId || currentUser?.data?.selected_unit_id || activeUnits[0]?.id || 'unit_h1';
 
-    // Busca dados em paralelo
-    const [pRes, secRes, sRes, swRes, uRes] = await Promise.all([
-      base44?.entities?.Professional?.filter({ company_id: compId }, '-created_date', 1000).catch(() => []),
-      base44?.entities?.Sector?.filter({ company_id: compId }, 'name', 300).catch(() => []),
-      base44?.entities?.Shift?.filter({ company_id: compId }, '-date', 5000).catch(() => []),
-      base44?.entities?.ShiftSwap?.filter({ company_id: compId }, '-created_date', 1000).catch(() => []),
-      base44?.entities?.User?.filter({ role: 'user' }, '-created_date', 1000).catch(() => [])
+    // Dispara todas as consultas ao Supabase em paralelo
+    const [rawProfs, secRes, sRes, swRes, allUsers] = await Promise.all([
+      fetchTable('professionals', { company_id: compId }),
+      fetchTable('sectors', { company_id: compId }),
+      fetchTable('shifts', { company_id: compId }),
+      fetchTable('shift_swaps', { company_id: compId }),
+      fetchTable('users')
     ]);
-
-    const rawProfs = Array.isArray(pRes) ? pRes : pRes?.data || [];
-    const allUsers = Array.isArray(uRes) ? uRes : uRes?.data || [];
 
     const enrichedProfs = rawProfs.map(prof => {
       let cachedMeta = {};
@@ -102,16 +124,16 @@ async function fetchAllData() {
     updateGlobal({
       user: currentUser,
       company,
-      units,
+      units: activeUnits,
       selectedUnitId,
       professionals: enrichedProfs,
-      sectors: Array.isArray(secRes) ? secRes : secRes?.data || [],
-      shifts: Array.isArray(sRes) ? sRes : sRes?.data || [],
-      swaps: Array.isArray(swRes) ? swRes : swRes?.data || [],
+      sectors: secRes,
+      shifts: sRes,
+      swaps: swRes,
       loading: false
     });
   } catch (err) {
-    console.error('Erro ao sincronizar dados centrais:', err);
+    console.error('Erro ao sincronizar dados centrais Supabase:', err);
     updateGlobal({ loading: false });
   } finally {
     isFetching = false;
@@ -133,17 +155,17 @@ export function useAppData() {
   }, []);
 
   const setSelectedUnitId = useCallback((newId) => {
+    window.localStorage.setItem('scale_selected_unit', newId);
     updateGlobal({ selectedUnitId: newId });
   }, []);
 
   const user = globalState.user;
 
-  // MATRIZ DE PERMISSÕES RBAC
   const userAppRole = user?.data?.app_role || (user?.role === 'admin' ? 'gestor' : 'assistencial');
   const isAdmin = user?.role === 'admin' || userAppRole === 'gestor' || user?.email === 'admin@admin.com';
   const isCoordinator = isAdmin || userAppRole === 'coordenador';
   const isBilling = isAdmin || userAppRole === 'faturamento';
-  const isManager = isAdmin || isCoordinator; // Responsáveis por montar e gerenciar escala
+  const isManager = isAdmin || isCoordinator;
   const isAssistencial = userAppRole === 'assistencial' || userAppRole === 'medico';
 
   const professionalMap = useMemo(() => {
@@ -158,7 +180,6 @@ export function useAppData() {
     return m;
   }, []);
 
-  // Blindagem: currentProfessional nunca retorna null para impedir tela branca
   const currentProfessional = useMemo(() => {
     if (user && globalState.professionals.length) {
       const found = globalState.professionals.find(p => 
@@ -169,10 +190,9 @@ export function useAppData() {
       if (found) return found;
     }
 
-    // Objeto seguro de fallback
     return {
       id: user?.data?.professional_id || user?.id || 'temp_user_id',
-      name: user?.full_name || 'Profissional',
+      name: user?.full_name || user?.user_metadata?.full_name || 'Profissional',
       email: user?.email || '',
       specialty: user?.data?.specialty || 'Clínica Geral',
       status: 'ativo',
