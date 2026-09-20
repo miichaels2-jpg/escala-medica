@@ -1,10 +1,11 @@
+import React from 'react';
 import { Card } from '@/components/ui/card';
-import { CalendarClock, Users, BarChart3, ShieldCheck, BellRing, MapPinCheck, CheckCircle2, MessageSquareText } from 'lucide-react';
+import { CalendarClock, Users, BarChart3, BellRing, MapPinCheck, CheckCircle2, MessageSquareText } from 'lucide-react';
 
 const quickStats = [
-  { label: 'Plantões', value: '12', tone: 'sky' },
-  { label: 'Confirmados', value: '10', tone: 'emerald' },
-  { label: 'Pendentes', value: '2', tone: 'amber' },
+  { label: 'Plantões', value: '12', tone: 'sky', bgClass: 'bg-sky-50' },
+  { label: 'Confirmados', value: '10', tone: 'emerald', bgClass: 'bg-emerald-50' },
+  { label: 'Pendentes', value: '2', tone: 'amber', bgClass: 'bg-amber-50' },
 ];
 
 const nextShift = [
@@ -37,14 +38,14 @@ export default function MobilePreview() {
           <div className="px-4 pb-4 pt-4 space-y-4">
             <div className="grid grid-cols-3 gap-2">
               {quickStats.map((item) => (
-                <div key={item.label} className={`rounded-2xl border border-slate-100 bg-${item.tone}-50 p-3`}>
+                <div key={item.label} className={`rounded-2xl border border-slate-100 p-3 ${item.bgClass}`}>
                   <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{item.label}</div>
                   <div className="mt-2 text-xl font-black text-slate-900">{item.value}</div>
                 </div>
               ))}
             </div>
 
-            <Card className="border-slate-200 p-3">
+            <Card className="border-slate-200 p-3 shadow-none">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
                   <CalendarClock className="h-4 w-4 text-sky-600" />
@@ -69,7 +70,7 @@ export default function MobilePreview() {
             </Card>
 
             <div className="grid grid-cols-2 gap-2">
-              <Card className="border-slate-200 p-3">
+              <Card className="border-slate-200 p-3 shadow-none">
                 <div className="flex items-center gap-2 text-sky-700">
                   <Users className="h-4 w-4" />
                   <span className="text-xs font-semibold uppercase tracking-[0.18em]">Equipe</span>
@@ -77,7 +78,7 @@ export default function MobilePreview() {
                 <div className="mt-3 text-2xl font-black text-slate-900">18</div>
                 <div className="text-[10px] text-slate-500">Profissionais ativos</div>
               </Card>
-              <Card className="border-slate-200 p-3">
+              <Card className="border-slate-200 p-3 shadow-none">
                 <div className="flex items-center gap-2 text-emerald-700">
                   <BarChart3 className="h-4 w-4" />
                   <span className="text-xs font-semibold uppercase tracking-[0.18em]">Faturamento</span>
