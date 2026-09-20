@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 export default function Setores() {
-  const { sectors = [], company, selectedUnitId, syncGlobalData } = useAppData();
+  const { sectors = [], company, selectedUnitId, syncGlobalData, user } = useAppData();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -26,6 +26,9 @@ export default function Setores() {
     name: '',
     status: 'ativo'
   });
+
+  const companyId = user?.data?.company_id || user?.company_id || company?.id || 'cmp_principal';
+  const unitId = selectedUnitId || user?.data?.selected_unit_id || 'unit_h1';
 
   // Filtragem e Ordenação
   const filteredSectors = useMemo(() => {
@@ -79,17 +82,19 @@ export default function Setores() {
     setSubmitting(true);
     try {
       const payload = {
-        company_id: company?.id || 'cmp_principal',
-        unit_id: selectedUnitId || 'unit_h1',
+        company_id: companyId,
+        unit_id: unitId,
         name: formData.name.trim(),
-        specialty: 'Geral', // Mantemos 'Geral' internamente no banco para retrocompatibilidade
+        specialty: 'Geral', // Mantém compatibilidade com a estrutura de colunas do banco
         status: formData.status
       };
 
       if (editingSector?.id) {
-        await base44.entities.Sector.update(editingSector.id, payload);
+        const { error } = await supabase.from('sectors').update(payload).eq('id', editingSector.id);
+        if (error) throw error;
       } else {
-        await base44.entities.Sector.create(payload);
+        const { error } = await supabase.from('sectors').insert([payload]);
+        if (error) throw error;
       }
 
       setModalOpen(false);
@@ -106,7 +111,8 @@ export default function Setores() {
       return;
     }
     try {
-      await base44.entities.Sector.delete(id);
+      const { error } = await supabase.from('sectors').delete().eq('id', id);
+      if (error) throw error;
       await syncGlobalData();
     } catch (error) {
       alert('Erro ao excluir: ' + error.message);
