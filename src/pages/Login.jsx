@@ -18,7 +18,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Carrega credenciais salvas se o "Lembrar-me" estava ativo
+  // Carrega credenciais salvas no "Lembrar-me"
   useEffect(() => {
     try {
       const savedLogin = window.localStorage.getItem('scale_remember_login');
@@ -41,10 +41,17 @@ export default function Login() {
     }
 
     setLoading(true);
+
+    // Timeout de segurança para evitar que o botão trave infinitamente caso o Supabase demore
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+      setError('A conexão com o Supabase demorou muito. Verifique suas chaves de acesso no arquivo .env.');
+    }, 8000);
+
     try {
       const cleanInput = loginId.trim();
 
-      // Gerencia o salvamento das credenciais no "Lembrar-me"
+      // Gerencia o "Lembrar-me"
       if (rememberMe) {
         window.localStorage.setItem('scale_remember_login', cleanInput);
         window.localStorage.setItem('scale_remember_pass', password);
@@ -53,7 +60,7 @@ export default function Login() {
         window.localStorage.removeItem('scale_remember_pass');
       }
 
-      // 1. Acesso Admin Master Padrão
+      // Acesso Admin Master Universal (Bypass imediato de emergência)
       if ((cleanInput.toLowerCase() === 'admin' || cleanInput.toLowerCase() === 'admin@admin.com') && (password === '123456' || password === 'admin')) {
         const adminUser = {
           id: 'admin_master',
@@ -66,40 +73,48 @@ export default function Login() {
         window.localStorage.setItem('escala_medica_session', 'active');
         window.localStorage.setItem('scale_selected_unit', 'unit_h1');
         
-        await checkUserAuth();
+        clearTimeout(timeoutId);
+        try { await checkUserAuth(); } catch {}
         navigate('/');
         return;
       }
 
-      // 2. Busca o usuário na tabela pública do Supabase (preservando todos os cadastros migrados)
+      // Consulta segura no Supabase com limite de 1 registro
       const { data: users, error: dbErr } = await supabase
         .from('users')
         .select('*')
-        .or(`email.eq.${cleanInput.toLowerCase()},username.eq.${cleanInput}`);
+        .or(`email.eq.${cleanInput.toLowerCase()},username.eq.${cleanInput}`)
+        .limit(1);
 
-      if (dbErr || !users || users.length === 0) {
+      clearTimeout(timeoutId);
+
+      if (dbErr) {
+        throw new Error('Erro ao consultar banco de dados: ' + (dbErr.message || 'Permissão negada.'));
+      }
+
+      if (!users || users.length === 0) {
         throw new Error('Usuário ou e-mail não encontrado no sistema.');
       }
 
       const userRecord = users[0];
-
-      // Validação de senha
       const storedPass = userRecord.password || '123456';
+
       if (password !== storedPass && password !== '123456') {
         throw new Error('Senha incorreta. Verifique os dados informados.');
       }
 
-      // Grava a sessão local para sincronizar instantaneamente com o sistema
+      // Grava a sessão local para sincronização instantânea
       window.localStorage.setItem('scale_logged_user', JSON.stringify(userRecord));
       window.localStorage.setItem('escala_medica_session', 'active');
       if (userRecord.data?.selected_unit_id) {
         window.localStorage.setItem('scale_selected_unit', userRecord.data.selected_unit_id);
       }
 
-      await checkUserAuth();
+      try { await checkUserAuth(); } catch {}
       navigate('/');
 
     } catch (err) {
+      clearTimeout(timeoutId);
       setError(err.message || 'Falha ao autenticar. Tente novamente.');
     } finally {
       setLoading(false);
