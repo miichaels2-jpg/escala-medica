@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
@@ -62,24 +62,23 @@ function parseShiftAudit(shift) {
 
 async function autoHealingSaveShift(id, initialPayload) {
   let payload = { ...initialPayload };
-  for (let attempt = 0; attempt < 10; attempt++) {
-    try {
-      if (id) return await base44.entities.Shift.update(id, payload);
-      else return await base44.entities.Shift.create(payload);
-    } catch (err) {
-      const msg = err.message || '';
-      const match = msg.match(/Could not find the '([^']+)' column/i);
-      if (match && match[1]) { 
-        delete payload[match[1]]; 
-        continue; 
-      }
-      throw err;
+  try {
+    if (id) {
+      const { data, error } = await supabase.from('shifts').update(payload).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
+    } else {
+      const { data, error } = await supabase.from('shifts').insert([payload]).select().single();
+      if (error) throw error;
+      return data;
     }
+  } catch (err) {
+    throw err;
   }
 }
 
 async function safeUpdateShift(id, payload) {
-  const cleanPayload = { ...payload };
+  let cleanPayload = { ...payload };
   delete cleanPayload.offered_by_id;
   delete cleanPayload.offered_by_name;
   delete cleanPayload.transfer_from_id;
@@ -112,6 +111,7 @@ export default function Trocas() {
     sectors = [], 
     professionals = [], 
     currentProfessional, 
+    selectedUnitId,
     user,
     isManager, 
     syncGlobalData 
@@ -134,16 +134,21 @@ export default function Trocas() {
     return m;
   }, [sectors]);
 
+  // Isola as escalas da unidade atual selecionada
+  const unitShifts = useMemo(() => {
+    return (shifts || []).filter(s => !selectedUnitId || String(s.unit_id) === String(selectedUnitId));
+  }, [shifts, selectedUnitId]);
+
   const myAllocatedShifts = useMemo(() => {
     if (!myProf?.id && !user?.full_name) return [];
-    return (shifts || []).filter(s => {
+    return unitShifts.filter(s => {
       if (!s || s.status === 'cancelado' || s.status === 'vago' || !s.professional_id) return false;
       const matchId = myProf?.id && String(s.professional_id) === String(myProf.id);
       const matchUserId = user?.data?.professional_id && String(s.professional_id) === String(user.data.professional_id);
       const matchName = user?.full_name && s.professional_name && s.professional_name.toLowerCase().trim() === user.full_name.toLowerCase().trim();
       return matchId || matchUserId || matchName;
     });
-  }, [shifts, myProf, user]);
+  }, [unitShifts, myProf, user]);
 
   const checkTimeConflict = (shiftCandidate) => {
     if (!shiftCandidate || !shiftCandidate.date) return { hasConflict: false };
@@ -177,17 +182,17 @@ export default function Trocas() {
         set.add(p.specialty.trim());
       }
     });
-    (shifts || []).forEach(s => {
+    unitShifts.forEach(s => {
       const spec = extractSpecialty(s, null);
       if (spec && spec.toLowerCase() !== 'geral') set.add(spec);
     });
     return Array.from(set).sort();
-  }, [professionals, shifts]);
+  }, [professionals, unitShifts]);
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   const openShifts = useMemo(() => {
-    return (shifts || []).filter(s => {
+    return unitShifts.filter(s => {
       if (!s) return false;
       const st = String(s.status || '').toLowerCase();
       const audit = parseShiftAudit(s);
@@ -207,15 +212,15 @@ export default function Trocas() {
 
       return true;
     }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-  }, [shifts, selectedSpecialtyFilter, todayStr]);
+  }, [unitShifts, selectedSpecialtyFilter, todayStr]);
 
   const pendingApprovalShifts = useMemo(() => {
-    return (shifts || []).filter(s => {
+    return unitShifts.filter(s => {
       if (!s) return false;
       const audit = parseShiftAudit(s);
       return audit.isAguardandoGestor;
     }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-  }, [shifts]);
+  }, [unitShifts]);
 
   const myPendingShifts = useMemo(() => {
     if (!myProf?.id) return [];
@@ -229,28 +234,28 @@ export default function Trocas() {
 
   const myUpcomingShifts = useMemo(() => {
     if (!myProf?.id && !user?.full_name) return [];
-    return (shifts || []).filter(s => {
+    return unitShifts.filter(s => {
       if (!s || s.status === 'vago' || !s.professional_id) return false;
       const isMine = (myProf?.id && String(s.professional_id) === String(myProf.id)) || 
                      (s.professional_name && myProf?.name && s.professional_name.toLowerCase().trim() === myProf.name.toLowerCase().trim()) ||
                      (s.professional_name && user?.full_name && s.professional_name.toLowerCase().trim() === user.full_name.toLowerCase().trim());
       return isMine && s.date >= todayStr && s.status !== 'cancelado';
     }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-  }, [shifts, myProf, user, todayStr]);
+  }, [unitShifts, myProf, user, todayStr]);
 
   const transferHistory = useMemo(() => {
-    return (shifts || []).filter(s => {
+    return unitShifts.filter(s => {
       if (!s) return false;
       const notes = String(s.notes || '');
       return notes.includes('[TRANSFERENCIA:') || notes.includes('[ORIGEM_MURAL:');
     }).sort((a, b) => (b?.date || '').localeCompare(a?.date || ''));
-  }, [shifts]);
+  }, [unitShifts]);
 
   const handleRequestSendToMural = async (shift) => {
-    const requesterName = myProf?.name || user?.full_name || 'Profissional';
-    const requesterId = myProf?.id || user?.id || '';
+    const requesterName = currentProfessional?.name || user?.full_name || 'Profissional';
+    const requesterId = currentProfessional?.id || user?.id || '';
 
-    if (!confirm(`Deseja solicitar o envio do seu plantão de ${shift.date} (${shift.start_time} às ${shift.end_time}) para o Mural?\n\nA vaga passará pela avaliação da coordenação antes de ser liberada.`)) {
+    if (!confirm(`Deseja solicitar a liberação do seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) no Mural de Oportunidades?\n\nO pedido será enviado para aprovação da coordenação antes de ser liberado.`)) {
       return;
     }
 
@@ -265,10 +270,10 @@ export default function Trocas() {
         notes: updatedNotes
       });
 
-      await syncGlobalData();
-      alert('Solicitação enviada com sucesso! O plantão está aguardando a avaliação da coordenação.');
-    } catch (err) {
-      alert('Erro ao solicitar envio: ' + err.message);
+      if (typeof syncGlobalData === 'function') await syncGlobalData();
+      alert('Solicitação enviada! Aguarde a aprovação da coordenação para liberação no Mural.');
+    } catch (e) {
+      alert('Erro ao solicitar envio ao mural: ' + e.message);
     } finally {
       setSubmitting(false);
     }
@@ -378,7 +383,8 @@ export default function Trocas() {
   const handleDeleteVaga = async (shiftId) => {
     if (!confirm('Excluir esta vaga definitivamente?')) return;
     try {
-      await base44.entities.Shift.delete(shiftId);
+      const { error } = await supabase.from('shifts').delete().eq('id', shiftId);
+      if (error) throw error;
       await syncGlobalData();
     } catch (err) {
       alert('Erro ao excluir: ' + err.message);
@@ -772,7 +778,7 @@ export default function Trocas() {
         </div>
       )}
 
-      {/* 6. HISTÓRICO DE REPASSES (REGEX CORRIGIDA) */}
+      {/* 6. HISTÓRICO DE REPASSES */}
       {activeTab === 'historico' && (
         <div className="space-y-4">
           <div className="p-4 rounded-2xl bg-slate-900 text-white text-xs flex items-center justify-between border border-slate-800">
