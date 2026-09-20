@@ -1,26 +1,17 @@
-
-import React, {
-  createContext,
-  useState,
-  useContext,
-  useEffect,
-  useCallback,
-  useRef
-} from 'react';
-
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
 const defaultAuthState = {
   user: null,
   isAuthenticated: false,
-  isLoadingAuth: true,
+  isLoadingAuth: false,
   isLoadingPublicSettings: false,
   authError: null,
   appPublicSettings: { id: 'demo-local' },
   authChecked: false,
-  logout: async () => {},
+  logout: () => {},
   navigateToLogin: () => {},
-  checkUserAuth: async () => null,
+  checkUserAuth: async () => {},
   checkAppState: async () => {}
 };
 
@@ -30,235 +21,113 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(false);
+  const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(true);
   const [authError, setAuthError] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [appPublicSettings, setAppPublicSettings] = useState({
-    id: 'demo-local'
-  });
-
-  const mountedRef = useRef(true);
+  const [appPublicSettings, setAppPublicSettings] = useState({ id: 'demo-local' });
 
   useEffect(() => {
-    mountedRef.current = true;
-
-    return () => {
-      mountedRef.current = false;
-    };
+    checkAppState();
   }, []);
 
-  const updateAuthState = useCallback((nextUser) => {
-    if (!mountedRef.current) return;
-
-    setUser(nextUser || null);
-    setIsAuthenticated(!!nextUser);
-    setAuthChecked(true);
-  }, []);
-
-  const fetchUserProfile = useCallback(async (authUser) => {
-    if (!authUser?.id) return null;
-
-    const { data: profile, error: profileError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', authUser.id)
-      .maybeSingle();
-
-    if (profileError) {
-      console.error(
-        'Erro ao buscar perfil do usuário:',
-        profileError
-      );
-
-      // Não interrompe o login somente porque o perfil
-      // complementar não foi encontrado.
-      return {
-        ...authUser,
-        profile_missing: true
-      };
-    }
-
-    return {
-      ...authUser,
-      ...(profile || {}),
-      profile_missing: !profile
-    };
-  }, []);
-
-  const checkUserAuth = useCallback(async () => {
-    if (mountedRef.current) {
-      setIsLoadingAuth(true);
-      setAuthError(null);
-    }
-
+  const fetchUserProfile = async (authUser) => {
+    if (!authUser) return null;
     try {
-      const {
-        data: { user: authUser },
-        error: authError
-      } = await supabase.auth.getUser();
-
-      if (authError) {
-        throw authError;
-      }
-
-      if (!authUser) {
-        updateAuthState(null);
-        return null;
-      }
-
-      const fullUser = await fetchUserProfile(authUser);
-
-      updateAuthState(fullUser);
-
-      return fullUser;
-    } catch (error) {
-      console.error('Erro ao verificar autenticação:', error);
-
-      if (mountedRef.current) {
-        setAuthError({
-          type: 'auth',
-          message: error?.message || 'Erro ao verificar autenticação.'
-        });
-      }
-
-      updateAuthState(null);
-
-      return null;
-    } finally {
-      if (mountedRef.current) {
-        setIsLoadingAuth(false);
-      }
+      // Busca dados extras na tabela pública 'users' se ela existir
+      const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single();
+      return { ...authUser, ...(profile || {}) };
+    } catch {
+      return authUser;
     }
-  }, [fetchUserProfile, updateAuthState]);
+  };
 
-  const checkAppState = useCallback(async () => {
-    if (mountedRef.current) {
-      setIsLoadingAuth(true);
+  const checkAppState = async () => {
+    try {
       setIsLoadingPublicSettings(true);
       setAuthError(null);
       setAppPublicSettings({ id: 'demo-local' });
-    }
 
-    try {
-      await checkUserAuth();
-    } catch (error) {
-      console.error('Erro ao inicializar o aplicativo:', error);
-
-      if (mountedRef.current) {
-        setAuthError({
-          type: 'unknown',
-          message: error?.message || 'Erro ao inicializar o aplicativo.'
-        });
-      }
-
-      updateAuthState(null);
-    } finally {
-      if (mountedRef.current) {
-        setIsLoadingAuth(false);
-        setIsLoadingPublicSettings(false);
-        setAuthChecked(true);
-      }
-    }
-  }, [checkUserAuth, updateAuthState]);
-
-  // Inicializa o estado do aplicativo
-  useEffect(() => {
-    checkAppState();
-  }, [checkAppState]);
-
-  // Mantém o contexto sincronizado com o Supabase Auth
-  useEffect(() => {
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mountedRef.current) return;
-
-      // Logout ou sessão encerrada
-      if (!session?.user) {
-        updateAuthState(null);
-        setIsLoadingAuth(false);
-        return;
-      }
-
-      // Login, inicialização e renovação de sessão
-      if (
-        event === 'SIGNED_IN' ||
-        event === 'INITIAL_SESSION' ||
-        event === 'TOKEN_REFRESHED' ||
-        event === 'USER_UPDATED'
-      ) {
-        // Evita operações de rede adicionais durante
-        // o callback do Supabase Auth.
-        setIsLoadingAuth(true);
-
-        try {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
           const fullUser = await fetchUserProfile(session.user);
-
-          updateAuthState(fullUser);
-        } catch (error) {
-          console.error(
-            'Erro ao atualizar perfil durante evento de autenticação:',
-            error
-          );
-
-          updateAuthState(session.user);
-        } finally {
-          if (mountedRef.current) {
-            setIsLoadingAuth(false);
-          }
+          setUser(fullUser);
+          setIsAuthenticated(true);
+        } else {
+          setUser(null);
+          setIsAuthenticated(false);
         }
+      } catch (err) {
+        console.warn('Sessão Supabase não encontrada.');
+        setUser(null);
+        setIsAuthenticated(false);
       }
-    });
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [fetchUserProfile, updateAuthState]);
+      setIsLoadingAuth(false);
+      setAuthChecked(true);
+      setIsLoadingPublicSettings(false);
+    } catch (error) {
+      setAuthError({ type: 'unknown', message: error.message || 'Erro ao verificar estado do app' });
+      setIsLoadingPublicSettings(false);
+      setIsLoadingAuth(false);
+      setAuthChecked(true);
+    }
+  };
 
-  const logout = useCallback(async (shouldRedirect = true) => {
+  const checkUserAuth = async () => {
+    try {
+      setIsLoadingAuth(true);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const fullUser = await fetchUserProfile(session.user);
+        setUser(fullUser);
+        setIsAuthenticated(true);
+        setAuthChecked(true);
+        setIsLoadingAuth(false);
+        return fullUser;
+      }
+      throw new Error('Sem sessão ativa');
+    } catch {
+      setUser(null);
+      setIsAuthenticated(false);
+      setAuthChecked(true);
+      setIsLoadingAuth(false);
+      return null;
+    }
+  };
+
+  const logout = async (shouldRedirect = true) => {
     setUser(null);
     setIsAuthenticated(false);
-
     try {
-      const { error } = await supabase.auth.signOut();
-
-      if (error) {
-        console.error('Erro ao encerrar sessão:', error);
-      }
-    } catch (error) {
-      console.error('Erro ao realizar logout:', error);
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn('Erro ao encerrar sessão no servidor', e);
     }
-
     if (shouldRedirect) {
       window.location.href = '/login';
     }
-  }, []);
+  };
 
-  const navigateToLogin = useCallback(() => {
+  const navigateToLogin = () => {
     window.location.href = '/login';
-  }, []);
+  };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isAuthenticated,
-        isLoadingAuth,
-        isLoadingPublicSettings,
-        authError,
-        appPublicSettings,
-        authChecked,
-        logout,
-        navigateToLogin,
-        checkUserAuth,
-        checkAppState
-      }}
-    >
+    <AuthContext.Provider value={{
+      user, isAuthenticated, isLoadingAuth, isLoadingPublicSettings,
+      authError, appPublicSettings, authChecked,
+      logout, navigateToLogin, checkUserAuth, checkAppState
+    }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
 export const useAuth = () => {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (!context || !context.checkAppState) {
+    return defaultAuthState;
+  }
+  return context;
 };
