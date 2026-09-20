@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { base44 } from '@/api/base44Client';
+import { supabase } from '@/lib/supabase';
 import { Loader2 } from 'lucide-react';
 
 const empty = {
@@ -47,22 +47,24 @@ export default function ShiftFormDialog({ open, onClose, onSaved, shift, sectors
         sector_name: sector?.name || '',
         professional_name: prof?.name || '',
         status: isVago ? 'vago' : (form.status === 'vago' ? 'pendente' : form.status),
-        company_id: companyId,
+        company_id: companyId || 'cmp_principal',
         ...(unitId ? { unit_id: unitId } : {}),
         updated_date: new Date().toISOString()
       };
 
-      // Fim absoluto do .invoke aqui
       if (isEdit) {
-        await base44.entities.Shift.update(shift.id, payload);
+        const { error } = await supabase.from('shifts').update(payload).eq('id', shift.id);
+        if (error) throw error;
       } else {
         payload.created_date = new Date().toISOString();
-        await base44.entities.Shift.create(payload);
+        const { error } = await supabase.from('shifts').insert([payload]);
+        if (error) throw error;
       }
+
       onSaved();
       onClose();
     } catch (err) {
-      alert(err.response?.data?.error || err.message || 'Erro ao salvar plantão');
+      alert(err.message || 'Erro ao salvar plantão');
     } finally {
       setSaving(false);
     }
@@ -70,21 +72,23 @@ export default function ShiftFormDialog({ open, onClose, onSaved, shift, sectors
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md dark:bg-slate-900 dark:border-slate-800">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? 'Editar Plantão' : 'Novo Plantão'}</DialogTitle>
+      <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-3xl p-6 shadow-2xl z-[9999]">
+        <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-3">
+          <DialogTitle className="text-base font-black text-sky-600 dark:text-cyan-400">
+            {isEdit ? 'Editar Plantão' : 'Novo Plantão'}
+          </DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 py-2 text-xs">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Data</Label>
-              <Input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} required />
+              <Label className="font-bold text-slate-700 dark:text-slate-300">Data</Label>
+              <Input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} required className="h-11 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl cursor-pointer" />
             </div>
             <div className="space-y-1.5">
-              <Label>Tipo</Label>
+              <Label className="font-bold text-slate-700 dark:text-slate-300">Tipo</Label>
               <Select value={form.shift_type} onValueChange={(v) => set('shift_type', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
+                <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-bold"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                   <SelectItem value="diurno">Diurno</SelectItem>
                   <SelectItem value="noturno">Noturno</SelectItem>
                   <SelectItem value="intermediario">Intermediário</SelectItem>
@@ -94,19 +98,19 @@ export default function ShiftFormDialog({ open, onClose, onSaved, shift, sectors
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Início</Label>
-              <Input type="time" value={form.start_time} onChange={(e) => set('start_time', e.target.value)} required />
+              <Label className="font-bold text-slate-700 dark:text-slate-300">Início</Label>
+              <Input type="time" value={form.start_time} onChange={(e) => set('start_time', e.target.value)} required className="h-11 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-mono" />
             </div>
             <div className="space-y-1.5">
-              <Label>Fim</Label>
-              <Input type="time" value={form.end_time} onChange={(e) => set('end_time', e.target.value)} required />
+              <Label className="font-bold text-slate-700 dark:text-slate-300">Fim</Label>
+              <Input type="time" value={form.end_time} onChange={(e) => set('end_time', e.target.value)} required className="h-11 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-mono" />
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label>Setor / Especialidade</Label>
+            <Label className="font-bold text-slate-700 dark:text-slate-300">Setor / Especialidade</Label>
             <Select value={form.sector_id} onValueChange={(v) => set('sector_id', v)}>
-              <SelectTrigger><SelectValue placeholder="Selecione o setor" /></SelectTrigger>
-              <SelectContent>
+              <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-bold"><SelectValue placeholder="Selecione o setor" /></SelectTrigger>
+              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                 {sectors.map((s) => (
                   <SelectItem key={s.id} value={String(s.id)}>{s.name} {s.specialty ? `· ${s.specialty}` : ''}</SelectItem>
                 ))}
@@ -114,10 +118,10 @@ export default function ShiftFormDialog({ open, onClose, onSaved, shift, sectors
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Profissional</Label>
+            <Label className="font-bold text-slate-700 dark:text-slate-300">Profissional</Label>
             <Select value={form.professional_id} onValueChange={(v) => set('professional_id', v)}>
-              <SelectTrigger><SelectValue placeholder="Deixe vago para não alocar" /></SelectTrigger>
-              <SelectContent>
+              <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-bold"><SelectValue placeholder="Deixe vago para não alocar" /></SelectTrigger>
+              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                 <SelectItem value="vago" className="text-amber-600 font-bold">Deixar Vago (Mural)</SelectItem>
                 {professionals.map((p) => (
                   <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
@@ -126,10 +130,10 @@ export default function ShiftFormDialog({ open, onClose, onSaved, shift, sectors
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Status</Label>
+            <Label className="font-bold text-slate-700 dark:text-slate-300">Status</Label>
             <Select value={form.status} onValueChange={(v) => set('status', v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
+              <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-bold"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                 <SelectItem value="vago">Vago</SelectItem>
                 <SelectItem value="pendente">Aguardando confirmação</SelectItem>
                 <SelectItem value="confirmado">Confirmado</SelectItem>
@@ -137,9 +141,9 @@ export default function ShiftFormDialog({ open, onClose, onSaved, shift, sectors
               </SelectContent>
             </Select>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button type="submit" disabled={saving} className="bg-sky-600 hover:bg-sky-700 text-white">
+          <DialogFooter className="pt-3 border-t border-slate-100 dark:border-slate-800 gap-2">
+            <Button type="button" variant="outline" onClick={onClose} className="h-10 text-xs font-bold border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl px-5 cursor-pointer">Cancelar</Button>
+            <Button type="submit" disabled={saving} className="h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-xl shadow-md cursor-pointer transition-all">
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {isEdit ? 'Salvar' : 'Criar Plantão'}
             </Button>
