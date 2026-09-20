@@ -31,7 +31,7 @@ function getLocalDateString(d = new Date()) {
 }
 
 export default function Faturamento() {
-  const { shifts = [], professionals = [], sectors = [], company } = useAppData();
+  const { shifts = [], professionals = [], sectors = [], company, selectedUnitId, units = [] } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,6 +41,8 @@ export default function Faturamento() {
   const currentMonth = currentDate.getMonth();
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
   const todayStr = getLocalDateString(new Date());
+
+  const currentUnitName = units.find(u => String(u.id) === String(selectedUnitId))?.name || company?.name || 'Hospital Principal';
 
   const sectorMap = useMemo(() => {
     const m = {};
@@ -58,7 +60,7 @@ export default function Faturamento() {
     return {};
   }
 
-  // CÁLCULO EXATO COM DISCRIMINAÇÃO DE BASE + PLANTÕES EXTRAS
+  // CÁLCULO EXATO COM DISCRIMINAÇÃO DE BASE + PLANTÕES EXTRAS (BLINDADO POR UNIDADE)
   const reportData = useMemo(() => {
     const profsSummary = {};
 
@@ -70,7 +72,6 @@ export default function Faturamento() {
 
       const remunType = meta.remuneration_type || p.remuneration_type || 'mensal';
       
-      // Leitura com prioridade absoluta do que foi salvo no Corpo Clínico
       let salaryBase = 0;
       if (meta.monthly_salary !== undefined && meta.monthly_salary !== null) {
         salaryBase = safeNumber(meta.monthly_salary);
@@ -122,6 +123,8 @@ export default function Faturamento() {
     });
 
     (shifts || []).forEach(shift => {
+      // Isolamento de dados por unidade!
+      if (String(shift.unit_id) !== String(selectedUnitId)) return;
       if (!shift || !shift.date || !shift.date.startsWith(monthPrefix)) return;
       if (!shift.professional_id || shift.status === 'vago') return;
 
@@ -194,8 +197,8 @@ export default function Faturamento() {
         valorDesconto,
         valorLiquido
       };
-    });
-  }, [professionals, shifts, monthPrefix, todayStr]);
+    }).filter(item => item.plantõesRealizados > 0 || item.plantõesFuturos > 0); // Oculta profissionais zerados no mês
+  }, [professionals, shifts, monthPrefix, todayStr, selectedUnitId]);
 
   const filteredReport = useMemo(() => {
     const term = searchQuery.toLowerCase().trim();
@@ -228,7 +231,7 @@ export default function Faturamento() {
       return;
     }
 
-    const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
+    const hospitalName = currentUnitName;
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR');
 
@@ -310,7 +313,7 @@ export default function Faturamento() {
     printWindow.document.close();
   };
 
-  // RECIBO OFICIAL EM 2 VIAS (DISCRIMINANDO SALÁRIO REGULAR + PLANTÕES EXTRAS)
+  // RECIBO OFICIAL EM 2 VIAS
   const handlePrintIndividualReceipt = (item) => {
     const printWindow = window.open('', '_blank', 'width=900,height=850');
     if (!printWindow) {
@@ -318,7 +321,7 @@ export default function Faturamento() {
       return;
     }
 
-    const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
+    const hospitalName = currentUnitName;
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = new Date().toLocaleDateString('pt-BR');
 
@@ -476,7 +479,7 @@ export default function Faturamento() {
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400">
             <DollarSign className="w-4 h-4" /> Gestão Financeira & Conciliação de Plantões
           </div>
-          <h2 className="mt-1 text-2xl sm:text-3xl font-black">Faturamento & Repasse Médico</h2>
+          <h2 className="mt-1 text-2xl sm:text-3xl font-black">Faturamento & Repasse</h2>
           <p className="text-xs text-slate-300">
             Cálculo progressivo baseado no Salário Base (cota de 20 plantões) + adicionais de plantões extras.
           </p>
@@ -487,7 +490,7 @@ export default function Faturamento() {
             onClick={handlePrintConsolidatedReport}
             className="h-10 bg-white text-slate-900 hover:bg-slate-100 font-black text-xs px-5 rounded-2xl gap-2 shadow-lg"
           >
-            <Printer className="w-4 h-4" /> Imprimir Fechamento Geral
+            <Printer className="w-4 h-4" /> Imprimir Fechamento
           </Button>
 
           <div className="flex items-center bg-slate-900/90 border border-slate-800 p-1.5 rounded-2xl gap-2">
@@ -525,9 +528,9 @@ export default function Faturamento() {
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400">Equipe na Folha</span>
+          <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400">Equipe Ativa no Mês</span>
           <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">{reportData.length}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">Profissionais ativos</span>
+          <span className="text-[10px] text-slate-500 font-semibold">Profissionais com produção</span>
         </Card>
       </div>
 
@@ -535,8 +538,8 @@ export default function Faturamento() {
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
-            <h3 className="text-base font-black text-slate-900 dark:text-white">Espelho de Conciliação e Fechamento Atual</h3>
-            <p className="text-xs text-slate-500">Valores calculados sobre o Salário Base Real do Corpo Clínico (Base / 20 por plantão + Extras).</p>
+            <h3 className="text-base font-black text-slate-900 dark:text-white">Espelho de Conciliação Financeira</h3>
+            <p className="text-xs text-slate-500">Apuração restrita e isolada para o <b>{currentUnitName}</b>.</p>
           </div>
 
           <div className="relative w-full sm:w-72">
@@ -567,7 +570,7 @@ export default function Faturamento() {
               {filteredReport.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="py-8 text-center text-slate-400">
-                    Nenhum profissional localizado para esta competência.
+                    Nenhum profissional com produção na unidade atual para esta competência.
                   </td>
                 </tr>
               ) : (
