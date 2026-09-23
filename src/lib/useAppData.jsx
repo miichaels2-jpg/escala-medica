@@ -22,19 +22,15 @@ function updateGlobal(patch) {
   listeners.forEach(fn => fn());
 }
 
-// ============================================================================
-// MOTOR DE BUSCA SEGURO DO SUPABASE (IGNORA TABELAS INEXISTENTES)
-// ============================================================================
 async function fetchTable(tableName, filterObj = {}, limit = 5000) {
   try {
     let query = supabase.from(tableName).select('*');
     for (const key in filterObj) {
       query = query.eq(key, filterObj[key]);
     }
-    // Fazemos a busca de forma segura. Se der erro (ex: tabela não existe), retorna array vazio
     const { data, error } = await query.limit(limit);
     if (error) {
-      console.warn(`[Supabase] Erro/Tabela '${tableName}' ausente. (Ignorado).`);
+      console.warn(`[Supabase] Erro na tabela '${tableName}' (Ignorado).`);
       return [];
     }
     return data || [];
@@ -49,11 +45,25 @@ async function fetchAllData() {
 
   try {
     let currentUser = null;
-    const { data: { session } } = await supabase.auth.getSession();
+    
+    // 1. Tenta sessão oficial do Supabase
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase.from('users').select('*').eq('id', session.user.id).maybeSingle();
+        currentUser = { ...session.user, ...(profile || {}) };
+      }
+    } catch {}
 
-    if (session?.user) {
-      const { data: profile } = await supabase.from('users').select('*').eq('id', session.user.id).single();
-      currentUser = { ...session.user, ...(profile || {}) };
+    // 2. Fallback de Segurança Inteligente da sessão local
+    if (!currentUser) {
+      try {
+        const localUserStr = window.localStorage.getItem('scale_logged_user');
+        const isSessionActive = window.localStorage.getItem('escala_medica_session') === 'active';
+        if (localUserStr && isSessionActive) {
+          currentUser = JSON.parse(localUserStr);
+        }
+      } catch {}
     }
 
     if (!currentUser) {
@@ -70,7 +80,7 @@ async function fetchAllData() {
     
     let compData = null;
     try {
-      const { data } = await supabase.from('companies').select('*').eq('id', compId).single();
+      const { data } = await supabase.from('companies').select('*').eq('id', compId).maybeSingle();
       compData = data;
     } catch {}
 
@@ -87,7 +97,6 @@ async function fetchAllData() {
     const savedUnitId = window.localStorage.getItem('scale_selected_unit');
     const selectedUnitId = savedUnitId || currentUser?.data?.selected_unit_id || activeUnits[0]?.id || 'unit_h1';
 
-    // Dispara todas as consultas ao Supabase em paralelo
     const [rawProfs, secRes, sRes, swRes, allUsers] = await Promise.all([
       fetchTable('professionals', { company_id: compId }),
       fetchTable('sectors', { company_id: compId }),
