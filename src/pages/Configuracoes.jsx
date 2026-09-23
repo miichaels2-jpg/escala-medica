@@ -31,7 +31,6 @@ export default function Configuracoes() {
   const activeUnits = units?.length > 0 ? units : (company?.data?.units || []);
   const currentUnit = activeUnits.find(u => String(u.id) === String(selectedUnitId));
 
-  // Estados dos Formulários
   const [unitForm, setUnitForm] = useState({ name: '', address: '', phone: '', email: '', cnpj: '', primary_contact: '', status: 'ativo' });
   const [contractForm, setContractForm] = useState({ name: '', cnpj: '', billing_cycle: 'mensal', contract_start: '', contract_end: '' });
   
@@ -85,7 +84,6 @@ export default function Configuracoes() {
     }
   }, [loading, company, isAdmin]);
 
-  // Sincroniza os dados da Unidade Atual corretamente ao mudar de unidade ou carregar
   useEffect(() => {
     if (currentUnit) {
       setUnitForm({
@@ -115,7 +113,7 @@ export default function Configuracoes() {
     return Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
   }, [contractForm.contract_end]);
 
-  // SALVAR HOSPITAL ATUAL (ATUALIZA DIRETAMENTE NO ARRAY DE UNIDADES DO SUPABASE)
+  // CORRIGIDO: Salva perfeitamente o CNPJ e o Responsável na Unidade Atual
   const handleSaveCurrentUnit = async (e) => {
     e.preventDefault();
     if (!currentUnit) return;
@@ -142,7 +140,6 @@ export default function Configuracoes() {
     }
   };
 
-  // SALVAR CONTRATO MATRIZ (SINCRONIZA TAMBÉM O NOME E CNPJ GLOBAIS)
   const handleSaveContract = async (e) => {
     e.preventDefault();
     setSaving(true);
