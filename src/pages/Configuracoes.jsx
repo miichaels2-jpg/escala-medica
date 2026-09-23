@@ -31,6 +31,7 @@ export default function Configuracoes() {
   const activeUnits = units?.length > 0 ? units : (company?.data?.units || []);
   const currentUnit = activeUnits.find(u => String(u.id) === String(selectedUnitId));
 
+  // Estados dos Formulários
   const [unitForm, setUnitForm] = useState({ name: '', address: '', phone: '', email: '', cnpj: '', primary_contact: '', status: 'ativo' });
   const [contractForm, setContractForm] = useState({ name: '', cnpj: '', billing_cycle: 'mensal', contract_start: '', contract_end: '' });
   
@@ -39,8 +40,6 @@ export default function Configuracoes() {
 
   const [unitModalOpen, setUnitModalOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState(null);
-  
-  // FORMULÁRIO COMPLETO PARA CADASTRAR/EDITAR HOSPITAL
   const [newUnitForm, setNewUnitForm] = useState({ 
     name: '', 
     cnpj: '', 
@@ -86,6 +85,7 @@ export default function Configuracoes() {
     }
   }, [loading, company, isAdmin]);
 
+  // Sincroniza os dados da Unidade Atual corretamente ao mudar de unidade ou carregar
   useEffect(() => {
     if (currentUnit) {
       setUnitForm({
@@ -115,7 +115,7 @@ export default function Configuracoes() {
     return Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
   }, [contractForm.contract_end]);
 
-  // SALVAR HOSPITAL ATUAL COM SUPORTE A COLUNA DATA
+  // SALVAR HOSPITAL ATUAL (ATUALIZA DIRETAMENTE NO ARRAY DE UNIDADES DO SUPABASE)
   const handleSaveCurrentUnit = async (e) => {
     e.preventDefault();
     if (!currentUnit) return;
@@ -142,6 +142,7 @@ export default function Configuracoes() {
     }
   };
 
+  // SALVAR CONTRATO MATRIZ (SINCRONIZA TAMBÉM O NOME E CNPJ GLOBAIS)
   const handleSaveContract = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -400,7 +401,7 @@ export default function Configuracoes() {
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Coordenador / Responsável Local</Label>
-                      <Input value={unitForm.primary_contact} onChange={(e) => setUnitForm(p => ({...p, primary_contact: e.target.value}))} placeholder="Nome do médico chefe" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
+                      <Input value={unitForm.primary_contact} onChange={(e) => setUnitForm(p => ({...p, primary_contact: e.target.value}))} placeholder="Nome do médico chefe / RT" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
                     </div>
                   </div>
 
@@ -558,7 +559,6 @@ export default function Configuracoes() {
               )}
             </div>
 
-            {/* MODAL COMPLETO DE CADASTRO DE HOSPITAL COM CNPJ, ENDEREÇO E CONTATOS */}
             <Dialog open={unitModalOpen} onOpenChange={setUnitModalOpen}>
               <DialogContent className="w-[95vw] sm:max-w-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-2xl rounded-3xl p-6">
                 <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-3">
