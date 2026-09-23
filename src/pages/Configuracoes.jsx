@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   Building2, Save, UserPlus, Trash2, 
   Settings, Hospital, ShieldCheck, FileText,
-  Mail, MapPin, Edit, Plus, RotateCcw, Activity, AlertTriangle
+  Mail, MapPin, Edit, Plus, RotateCcw, Activity, AlertTriangle, Phone
 } from 'lucide-react';
 
 function getLocalDateString(d = new Date()) {
@@ -31,7 +31,7 @@ export default function Configuracoes() {
   const activeUnits = units?.length > 0 ? units : (company?.data?.units || []);
   const currentUnit = activeUnits.find(u => String(u.id) === String(selectedUnitId));
 
-  const [unitForm, setUnitForm] = useState({ name: '', address: '', phone: '', primary_contact: '', status: 'ativo' });
+  const [unitForm, setUnitForm] = useState({ name: '', address: '', phone: '', email: '', cnpj: '', primary_contact: '', status: 'ativo' });
   const [contractForm, setContractForm] = useState({ name: '', cnpj: '', billing_cycle: 'mensal', contract_start: '', contract_end: '' });
   
   const [inviteEmail, setInviteEmail] = useState('');
@@ -39,7 +39,17 @@ export default function Configuracoes() {
 
   const [unitModalOpen, setUnitModalOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState(null);
-  const [newUnitForm, setNewUnitForm] = useState({ name: '', address: '', status: 'ativo' });
+  
+  // FORMULÁRIO COMPLETO PARA CADASTRAR/EDITAR HOSPITAL
+  const [newUnitForm, setNewUnitForm] = useState({ 
+    name: '', 
+    cnpj: '', 
+    address: '', 
+    phone: '', 
+    email: '', 
+    primary_contact: '', 
+    status: 'ativo' 
+  });
 
   const isAdmin = user?.role === 'admin' || user?.app_role === 'gestor';
   const companyId = user?.data?.company_id || user?.company_id || company?.id || 'cmp_principal';
@@ -80,8 +90,10 @@ export default function Configuracoes() {
     if (currentUnit) {
       setUnitForm({
         name: currentUnit.name || '',
+        cnpj: currentUnit.cnpj || '',
         address: currentUnit.address || '',
         phone: currentUnit.phone || '',
+        email: currentUnit.email || '',
         primary_contact: currentUnit.primary_contact || '',
         status: currentUnit.status || 'ativo'
       });
@@ -96,7 +108,6 @@ export default function Configuracoes() {
     });
   }, [companyUsers, selectedUnitId, isAdmin]);
 
-  // CALCULO DE DIAS PARA O VENCIMENTO
   const daysToExpiration = useMemo(() => {
     if (!contractForm.contract_end) return null;
     const endDate = new Date(contractForm.contract_end + 'T23:59:59');
@@ -104,6 +115,7 @@ export default function Configuracoes() {
     return Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
   }, [contractForm.contract_end]);
 
+  // SALVAR HOSPITAL ATUAL COM SUPORTE A COLUNA DATA
   const handleSaveCurrentUnit = async (e) => {
     e.preventDefault();
     if (!currentUnit) return;
@@ -111,10 +123,14 @@ export default function Configuracoes() {
     try {
       let updatedUnits = activeUnits.map(u => String(u.id) === String(currentUnit.id) ? { ...u, ...unitForm } : u);
       
-      const { error } = await supabase.from('companies').update({
-        data: { ...(company?.data || {}), units: updatedUnits }
-      }).eq('id', companyId);
+      const payload = {
+        data: { 
+          ...(company?.data || {}), 
+          units: updatedUnits 
+        }
+      };
 
+      const { error } = await supabase.from('companies').update(payload).eq('id', companyId);
       if (error) throw error;
       
       await refreshAllData();
@@ -130,7 +146,6 @@ export default function Configuracoes() {
     e.preventDefault();
     setSaving(true);
     try {
-      // O SEGREDO ESTÁ AQUI: Cnpj, datas e cliclos empacotados dentro do data (JSONB)
       const payload = {
         name: contractForm.name,
         data: {
@@ -146,7 +161,7 @@ export default function Configuracoes() {
 
       if (existingComp) {
         const { error } = await supabase.from('companies').update(payload).eq('id', companyId);
-        if (error) throw error; // Agora ele acusa o erro se o banco recusar!
+        if (error) throw error;
       } else {
         const { error } = await supabase.from('companies').insert([{ id: companyId, ...payload }]);
         if (error) throw error;
@@ -176,7 +191,6 @@ export default function Configuracoes() {
       else if (contractForm.billing_cycle === 'anual') end.setFullYear(end.getFullYear() + 1);
 
       const newEnd = getLocalDateString(end);
-      
       const payload = { data: { ...(company?.data || {}), contract_end: newEnd } };
       
       const { error } = await supabase.from('companies').update(payload).eq('id', companyId);
@@ -195,10 +209,18 @@ export default function Configuracoes() {
   const openUnitModal = (unit = null) => {
     if (unit) {
       setEditingUnit(unit);
-      setNewUnitForm({ name: unit.name || '', address: unit.address || '', status: unit.status || 'ativo' });
+      setNewUnitForm({ 
+        name: unit.name || '', 
+        cnpj: unit.cnpj || '', 
+        address: unit.address || '', 
+        phone: unit.phone || '', 
+        email: unit.email || '', 
+        primary_contact: unit.primary_contact || '', 
+        status: unit.status || 'ativo' 
+      });
     } else {
       setEditingUnit(null);
-      setNewUnitForm({ name: '', address: '', status: 'ativo' });
+      setNewUnitForm({ name: '', cnpj: '', address: '', phone: '', email: '', primary_contact: '', status: 'ativo' });
     }
     setUnitModalOpen(true);
   };
@@ -208,22 +230,20 @@ export default function Configuracoes() {
     if (!newUnitForm.name.trim()) return alert('O nome do hospital é obrigatório.');
     setSaving(true);
     try {
-      const payload = { name: newUnitForm.name.trim(), address: newUnitForm.address, status: newUnitForm.status };
-      
       let updatedUnits = [...activeUnits];
       if (editingUnit?.id) {
-        updatedUnits = updatedUnits.map(u => String(u.id) === String(editingUnit.id) ? { ...u, ...payload } : u);
+        updatedUnits = updatedUnits.map(u => String(u.id) === String(editingUnit.id) ? { ...u, ...newUnitForm } : u);
       } else {
-        updatedUnits.push({ id: 'unit_' + Date.now(), ...payload });
+        updatedUnits.push({ id: 'unit_' + Date.now(), ...newUnitForm });
       }
       
-      const { error } = await supabase.from('companies').update({ 
-        data: { ...(company?.data || {}), units: updatedUnits }
-      }).eq('id', companyId);
+      const payload = { data: { ...(company?.data || {}), units: updatedUnits } };
+      const { error } = await supabase.from('companies').update(payload).eq('id', companyId);
       if (error) throw error;
       
       setUnitModalOpen(false);
       await refreshAllData();
+      alert('Hospital salvo com sucesso!');
     } catch (err) { 
       alert('Erro ao salvar hospital: ' + err.message); 
     } finally { 
@@ -362,16 +382,24 @@ export default function Configuracoes() {
                       <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nome Oficial do Hospital *</Label>
                       <Input value={unitForm.name} onChange={(e) => setUnitForm(p => ({...p, name: e.target.value}))} required className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
                     </div>
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Endereço Completo</Label>
-                      <Input value={unitForm.address} onChange={(e) => setUnitForm(p => ({...p, address: e.target.value}))} placeholder="Ex: Av. Paulista, 1000 - Bela Vista" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">CNPJ do Hospital</Label>
+                      <Input value={unitForm.cnpj} onChange={(e) => setUnitForm(p => ({...p, cnpj: e.target.value}))} placeholder="00.000.000/0000-00" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-mono" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Telefone da Recepção / Posto</Label>
                       <Input value={unitForm.phone} onChange={(e) => setUnitForm(p => ({...p, phone: e.target.value}))} placeholder="(00) 0000-0000" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
                     </div>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Endereço Completo</Label>
+                      <Input value={unitForm.address} onChange={(e) => setUnitForm(p => ({...p, address: e.target.value}))} placeholder="Ex: Av. Paulista, 1000 - Bela Vista" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
+                    </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Coordenador/Responsável Local</Label>
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">E-mail de Contato</Label>
+                      <Input type="email" value={unitForm.email} onChange={(e) => setUnitForm(p => ({...p, email: e.target.value}))} placeholder="hospital@contato.com" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Coordenador / Responsável Local</Label>
                       <Input value={unitForm.primary_contact} onChange={(e) => setUnitForm(p => ({...p, primary_contact: e.target.value}))} placeholder="Nome do médico chefe" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
                     </div>
                   </div>
@@ -389,7 +417,6 @@ export default function Configuracoes() {
 
         {activeTab === 'contrato' && (
           <div className="max-w-4xl">
-            {/* ALERTA DE VENCIMENTO DO CONTRATO */}
             {daysToExpiration !== null && daysToExpiration <= 30 && daysToExpiration >= 0 && (
               <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-2xl flex items-start gap-3 animate-in fade-in">
                 <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
@@ -465,42 +492,6 @@ export default function Configuracoes() {
                 </div>
               </form>
             </Card>
-
-            {isAdmin && (
-              <div className="space-y-4 mt-6">
-                <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
-                  <h3 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2 mb-2">
-                    <Activity className="w-4 h-4 text-rose-500" /> Modo Super Admin
-                  </h3>
-                  <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">
-                    Você tem privilégios totais. Abaixo estão todas as empresas/contratos isolados no sistema. Selecione para "entrar" na visão de cada um.
-                  </p>
-                  
-                  <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                    {companies.length === 0 ? (
-                      <p className="text-xs text-slate-400 text-center py-4">Nenhuma empresa mapeada.</p>
-                    ) : (
-                      companies.map((c) => (
-                        <div key={c.id} className="p-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="text-xs font-black text-slate-900 dark:text-white truncate">{c.name}</div>
-                            <div className="text-[9px] text-slate-500 font-mono mt-0.5">{c.cnpj || 'Sem CNPJ'}</div>
-                          </div>
-                          <Button 
-                            variant={company?.id === c.id ? 'default' : 'outline'} 
-                            size="sm" 
-                            onClick={() => handleSelectCompany(c.id)}
-                            className={`h-7 text-[10px] font-black rounded-lg shrink-0 cursor-pointer ${company?.id === c.id ? 'bg-sky-600 text-white border-transparent' : 'border-slate-300 text-slate-600 dark:border-slate-600 dark:text-slate-300'}`}
-                          >
-                            {company?.id === c.id ? 'Em Uso' : 'Acessar'}
-                          </Button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </Card>
-              </div>
-            )}
           </div>
         )}
 
@@ -512,7 +503,7 @@ export default function Configuracoes() {
                   <Building2 className="w-5 h-5 text-sky-600 dark:text-cyan-400" /> Cadastrar Múltiplos Hospitais
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Adicione novos hospitais que pertencem a este contrato. Eles aparecerão no seletor de "Unidade" no topo da tela.
+                  Adicione novos hospitais que pertencem a este contrato com CNPJ, endereço e contatos completos.
                 </p>
               </div>
               <Button onClick={() => openUnitModal()} className="shrink-0 h-10 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs px-5 rounded-xl shadow-md cursor-pointer">
@@ -529,8 +520,8 @@ export default function Configuracoes() {
               ) : (
                 activeUnits.map(u => (
                   <div key={u.id} className="p-5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 hover:border-sky-300 dark:hover:border-sky-700 transition-all flex flex-col justify-between h-full">
-                    <div>
-                      <div className="flex items-start justify-between mb-3">
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between">
                         <div className="p-2.5 rounded-xl bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400">
                           <Hospital className="w-5 h-5" />
                         </div>
@@ -540,12 +531,20 @@ export default function Configuracoes() {
                           {u.status || 'Ativo'}
                         </span>
                       </div>
-                      <h4 className="text-base font-black text-slate-900 dark:text-white leading-tight mb-1">{u.name}</h4>
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mt-2">
+                      <h4 className="text-base font-black text-slate-900 dark:text-white leading-tight">{u.name}</h4>
+                      <div className="text-[11px] font-mono font-bold text-sky-600 dark:text-sky-400">CNPJ: {u.cnpj || 'Não informado'}</div>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                         <MapPin className="w-3.5 h-3.5 shrink-0" />
                         <span className="truncate">{u.address || 'Endereço não informado'}</span>
                       </div>
+                      {u.phone && (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                          <Phone className="w-3.5 h-3.5 shrink-0" />
+                          <span>{u.phone}</span>
+                        </div>
+                      )}
                     </div>
+
                     <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
                       <Button variant="ghost" onClick={() => handleDeleteUnit(u.id, u.name)} className="h-8 text-[10px] font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg px-2.5 cursor-pointer">
                         <Trash2 className="w-3.5 h-3.5 mr-1" /> Remover
@@ -559,26 +558,52 @@ export default function Configuracoes() {
               )}
             </div>
 
+            {/* MODAL COMPLETO DE CADASTRO DE HOSPITAL COM CNPJ, ENDEREÇO E CONTATOS */}
             <Dialog open={unitModalOpen} onOpenChange={setUnitModalOpen}>
-              <DialogContent className="w-[95vw] sm:max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-2xl rounded-3xl p-6">
+              <DialogContent className="w-[95vw] sm:max-w-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-2xl rounded-3xl p-6">
                 <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-3">
                   <DialogTitle className="text-base font-black flex items-center gap-2 text-sky-600 dark:text-sky-400">
-                    <Hospital className="w-5 h-5" /> {editingUnit ? 'Editar Hospital' : 'Adicionar Novo Hospital'}
+                    <Hospital className="w-5 h-5" /> {editingUnit ? 'Editar Hospital / Unidade' : 'Cadastrar Novo Hospital'}
                   </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleSaveNewUnit} className="space-y-4 py-2">
+
+                <form onSubmit={handleSaveNewUnit} className="space-y-4 py-2 text-xs">
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nome do Hospital / Unidade *</Label>
-                    <Input value={newUnitForm.name} onChange={e => setNewUnitForm({...newUnitForm, name: e.target.value})} placeholder="Ex: Hospital Municipal Central" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-bold" required autoFocus />
+                    <Label className="font-bold text-slate-700 dark:text-slate-300">Nome Oficial do Hospital *</Label>
+                    <Input value={newUnitForm.name} onChange={e => setNewUnitForm({...newUnitForm, name: e.target.value})} placeholder="Ex: Hospital Municipal Central" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-bold" required autoFocus />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Endereço de Localização</Label>
-                    <Input value={newUnitForm.address} onChange={e => setNewUnitForm({...newUnitForm, address: e.target.value})} placeholder="Rua, Número, Bairro, Cidade" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl" />
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="font-bold text-slate-700 dark:text-slate-300">CNPJ da Unidade</Label>
+                      <Input value={newUnitForm.cnpj} onChange={e => setNewUnitForm({...newUnitForm, cnpj: e.target.value})} placeholder="00.000.000/0000-00" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-mono" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="font-bold text-slate-700 dark:text-slate-300">Telefone / Recepção</Label>
+                      <Input value={newUnitForm.phone} onChange={e => setNewUnitForm({...newUnitForm, phone: e.target.value})} placeholder="(00) 0000-0000" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-mono" />
+                    </div>
                   </div>
+
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Status Operacional</Label>
+                    <Label className="font-bold text-slate-700 dark:text-slate-300">Endereço Completo</Label>
+                    <Input value={newUnitForm.address} onChange={e => setNewUnitForm({...newUnitForm, address: e.target.value})} placeholder="Rua, Número, Bairro, Cidade - UF" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl" />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="font-bold text-slate-700 dark:text-slate-300">E-mail de Contato</Label>
+                      <Input type="email" value={newUnitForm.email} onChange={e => setNewUnitForm({...newUnitForm, email: e.target.value})} placeholder="unidade@hospital.com" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="font-bold text-slate-700 dark:text-slate-300">Responsável Local</Label>
+                      <Input value={newUnitForm.primary_contact} onChange={e => setNewUnitForm({...newUnitForm, primary_contact: e.target.value})} placeholder="Nome do gestor / RT" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="font-bold text-slate-700 dark:text-slate-300">Status Operacional</Label>
                     <Select value={newUnitForm.status} onValueChange={v => setNewUnitForm({...newUnitForm, status: v})}>
-                      <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-bold">
+                      <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-bold">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
@@ -587,9 +612,10 @@ export default function Configuracoes() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <DialogFooter className="pt-4 border-t border-slate-100 dark:border-slate-800 gap-2 sm:gap-0 mt-2">
-                    <Button type="button" variant="outline" onClick={() => setUnitModalOpen(false)} className="h-10 text-xs font-bold rounded-xl px-4 cursor-pointer border-slate-200 dark:border-slate-700">Cancelar</Button>
-                    <Button type="submit" disabled={saving} className="h-10 bg-sky-600 hover:bg-sky-700 text-white font-black text-xs px-6 rounded-xl cursor-pointer">Salvar Hospital</Button>
+
+                  <DialogFooter className="pt-4 border-t border-slate-100 dark:border-slate-800 gap-2">
+                    <Button type="button" variant="outline" onClick={() => setUnitModalOpen(false)} className="h-10 font-bold rounded-xl px-4 cursor-pointer border-slate-200 dark:border-slate-700">Cancelar</Button>
+                    <Button type="submit" disabled={saving} className="h-10 bg-sky-600 hover:bg-sky-700 text-white font-black px-6 rounded-xl cursor-pointer">Salvar Hospital</Button>
                   </DialogFooter>
                 </form>
               </DialogContent>
