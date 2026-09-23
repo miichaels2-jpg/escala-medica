@@ -1,5 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -81,56 +80,15 @@ function computeShiftLiveStatus(shift, liveNowDate) {
 }
 
 export default function Painel() {
-  const { user, company, units = [], loading: appLoading, selectedUnitId, isManager } = useAppData();
+  const { user, company, units = [], selectedUnitId, isManager, shifts, sectors, professionals, loading } = useAppData();
   const navigate = useNavigate();
 
-  const [shifts, setShifts] = useState([]);
-  const [sectors, setSectors] = useState([]);
-  const [professionals, setProfessionals] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [tvMode, setTvMode] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
-  const companyId = user?.data?.company_id || user?.company_id || company?.id || 'cmp_principal';
   const unitId = selectedUnitId || user?.data?.selected_unit_id || company?.selected_unit_id || 'unit_h1';
-
   const currentUnit = units.find(u => String(u.id) === String(unitId));
   const dashboardTitle = currentUnit ? currentUnit.name : (company?.name || 'Hospital Principal');
-
-  const loadData = useCallback(async () => {
-    if (!companyId) return;
-    setLoading(true);
-    try {
-      // Usamos chamadas diretas ao Supabase, limitando as linhas para performance
-      const [sRes, secRes, pRes] = await Promise.all([
-        supabase.from('shifts').select('*').eq('company_id', companyId).limit(1000),
-        supabase.from('sectors').select('*').eq('company_id', companyId).limit(100),
-        supabase.from('professionals').select('*').eq('company_id', companyId).limit(400)
-      ]);
-
-      const s = sRes.data || [];
-      const sec = secRes.data || [];
-      const p = pRes.data || [];
-      
-      // TRAVA DE SEGURANÇA: ISOLAMENTO BLINDADO DE DADOS
-      const strictUnitId = String(unitId);
-      const sIsolated = s.filter(x => !unitId || String(x.unit_id) === strictUnitId);
-      const secIsolated = sec.filter(x => !unitId || String(x.unit_id) === strictUnitId);
-
-      setShifts(sIsolated);
-      setSectors(secIsolated);
-      setProfessionals(p);
-    } catch (e) {
-      console.error('Erro ao carregar dados do painel:', e);
-    } finally {
-      setLoading(false);
-    }
-  }, [companyId, unitId]);
-
-  useEffect(() => {
-    if (appLoading) return;
-    loadData();
-  }, [appLoading, loadData]);
 
   useEffect(() => {
     const id = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -140,6 +98,12 @@ export default function Painel() {
   const todayStr = useMemo(() => getLocalDateString(currentTime), [currentTime]);
   const currentYear = currentTime.getFullYear();
   const currentMonth = currentTime.getMonth();
+
+  const daysToExpiration = useMemo(() => {
+    if (!company?.data?.contract_end) return null;
+    const endDate = new Date(company.data.contract_end + 'T23:59:59');
+    return Math.ceil((endDate - currentTime) / (1000 * 60 * 60 * 24));
+  }, [company, currentTime]);
 
   const unsubmittedSectors = useMemo(() => {
     return (sectors || []).filter(s => {
@@ -308,58 +272,34 @@ export default function Painel() {
   const openTvMode = async () => { setTvMode(true); try { await document.documentElement.requestFullscreen?.(); } catch {} };
   const closeTvMode = async () => { setTvMode(false); if (document.fullscreenElement) await document.exitFullscreen?.(); };
 
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center text-slate-400">Carregando painel...</div>;
+  }
+
   if (tvMode) {
     return (
       <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col justify-between p-4 sm:p-5 lg:p-7 select-none overflow-hidden font-sans">
-        
-        <button onClick={closeTvMode} className="lg:hidden fixed top-4 right-4 z-[99999] p-2.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 shadow-xl cursor-pointer hover:bg-slate-700">
-          <X className="w-5 h-5" />
-        </button>
-
+        <button onClick={closeTvMode} className="lg:hidden fixed top-4 right-4 z-[99999] p-2.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 shadow-xl cursor-pointer hover:bg-slate-700"><X className="w-5 h-5" /></button>
         <div className="flex items-center justify-between border-b border-slate-800 pb-4 shrink-0 pr-12 lg:pr-0">
           <div className="flex items-center gap-3 sm:gap-4 max-w-[85%] sm:max-w-none">
-            <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-2xl shrink-0">
-              <Radio className="w-5 h-5 sm:w-7 sm:h-7 animate-pulse text-white" />
-            </div>
+            <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-2xl shrink-0"><Radio className="w-5 h-5 sm:w-7 sm:h-7 animate-pulse text-white" /></div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[10px] sm:text-xs font-black uppercase tracking-[0.25em] text-sky-400 truncate">
-                <span className="truncate max-w-[150px] sm:max-w-none">{dashboardTitle}</span>
-                <span className="hidden sm:inline">•</span>
-                <span className="hidden sm:flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /> CCO AO VIVO</span>
-              </div>
-              <h1 className="text-lg sm:text-2xl lg:text-4xl font-black tracking-tight text-white mt-0.5 truncate">
-                Centro de Comando
-              </h1>
-              <p className="text-[9px] sm:text-xs text-slate-400 font-bold truncate">
-                {fmtDateLong(currentTime)}, {fmtDate(todayStr)} · Telemetria
-              </p>
+              <div className="flex items-center gap-2 text-[10px] sm:text-xs font-black uppercase tracking-[0.25em] text-sky-400 truncate"><span className="truncate max-w-[150px] sm:max-w-none">{dashboardTitle}</span><span className="hidden sm:inline">•</span><span className="hidden sm:flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /> CCO AO VIVO</span></div>
+              <h1 className="text-lg sm:text-2xl lg:text-4xl font-black tracking-tight text-white mt-0.5 truncate">Centro de Comando</h1>
+              <p className="text-[9px] sm:text-xs text-slate-400 font-bold truncate">{fmtDateLong(currentTime)}, {fmtDate(todayStr)} · Telemetria</p>
             </div>
           </div>
-
           <div className="hidden lg:flex items-center gap-5">
-            <div className={`px-4 py-2.5 rounded-2xl border flex items-center gap-3 ${vacantShifts.length > 0 ? 'bg-rose-500/10 border-rose-500/40 text-rose-300' : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'}`}>
-              <div className={`w-3 h-3 rounded-full ${vacantShifts.length > 0 ? 'bg-rose-500 animate-ping' : 'bg-emerald-400'}`} />
-              <div>
-                <div className="text-xs font-black uppercase tracking-wider">{vacantShifts.length > 0 ? 'Alerta Assistencial' : 'Operação Estável'}</div>
-                <div className="text-[10px] font-bold opacity-80">{vacantShifts.length > 0 ? `${vacantShifts.length} vaga(s) desocupada(s)` : 'Todos os postos cobertos'}</div>
-              </div>
-            </div>
-            <div className="bg-slate-900 border border-slate-800 px-5 py-2.5 rounded-2xl text-right">
-              <div className="text-2xl lg:text-4xl font-black font-mono tracking-tight text-cyan-400">{currentTime.toLocaleTimeString('pt-BR')}</div>
-              <div className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Oficial CCO</div>
-            </div>
+            <div className={`px-4 py-2.5 rounded-2xl border flex items-center gap-3 ${vacantShifts.length > 0 ? 'bg-rose-500/10 border-rose-500/40 text-rose-300' : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'}`}><div className={`w-3 h-3 rounded-full ${vacantShifts.length > 0 ? 'bg-rose-500 animate-ping' : 'bg-emerald-400'}`} /><div><div className="text-xs font-black uppercase tracking-wider">{vacantShifts.length > 0 ? 'Alerta Assistencial' : 'Operação Estável'}</div><div className="text-[10px] font-bold opacity-80">{vacantShifts.length > 0 ? `${vacantShifts.length} vaga(s) desocupada(s)` : 'Todos os postos cobertos'}</div></div></div>
+            <div className="bg-slate-900 border border-slate-800 px-5 py-2.5 rounded-2xl text-right"><div className="text-2xl lg:text-4xl font-black font-mono tracking-tight text-cyan-400">{currentTime.toLocaleTimeString('pt-BR')}</div><div className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Oficial CCO</div></div>
             <button title="Sair da tela cheia" onClick={closeTvMode} className="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors cursor-pointer"><Minimize2 className="h-5 w-5" /></button>
           </div>
         </div>
-
         <div className="flex-1 my-4 overflow-y-auto lg:overflow-hidden pr-1 pb-16 lg:pb-0">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-5 lg:h-full">
             <div className="lg:col-span-2 rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5 shadow-2xl flex flex-col h-auto lg:h-full lg:overflow-hidden">
               <div className="flex flex-col flex-1 h-full lg:overflow-hidden">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0">
-                  <div className="flex items-center gap-2 text-xs sm:text-sm font-black uppercase tracking-wider text-sky-400"><Building2 className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" /> Cobertura Setores</div>
-                  <span className="text-[10px] sm:text-xs font-black px-2 sm:px-3 py-1 rounded-xl bg-slate-800 text-slate-300 whitespace-nowrap">{sectorsCoverage.length} auditados</span>
-                </div>
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0"><div className="flex items-center gap-2 text-xs sm:text-sm font-black uppercase tracking-wider text-sky-400"><Building2 className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" /> Cobertura Setores</div><span className="text-[10px] sm:text-xs font-black px-2 sm:px-3 py-1 rounded-xl bg-slate-800 text-slate-300 whitespace-nowrap">{sectorsCoverage.length} auditados</span></div>
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 lg:overflow-y-auto pr-1 pb-1">
                   {sectorsCoverage.map((sec) => {
                     const hasShifts = sec.total > 0; const percent = hasShifts ? Math.round((sec.active / sec.total) * 100) : 0; const hasVacant = sec.vacant > 0;
@@ -375,30 +315,18 @@ export default function Painel() {
                     );
                   })}
                 </div>
-                <div className="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] sm:text-xs text-slate-400 font-bold shrink-0">
-                  <span>Taxa Global: <b className="text-white font-mono text-xs sm:text-sm">{globalFillRate}%</b></span><span className="text-sky-400 hidden sm:block">Auditoria Contínua</span>
-                </div>
+                <div className="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] sm:text-xs text-slate-400 font-bold shrink-0"><span>Taxa Global: <b className="text-white font-mono text-xs sm:text-sm">{globalFillRate}%</b></span><span className="text-sky-400 hidden sm:block">Auditoria Contínua</span></div>
               </div>
             </div>
-
             <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5 shadow-2xl flex flex-col h-auto lg:h-full lg:overflow-hidden">
               <div className="flex flex-col flex-1 h-full lg:overflow-hidden">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0">
-                  <span className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" /> Ativos Agora ({activeNowList.length})</span>
-                  <span className="text-[9px] font-mono text-slate-400 hidden sm:block">EM ATENDIMENTO</span>
-                </div>
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0"><span className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" /> Ativos Agora ({activeNowList.length})</span><span className="text-[9px] font-mono text-slate-400 hidden sm:block">EM ATENDIMENTO</span></div>
                 <div className="flex-1 space-y-2.5 lg:overflow-y-auto pr-1 pb-1">
                   {activeNowList.length === 0 ? <div className="py-10 text-center text-xs text-slate-500">Nenhum plantonista em atendimento neste minuto.</div> : activeNowList.map(s => {
-                    const prof = profById[s.professional_id] || profByName[normalizeStr(s.professional_name)]; 
-                    const profName = toTitleCase(prof?.name || s.professional_name || 'Profissional'); 
-                    const sectorName = toTitleCase(s.sector_name || sectors.find(sec => String(sec.id) === String(s.sector_id))?.name || 'Setor Geral');
+                    const prof = profById[s.professional_id] || profByName[normalizeStr(s.professional_name)]; const profName = toTitleCase(prof?.name || s.professional_name || 'Profissional'); const sectorName = toTitleCase(s.sector_name || sectors.find(sec => String(sec.id) === String(s.sector_id))?.name || 'Setor Geral');
                     return (
                       <div key={s.id} className="p-3.5 rounded-2xl bg-slate-950 border border-emerald-500/40 flex items-center justify-between shadow-md">
-                        <div className="min-w-0 pr-2">
-                          <span className="text-[9px] sm:text-[10px] text-emerald-400 font-mono font-black block uppercase tracking-wider truncate">🏥 {sectorName}</span>
-                          <div className="font-black text-xs sm:text-sm text-white truncate mt-0.5">Dr(a). {profName}</div>
-                          <span className="text-[9px] sm:text-[10px] text-slate-400 font-mono block mt-0.5">{s.start_time} às {s.end_time}</span>
-                        </div>
+                        <div className="min-w-0 pr-2"><span className="text-[9px] sm:text-[10px] text-emerald-400 font-mono font-black block uppercase tracking-wider truncate">🏥 {sectorName}</span><div className="font-black text-xs sm:text-sm text-white truncate mt-0.5">Dr(a). {profName}</div><span className="text-[9px] sm:text-[10px] text-slate-400 font-mono block mt-0.5">{s.start_time} às {s.end_time}</span></div>
                         <span className="text-[9px] sm:text-[10px] font-mono font-black text-emerald-300 bg-emerald-500/20 px-2 sm:px-2.5 py-1.5 rounded-xl shrink-0 border border-emerald-500/30 whitespace-nowrap">{s.lifecycle.detail}</span>
                       </div>
                     );
@@ -406,14 +334,10 @@ export default function Painel() {
                 </div>
               </div>
             </div>
-
             <div className="flex flex-col gap-4 h-auto lg:h-full lg:overflow-hidden">
               <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5 shadow-2xl flex-1 flex flex-col h-auto lg:h-full lg:overflow-hidden">
                 <div className="flex flex-col flex-1 h-full lg:overflow-hidden">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-2.5 shrink-0">
-                    <div className="flex items-center gap-2 text-[10px] sm:text-xs font-black uppercase tracking-wider text-sky-400"><ArrowRightLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Próxima Passagem</div>
-                    {nextHandover && <span className="text-[10px] sm:text-xs font-mono font-black px-2 py-0.5 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-500/30">{nextHandover.targetTime}</span>}
-                  </div>
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-2.5 shrink-0"><div className="flex items-center gap-2 text-[10px] sm:text-xs font-black uppercase tracking-wider text-sky-400"><ArrowRightLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Próxima Passagem</div>{nextHandover && <span className="text-[10px] sm:text-xs font-mono font-black px-2 py-0.5 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-500/30">{nextHandover.targetTime}</span>}</div>
                   <div className="flex-1 lg:overflow-y-auto pr-1">
                     {nextHandover ? (
                       <div className="space-y-2.5">
@@ -432,11 +356,6 @@ export default function Painel() {
             </div>
           </div>
         </div>
-
-        <div className="hidden lg:flex border-t border-slate-800 pt-3 shrink-0 items-center justify-between text-xs text-slate-400 font-bold">
-          <div className="flex items-center gap-6"><span className="flex items-center gap-2 text-white"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />{activeNowList.length} Médicos Ativos Agora</span><span>•</span><span>{todayShifts.length} Plantões Cadastrados Hoje</span><span>•</span><span className={vacantShifts.length > 0 ? 'text-rose-400 font-black animate-pulse' : 'text-slate-400'}>{vacantShifts.length > 0 ? `⚠️ ${vacantShifts.length} Postos em Aberto` : 'Cobertura Hospitalar Total'}</span></div>
-          <div className="font-mono text-[11px] text-slate-500">ScaleMedic Enterprise CCO • {dashboardTitle}</div>
-        </div>
       </div>
     );
   }
@@ -444,6 +363,16 @@ export default function Painel() {
   return (
     <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-900/40 min-h-screen text-slate-900 dark:text-slate-100">
       
+      {isManager && daysToExpiration !== null && daysToExpiration <= 5 && daysToExpiration >= 0 && (
+        <div className="bg-rose-600 border border-rose-500 p-4 rounded-3xl text-white shadow-xl flex items-center gap-3 animate-in fade-in">
+          <AlertTriangle className="w-8 h-8 animate-pulse shrink-0" />
+          <div>
+            <h2 className="text-base font-black uppercase tracking-wider">Aviso Crítico de Renovação</h2>
+            <p className="text-sm font-medium">Seu contrato com a ScaleMedic expira em <b>{daysToExpiration} dia(s)</b>. Entre em contato para renovar, ou todas as suas unidades serão bloqueadas após o vencimento.</p>
+          </div>
+        </div>
+      )}
+
       <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white p-6 md:p-8 rounded-3xl border border-slate-800 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-sky-400 font-black">

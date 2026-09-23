@@ -4,30 +4,9 @@ import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
-  CalendarDays, 
-  Clock, 
-  Building2, 
-  Repeat, 
-  CheckCircle2, 
-  Loader2, 
-  DollarSign, 
-  AlertCircle, 
-  Radio, 
-  Printer, 
-  ChevronLeft, 
-  ChevronRight, 
-  Send, 
-  Timer, 
-  Sparkles, 
-  Flame, 
-  ArrowRight, 
-  Layers, 
-  CalendarCheck, 
-  Zap, 
-  ChevronDown, 
-  ChevronUp, 
-  Clock3,
-  ShieldAlert
+  CalendarDays, Clock, Building2, Repeat, CheckCircle2, Loader2, DollarSign, AlertCircle, 
+  Radio, Printer, ChevronLeft, ChevronRight, Send, Timer, Sparkles, Flame, ArrowRight, 
+  Layers, CalendarCheck, Zap, ChevronDown, ChevronUp, Clock3, ShieldAlert
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -54,17 +33,6 @@ function getLocalDateString(d = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-function timeToMinutes(timeStr, isEnd = false) {
-  if (!timeStr) return isEnd ? 19 * 60 : 7 * 60;
-  const [h, m] = String(timeStr).split(':').map(Number);
-  return (h || 0) * 60 + (m || 0);
-}
-
-const MONTH_NAMES = [
-  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-];
-
 async function autoHealingSaveShift(id, initialPayload) {
   let payload = { ...initialPayload };
   try {
@@ -82,8 +50,13 @@ async function autoHealingSaveShift(id, initialPayload) {
   }
 }
 
+const MONTH_NAMES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+];
+
 export default function MinhaEscala() {
-  const { user, company, professionals = [], sectors = [], loading: appLoading, syncGlobalData } = useAppData();
+  const { user, company, units, professionals = [], sectors = [], loading: appLoading, syncGlobalData } = useAppData();
   const navigate = useNavigate();
 
   const [shifts, setShifts] = useState([]);
@@ -106,7 +79,6 @@ export default function MinhaEscala() {
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
   const todayStr = useMemo(() => getLocalDateString(now), [now]);
 
-  // Identificação cadastral do profissional logado
   const currentProfessional = useMemo(() => {
     return (professionals || []).find(p => 
       String(p.id) === String(myProfId) || 
@@ -120,19 +92,13 @@ export default function MinhaEscala() {
     return m;
   }, [sectors]);
 
-  // Carga e filtro: SÓ CARREGA O QUE ESTÁ EFETIVAMENTE ATRIBUÍDO AO PROFISSIONAL
   const loadMyShifts = useCallback(async () => {
     setLoading(true);
     try {
-      let query = supabase.from('shifts').select('*').eq('company_id', companyId);
-      
-      // Filtramos na base ou filtramos localmente para mais segurança
-      const { data: allShifts } = await query;
+      const { data: allShifts } = await supabase.from('shifts').select('*').eq('company_id', companyId);
       
       const myShifts = (allShifts || []).filter(s => {
         if (!s || s.status === 'cancelado') return false;
-        
-        // Se o plantão já foi aprovado e está vago no Mural, NÃO PERTENCE MAIS À MINHA ESCALA!
         if (s.status === 'vago' || !s.professional_id) return false;
 
         const matchesId = currentProfessional && String(s.professional_id) === String(currentProfessional.id);
@@ -154,7 +120,6 @@ export default function MinhaEscala() {
     if (!appLoading) loadMyShifts();
   }, [appLoading, loadMyShifts]);
 
-  // Cálculo da remuneração blindado
   const remunConfig = useMemo(() => {
     let meta = {};
     if (currentProfessional?.id) {
@@ -190,15 +155,9 @@ export default function MinhaEscala() {
       valorPorPlantao = valorPorHora * 12;
     }
 
-    return { 
-      valorPorPlantao: safeNumber(valorPorPlantao, 83.6), 
-      valorPorHora: safeNumber(valorPorHora, 7.6), 
-      remunType, 
-      salarioBase: baseSalario 
-    };
+    return { valorPorPlantao: safeNumber(valorPorPlantao, 83.6), valorPorHora: safeNumber(valorPorHora, 7.6), remunType, salarioBase: baseSalario };
   }, [currentProfessional]);
 
-  // Classificação temporal e detecção de sobreposição existente
   const enrichedShifts = useMemo(() => {
     const nowHour = now.getHours();
     const nowMin = now.getMinutes();
@@ -253,10 +212,14 @@ export default function MinhaEscala() {
       if (duration <= 0) duration += 24;
 
       const sectorName = s.sector_name || sectorMap[s.sector_id]?.name || 'Setor Hospitalar';
+      
+      const unitObj = (units || []).find(u => String(u.id) === String(s.unit_id));
+      const unitName = unitObj ? unitObj.name : (company?.name || 'Unidade Principal');
 
       return {
         ...s,
         sectorName,
+        unitName,
         state,
         isPendingApproval,
         duration: Math.round(duration * 10) / 10,
@@ -276,71 +239,39 @@ export default function MinhaEscala() {
       });
       return { ...item, hasConflict };
     });
-  }, [shifts, now, todayStr, sectorMap]);
+  }, [shifts, now, todayStr, sectorMap, units, company]);
 
-  const conflictingShiftsCount = useMemo(() => {
-    return enrichedShifts.filter(s => s.hasConflict).length;
-  }, [enrichedShifts]);
-
-  const activeShiftNow = useMemo(() => {
-    return enrichedShifts.find(s => s.state === 'ativo') || null;
-  }, [enrichedShifts]);
-
+  const conflictingShiftsCount = useMemo(() => enrichedShifts.filter(s => s.hasConflict).length, [enrichedShifts]);
+  const activeShiftNow = useMemo(() => enrichedShifts.find(s => s.state === 'ativo') || null, [enrichedShifts]);
   const nextHighlightedShift = useMemo(() => {
     const upcoming = enrichedShifts.filter(s => s.state === 'programado');
     if (upcoming.length === 0) return null;
     return upcoming.sort((a, b) => a.startDateTime.getTime() - b.startDateTime.getTime())[0];
   }, [enrichedShifts]);
 
-  const monthShifts = useMemo(() => {
-    return enrichedShifts.filter(s => (s.date || '').startsWith(monthPrefix));
-  }, [enrichedShifts, monthPrefix]);
+  const monthShifts = useMemo(() => enrichedShifts.filter(s => (s.date || '').startsWith(monthPrefix)), [enrichedShifts, monthPrefix]);
 
-  const upcomingMonthShifts = useMemo(() => {
-    return monthShifts
-      .filter(s => s.state === 'programado' || s.state === 'ativo')
-      .sort((a, b) => {
-        const cmp = (a.date || '').localeCompare(b.date || '');
-        if (cmp !== 0) return cmp;
-        return (a.start_time || '').localeCompare(b.start_time || '');
-      });
-  }, [monthShifts]);
+  const upcomingMonthShifts = useMemo(() => monthShifts.filter(s => s.state === 'programado' || s.state === 'ativo').sort((a, b) => {
+    const cmp = (a.date || '').localeCompare(b.date || '');
+    if (cmp !== 0) return cmp;
+    return (a.start_time || '').localeCompare(b.start_time || '');
+  }), [monthShifts]);
 
-  const completedMonthShifts = useMemo(() => {
-    return monthShifts
-      .filter(s => s.state === 'concluido')
-      .sort((a, b) => {
-        const cmp = (b.date || '').localeCompare(a.date || '');
-        if (cmp !== 0) return cmp;
-        return (b.start_time || '').localeCompare(a.start_time || '');
-      });
-  }, [monthShifts]);
+  const completedMonthShifts = useMemo(() => monthShifts.filter(s => s.state === 'concluido').sort((a, b) => {
+    const cmp = (b.date || '').localeCompare(a.date || '');
+    if (cmp !== 0) return cmp;
+    return (b.start_time || '').localeCompare(a.start_time || '');
+  }), [monthShifts]);
 
   const monthMetrics = useMemo(() => {
-    let cumpridos = 0;
-    let futuros = 0;
-    let horas = 0;
-
+    let cumpridos = 0; let futuros = 0; let horas = 0;
     monthShifts.forEach(s => {
-      if (s.state === 'concluido' || s.state === 'ativo') {
-        cumpridos += 1;
-        horas += s.duration;
-      } else {
-        futuros += 1;
-      }
+      if (s.state === 'concluido' || s.state === 'ativo') { cumpridos += 1; horas += s.duration; } 
+      else { futuros += 1; }
     });
-
     const valorBruto = cumpridos * remunConfig.valorPorPlantao;
     const extrasQtd = Math.max(0, cumpridos - 20);
-
-    return {
-      cumpridos,
-      futuros,
-      horas: Math.round(horas * 10) / 10,
-      valorBruto,
-      extrasQtd,
-      totalMes: monthShifts.length
-    };
+    return { cumpridos, futuros, horas: Math.round(horas * 10) / 10, valorBruto, extrasQtd, totalMes: monthShifts.length };
   }, [monthShifts, remunConfig]);
 
   const handlePassShiftToMural = async (shift) => {
@@ -357,10 +288,7 @@ export default function MinhaEscala() {
       const cleanNotes = currentNotes.replace(/\[SOLICITADO_POR:[^\]]+\]/gi, '').replace(/\[AGUARDANDO_GESTOR\]/gi, '').trim();
       const updatedNotes = `${cleanNotes} [SOLICITADO_POR: ${requesterName}] [SOLICITADO_ID: ${requesterId}] [AGUARDANDO_GESTOR]`.trim();
 
-      await autoHealingSaveShift(shift.id, {
-        status: 'aguardando_aprovacao_gestor',
-        notes: updatedNotes
-      });
+      await autoHealingSaveShift(shift.id, { status: 'aguardando_aprovacao_gestor', notes: updatedNotes });
 
       alert('Solicitação enviada! Aguarde a aprovação da coordenação para liberação no Mural.');
       if (typeof syncGlobalData === 'function') await syncGlobalData();
@@ -374,12 +302,8 @@ export default function MinhaEscala() {
 
   const handlePrintMyStatement = () => {
     const printWindow = window.open('', '_blank', 'width=1000,height=800');
-    if (!printWindow) {
-      alert('Permita pop-ups para imprimir o comprovante.');
-      return;
-    }
+    if (!printWindow) return alert('Permita pop-ups para imprimir o comprovante.');
 
-    const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
     const profNome = currentProfessional?.name || user?.full_name || 'Profissional';
     const matricula = currentProfessional?.registration_id || currentProfessional?.document || 'MAT-XXXX';
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
@@ -390,7 +314,7 @@ export default function MinhaEscala() {
     const rowsHtml = allOrdered.map((s, idx) => `
       <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
         <td style="border: 1px solid #000; padding: 6px 8px; font-weight: bold;">${formatDateBR(s.date)}</td>
-        <td style="border: 1px solid #000; padding: 6px 8px; text-transform: uppercase;">${s.sectorName}</td>
+        <td style="border: 1px solid #000; padding: 6px 8px; text-transform: uppercase;"><b>${s.unitName}</b> - ${s.sectorName}</td>
         <td style="border: 1px solid #000; padding: 6px 8px; font-family: monospace; text-align: center;">${s.start_time} às ${s.end_time}</td>
         <td style="border: 1px solid #000; padding: 6px 8px; text-align: center;">${s.duration}h</td>
         <td style="border: 1px solid #000; padding: 6px 8px; text-align: center; font-weight: bold;">
@@ -417,9 +341,9 @@ export default function MinhaEscala() {
       <body>
         <div class="header">
           <div>
-            <h1 style="font-size: 18px; text-transform: uppercase; margin: 0;">${hospitalName}</h1>
+            <h1 style="font-size: 18px; text-transform: uppercase; margin: 0;">ScaleMedic (Rede Global)</h1>
             <p style="margin: 3px 0;">ESPELHO INDIVIDUAL DE PLANTÕES • PRESTAÇÃO DE CONTAS</p>
-            <p style="margin: 3px 0;">Profissional: <b>${profNome}</b> (ID: ${matricula})</p>
+            <p style="margin: 3px 0;">Profissional: <b>Dr(a). ${profNome}</b> (ID: ${matricula})</p>
           </div>
           <div style="text-align: right; font-size: 9.5px;">
             <p style="margin: 0;">Competência: <b>${competencia}</b></p>
@@ -431,8 +355,8 @@ export default function MinhaEscala() {
           <thead>
             <tr>
               <th style="width: 15%;">Data</th>
-              <th style="width: 35%;">Setor / Posto</th>
-              <th style="width: 20%; text-align: center;">Horário</th>
+              <th style="width: 40%;">Unidade / Setor</th>
+              <th style="width: 15%; text-align: center;">Horário</th>
               <th style="width: 15%; text-align: center;">Duração</th>
               <th style="width: 15%; text-align: center;">Status</th>
             </tr>
@@ -452,8 +376,6 @@ export default function MinhaEscala() {
           <div style="width: 220px; border-top: 1px solid #000; padding-top: 4px;">Assinatura do Profissional</div>
           <div style="width: 220px; border-top: 1px solid #000; padding-top: 4px;">Coordenação de Escala</div>
         </div>
-
-        <script>window.onload = function() { window.print(); };</script>
       </body>
       </html>
     `;
@@ -466,17 +388,16 @@ export default function MinhaEscala() {
   return (
     <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
       
-      {/* 1. HERO BANNER PRINCIPAL */}
       <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-6 md:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.25em] text-sky-400">
             <CalendarDays className="w-4 h-4" /> Painel Assistencial do Profissional
           </div>
           <h1 className="text-3xl md:text-4xl font-black tracking-tight">
-            Olá, {currentProfessional?.name ? `Dr(a). ${currentProfessional.name.split(' ')[0]}` : user?.full_name || 'Profissional'}!
+            Olá, Dr(a). {currentProfessional?.name ? currentProfessional.name.split(' ')[0] : user?.full_name?.split(' ')[0] || 'Profissional'}!
           </h1>
           <p className="text-xs md:text-sm text-slate-300 font-medium">
-            Gerencie sua agenda de plantões, acompanhe seu repasse e solicite trocas à coordenação.
+            Gerencie sua agenda de plantões (em todos os hospitais), acompanhe seu repasse e solicite trocas à coordenação.
           </p>
         </div>
 
@@ -497,7 +418,6 @@ export default function MinhaEscala() {
         </div>
       </div>
 
-      {/* BANNER DE ALERTA SE HOUVER PLANTÕES COM CHOQUE DE HORÁRIO */}
       {conflictingShiftsCount > 0 && (
         <div className="p-4 rounded-3xl bg-rose-500/10 border-2 border-rose-500/50 shadow-md text-rose-900 dark:text-rose-200 flex items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -516,7 +436,6 @@ export default function MinhaEscala() {
         </div>
       )}
 
-      {/* 2. CARD DE PLANTÃO AO VIVO */}
       {activeShiftNow && (
         <div className="p-6 rounded-3xl bg-emerald-500/10 border-2 border-emerald-500/60 shadow-xl text-emerald-950 dark:text-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
           <div className="flex items-center gap-4">
@@ -532,8 +451,12 @@ export default function MinhaEscala() {
                   {activeShiftNow.timeLeftDesc}
                 </span>
               </div>
-              <h3 className="text-xl font-black text-slate-900 dark:text-white mt-1.5">
-                {activeShiftNow.sectorName} • {activeShiftNow.start_time} às {activeShiftNow.end_time}
+              <h3 className="text-xl font-black text-slate-900 dark:text-white mt-1.5 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                <span className="text-emerald-600 dark:text-emerald-400">🏥 {activeShiftNow.unitName}</span>
+                <span className="hidden sm:inline">•</span>
+                <span>{activeShiftNow.sectorName}</span>
+                <span className="hidden sm:inline">•</span>
+                <span className="text-sm opacity-80">{activeShiftNow.start_time} às {activeShiftNow.end_time}</span>
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
                 Jornada de {activeShiftNow.duration}h computada no fechamento deste mês.
@@ -550,7 +473,6 @@ export default function MinhaEscala() {
         </div>
       )}
 
-      {/* 3. CAMPO DE DESTAQUE: SEU PRÓXIMO PLANTÃO AGENDADO */}
       {nextHighlightedShift && (
         <div className="rounded-3xl border border-sky-300 dark:border-sky-800 bg-gradient-to-r from-sky-50 via-white to-sky-50/50 dark:from-slate-900 dark:via-sky-950/30 dark:to-slate-900 p-6 shadow-md flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="flex items-start sm:items-center gap-4">
@@ -568,8 +490,10 @@ export default function MinhaEscala() {
                 </span>
               </div>
 
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white">
-                {nextHighlightedShift.sectorName}
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <span className="text-sky-600">🏥 {nextHighlightedShift.unitName}</span> 
+                <span className="text-slate-300 dark:text-slate-600">•</span>
+                <span>{nextHighlightedShift.sectorName}</span>
               </h2>
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300 font-medium">
@@ -606,7 +530,6 @@ export default function MinhaEscala() {
         </div>
       )}
 
-      {/* 4. BARÔMETRO DE PRODUÇÃO & METAS DO MÊS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
@@ -669,7 +592,6 @@ export default function MinhaEscala() {
         </Card>
       </div>
 
-      {/* 5. PLANTÕES A REALIZAR */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div>
@@ -685,19 +607,13 @@ export default function MinhaEscala() {
           </div>
 
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-1 rounded-2xl gap-2">
-            <button 
-              onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} 
-              className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500 cursor-pointer"
-            >
+            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500 cursor-pointer">
               <ChevronLeft className="w-4 h-4" />
             </button>
             <span className="text-xs font-black px-2 uppercase font-mono">
               {MONTH_NAMES[currentMonth]} {currentYear}
             </span>
-            <button 
-              onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} 
-              className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500 cursor-pointer"
-            >
+            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500 cursor-pointer">
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -763,8 +679,10 @@ export default function MinhaEscala() {
                       </div>
                     </div>
 
-                    <div className="text-sm font-black text-slate-900 dark:text-white truncate">
-                      {shift.sectorName}
+                    <div className="text-sm font-black text-slate-900 dark:text-white truncate flex items-center gap-1.5">
+                      <span className="text-sky-600">🏥 {shift.unitName}</span>
+                      <span className="text-slate-300 dark:text-slate-700">•</span>
+                      <span>{shift.sectorName}</span>
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-slate-500 font-mono">
@@ -804,7 +722,6 @@ export default function MinhaEscala() {
         )}
       </div>
 
-      {/* 6. HISTÓRICO DE PLANTÕES CONCLUÍDOS */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
@@ -834,22 +751,21 @@ export default function MinhaEscala() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 opacity-85">
               {completedMonthShifts.map(shift => (
-                <div 
-                  key={shift.id} 
-                  className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 text-xs flex items-center justify-between"
-                >
+                <div key={shift.id} className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 text-xs flex items-center justify-between">
                   <div className="space-y-0.5">
                     <span className="font-mono font-bold text-slate-900 dark:text-white block">
                       {formatDateBR(shift.date)}
                     </span>
-                    <span className="text-[11px] text-slate-500 block truncate max-w-[140px]">
+                    <span className="text-[11px] text-sky-700 dark:text-sky-400 font-bold block truncate max-w-[140px]">
+                      🏥 {shift.unitName}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block truncate max-w-[140px]">
                       {shift.sectorName}
                     </span>
                     <span className="text-[10px] text-slate-400 font-mono">
                       {shift.start_time} - {shift.end_time} ({shift.duration}h)
                     </span>
                   </div>
-
                   <span className="text-[9px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-black px-2 py-0.5 rounded-lg shrink-0">
                     ✓ Concluído
                   </span>

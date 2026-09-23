@@ -23,7 +23,8 @@ import Configuracoes from '@/pages/Configuracoes';
 import MinhaEscala from '@/pages/MinhaEscala';
 import Trocas from '@/pages/Trocas';
 import MobilePreview from '@/pages/MobilePreview';
-import AutoLogout from '@/components/AutoLogout'; // <-- IMPORT DO VIGIA AQUI
+import AutoLogout from '@/components/AutoLogout'; 
+import ContractGuard from '@/components/ContractGuard';
 
 const AuthenticatedApp = () => {
   const { isAuthenticated, isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
@@ -42,34 +43,23 @@ const AuthenticatedApp = () => {
 
   return (
     <>
-      {/* 
-        MOTOR DE SEGURANÇA E LGPD:
-        Se o usuário ficar logado e sem mexer o mouse ou teclado por 60 minutos,
-        ele é desconectado automaticamente para proteger os dados.
-      */}
       {isAuthenticated && <AutoLogout timeoutMinutes={60} />}
 
       <Routes>
-        {/* Se já estiver logado e tentar abrir a raiz, vai pro dashboard. Se não, abre o Login/Home */}
         <Route 
           path="/" 
           element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
         />
 
-        {/* Rotas Públicas */}
         <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/mobile-preview" element={<MobilePreview />} />
-        
-        {/* ROTA DOS TERMOS DE USO E LGPD */}
         <Route path="/termos-de-uso" element={<TermosDeUso />} />
 
-        {/* Rotas Protegidas (se deslogado, vai para /) */}
         <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/" replace />} />}>
-          <Route element={<AppLayout />}>
-            {/* Suporta tanto /dashboard quanto / para não quebrar cliques no menu */}
+          <Route element={<ContractGuard><AppLayout /></ContractGuard>}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/escalas" element={<Escalas />} />
             <Route path="/corpo-clinico" element={<CorpoClinico />} />
@@ -82,7 +72,6 @@ const AuthenticatedApp = () => {
           </Route>
         </Route>
 
-        {/* Rota 404 */}
         <Route path="*" element={<PageNotFound />} />
       </Routes>
     </>
