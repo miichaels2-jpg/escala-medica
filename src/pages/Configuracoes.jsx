@@ -68,7 +68,7 @@ export default function Configuracoes() {
     if (company) {
       setContractForm({ 
         name: company.name || '', 
-        cnpj: company.cnpj || '', 
+        cnpj: company.cnpj || company.data?.cnpj || '', 
         billing_cycle: company.data?.billing_cycle || 'mensal',
         contract_start: company.data?.contract_start || '',
         contract_end: company.data?.contract_end || ''
@@ -117,7 +117,7 @@ export default function Configuracoes() {
 
       if (error) throw error;
       
-      refreshAllData();
+      await refreshAllData();
       alert(`Dados do hospital "${unitForm.name}" atualizados com sucesso!`);
     } catch (err) {
       alert(err.message || 'Erro ao salvar unidade');
@@ -130,30 +130,35 @@ export default function Configuracoes() {
     e.preventDefault();
     setSaving(true);
     try {
+      // O SEGREDO ESTÁ AQUI: Cnpj, datas e cliclos empacotados dentro do data (JSONB)
       const payload = {
         name: contractForm.name,
-        cnpj: contractForm.cnpj,
         data: {
           ...(company?.data || {}),
+          cnpj: contractForm.cnpj,
           billing_cycle: contractForm.billing_cycle,
           contract_start: contractForm.contract_start,
           contract_end: contractForm.contract_end
         }
       };
 
-      // VERIFICA SE A EMPRESA EXISTE, SE NÃO, CRIA
       const { data: existingComp } = await supabase.from('companies').select('id').eq('id', companyId).maybeSingle();
 
       if (existingComp) {
-        await supabase.from('companies').update(payload).eq('id', companyId);
+        const { error } = await supabase.from('companies').update(payload).eq('id', companyId);
+        if (error) throw error; // Agora ele acusa o erro se o banco recusar!
       } else {
-        await supabase.from('companies').insert([{ id: companyId, ...payload }]);
+        const { error } = await supabase.from('companies').insert([{ id: companyId, ...payload }]);
+        if (error) throw error;
       }
       
-      refreshAllData();
+      await refreshAllData();
       alert('Contrato matriz atualizado com sucesso!');
-    } catch (err) { alert(err.message || 'Erro ao salvar contrato'); } 
-    finally { setSaving(false); }
+    } catch (err) { 
+      alert('Erro ao salvar contrato: ' + (err.message || 'Falha de comunicação com o banco.')); 
+    } finally { 
+      setSaving(false); 
+    }
   };
 
   const handleRenewContract = async () => {
@@ -173,13 +178,18 @@ export default function Configuracoes() {
       const newEnd = getLocalDateString(end);
       
       const payload = { data: { ...(company?.data || {}), contract_end: newEnd } };
-      await supabase.from('companies').update(payload).eq('id', companyId);
       
+      const { error } = await supabase.from('companies').update(payload).eq('id', companyId);
+      if (error) throw error;
+
       setContractForm(prev => ({ ...prev, contract_end: newEnd }));
-      refreshAllData();
+      await refreshAllData();
       alert(`Contrato renovado com sucesso! Novo vencimento: ${newEnd.split('-').reverse().join('/')}`);
-    } catch (err) { alert(err.message); } 
-    finally { setSaving(false); }
+    } catch (err) { 
+      alert('Erro ao renovar: ' + err.message); 
+    } finally { 
+      setSaving(false); 
+    }
   };
 
   const openUnitModal = (unit = null) => {
@@ -207,25 +217,30 @@ export default function Configuracoes() {
         updatedUnits.push({ id: 'unit_' + Date.now(), ...payload });
       }
       
-      await supabase.from('companies').update({ 
+      const { error } = await supabase.from('companies').update({ 
         data: { ...(company?.data || {}), units: updatedUnits }
       }).eq('id', companyId);
+      if (error) throw error;
       
       setUnitModalOpen(false);
-      refreshAllData();
-    } catch (err) { alert('Erro ao salvar hospital: ' + err.message); } 
-    finally { setSaving(false); }
+      await refreshAllData();
+    } catch (err) { 
+      alert('Erro ao salvar hospital: ' + err.message); 
+    } finally { 
+      setSaving(false); 
+    }
   };
 
   const handleDeleteUnit = async (id, name) => {
     if (!confirm(`Deseja remover o hospital "${name}"? Suas escalas ficarão órfãs.`)) return;
     try { 
       const updatedUnits = activeUnits.filter(u => String(u.id) !== String(id));
-      await supabase.from('companies').update({ 
+      const { error } = await supabase.from('companies').update({ 
         data: { ...(company?.data || {}), units: updatedUnits }
       }).eq('id', companyId);
+      if (error) throw error;
       
-      refreshAllData(); 
+      await refreshAllData(); 
     } catch (err) { alert('Erro ao excluir: ' + err.message); }
   };
 
@@ -263,7 +278,7 @@ export default function Configuracoes() {
   const handleSelectCompany = async (id) => {
     if (!user?.id) return;
     await supabase.from('users').update({ data: { ...(user.data||{}), company_id: id } }).eq('id', user.id);
-    refreshAllData();
+    await refreshAllData();
     window.location.reload();
   };
 
