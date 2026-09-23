@@ -343,7 +343,7 @@ export default function ProfessionalFormDialog({
             password: finalPass,
             full_name: name,
             role: role === 'gestor' ? 'admin' : 'user',
-            is_active: isActive,
+            // REMOVIDO is_active DAKI
             data: { ...(existingUsers[0].data || {}), ...userData }
           }).eq('id', existingUsers[0].id);
         } else {
@@ -353,7 +353,7 @@ export default function ProfessionalFormDialog({
             password: finalPass,
             full_name: name,
             role: role === 'gestor' ? 'admin' : 'user',
-            is_active: isActive,
+            // REMOVIDO is_active DAKI
             data: userData
           }]);
         }

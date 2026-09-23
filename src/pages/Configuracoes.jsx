@@ -54,7 +54,6 @@ export default function Configuracoes() {
   const loadUsers = async () => {
     if (!companyId) return;
     try {
-      // Busca todos e a gente frita localmente para não dar erro de schema
       const { data } = await supabase.from('users').select('*');
       const filtered = (data || []).filter(u => u.data?.company_id === companyId || u.company_id === companyId);
       setCompanyUsers(filtered);
@@ -221,7 +220,6 @@ export default function Configuracoes() {
     } catch (err) { alert('Erro ao excluir: ' + err.message); }
   };
 
-  // AQUI FOI CORRIGIDO O ERRO DE SCHEMA DO USUÁRIO
   const handleInvite = async (e) => {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
@@ -233,12 +231,13 @@ export default function Configuracoes() {
         password: 'changeme123',
         full_name: 'Usuário Convidado',
         role: inviteRole === 'admin' ? 'admin' : 'user',
-        is_active: true,
+        // is_active REMOVIDO DAQUI
         data: { 
           company_id: companyId,
           unit_id: selectedUnitId,
           allowed_unit_ids: [selectedUnitId],
           status: 'pendente',
+          is_active: true, // <-- ADICIONADO AQUI DENTRO DO DATA (JSON)
           app_role: inviteRole === 'admin' ? 'gestor' : 'assistencial'
         }
       };
