@@ -42,7 +42,7 @@ export default function Login() {
 
     setLoading(true);
 
-    // Timeout de segurança para evitar que o botão trave infinitamente caso o Supabase demore
+    // Timeout de segurança para evitar que o botão trave infinitamente
     const timeoutId = setTimeout(() => {
       setLoading(false);
       setError('A conexão com o Supabase demorou muito. Verifique suas chaves de acesso no arquivo .env.');
@@ -79,8 +79,7 @@ export default function Login() {
         return;
       }
 
-      // 🔐 COMUNICAÇÃO SEGURA: Usa a Função RPC do Supabase para validar a senha
-      // Substituímos o "select('*')" inseguro por esta chamada protegida
+      // 🔐 COMUNICAÇÃO SEGURA: Usa a Função RPC do Supabase para validar a senha internamente
       const { data: userRecord, error: rpcErr } = await supabase.rpc('auth_fallback_login', {
         p_login: cleanInput.toLowerCase(),
         p_password: password
@@ -133,7 +132,7 @@ export default function Login() {
             <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Usuário ou E-mail</Label>
             <Input 
               type="text" 
-              placeholder="Ex: admin ou mdevils"
+              placeholder="Ex: admin ou dr.carlos"
               value={loginId}
               onChange={(e) => setLoginId(e.target.value)}
               className="h-11 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold"
@@ -207,3 +206,6 @@ export default function Login() {
           &copy; 2026 ScaleMedic. Todos os direitos reservados.
         </p>
       </div>
+    </div>
+  );
+}
