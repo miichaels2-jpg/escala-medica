@@ -5,7 +5,8 @@ import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Activity, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Activity, Loader2, AlertCircle, Eye, EyeOff, ShieldCheck, FileText, Check } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -17,6 +18,12 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Estados para o Pop-up da LGPD
+  const [showLgpdModal, setShowLgpdModal] = useState(false);
+  const [pendingUser, setPendingUser] = useState(null);
+  const [lgpdChecked, setLgpdChecked] = useState(false);
+  const [loadingTerms, setLoadingTerms] = useState(false);
 
   // Carrega credenciais salvas no "Lembrar-me"
   useEffect(() => {
@@ -31,6 +38,16 @@ export default function Login() {
     } catch {}
   }, []);
 
+  const proceedWithLogin = async (userRecord) => {
+    window.localStorage.setItem('scale_logged_user', JSON.stringify(userRecord));
+    window.localStorage.setItem('escala_medica_session', 'active');
+    if (userRecord.data?.selected_unit_id) {
+      window.localStorage.setItem('scale_selected_unit', userRecord.data.selected_unit_id);
+    }
+    try { await checkUserAuth(); } catch {}
+    navigate('/');
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
@@ -42,16 +59,14 @@ export default function Login() {
 
     setLoading(true);
 
-    // Timeout de segurança para evitar que o botão trave infinitamente
     const timeoutId = setTimeout(() => {
       setLoading(false);
-      setError('A conexão com o Supabase demorou muito. Verifique suas chaves de acesso no arquivo .env.');
+      setError('A conexão com o servidor demorou muito. Verifique sua internet.');
     }, 8000);
 
     try {
       const cleanInput = loginId.trim();
 
-      // Gerencia o "Lembrar-me"
       if (rememberMe) {
         window.localStorage.setItem('scale_remember_login', cleanInput);
         window.localStorage.setItem('scale_remember_pass', password);
@@ -60,26 +75,21 @@ export default function Login() {
         window.localStorage.removeItem('scale_remember_pass');
       }
 
-      // Acesso Admin Master Universal (Bypass imediato de emergência)
+      // Bypass Admin Master Universal
       if ((cleanInput.toLowerCase() === 'admin' || cleanInput.toLowerCase() === 'admin@admin.com') && (password === '123456' || password === 'admin')) {
         const adminUser = {
           id: 'admin_master',
           email: 'admin@admin.com',
           full_name: 'Administrador Master',
           role: 'admin',
-          data: { app_role: 'gestor', company_id: 'cmp_principal', selected_unit_id: 'unit_h1' }
+          data: { app_role: 'gestor', company_id: 'cmp_principal', selected_unit_id: 'unit_h1', lgpd_accepted: true }
         };
-        window.localStorage.setItem('scale_logged_user', JSON.stringify(adminUser));
-        window.localStorage.setItem('escala_medica_session', 'active');
-        window.localStorage.setItem('scale_selected_unit', 'unit_h1');
-        
         clearTimeout(timeoutId);
-        try { await checkUserAuth(); } catch {}
-        navigate('/');
+        await proceedWithLogin(adminUser);
         return;
       }
 
-      // 🔐 COMUNICAÇÃO SEGURA: Usa a Função RPC do Supabase para validar a senha internamente
+      // Comunicação segura via RPC
       const { data: userRecord, error: rpcErr } = await supabase.rpc('auth_fallback_login', {
         p_login: cleanInput.toLowerCase(),
         p_password: password
@@ -91,21 +101,45 @@ export default function Login() {
         throw new Error('Usuário não encontrado ou senha incorreta.');
       }
 
-      // Grava a sessão local para sincronização instantânea
-      window.localStorage.setItem('scale_logged_user', JSON.stringify(userRecord));
-      window.localStorage.setItem('escala_medica_session', 'active');
-      if (userRecord.data?.selected_unit_id) {
-        window.localStorage.setItem('scale_selected_unit', userRecord.data.selected_unit_id);
+      // VERIFICAÇÃO LGPD: Se o usuário ainda não aceitou, bloqueia o acesso e mostra o Termo
+      if (!userRecord.data?.lgpd_accepted) {
+        setPendingUser(userRecord);
+        setShowLgpdModal(true);
+        setLoading(false);
+        return;
       }
 
-      try { await checkUserAuth(); } catch {}
-      navigate('/');
+      // Se já aceitou, segue o fluxo normalmente
+      await proceedWithLogin(userRecord);
 
     } catch (err) {
       clearTimeout(timeoutId);
       setError(err.message || 'Falha ao autenticar. Tente novamente.');
-    } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAcceptTerms = async () => {
+    if (!pendingUser || !lgpdChecked) return;
+    setLoadingTerms(true);
+    try {
+      // Cria o registro legal da aceitação com data e hora exatas
+      const updatedData = { 
+        ...(pendingUser.data || {}), 
+        lgpd_accepted: true, 
+        lgpd_accepted_at: new Date().toISOString() 
+      };
+
+      // Salva a aceitação no banco de dados para proteção jurídica
+      await supabase.from('users').update({ data: updatedData }).eq('id', pendingUser.id);
+      
+      pendingUser.data = updatedData;
+      await proceedWithLogin(pendingUser);
+    } catch (err) {
+      setError('Erro ao registrar o aceite dos termos. Tente novamente.');
+      setShowLgpdModal(false);
+    } finally {
+      setLoadingTerms(false);
     }
   };
 
@@ -136,7 +170,7 @@ export default function Login() {
               value={loginId}
               onChange={(e) => setLoginId(e.target.value)}
               className="h-11 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold"
-              disabled={loading}
+              disabled={loading || showLgpdModal}
               autoComplete="username"
             />
           </div>
@@ -153,7 +187,7 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="h-11 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl pr-10 text-xs font-semibold"
-                disabled={loading}
+                disabled={loading || showLgpdModal}
                 autoComplete="current-password"
               />
               <button 
@@ -166,7 +200,6 @@ export default function Login() {
             </div>
           </div>
 
-          {/* CHECKBOX LEMBRAR-ME */}
           <div className="flex items-center justify-between pt-1">
             <label className="flex items-center gap-2.5 cursor-pointer select-none">
               <input 
@@ -181,7 +214,7 @@ export default function Login() {
 
           <Button 
             type="submit" 
-            disabled={loading} 
+            disabled={loading || showLgpdModal} 
             className="w-full h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-sm rounded-xl shadow-md mt-2 transition-all cursor-pointer"
           >
             {loading ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Entrando...</> : 'Entrar no Sistema'}
@@ -196,16 +229,72 @@ export default function Login() {
         </div>
       </div>
 
-      {/* RODAPÉ COM COPYRIGHT E LGPD */}
-      <div className="absolute bottom-6 text-center z-0 flex flex-col items-center gap-2">
-        <p className="text-[10px] text-slate-500 font-medium">
-          Ao entrar, você concorda com nossos{' '}
-          <Link to="/termos-de-uso" className="font-bold text-sky-600 hover:underline">Termos de Uso e Política de Privacidade (LGPD)</Link>.
-        </p>
+      {/* RODAPÉ SIMPLES COM COPYRIGHT */}
+      <div className="absolute bottom-6 text-center z-0">
         <p className="text-[11px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">
           &copy; 2026 ScaleMedic. Todos os direitos reservados.
         </p>
       </div>
+
+      {/* POP-UP DE ACEITAÇÃO LGPD (SÓ APARECE NO 1º LOGIN) */}
+      <Dialog open={showLgpdModal} onOpenChange={(open) => !open && setShowLgpdModal(false)}>
+        <DialogContent className="max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-3xl p-6 shadow-2xl z-[9999]">
+          <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-4 mb-4">
+            <DialogTitle className="text-lg font-black flex items-center gap-2 text-sky-600 dark:text-sky-400">
+              <ShieldCheck className="w-6 h-6" /> Privacidade e LGPD
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
+              Olá, <strong>{pendingUser?.full_name || 'Profissional'}</strong>. Como este é o seu primeiro acesso ao nosso ecossistema, precisamos que você leia e concorde com os nossos termos de tratamento de dados.
+            </p>
+
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 space-y-2">
+              <p>Nós armazenamos seus dados de contato, matrícula e registro de conselho exclusivamente para o funcionamento operacional e seguro das escalas hospitalares.</p>
+              <Link to="/termos-de-uso" target="_blank" className="inline-flex items-center gap-1 font-bold text-sky-600 hover:underline">
+                <FileText className="w-3.5 h-3.5" /> Ler Política de Privacidade Completa
+              </Link>
+            </div>
+
+            <label className="flex items-start gap-3 p-3 rounded-xl border border-sky-200 dark:border-sky-900/50 bg-sky-50/50 dark:bg-sky-950/20 cursor-pointer hover:bg-sky-50 dark:hover:bg-sky-950/40 transition-colors">
+              <input 
+                type="checkbox"
+                checked={lgpdChecked}
+                onChange={(e) => setLgpdChecked(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-sky-300 text-sky-600 focus:ring-sky-500 cursor-pointer shrink-0"
+              />
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 leading-tight">
+                Declaro que li e concordo integralmente com os Termos de Uso e Política de Privacidade (LGPD) e autorizo o processamento dos meus dados para fins de escala hospitalar.
+              </span>
+            </label>
+          </div>
+
+          <DialogFooter className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex gap-2">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => {
+                setShowLgpdModal(false);
+                setPendingUser(null);
+                setLgpdChecked(false);
+              }} 
+              className="h-11 w-full text-xs font-bold border-slate-200 dark:border-slate-700 text-slate-500 cursor-pointer"
+            >
+              Cancelar Acesso
+            </Button>
+            <Button 
+              type="button" 
+              onClick={handleAcceptTerms}
+              disabled={!lgpdChecked || loadingTerms}
+              className="h-11 w-full bg-sky-600 hover:bg-sky-500 text-white font-black text-xs shadow-md cursor-pointer transition-all"
+            >
+              {loadingTerms ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Registrando...</> : <><Check className="w-4 h-4 mr-1.5" /> Aceitar e Entrar</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
