@@ -4,6 +4,7 @@ import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
+import TermosDeUso from './pages/TermosDeUso';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -61,6 +62,9 @@ const AuthenticatedApp = () => {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/mobile-preview" element={<MobilePreview />} />
+        
+        {/* ROTA DOS TERMOS DE USO E LGPD */}
+        <Route path="/termos-de-uso" element={<TermosDeUso />} />
 
         {/* Rotas Protegidas (se deslogado, vai para /) */}
         <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/" replace />} />}>

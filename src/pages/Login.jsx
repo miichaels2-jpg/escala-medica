@@ -197,12 +197,13 @@ export default function Login() {
         </div>
       </div>
 
-      {/* RODAPÉ COM COPYRIGHT */}
-      <div className="absolute bottom-6 text-center z-0">
+      {/* RODAPÉ COM COPYRIGHT E LGPD */}
+      <div className="absolute bottom-6 text-center z-0 flex flex-col items-center gap-2">
+        <p className="text-[10px] text-slate-500 font-medium">
+          Ao entrar, você concorda com nossos{' '}
+          <Link to="/termos-de-uso" className="font-bold text-sky-600 hover:underline">Termos de Uso e Política de Privacidade (LGPD)</Link>.
+        </p>
         <p className="text-[11px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">
           &copy; 2026 ScaleMedic. Todos os direitos reservados.
         </p>
       </div>
-    </div>
-  );
-}
