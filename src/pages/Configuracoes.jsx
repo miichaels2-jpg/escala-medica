@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   Building2, Save, UserPlus, Trash2, 
   Settings, Hospital, ShieldCheck, FileText,
-  Mail, MapPin, Edit, Plus, RotateCcw, Activity
+  Mail, MapPin, Edit, Plus, RotateCcw, Activity, AlertTriangle
 } from 'lucide-react';
 
 function getLocalDateString(d = new Date()) {
@@ -42,7 +42,7 @@ export default function Configuracoes() {
   const [newUnitForm, setNewUnitForm] = useState({ name: '', address: '', status: 'ativo' });
 
   const isAdmin = user?.role === 'admin' || user?.app_role === 'gestor';
-  const companyId = user?.data?.company_id || user?.company_id || company?.id;
+  const companyId = user?.data?.company_id || user?.company_id || company?.id || 'cmp_principal';
 
   const loadCompanies = async () => {
     try {
@@ -96,6 +96,14 @@ export default function Configuracoes() {
     });
   }, [companyUsers, selectedUnitId, isAdmin]);
 
+  // CALCULO DE DIAS PARA O VENCIMENTO
+  const daysToExpiration = useMemo(() => {
+    if (!contractForm.contract_end) return null;
+    const endDate = new Date(contractForm.contract_end + 'T23:59:59');
+    const now = new Date();
+    return Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+  }, [contractForm.contract_end]);
+
   const handleSaveCurrentUnit = async (e) => {
     e.preventDefault();
     if (!currentUnit) return;
@@ -133,14 +141,15 @@ export default function Configuracoes() {
         }
       };
 
-      if (company?.id) {
-        await supabase.from('companies').update(payload).eq('id', company.id);
+      // VERIFICA SE A EMPRESA EXISTE, SE NÃO, CRIA
+      const { data: existingComp } = await supabase.from('companies').select('id').eq('id', companyId).maybeSingle();
+
+      if (existingComp) {
+        await supabase.from('companies').update(payload).eq('id', companyId);
       } else {
-        const { data: newCompany } = await supabase.from('companies').insert(payload).select().single();
-        if (newCompany && user?.id) {
-          await supabase.from('users').update({ data: { ...(user.data||{}), company_id: newCompany.id }, role: 'admin' }).eq('id', user.id);
-        }
+        await supabase.from('companies').insert([{ id: companyId, ...payload }]);
       }
+      
       refreshAllData();
       alert('Contrato matriz atualizado com sucesso!');
     } catch (err) { alert(err.message || 'Erro ao salvar contrato'); } 
@@ -164,7 +173,7 @@ export default function Configuracoes() {
       const newEnd = getLocalDateString(end);
       
       const payload = { data: { ...(company?.data || {}), contract_end: newEnd } };
-      await supabase.from('companies').update(payload).eq('id', company.id);
+      await supabase.from('companies').update(payload).eq('id', companyId);
       
       setContractForm(prev => ({ ...prev, contract_end: newEnd }));
       refreshAllData();
@@ -231,13 +240,12 @@ export default function Configuracoes() {
         password: 'changeme123',
         full_name: 'Usuário Convidado',
         role: inviteRole === 'admin' ? 'admin' : 'user',
-        // is_active REMOVIDO DAQUI
         data: { 
           company_id: companyId,
           unit_id: selectedUnitId,
           allowed_unit_ids: [selectedUnitId],
           status: 'pendente',
-          is_active: true, // <-- ADICIONADO AQUI DENTRO DO DATA (JSON)
+          is_active: true,
           app_role: inviteRole === 'admin' ? 'gestor' : 'assistencial'
         }
       };
@@ -366,6 +374,27 @@ export default function Configuracoes() {
 
         {activeTab === 'contrato' && (
           <div className="max-w-4xl">
+            {/* ALERTA DE VENCIMENTO DO CONTRATO */}
+            {daysToExpiration !== null && daysToExpiration <= 30 && daysToExpiration >= 0 && (
+              <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-2xl flex items-start gap-3 animate-in fade-in">
+                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-black text-amber-800 dark:text-amber-400 text-sm">Contrato próximo do vencimento</h4>
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">Faltam apenas <strong>{daysToExpiration} dias</strong> para o vencimento do seu contrato com a ScaleMedic. Renove para evitar a suspensão dos acessos.</p>
+                </div>
+              </div>
+            )}
+            
+            {daysToExpiration !== null && daysToExpiration < 0 && (
+              <div className="mb-6 p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded-2xl flex items-start gap-3 animate-in fade-in">
+                <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-500 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-black text-rose-800 dark:text-rose-400 text-sm">Contrato Vencido</h4>
+                  <p className="text-xs text-rose-700 dark:text-rose-300 mt-1">Seu contrato expirou há <strong>{Math.abs(daysToExpiration)} dias</strong>. O sistema poderá ser bloqueado a qualquer momento.</p>
+                </div>
+              </div>
+            )}
+
             <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
               <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
                 <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
@@ -402,11 +431,11 @@ export default function Configuracoes() {
                   <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/50 sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <Label className="text-xs font-bold text-indigo-800 dark:text-indigo-300">Início do Contrato</Label>
-                      <Input type="date" value={contractForm.contract_start} onChange={(e) => setContractForm(p => ({...p, contract_start: e.target.value}))} className="h-10 bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800 text-slate-900 dark:text-white rounded-xl" />
+                      <Input type="date" value={contractForm.contract_start} onChange={(e) => setContractForm(p => ({...p, contract_start: e.target.value}))} className="h-10 bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800 text-slate-900 dark:text-white rounded-xl cursor-pointer" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs font-bold text-indigo-800 dark:text-indigo-300">Vencimento do Contrato</Label>
-                      <Input type="date" value={contractForm.contract_end} onChange={(e) => setContractForm(p => ({...p, contract_end: e.target.value}))} className="h-10 bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800 text-slate-900 dark:text-white rounded-xl font-bold" />
+                      <Input type="date" value={contractForm.contract_end} onChange={(e) => setContractForm(p => ({...p, contract_end: e.target.value}))} className="h-10 bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800 text-slate-900 dark:text-white rounded-xl font-bold cursor-pointer" />
                     </div>
                   </div>
                 </div>
