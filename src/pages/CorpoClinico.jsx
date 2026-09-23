@@ -89,7 +89,9 @@ export default function CorpoClinico() {
     monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
     pix_key: '', bank_info: '', password: '',
     document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
-    authorized_sectors: []
+    authorized_sectors: [],
+    // NOVO: Array para armazenar as unidades permitidas
+    allowed_unit_ids: [] 
   });
 
   function getProfMeta(prof) {
@@ -114,7 +116,9 @@ export default function CorpoClinico() {
       monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
       pix_key: '', bank_info: '', password: '',
       document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
-      authorized_sectors: (sectors || []).map(s => String(s.id))
+      authorized_sectors: (sectors || []).map(s => String(s.id)),
+      // NOVO: Inicia com a unidade atual selecionada por padrão
+      allowed_unit_ids: [String(selectedUnitId || units[0]?.id || 'unit_h1')] 
     });
     setEditingProf(null);
     setShowPassword(false);
@@ -134,6 +138,9 @@ export default function CorpoClinico() {
     const sal = meta.monthly_salary !== undefined ? meta.monthly_salary : (prof.monthly_salary !== undefined ? prof.monthly_salary : 1672);
     const hourly = meta.hourly_rate !== undefined ? meta.hourly_rate : (prof.hourly_rate !== undefined ? prof.hourly_rate : 120);
     const daily = meta.daily_rate !== undefined ? meta.daily_rate : (prof.daily_rate !== undefined ? prof.daily_rate : 1500);
+
+    // NOVO: Puxa as unidades salvas ou define a padrão
+    const savedUnits = meta.allowed_unit_ids || prof.unit_ids || (prof.unit_id ? [String(prof.unit_id)] : [String(units[0]?.id || '')]);
 
     setFormData({
       name: prof.name || prof.full_name || '',
@@ -161,7 +168,8 @@ export default function CorpoClinico() {
       bank_info: meta.bank_info || '',
       password: '',
       document_expiry: expiry,
-      authorized_sectors: authSectors
+      authorized_sectors: authSectors,
+      allowed_unit_ids: savedUnits // NOVO: Mapeia o estado
     });
     setModalOpen(true);
   };
@@ -226,6 +234,12 @@ export default function CorpoClinico() {
     e.preventDefault();
     if (!formData.name.trim()) return;
 
+    // VALIDAÇÃO MÚLTIPLAS UNIDADES
+    if (formData.allowed_unit_ids.length === 0) {
+      alert('Selecione pelo menos um hospital/unidade para o profissional.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const cleanUsername = (formData.username || formData.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
@@ -239,11 +253,14 @@ export default function CorpoClinico() {
         pix_key: formData.pix_key.trim(), bank_info: formData.bank_info.trim(),
         remuneration_type: formData.remuneration_type, hourly_rate: safeNumber(formData.hourly_rate),
         document_expiry: formData.document_expiry, status: formData.status,
-        authorized_sectors: formData.authorized_sectors
+        authorized_sectors: formData.authorized_sectors,
+        allowed_unit_ids: formData.allowed_unit_ids // SALVANDO AS UNIDADES NO META
       };
 
       const profPayload = {
-        company_id: company?.id || 'cmp_principal', unit_id: formData.unit_id || selectedUnitId || 'unit_h1',
+        company_id: company?.id || 'cmp_principal', 
+        unit_id: formData.allowed_unit_ids[0], // A primeira unidade age como unidade padrão legacy
+        unit_ids: formData.allowed_unit_ids, // SALVANDO AS UNIDADES NO BANCO
         name: formData.name.trim(), document: formData.document.trim(), specialty: formData.specialty.trim() || formData.main_sector,
         cbo: formData.cbo.trim(), cpf: formData.cpf.trim(), email: formData.email.trim().toLowerCase(),
         phone: formData.phone.trim(), status: formData.status, remuneration_type: formData.remuneration_type,
@@ -257,6 +274,41 @@ export default function CorpoClinico() {
       if (savedProfId) {
         try { window.localStorage.setItem(`prof_meta_${savedProfId}`, JSON.stringify(richMeta)); } catch {}
       }
+
+      // Sincronização Inteligente com a Tabela Users do Supabase para o Login Múltiplas Unidades
+      const userEmail = (formData.email || `${cleanUsername}@scalemedic.local`).toLowerCase().trim();
+      const userDataPayload = {
+        company_id: company?.id || 'cmp_principal',
+        selected_unit_id: formData.allowed_unit_ids[0],
+        allowed_unit_ids: formData.allowed_unit_ids, // Garante o login nas múltiplas unidades
+        app_role: formData.app_role,
+        registration_code: formData.registration_id,
+        is_active: formData.status === 'ativo',
+        status: formData.status
+      };
+
+      try {
+        const { data: existingUsers } = await supabase.from('users').select('*').eq('email', userEmail);
+        if (existingUsers && existingUsers.length > 0) {
+          await supabase.from('users').update({
+            username: cleanUsername,
+            full_name: formData.name,
+            is_active: formData.status === 'ativo',
+            data: { ...(existingUsers[0].data || {}), ...userDataPayload }
+          }).eq('id', existingUsers[0].id);
+        } else {
+          // Só insere senha se for usuário novo (ou se digitar uma nova)
+          const finalPass = formData.password || '123456';
+          await supabase.from('users').insert([{
+            email: userEmail,
+            username: cleanUsername,
+            password: finalPass,
+            full_name: formData.name,
+            is_active: formData.status === 'ativo',
+            data: userDataPayload
+          }]);
+        }
+      } catch (uErr) { console.warn('Aviso na sincronização de usuário:', uErr); }
 
       setModalOpen(false); resetForm(); await syncGlobalData(); alert('Profissional e matriz de permissões salvos com sucesso!');
     } catch (err) {
@@ -367,6 +419,10 @@ export default function CorpoClinico() {
           const profStatus = prof.status || meta.status || 'ativo';
           const authSectorsCount = (meta.authorized_sectors || (sectors || []).map(s => String(s.id))).length;
 
+          // Exibição Limpa de Múltiplos Hospitais no Card
+          const profUnits = meta.allowed_unit_ids || prof.unit_ids || (prof.unit_id ? [String(prof.unit_id)] : []);
+          const profUnitsNames = units.filter(u => profUnits.includes(String(u.id))).map(u => u.name).join(', ') || 'Nenhuma unidade vinculada';
+
           return (
             <Card key={prof.id} className={`p-5 rounded-3xl border-2 transition-all flex flex-col justify-between space-y-4 shadow-sm bg-white dark:bg-slate-900 ${
               isExpired 
@@ -393,6 +449,14 @@ export default function CorpoClinico() {
                   <div className="flex justify-between"><span>Conselho:</span><strong>{prof.document || '—'}</strong></div>
                   <div className="flex justify-between"><span>Especialidade:</span><strong className="text-slate-900 dark:text-white truncate max-w-[140px]">{prof.specialty || meta.specialty || 'Geral'}</strong></div>
                   
+                  {/* UNIDADES MULTIPLAS LISTADAS AQUI NO CARD */}
+                  <div className="flex justify-between items-center pt-1">
+                    <span>Hospitais de Acesso:</span>
+                    <strong className="text-[10px] text-sky-600 dark:text-sky-400 truncate max-w-[140px]" title={profUnitsNames}>
+                      {profUnitsNames}
+                    </strong>
+                  </div>
+
                   <div className="flex justify-between items-center">
                     <span>Habilitação Setores:</span>
                     <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
@@ -631,6 +695,43 @@ export default function CorpoClinico() {
               </Button>
             </div>
 
+            {/* O CHECKBOX MAGNÍFICO DE MÚLTIPLOS HOSPITAIS (O SEGREDO ESTÁ AQUI!) */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <div>
+                <Label className="font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-sky-600" /> Hospitais Liberados (Múltiplas Unidades)
+                </Label>
+                <p className="text-[11px] text-slate-500 mt-1">Selecione em quais unidades este profissional pode ser escalado e ter acesso pelo aplicativo.</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                {units.map(u => (
+                  <label key={u.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                    formData.allowed_unit_ids.includes(String(u.id)) 
+                      ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/30' 
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 hover:border-sky-300'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={formData.allowed_unit_ids.includes(String(u.id))}
+                      onChange={(e) => {
+                        const id = String(u.id);
+                        if (e.target.checked) {
+                          setFormData({ ...formData, allowed_unit_ids: [...formData.allowed_unit_ids, id] });
+                        } else {
+                          setFormData({ ...formData, allowed_unit_ids: formData.allowed_unit_ids.filter(i => i !== id) });
+                        }
+                      }}
+                      className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer"
+                    />
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{u.name}</span>
+                  </label>
+                ))}
+              </div>
+              {formData.allowed_unit_ids.length === 0 && (
+                <p className="text-[10px] font-bold text-rose-500 animate-pulse">⚠️ Selecione pelo menos uma unidade.</p>
+              )}
+            </div>
+
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-3">
               <div className="flex items-center gap-2 font-black text-xs uppercase text-emerald-700 dark:text-emerald-400">
                 <DollarSign className="w-4 h-4" /> Faturamento, PIX & Conta Bancária
@@ -687,7 +788,7 @@ export default function CorpoClinico() {
 
             <DialogFooter className="pt-4 gap-2">
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-10 border-slate-200 dark:border-slate-700 cursor-pointer">Cancelar </Button>
-              <Button type="submit" disabled={submitting} className="bg-sky-600 text-white font-black text-xs h-10 px-8 rounded-xl shadow-md cursor-pointer">Salvar Perfil Profissional</Button>
+              <Button type="submit" disabled={submitting || formData.allowed_unit_ids.length === 0} className="bg-sky-600 hover:bg-sky-500 text-white font-black text-xs h-10 px-8 rounded-xl shadow-md cursor-pointer transition-all">Salvar Perfil Profissional</Button>
             </DialogFooter>
           </form>
         </DialogContent>
