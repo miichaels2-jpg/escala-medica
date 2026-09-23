@@ -137,6 +137,35 @@ function computeShiftHospitalLifecycle(shift, liveNowDate) {
   };
 }
 
+// === UTILS FALTANTES ADICIONADOS ===
+function getInitials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(' ');
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function formatFullName(name) {
+  if (!name) return 'Vago';
+  const parts = name.trim().split(' ');
+  if (parts.length <= 2) return name;
+  return `${parts[0]} ${parts[parts.length - 1]}`;
+}
+
+function extractSpecialty(shift, prof) {
+  if (shift.target_specialty) return shift.target_specialty;
+  const match = String(shift.notes || '').match(/\[ESP:(.*?)\]/i);
+  if (match && match[1]) return match[1].trim();
+  return prof?.specialty || 'Geral';
+}
+
+function extractRetroactiveJustification(notes) {
+  if (!notes) return '';
+  const match = String(notes).match(/\[AJUSTE_RETROATIVO:(.*?)\]/i);
+  return match && match[1] ? match[1].trim() : '';
+}
+// ===================================
+
 async function autoHealingSaveShift(id, initialPayload) {
   let payload = { ...initialPayload };
   try {
@@ -1227,7 +1256,7 @@ export default function Escalas() {
               <SelectTrigger className="h-9 text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-2xl">
                 <SelectValue placeholder="Selecione..." />
               </SelectTrigger>
-              <SelectContent className="bg-white dark:bg-slate-900">
+              <SelectContent className="bg-white dark:bg-slate-900 z-[99999]">
                 <SelectItem value="todos" className="font-bold text-sky-600">🏥 Todos os Setores</SelectItem>
                 {(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)} className="text-xs">{s.name}</SelectItem>)}
               </SelectContent>
@@ -1378,7 +1407,7 @@ export default function Escalas() {
                 <>
                   <Select value={traySpecialtyFilter} onValueChange={setTraySpecialtyFilter}>
                     <SelectTrigger className="h-8 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Especialidade..." /></SelectTrigger>
-                    <SelectContent className="bg-white dark:bg-slate-900">
+                    <SelectContent className="bg-white dark:bg-slate-900 z-[99999]">
                       <SelectItem value="todas">Todas Especialidades</SelectItem>
                       {registeredSpecialties.map(spec => <SelectItem key={spec} value={spec}>{spec}</SelectItem>)}
                     </SelectContent>

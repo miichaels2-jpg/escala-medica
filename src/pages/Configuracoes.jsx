@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   Building2, Save, UserPlus, Trash2, 
   Settings, Hospital, ShieldCheck, FileText,
-  Mail, MapPin, Edit, Plus, RotateCcw
+  Mail, MapPin, Edit, Plus, RotateCcw, Activity
 } from 'lucide-react';
 
 function getLocalDateString(d = new Date()) {
@@ -54,7 +54,6 @@ export default function Configuracoes() {
   const loadUsers = async () => {
     if (!companyId) return;
     try {
-      // Usa RPC no Supabase ou busca simples na tabela pública de usuários
       const { data } = await supabase.from('users').select('*').eq('company_id', companyId);
       setCompanyUsers(data || []);
     } catch (e) {}
@@ -88,7 +87,6 @@ export default function Configuracoes() {
     }
   }, [currentUnit, selectedUnitId]);
 
-  // ISOLAMENTO DE ACESSO
   const visibleUsers = useMemo(() => {
     return companyUsers.filter(u => {
       if (isAdmin || u.role === 'admin') return true;
@@ -97,9 +95,6 @@ export default function Configuracoes() {
     });
   }, [companyUsers, selectedUnitId, isAdmin]);
 
-  // =========================================================================
-  // SALVAR UNIDADE ATUAL (AUTO-HEALING SUPABASE)
-  // =========================================================================
   const handleSaveCurrentUnit = async (e) => {
     e.preventDefault();
     if (!currentUnit) return;
@@ -122,9 +117,6 @@ export default function Configuracoes() {
     }
   };
 
-  // =========================================================================
-  // CONTRATO MATRIZ (AUTO-HEALING SUPABASE)
-  // =========================================================================
   const handleSaveContract = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -180,9 +172,6 @@ export default function Configuracoes() {
     finally { setSaving(false); }
   };
 
-  // =========================================================================
-  // CADASTRO DE MÚLTIPLOS HOSPITAIS (AUTO-HEALING SUPABASE)
-  // =========================================================================
   const openUnitModal = (unit = null) => {
     if (unit) {
       setEditingUnit(unit);
@@ -230,9 +219,6 @@ export default function Configuracoes() {
     } catch (err) { alert('Erro ao excluir: ' + err.message); }
   };
 
-  // =========================================================================
-  // USUÁRIOS E CONVITES BLINDADOS
-  // =========================================================================
   const handleInvite = async (e) => {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
@@ -241,14 +227,13 @@ export default function Configuracoes() {
       const payload = {
         email: inviteEmail,
         company_id: companyId,
-        unit_id: selectedUnitId, // Prende o convidado no hospital atual!
+        unit_id: selectedUnitId,
         role: inviteRole,
         data: { unit_id: selectedUnitId, status: 'pendente' }
       };
 
-      // Tenta inserir na tabela pública de usuários (substitui o inviteUser inacessível)
       const { error } = await supabase.from('users').insert(payload);
-      if (error && error.code !== '23505') throw error; // Ignora se já existir
+      if (error && error.code !== '23505') throw error; 
 
       setInviteEmail('');
       loadUsers();
@@ -274,7 +259,6 @@ export default function Configuracoes() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans transition-colors duration-300">
-      
       <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 md:p-8 shadow-xl flex flex-col xl:flex-row xl:items-center justify-between gap-6 transition-colors duration-300">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-sky-600 dark:text-cyan-400">
@@ -315,7 +299,6 @@ export default function Configuracoes() {
       </div>
 
       <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
-        
         {activeTab === 'unidade_atual' && (
           <div className="max-w-4xl">
             <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
@@ -652,7 +635,6 @@ export default function Configuracoes() {
             </div>
           </div>
         )}
-
       </div>
     </div>
   );
