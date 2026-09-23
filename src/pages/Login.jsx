@@ -79,28 +79,17 @@ export default function Login() {
         return;
       }
 
-      // Consulta segura no Supabase com limite de 1 registro
-      const { data: users, error: dbErr } = await supabase
-        .from('users')
-        .select('*')
-        .or(`email.eq.${cleanInput.toLowerCase()},username.eq.${cleanInput}`)
-        .limit(1);
+      // 🔐 COMUNICAÇÃO SEGURA: Usa a Função RPC do Supabase para validar a senha
+      // Substituímos o "select('*')" inseguro por esta chamada protegida
+      const { data: userRecord, error: rpcErr } = await supabase.rpc('auth_fallback_login', {
+        p_login: cleanInput.toLowerCase(),
+        p_password: password
+      });
 
       clearTimeout(timeoutId);
 
-      if (dbErr) {
-        throw new Error('Erro ao consultar banco de dados: ' + (dbErr.message || 'Permissão negada.'));
-      }
-
-      if (!users || users.length === 0) {
-        throw new Error('Usuário ou e-mail não encontrado no sistema.');
-      }
-
-      const userRecord = users[0];
-      const storedPass = userRecord.password || '123456';
-
-      if (password !== storedPass && password !== '123456') {
-        throw new Error('Senha incorreta. Verifique os dados informados.');
+      if (rpcErr || !userRecord) {
+        throw new Error('Usuário não encontrado ou senha incorreta.');
       }
 
       // Grava a sessão local para sincronização instantânea
@@ -122,8 +111,8 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center items-center p-4 transition-colors duration-300">
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-2xl">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center items-center p-4 transition-colors duration-300 relative">
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-2xl z-10">
         <div className="flex flex-col items-center mb-8">
           <div className="w-14 h-14 bg-sky-600 rounded-2xl flex items-center justify-center shadow-lg mb-4">
             <Activity className="w-7 h-7 text-white" />
@@ -206,6 +195,13 @@ export default function Login() {
             <Link to="/register" className="font-bold text-sky-600 hover:text-sky-500 transition-colors">Solicite seu credenciamento</Link>
           </p>
         </div>
+      </div>
+
+      {/* RODAPÉ COM COPYRIGHT */}
+      <div className="absolute bottom-6 text-center z-0">
+        <p className="text-[11px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">
+          &copy; 2026 ScaleMedic. Todos os direitos reservados.
+        </p>
       </div>
     </div>
   );
