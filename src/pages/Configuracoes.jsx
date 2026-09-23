@@ -54,8 +54,10 @@ export default function Configuracoes() {
   const loadUsers = async () => {
     if (!companyId) return;
     try {
-      const { data } = await supabase.from('users').select('*').eq('company_id', companyId);
-      setCompanyUsers(data || []);
+      // Busca todos e a gente frita localmente para não dar erro de schema
+      const { data } = await supabase.from('users').select('*');
+      const filtered = (data || []).filter(u => u.data?.company_id === companyId || u.company_id === companyId);
+      setCompanyUsers(filtered);
     } catch (e) {}
   };
 
@@ -137,7 +139,7 @@ export default function Configuracoes() {
       } else {
         const { data: newCompany } = await supabase.from('companies').insert(payload).select().single();
         if (newCompany && user?.id) {
-          await supabase.from('users').update({ company_id: newCompany.id, role: 'admin' }).eq('id', user.id);
+          await supabase.from('users').update({ data: { ...(user.data||{}), company_id: newCompany.id }, role: 'admin' }).eq('id', user.id);
         }
       }
       refreshAllData();
@@ -219,6 +221,7 @@ export default function Configuracoes() {
     } catch (err) { alert('Erro ao excluir: ' + err.message); }
   };
 
+  // AQUI FOI CORRIGIDO O ERRO DE SCHEMA DO USUÁRIO
   const handleInvite = async (e) => {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
@@ -226,13 +229,21 @@ export default function Configuracoes() {
     try {
       const payload = {
         email: inviteEmail,
-        company_id: companyId,
-        unit_id: selectedUnitId,
-        role: inviteRole,
-        data: { unit_id: selectedUnitId, status: 'pendente' }
+        username: inviteEmail.split('@')[0],
+        password: 'changeme123',
+        full_name: 'Usuário Convidado',
+        role: inviteRole === 'admin' ? 'admin' : 'user',
+        is_active: true,
+        data: { 
+          company_id: companyId,
+          unit_id: selectedUnitId,
+          allowed_unit_ids: [selectedUnitId],
+          status: 'pendente',
+          app_role: inviteRole === 'admin' ? 'gestor' : 'assistencial'
+        }
       };
 
-      const { error } = await supabase.from('users').insert(payload);
+      const { error } = await supabase.from('users').insert([payload]);
       if (error && error.code !== '23505') throw error; 
 
       setInviteEmail('');
@@ -244,7 +255,7 @@ export default function Configuracoes() {
 
   const handleSelectCompany = async (id) => {
     if (!user?.id) return;
-    await supabase.from('users').update({ company_id: id }).eq('id', user.id);
+    await supabase.from('users').update({ data: { ...(user.data||{}), company_id: id } }).eq('id', user.id);
     refreshAllData();
     window.location.reload();
   };
@@ -635,6 +646,7 @@ export default function Configuracoes() {
             </div>
           </div>
         )}
+
       </div>
     </div>
   );

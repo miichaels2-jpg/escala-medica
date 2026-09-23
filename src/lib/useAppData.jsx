@@ -30,7 +30,7 @@ async function fetchTable(tableName, filterObj = {}, limit = 5000) {
     }
     const { data, error } = await query.limit(limit);
     if (error) {
-      console.warn(`[Supabase] Erro na tabela '${tableName}' (Ignorado).`);
+      console.warn(`[Supabase] Erro/Tabela '${tableName}' ausente. (Ignorado).`);
       return [];
     }
     return data || [];
@@ -45,17 +45,13 @@ async function fetchAllData() {
 
   try {
     let currentUser = null;
-    
-    // 1. Tenta sessão oficial do Supabase
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const { data: profile } = await supabase.from('users').select('*').eq('id', session.user.id).maybeSingle();
-        currentUser = { ...session.user, ...(profile || {}) };
-      }
-    } catch {}
+    const { data: { session } } = await supabase.auth.getSession();
 
-    // 2. Fallback de Segurança Inteligente da sessão local
+    if (session?.user) {
+      const { data: profile } = await supabase.from('users').select('*').eq('id', session.user.id).single();
+      currentUser = { ...session.user, ...(profile || {}) };
+    }
+
     if (!currentUser) {
       try {
         const localUserStr = window.localStorage.getItem('scale_logged_user');
@@ -80,7 +76,7 @@ async function fetchAllData() {
     
     let compData = null;
     try {
-      const { data } = await supabase.from('companies').select('*').eq('id', compId).maybeSingle();
+      const { data } = await supabase.from('companies').select('*').eq('id', compId).single();
       compData = data;
     } catch {}
 
@@ -119,13 +115,6 @@ async function fetchAllData() {
         ...prof,
         app_role: userMeta.app_role || cachedMeta.app_role || 'assistencial',
         username: linkedUser?.username || userMeta.username || cachedMeta.username || '',
-        coop_tax_rate: userMeta.coop_tax_rate ?? cachedMeta.coop_tax_rate ?? 0,
-        daily_rate: userMeta.daily_rate ?? cachedMeta.daily_rate ?? 1500,
-        monthly_salary: userMeta.monthly_salary ?? cachedMeta.monthly_salary ?? 18000,
-        monthly_work_hours: userMeta.monthly_work_hours ?? cachedMeta.monthly_work_hours ?? 220,
-        pix_type: userMeta.pix_type || cachedMeta.pix_type || 'CPF',
-        pix_key: userMeta.pix_key || cachedMeta.pix_key || '',
-        bank_info: userMeta.bank_info || cachedMeta.bank_info || '',
         data: { ...userMeta, ...cachedMeta }
       };
     });
@@ -142,7 +131,7 @@ async function fetchAllData() {
       loading: false
     });
   } catch (err) {
-    console.error('Erro ao sincronizar dados centrais Supabase:', err);
+    console.error('Erro ao sincronizar dados:', err);
     updateGlobal({ loading: false });
   } finally {
     isFetching = false;
@@ -169,7 +158,6 @@ export function useAppData() {
   }, []);
 
   const user = globalState.user;
-
   const userAppRole = user?.data?.app_role || (user?.role === 'admin' ? 'gestor' : 'assistencial');
   const isAdmin = user?.role === 'admin' || userAppRole === 'gestor' || user?.email === 'admin@admin.com';
   const isCoordinator = isAdmin || userAppRole === 'coordenador';
@@ -177,17 +165,27 @@ export function useAppData() {
   const isManager = isAdmin || isCoordinator;
   const isAssistencial = userAppRole === 'assistencial' || userAppRole === 'medico';
 
+  // BLINDAGEM DE DADOS: Fatiando os dados globais para mostrar SÓ os da unidade selecionada
+  const unitSectors = useMemo(() => globalState.sectors.filter(s => !s.unit_id || String(s.unit_id) === String(globalState.selectedUnitId)), [globalState.sectors, globalState.selectedUnitId]);
+  const unitShifts = useMemo(() => globalState.shifts.filter(s => !s.unit_id || String(s.unit_id) === String(globalState.selectedUnitId)), [globalState.shifts, globalState.selectedUnitId]);
+  const unitSwaps = useMemo(() => globalState.swaps.filter(s => !s.unit_id || String(s.unit_id) === String(globalState.selectedUnitId)), [globalState.swaps, globalState.selectedUnitId]);
+  
+  const unitProfessionals = useMemo(() => globalState.professionals.filter(p => {
+    const allowedUnits = p.data?.allowed_unit_ids || [];
+    return String(p.unit_id) === String(globalState.selectedUnitId) || allowedUnits.includes(String(globalState.selectedUnitId));
+  }), [globalState.professionals, globalState.selectedUnitId]);
+
   const professionalMap = useMemo(() => {
     const m = {};
-    globalState.professionals.forEach(p => { if (p?.id) m[p.id] = p; });
+    unitProfessionals.forEach(p => { if (p?.id) m[p.id] = p; });
     return m;
-  }, []);
+  }, [unitProfessionals]);
 
   const sectorMap = useMemo(() => {
     const m = {};
-    globalState.sectors.forEach(s => { if (s?.id) m[String(s.id)] = s; });
+    unitSectors.forEach(s => { if (s?.id) m[String(s.id)] = s; });
     return m;
-  }, []);
+  }, [unitSectors]);
 
   const currentProfessional = useMemo(() => {
     if (user && globalState.professionals.length) {
@@ -198,20 +196,22 @@ export function useAppData() {
       );
       if (found) return found;
     }
-
     return {
       id: user?.data?.professional_id || user?.id || 'temp_user_id',
-      name: user?.full_name || user?.user_metadata?.full_name || 'Profissional',
+      name: user?.full_name || 'Profissional',
       email: user?.email || '',
       specialty: user?.data?.specialty || 'Clínica Geral',
-      status: 'ativo',
-      remuneration_type: 'hora',
-      hourly_rate: 120
+      status: 'ativo'
     };
   }, [user]);
 
   return {
     ...globalState,
+    sectors: unitSectors,
+    shifts: unitShifts,
+    swaps: unitSwaps,
+    professionals: unitProfessionals,
+    allCompanyProfessionals: globalState.professionals,
     professionalMap,
     sectorMap,
     isAdmin,

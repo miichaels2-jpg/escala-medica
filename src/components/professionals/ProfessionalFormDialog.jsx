@@ -74,7 +74,9 @@ export default function ProfessionalFormDialog({
   const [document, setDocument] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [unitId, setUnitId] = useState('');
+  
+  // ARRAYS DE UNIDADES PERMITIDAS PARA O PROFISSIONAL
+  const [allowedUnitIds, setAllowedUnitIds] = useState([]);
 
   // Remuneração
   const [remunerationType, setRemunerationType] = useState('hora');
@@ -106,7 +108,10 @@ export default function ProfessionalFormDialog({
       setDocument(professional.document || '');
       setEmail(professional.email || '');
       setPhone(professional.phone || '');
-      setUnitId(String(professional.unit_id || units[0]?.id || ''));
+
+      // Carrega múltiplas unidades (se existirem) ou puxa a principal legada
+      const savedUnits = professional.data?.allowed_unit_ids || (professional.unit_id ? [String(professional.unit_id)] : [String(units[0]?.id || '')]);
+      setAllowedUnitIds(savedUnits);
 
       setRegistrationCode(professional.registration_code || professional.matricula || `MED-${String(professional.id || '').slice(-4).toUpperCase()}`);
 
@@ -174,7 +179,9 @@ export default function ProfessionalFormDialog({
       setPhone('');
       setUsername('');
       setPassword('123456');
-      setUnitId(String(units[0]?.id || ''));
+      
+      // Inicia com a primeira unidade já pré-selecionada
+      setAllowedUnitIds([String(units[0]?.id || '')]);
 
       setRemunerationType('hora');
       setHourlyRate('120');
@@ -239,6 +246,11 @@ export default function ProfessionalFormDialog({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (allowedUnitIds.length === 0) {
+      alert('Selecione pelo menos um hospital/unidade para o profissional.');
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -256,7 +268,7 @@ export default function ProfessionalFormDialog({
 
       const cleanProfPayload = {
         company_id: companyId || 'cmp_principal',
-        unit_id: unitId || units[0]?.id || null,
+        unit_id: allowedUnitIds[0], // Mantém a primeira como principal por retrocompatibilidade
         name,
         specialty,
         category: specialty,
@@ -298,14 +310,15 @@ export default function ProfessionalFormDialog({
         if (insertErr) throw insertErr;
       }
 
-      // Sincronização opcional com a tabela de usuários do sistema
+      // Sincronização com a tabela de usuários do sistema
       const userNick = (username || (email ? email.split('@')[0] : name.toLowerCase().replace(/\s+/g, ''))).trim();
       const finalPass = password || (birthDate ? computeDefaultPassword(birthDate, name) : '123456');
       const userEmail = (email || `${userNick}@scalemedic.local`).toLowerCase().trim();
 
       const userData = {
         company_id: companyId || 'cmp_principal',
-        selected_unit_id: unitId,
+        selected_unit_id: allowedUnitIds[0],
+        allowed_unit_ids: allowedUnitIds, // SALVANDO ARRAY MULTI-UNIDADES
         app_role: role,
         registration_code: registrationCode,
         allowed_modules: allowedModules,
@@ -747,24 +760,42 @@ export default function ProfessionalFormDialog({
             </div>
           </div>
 
-          {/* Unidade Hospitalar */}
-          <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
-            <Label className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-sky-600" /> Unidade Hospitalar Vinculada
-            </Label>
-            <Select value={String(unitId || '')} onValueChange={setUnitId}>
-              <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-xl font-bold"><SelectValue placeholder="Selecione a unidade..." /></SelectTrigger>
-              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
-                {units.map((u) => (
-                  <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* NOVA SEÇÃO: MÚLTIPLOS HOSPITAIS */}
+          <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+            <div>
+              <Label className="font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-sky-600" /> Hospitais Liberados (Múltiplas Unidades)
+              </Label>
+              <p className="text-[11px] text-slate-500 mt-1">Selecione em quais unidades este profissional pode ser escalado e ter acesso pelo aplicativo.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+              {units.map(u => (
+                <label key={u.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                  allowedUnitIds.includes(String(u.id)) 
+                    ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/30' 
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 hover:border-sky-300'
+                }`}>
+                  <input
+                    type="checkbox"
+                    checked={allowedUnitIds.includes(String(u.id))}
+                    onChange={(e) => {
+                      if (e.target.checked) setAllowedUnitIds([...allowedUnitIds, String(u.id)]);
+                      else setAllowedUnitIds(allowedUnitIds.filter(id => id !== String(u.id)));
+                    }}
+                    className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer"
+                  />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{u.name}</span>
+                </label>
+              ))}
+            </div>
+            {allowedUnitIds.length === 0 && (
+              <p className="text-[10px] font-bold text-rose-500 animate-pulse">⚠️ Selecione pelo menos uma unidade.</p>
+            )}
           </div>
 
           <DialogFooter className="pt-3 border-t border-slate-100 dark:border-slate-800 gap-2">
             <Button type="button" variant="outline" onClick={onClose} className="h-10 text-xs font-bold border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl px-5 cursor-pointer">Cancelar</Button>
-            <Button type="submit" disabled={saving} className="h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-xl shadow-md cursor-pointer transition-all">
+            <Button type="submit" disabled={saving || allowedUnitIds.length === 0} className="h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-xl shadow-md cursor-pointer transition-all">
               {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Gravando...</> : (professional ? 'Salvar Alterações' : 'Concluir Cadastro')}
             </Button>
           </DialogFooter>
