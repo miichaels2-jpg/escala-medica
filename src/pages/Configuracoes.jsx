@@ -98,13 +98,19 @@ export default function Configuracoes() {
     }
   }, [currentUnit, selectedUnitId]);
 
+  // CORREÇÃO: Filtra os usuários para mostrar APENAS quem tem permissão explícita na unidade atual
   const visibleUsers = useMemo(() => {
     return companyUsers.filter(u => {
-      if (isAdmin || u.role === 'admin') return true;
-      const userUnit = u.unit_id || u.data?.unit_id || u.selected_unit_id || u.data?.selected_unit_id;
-      return !userUnit || String(userUnit) === String(selectedUnitId);
+      // Se for o Admin root principal, ele tem acesso a tudo e aparece em todas
+      if (u.role === 'admin' && u.id === 'usr_admin') return true;
+
+      const allowedUnits = u.data?.allowed_unit_ids || [];
+      const legacyUnit = u.data?.unit_id || u.data?.selected_unit_id || u.unit_id;
+      
+      // Se a unidade selecionada no topo da tela estiver na lista de permitidas deste usuário, ele aparece. Caso contrário, é ocultado.
+      return allowedUnits.includes(String(selectedUnitId)) || String(legacyUnit) === String(selectedUnitId);
     });
-  }, [companyUsers, selectedUnitId, isAdmin]);
+  }, [companyUsers, selectedUnitId]);
 
   const daysToExpiration = useMemo(() => {
     if (!contractForm.contract_end) return null;
@@ -113,7 +119,6 @@ export default function Configuracoes() {
     return Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
   }, [contractForm.contract_end]);
 
-  // CORREÇÃO: Salva diretamente na coluna nativa "units" em vez da coluna "data"
   const handleSaveCurrentUnit = async (e) => {
     e.preventDefault();
     if (!currentUnit) return;
@@ -216,7 +221,6 @@ export default function Configuracoes() {
     setUnitModalOpen(true);
   };
 
-  // CORREÇÃO: Salva diretamente na coluna nativa "units"
   const handleSaveNewUnit = async (e) => {
     e.preventDefault();
     if (!newUnitForm.name.trim()) return alert('O nome do hospital é obrigatório.');
@@ -291,7 +295,6 @@ export default function Configuracoes() {
     window.location.reload();
   };
 
-  // Função para puxar dados do contrato matriz para o novo hospital
   const handleAutoFillFromContract = () => {
     setNewUnitForm(prev => ({
       ...prev,
@@ -565,7 +568,6 @@ export default function Configuracoes() {
                 </DialogHeader>
 
                 <form onSubmit={handleSaveNewUnit} className="space-y-4 py-2 text-xs">
-                  {/* BOTÃO DE AUTO-PREENCHIMENTO COM DADOS DA MATRIZ */}
                   {!editingUnit && contractForm.name && (
                     <Button 
                       type="button" 
