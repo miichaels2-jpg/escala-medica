@@ -11,7 +11,7 @@ import {
   Users, UserPlus, Search, CheckCircle2, 
   Clock, DollarSign, Edit3, KeyRound, Send, RefreshCw, Ban, 
   UserCheck, MessageSquare, Shield, UserCog, BadgeCheck, Eye, EyeOff,
-  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle, Building2, Check, ToggleLeft, ToggleRight, Power, Trash2, Settings, Save
+  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle, Building2, Check, ToggleLeft, ToggleRight, Power, Trash2, Settings, Save, Lock
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -24,15 +24,16 @@ function formatCurrency(val) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(safeNumber(val));
 }
 
-const defaultCats = [
-  { id: 'medico', label: 'Médico(a)', council: 'CRM' },
-  { id: 'enfermeiro', label: 'Enfermeiro(a)', council: 'COREN' },
-  { id: 'fisioterapeuta', label: 'Fisioterapeuta', council: 'CREFITO' },
-  { id: 'tecnico_enfermagem', label: 'Téc. Enfermagem', council: 'COREN' },
-  { id: 'farmaceutico', label: 'Farmacêutico(a)', council: 'CRF' },
-  { id: 'nutricionista', label: 'Nutricionista', council: 'CRN' },
-  { id: 'psicologo', label: 'Psicólogo(a)', council: 'CRP' },
-  { id: 'biomedico', label: 'Biomédico(a)', council: 'CRBM' }
+// Transformado em constante IMUTÁVEL (não podem ser apagadas)
+const DEFAULT_CATEGORIES = [
+  { id: 'medico', label: 'Médico(a)', council: 'CRM', isDefault: true },
+  { id: 'enfermeiro', label: 'Enfermeiro(a)', council: 'COREN', isDefault: true },
+  { id: 'fisioterapeuta', label: 'Fisioterapeuta', council: 'CREFITO', isDefault: true },
+  { id: 'tecnico_enfermagem', label: 'Téc. Enfermagem', council: 'COREN', isDefault: true },
+  { id: 'farmaceutico', label: 'Farmacêutico(a)', council: 'CRF', isDefault: true },
+  { id: 'nutricionista', label: 'Nutricionista', council: 'CRN', isDefault: true },
+  { id: 'psicologo', label: 'Psicólogo(a)', council: 'CRP', isDefault: true },
+  { id: 'biomedico', label: 'Biomédico(a)', council: 'CRBM', isDefault: true }
 ];
 
 const ACCESS_ROLES = [
@@ -72,23 +73,23 @@ export default function CorpoClinico() {
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // GESTÃO UNIVERSAL DE CATEGORIAS
-  const [allCategories, setAllCategories] = useState(() => {
+  // GESTÃO DE CATEGORIAS SEPARADAS (Apenas as criadas pelo usuário vão pro LocalStorage)
+  const [customCategories, setCustomCategories] = useState(() => {
     try { 
       const stored = window.localStorage.getItem('scale_custom_cats');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.length > 0) return parsed;
-      }
+      if (stored) return JSON.parse(stored);
     } catch {}
-    return defaultCats;
+    return [];
   });
+
+  // Junta as padrão com as customizadas para exibir no formulário
+  const allCategories = useMemo(() => [...DEFAULT_CATEGORIES, ...customCategories], [customCategories]);
 
   const [editingCatId, setEditingCatId] = useState(null);
   const [newCatData, setNewCatData] = useState({ label: '', council: 'Registro' });
 
-  const saveCategories = (cats) => {
-    setAllCategories(cats);
+  const saveCustomCategories = (cats) => {
+    setCustomCategories(cats);
     try { window.localStorage.setItem('scale_custom_cats', JSON.stringify(cats)); } catch {}
   };
 
@@ -160,7 +161,7 @@ export default function CorpoClinico() {
       main_sector: meta.main_sector || prof.specialty || sectors[0]?.name || 'UTI Geral',
       specialty: prof.specialty || meta.specialty || '',
       cbo: meta.cbo || prof.cbo || '',
-      cpf: prof.cpf || '',
+      cpf: prof.cpf || meta.cpf || '',
       email: prof.email || '',
       phone: prof.phone || '',
       birth_date: meta.birth_date || prof.birth_date || '',
@@ -213,41 +214,42 @@ export default function CorpoClinico() {
     });
   };
 
-  // GERENCIAR CATEGORIAS
+  // GERENCIAR CATEGORIAS (Apenas as Customizadas podem ser editadas/excluídas)
   const handleSaveCategory = (e) => {
     e.preventDefault();
     if (!newCatData.label.trim()) return;
 
     if (editingCatId) {
-      const updated = allCategories.map(c => c.id === editingCatId ? { ...c, label: newCatData.label.trim(), council: newCatData.council || 'Registro' } : c);
-      saveCategories(updated);
+      const updated = customCategories.map(c => c.id === editingCatId ? { ...c, label: newCatData.label.trim(), council: newCatData.council || 'Registro' } : c);
+      saveCustomCategories(updated);
       setEditingCatId(null);
     } else {
       const newId = newCatData.label.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
-      const newCatObj = { id: newId, label: newCatData.label.trim(), council: newCatData.council || 'Registro' };
-      saveCategories([...allCategories, newCatObj]);
+      const newCatObj = { id: newId, label: newCatData.label.trim(), council: newCatData.council || 'Registro', isDefault: false };
+      saveCustomCategories([...customCategories, newCatObj]);
     }
     setNewCatData({ label: '', council: 'Registro' });
   };
 
   const handleEditCatClick = (cat) => {
+    if(cat.isDefault) return; // Proteção extra
     setEditingCatId(cat.id);
     setNewCatData({ label: cat.label, council: cat.council });
   };
 
   const handleDeleteCatClick = (id) => {
     if(!confirm("Tem certeza que deseja excluir esta categoria?")) return;
-    const updated = allCategories.filter(c => c.id !== id);
-    saveCategories(updated);
+    const updated = customCategories.filter(c => c.id !== id);
+    saveCustomCategories(updated);
     if (formData.category === id) {
-      setFormData(prev => ({ ...prev, category: updated[0]?.id || '' }));
+      setFormData(prev => ({ ...prev, category: allCategories[0]?.id || 'medico' }));
     }
   };
 
-  // GERA A SENHA PADRÃO: DDMMYYYY + letra inicial minúscula
+  // GERA A SENHA PADRÃO QUE VOCÊ GOSTOU: DDMMYYYY + letra inicial minúscula
   const handleGenerateDefaultPassword = () => {
     if (!formData.birth_date || !formData.name) {
-      alert('⚠️️ Preencha o Nome e a Data de Nascimento para gerar a senha padrão!');
+      alert('⚠️ Preencha o Nome e a Data de Nascimento para gerar a senha padrão!');
       return;
     }
     const [y, m, d] = formData.birth_date.split('-');
@@ -296,19 +298,30 @@ export default function CorpoClinico() {
         document_expiry: formData.document_expiry, status: formData.status,
         authorized_sectors: formData.authorized_sectors,
         allowed_unit_ids: formData.allowed_unit_ids,
-        birth_date: formData.birth_date
+        birth_date: formData.birth_date,
+        cpf: formData.cpf
       };
 
+      // Payload atualizado para garantir que os dados batem com a tabela
       const profPayload = {
         company_id: company?.id || 'cmp_principal', 
         unit_id: formData.allowed_unit_ids[0], 
         unit_ids: formData.allowed_unit_ids,
-        name: formData.name.trim(), document: formData.document.trim(), specialty: formData.specialty.trim() || formData.main_sector,
-        cbo: formData.cbo.trim(), cpf: formData.cpf.trim(), email: finalEmail,
-        phone: formData.phone.trim(), status: formData.status, remuneration_type: formData.remuneration_type,
-        hourly_rate: safeNumber(formData.hourly_rate), monthly_salary: safeNumber(formData.monthly_salary),
-        daily_rate: safeNumber(formData.daily_rate), document_expiry: formData.document_expiry,
-        birth_date: formData.birth_date
+        name: formData.name.trim(), 
+        document: formData.document.trim(), 
+        specialty: formData.specialty.trim() || formData.main_sector,
+        cbo: formData.cbo.trim(), 
+        cpf: formData.cpf.trim(), 
+        email: finalEmail,
+        phone: formData.phone.trim(), 
+        status: formData.status, 
+        remuneration_type: formData.remuneration_type,
+        hourly_rate: safeNumber(formData.hourly_rate), 
+        monthly_salary: safeNumber(formData.monthly_salary),
+        daily_rate: safeNumber(formData.daily_rate), 
+        document_expiry: formData.document_expiry,
+        birth_date: formData.birth_date,
+        data: richMeta // <-- GARANTINDO QUE OS METADADOS VÃO PRO BANCO
       };
 
       let savedProf = await autoHealingSave(editingProf?.id, profPayload);
@@ -724,7 +737,7 @@ export default function CorpoClinico() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Button type="button" size="sm" variant="outline" onClick={handleGenerateDefaultPassword} className="h-7 text-[10px] font-bold border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950 cursor-pointer shadow-sm">
-                    <RefreshCw className="w-3 h-3 mr-1" /> Resetar Senha
+                    <RefreshCw className="w-3 h-3 mr-1" /> Senha (Data Nasc)
                   </Button>
                   <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'S@ude'+Math.floor(1000+Math.random()*9000)}))} className="h-7 text-[10px] font-bold border-sky-300 text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950 cursor-pointer">
                     <RefreshCw className="w-3 h-3 mr-1" /> Gerar Aleatória
@@ -848,7 +861,7 @@ export default function CorpoClinico() {
         </DialogContent>
       </Dialog>
 
-      {/* GESTOR DE CATEGORIAS PROFISSIONAIS: Adicionar, Editar e Remover */}
+      {/* GESTOR DE CATEGORIAS PROFISSIONAIS */}
       <Dialog open={manageCatModalOpen} onOpenChange={setManageCatModalOpen}>
         <DialogContent className="sm:max-w-md bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
           <DialogHeader>
@@ -866,17 +879,22 @@ export default function CorpoClinico() {
                 allCategories.map(c => (
                   <div key={c.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
                     <div>
-                      <div className="text-xs font-bold text-slate-900 dark:text-white">{c.label}</div>
-                      <div className="text-[10px] text-slate-500">Conselho: {c.council}</div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        {c.label}
+                        {c.isDefault && <span className="text-[8px] bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded flex items-center gap-1"><Lock className="w-2 h-2"/> Padrão</span>}
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">Conselho: {c.council}</div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => handleEditCatClick(c)} className="h-8 w-8 p-0 text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950 cursor-pointer">
-                        <Edit3 className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDeleteCatClick(c.id)} className="h-8 w-8 p-0 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950 cursor-pointer">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    {!c.isDefault && (
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => handleEditCatClick(c)} className="h-8 w-8 p-0 text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950 cursor-pointer">
+                          <Edit3 className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteCatClick(c.id)} className="h-8 w-8 p-0 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950 cursor-pointer">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -884,7 +902,7 @@ export default function CorpoClinico() {
 
             <form onSubmit={handleSaveCategory} className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-800">
               <div className="flex items-center justify-between">
-                <Label className="text-[10px] font-black uppercase text-slate-500">{editingCatId ? 'Editar Categoria' : 'Adicionar Nova'}</Label>
+                <Label className="text-[10px] font-black uppercase text-slate-500">{editingCatId ? 'Editar Categoria Customizada' : 'Adicionar Nova Categoria'}</Label>
                 {editingCatId && (
                   <Button type="button" variant="ghost" size="sm" onClick={() => { setEditingCatId(null); setNewCatData({label: '', council: 'Registro'}); }} className="h-5 text-[9px] text-slate-400 hover:text-slate-600 cursor-pointer">Cancelar Edição</Button>
                 )}
