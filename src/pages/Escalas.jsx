@@ -137,7 +137,6 @@ function computeShiftHospitalLifecycle(shift, liveNowDate) {
   };
 }
 
-// === UTILS FALTANTES ADICIONADOS ===
 function getInitials(name) {
   if (!name) return '?';
   const parts = name.trim().split(' ');
@@ -164,7 +163,6 @@ function extractRetroactiveJustification(notes) {
   const match = String(notes).match(/\[AJUSTE_RETROATIVO:(.*?)\]/i);
   return match && match[1] ? match[1].trim() : '';
 }
-// ===================================
 
 async function autoHealingSaveShift(id, initialPayload) {
   let payload = { ...initialPayload };
@@ -1734,6 +1732,164 @@ export default function Escalas() {
               </div>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* 6. MODAL GERADOR E CONFIGURADOR DE ESCALAS EM MASSA                       */}
+      {/* ========================================================================= */}
+      <Dialog open={generatorModalOpen} onOpenChange={setGeneratorModalOpen}>
+        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-6">
+          <DialogHeader className="border-b border-slate-800 pb-4">
+            <DialogTitle className="text-lg font-black flex items-center gap-2 text-indigo-400">
+              <SlidersHorizontal className="w-5 h-5" /> Gerador de Grade Padrão
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleExecuteGenerator} className="space-y-5 py-2">
+            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between gap-4">
+              <div className="space-y-1.5 flex-1">
+                <Label className="text-xs font-bold text-slate-400">Setor Alvo</Label>
+                <Select value={generatorConfig.sector_id} onValueChange={v => setGeneratorConfig({ ...generatorConfig, sector_id: v })}>
+                  <SelectTrigger className="h-10 bg-slate-950 border-slate-700 text-white font-bold rounded-xl">
+                    <SelectValue placeholder="Selecione o setor..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
+                    {(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label className="text-xs font-bold text-slate-400">Data de Início da Grade</Label>
+                <Input type="date" value={generatorConfig.start_date} onChange={e => setGeneratorConfig({ ...generatorConfig, start_date: e.target.value })} className="h-10 bg-slate-900 border-slate-800 text-white rounded-xl cursor-pointer" required />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label className="text-xs font-bold text-slate-400">Duração (Dias Sequenciais)</Label>
+                <Input type="number" min="1" max="365" value={generatorConfig.duration_days} onChange={e => setGeneratorConfig({ ...generatorConfig, duration_days: e.target.value })} className="h-10 bg-slate-900 border-slate-800 text-white rounded-xl" required />
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2 border-t border-slate-800">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-black text-sky-400 flex items-center gap-2">
+                  <Clock className="w-4 h-4" /> Configuração Diária dos Vagas
+                </Label>
+                <Button type="button" onClick={handleAddSlot} variant="outline" className="h-8 text-xs font-bold border-slate-700 text-slate-300 hover:text-white rounded-lg px-3 cursor-pointer">
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Novo Turno
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                {generatorConfig.slots.map((slot, index) => (
+                  <div key={slot.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-3 bg-slate-900 border border-slate-800 rounded-2xl relative group">
+                    <div className="w-full sm:w-auto flex-1 space-y-1">
+                      <Label className="text-[10px] uppercase text-slate-500 font-bold">Especialidade</Label>
+                      <Input placeholder="Especialidade" value={slot.specialty} onChange={e => handleUpdateSlot(slot.id, 'specialty', e.target.value)} className="h-9 text-xs bg-slate-950 border-slate-800 text-white" list="gen-specs" />
+                    </div>
+                    <div className="w-24 shrink-0 space-y-1">
+                      <Label className="text-[10px] uppercase text-slate-500 font-bold">Entrada</Label>
+                      <Input type="time" value={slot.start_time} onChange={e => handleUpdateSlot(slot.id, 'start_time', e.target.value)} className="h-9 text-xs bg-slate-950 border-slate-800 text-white" required />
+                    </div>
+                    <div className="w-24 shrink-0 space-y-1">
+                      <Label className="text-[10px] uppercase text-slate-500 font-bold">Saída</Label>
+                      <Input type="time" value={slot.end_time} onChange={e => handleUpdateSlot(slot.id, 'end_time', e.target.value)} className="h-9 text-xs bg-slate-950 border-slate-800 text-white" required />
+                    </div>
+                    <div className="w-20 shrink-0 space-y-1">
+                      <Label className="text-[10px] uppercase text-slate-500 font-bold">Vagas (Qtd)</Label>
+                      <Input type="number" min="1" value={slot.quantity} onChange={e => handleUpdateSlot(slot.id, 'quantity', e.target.value)} className="h-9 text-xs font-black text-sky-400 bg-slate-950 border-slate-800 text-center" required />
+                    </div>
+                    {generatorConfig.slots.length > 1 && (
+                      <div className="w-full sm:w-auto mt-2 sm:mt-0 flex justify-end">
+                        <Button type="button" variant="ghost" onClick={() => handleRemoveSlot(slot.id)} className="h-9 w-9 p-0 text-rose-500 hover:bg-rose-950/50 rounded-xl cursor-pointer">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <datalist id="gen-specs">{registeredSpecialties.map(spec => <option key={spec} value={spec} />)}</datalist>
+              </div>
+            </div>
+
+            <div className="p-4 bg-sky-950/30 border border-sky-900/50 rounded-2xl flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-sky-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-sky-200 leading-relaxed">
+                Este processo vai injetar <b>{(generatorConfig.slots.reduce((acc, slot) => acc + (parseInt(slot.quantity) || 0), 0)) * (parseInt(generatorConfig.duration_days) || 0)}</b> plantões vazios na grade, prontos para receberem alocação profissional ou serem mandados ao Mural.
+              </p>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setGeneratorModalOpen(false)} className="h-11 border-slate-700 text-slate-300 rounded-xl cursor-pointer">Cancelar</Button>
+              <Button type="submit" disabled={submitting} className="h-11 bg-indigo-600 hover:bg-indigo-500 text-white font-black px-8 rounded-xl shadow-lg shadow-indigo-500/20 cursor-pointer">
+                Gerar Escala em Massa
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* 7. MODAL DE PUBLICAÇÃO DE ESCALA                                          */}
+      {/* ========================================================================= */}
+      <Dialog open={publishModalOpen} onOpenChange={setPublishModalOpen}>
+        <DialogContent className="w-[95vw] sm:max-w-md bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-6">
+          <DialogHeader className="border-b border-slate-800 pb-4">
+            <DialogTitle className="text-lg font-black flex items-center gap-2 text-emerald-400">
+              <Send className="w-5 h-5" /> Publicar e Oficializar Escala
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-slate-400 leading-relaxed">
+              A publicação oficializa a grade para os profissionais. A partir desse momento, ela fica visível no aplicativo (Minha Escala) e os médicos recebem as notificações de confirmação de seus plantões.
+            </p>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-300">Setor a ser publicado</Label>
+              <Select value={publishConfig.sector_id} onValueChange={v => setPublishConfig({ ...publishConfig, sector_id: v })}>
+                <SelectTrigger className="h-10 bg-slate-900 border-slate-700 text-white font-bold rounded-xl">
+                  <SelectValue placeholder="Selecione o setor..." />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
+                  {(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-300">Data Inicial</Label>
+                <Input type="date" value={publishConfig.start_date} onChange={e => setPublishConfig({ ...publishConfig, start_date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl cursor-pointer" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-300">Data Final</Label>
+                <Input type="date" value={publishConfig.end_date} onChange={e => setPublishConfig({ ...publishConfig, end_date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl cursor-pointer" />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button type="button" onClick={() => handleApplyQuickRange('7days')} variant="outline" className="flex-1 h-8 text-[10px] font-bold border-slate-700 text-slate-300 cursor-pointer">7 Dias</Button>
+              <Button type="button" onClick={() => handleApplyQuickRange('15days')} variant="outline" className="flex-1 h-8 text-[10px] font-bold border-slate-700 text-slate-300 cursor-pointer">15 Dias</Button>
+              <Button type="button" onClick={() => handleApplyQuickRange('month')} variant="outline" className="flex-1 h-8 text-[10px] font-bold border-slate-700 text-slate-300 cursor-pointer">Mês Inteiro</Button>
+            </div>
+
+            {existingPublishedOverlaps.length > 0 && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                <p className="text-[10px] font-bold text-amber-500 flex items-center gap-1.5 mb-1"><History className="w-3.5 h-3.5" /> Sobrescrita Detectada</p>
+                <p className="text-[10px] text-amber-200/70 leading-tight">Você está publicando um período que já possui dias oficializados. A versão mais recente se tornará a escala principal.</p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="pt-4 border-t border-slate-800">
+            <Button type="button" variant="outline" onClick={() => setPublishModalOpen(false)} className="h-11 border-slate-700 text-slate-300 rounded-xl cursor-pointer">Cancelar</Button>
+            <Button type="button" onClick={handleExecutePublishSector} disabled={submitting || !publishConfig.sector_id} className="h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-black px-6 rounded-xl shadow-lg shadow-emerald-500/20 cursor-pointer">
+              Oficializar Escala
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       
