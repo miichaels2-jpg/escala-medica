@@ -11,7 +11,7 @@ import {
   Users, UserPlus, Search, CheckCircle2, 
   Clock, DollarSign, Edit3, KeyRound, Send, RefreshCw, Ban, 
   UserCheck, MessageSquare, Shield, UserCog, BadgeCheck, Eye, EyeOff,
-  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle, Building2, Check, ToggleLeft, ToggleRight, Power
+  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle, Building2, Check, ToggleLeft, ToggleRight, Power, Trash2
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -67,7 +67,7 @@ export default function CorpoClinico() {
   const [categoryFilter, setCategoryFilter] = useState('todas');
   
   const [modalOpen, setModalOpen] = useState(false);
-  const [newCatModalOpen, setNewCatModalOpen] = useState(false);
+  const [manageCatModalOpen, setManageCatModalOpen] = useState(false);
   const [editingProf, setEditingProf] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -201,6 +201,7 @@ export default function CorpoClinico() {
     });
   };
 
+  // GERENCIAMENTO DE CATEGORIAS CUSTOMIZADAS
   const handleAddCustomCategory = (e) => {
     e.preventDefault();
     if (!newCatData.label.trim()) return;
@@ -211,7 +212,15 @@ export default function CorpoClinico() {
     try { window.localStorage.setItem('scale_custom_cats', JSON.stringify(updated)); } catch {}
     setFormData(prev => ({ ...prev, category: newId }));
     setNewCatData({ label: '', council: 'Registro' });
-    setNewCatModalOpen(false);
+  };
+
+  const handleDeleteCustomCategory = (idToRemove) => {
+    const updated = customCategories.filter(c => c.id !== idToRemove);
+    setCustomCategories(updated);
+    try { window.localStorage.setItem('scale_custom_cats', JSON.stringify(updated)); } catch {}
+    if (formData.category === idToRemove) {
+      setFormData(prev => ({ ...prev, category: 'medico' }));
+    }
   };
 
   // GERA A SENHA PADRÃO: DDMMYYYY + letra inicial minúscula
@@ -236,7 +245,7 @@ export default function CorpoClinico() {
     const pass = formData.password ? formData.password : '(sua senha cadastrada)';
     const siteUrl = window.location.origin;
 
-    const message = `*ScaleMedic - Gestão Hospitalar* 🏥\n\nOlá, *${formData.name}*!\nSeu cadastro profissional foi atualizado.\n\nAcesse sua escala com as credenciais abaixo:\n🌐 *Link:* ${siteUrl}/login\n👤 *Usuário:* ${loginUser}\n🔑 *Senha temporária:* ${pass}\n\n_Ao aceder, o sistema solicitará que cadastre uma senha segura e pessoal._`;
+    const message = `*ScaleMedic - Gestão Hospitalar* 🏥\n\nOlá, *${formData.name}*!\nSeu cadastro profissional foi atualizado.\n\nAcesse sua escala com as credenciais abaixo:\n🌐 *Link:* ${siteUrl}/login\n👤 *Usuário:* ${loginUser}\n🔑 *Senha temporária:* ${pass}\n\n_Ao acessar, o sistema solicitará que cadastre uma senha segura e pessoal._`;
     window.open(`https://api.whatsapp.com/send?phone=${phoneWithDDI}&text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -253,7 +262,6 @@ export default function CorpoClinico() {
     try {
       const cleanUsername = (formData.username || formData.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
       
-      // SOLUÇÃO DO EMAIL ÚNICO: Se estiver em branco, gera um fictício para o banco não dar erro de duplicação
       const finalEmail = formData.email.trim() ? formData.email.trim().toLowerCase() : `${cleanUsername}.${Date.now()}@scalemedic.local`;
 
       const richMeta = {
@@ -274,11 +282,21 @@ export default function CorpoClinico() {
         company_id: company?.id || 'cmp_principal', 
         unit_id: formData.allowed_unit_ids[0], 
         unit_ids: formData.allowed_unit_ids,
-        name: formData.name.trim(), document: formData.document.trim(), specialty: formData.specialty.trim() || formData.main_sector,
-        cbo: formData.cbo.trim(), cpf: formData.cpf.trim(), email: finalEmail,
-        phone: formData.phone.trim(), status: formData.status, remuneration_type: formData.remuneration_type,
-        hourly_rate: safeNumber(formData.hourly_rate), monthly_salary: safeNumber(formData.monthly_salary),
-        daily_rate: safeNumber(formData.daily_rate), document_expiry: formData.document_expiry
+        name: formData.name.trim(), 
+        document: formData.document.trim(), 
+        specialty: formData.specialty.trim() || formData.main_sector,
+        cbo: formData.cbo.trim(), 
+        cpf: formData.cpf.trim(), 
+        email: finalEmail,
+        phone: formData.phone.trim(), 
+        status: formData.status, 
+        remuneration_type: formData.remuneration_type,
+        hourly_rate: safeNumber(formData.hourly_rate), 
+        monthly_salary: safeNumber(formData.monthly_salary),
+        daily_rate: safeNumber(formData.daily_rate), 
+        document_expiry: formData.document_expiry,
+        birth_date: formData.birth_date,
+        data: richMeta
       };
 
       let savedProf = await autoHealingSave(editingProf?.id, profPayload);
@@ -288,7 +306,6 @@ export default function CorpoClinico() {
         try { window.localStorage.setItem(`prof_meta_${savedProfId}`, JSON.stringify(richMeta)); } catch {}
       }
 
-      // Sincronização Inteligente com a Tabela Users do Supabase para o Login Múltiplas Unidades
       const userDataPayload = {
         company_id: company?.id || 'cmp_principal',
         selected_unit_id: formData.allowed_unit_ids[0],
@@ -297,7 +314,6 @@ export default function CorpoClinico() {
         registration_code: formData.registration_id,
         is_active: formData.status === 'ativo',
         status: formData.status,
-        // Carimbo de Troca de Senha Obrigatória! Se enviamos uma senha, obriga a trocar
         must_change_password: !!formData.password 
       };
 
@@ -542,7 +558,6 @@ export default function CorpoClinico() {
         })}
       </div>
 
-      {/* MODAL DE CADASTRO/EDIÇÃO COMPLETO */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
           <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2 text-slate-900 dark:text-white"><UserCog className="w-5 h-5 text-sky-600" /> {editingProf ? 'Editar Perfil Profissional & Acesso' : 'Cadastrar Novo Profissional'}</DialogTitle></DialogHeader>
@@ -561,7 +576,7 @@ export default function CorpoClinico() {
                     <span className="text-[9px] opacity-60">Conselho: {cat.council}</span>
                   </div>
                 ))}
-                <div onClick={() => setNewCatModalOpen(true)} className="p-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 cursor-pointer flex items-center justify-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-900 font-bold">
+                <div onClick={() => setManageCatModalOpen(true)} className="p-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 cursor-pointer flex items-center justify-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-900 font-bold">
                   <Plus className="w-3 h-3 text-rose-500" />
                 </div>
               </div>
@@ -813,41 +828,68 @@ export default function CorpoClinico() {
         </DialogContent>
       </Dialog>
 
-      {/* O MODAL DA CATEGORIA DE VOLTA AO SEU LUGAR! */}
-      <Dialog open={newCatModalOpen} onOpenChange={setNewCatModalOpen}>
-        <DialogContent className="sm:max-w-sm bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
+      {/* GESTOR DE CATEGORIAS PROFISSIONAIS: Adicionar e Remover */}
+      <Dialog open={manageCatModalOpen} onOpenChange={setManageCatModalOpen}>
+        <DialogContent className="sm:max-w-md bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
           <DialogHeader>
             <DialogTitle className="text-base font-black flex items-center gap-2">
-              <Plus className="w-5 h-5 text-rose-500" /> Adicionar Nova Categoria
+              <Plus className="w-5 h-5 text-sky-600" /> Gerenciar Categorias Profissionais
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleAddCustomCategory} className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nome da Profissão *</Label>
-              <Input 
-                value={newCatData.label} 
-                onChange={e => setNewCatData({...newCatData, label: e.target.value})} 
-                placeholder="Ex: Fonoaudiólogo" 
-                className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl" 
-                required 
-              />
+
+          <div className="py-2 space-y-4">
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              <Label className="text-[10px] font-black uppercase text-slate-500">Categorias Personalizadas</Label>
+              {customCategories.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">Nenhuma categoria personalizada criada.</p>
+              ) : (
+                customCategories.map(c => (
+                  <div key={c.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-white">{c.label}</div>
+                      <div className="text-[10px] text-slate-500">Conselho: {c.council}</div>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => handleDeleteCustomCategory(c.id)} className="h-8 w-8 p-0 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950">
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))
+              )}
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Conselho (Sigla)</Label>
-              <Input 
-                value={newCatData.council} 
-                onChange={e => setNewCatData({...newCatData, council: e.target.value})} 
-                placeholder="Ex: CREFONO" 
-                className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl" 
-              />
-            </div>
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" onClick={() => setNewCatModalOpen(false)} className="text-xs h-10 rounded-xl cursor-pointer border-slate-200 dark:border-slate-700">Cancelar</Button>
-              <Button type="submit" className="text-xs h-10 bg-sky-600 hover:bg-sky-500 text-white font-black rounded-xl cursor-pointer">Adicionar</Button>
-            </DialogFooter>
-          </form>
+
+            <form onSubmit={handleAddCustomCategory} className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+              <Label className="text-[10px] font-black uppercase text-slate-500">Adicionar Nova</Label>
+              <div className="space-y-1.5">
+                <Input 
+                  value={newCatData.label} 
+                  onChange={e => setNewCatData({...newCatData, label: e.target.value})} 
+                  placeholder="Nome da Profissão (Ex: Fonoaudiólogo)" 
+                  className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl text-xs" 
+                  required 
+                />
+              </div>
+              <div className="flex gap-2">
+                <Input 
+                  value={newCatData.council} 
+                  onChange={e => setNewCatData({...newCatData, council: e.target.value})} 
+                  placeholder="Conselho (Ex: CREFONO)" 
+                  className="h-10 flex-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl text-xs" 
+                />
+                <Button type="submit" className="h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl cursor-pointer shrink-0">
+                  <Plus className="w-4 h-4 mr-1" /> Salvar
+                </Button>
+              </div>
+            </form>
+          </div>
+
+          <DialogFooter className="pt-2 border-t border-slate-100 dark:border-slate-800">
+            <Button type="button" variant="outline" onClick={() => setManageCatModalOpen(false)} className="text-xs h-10 w-full rounded-xl cursor-pointer border-slate-200 dark:border-slate-700 font-bold">
+              Fechar Janela
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
+      
     </div>
   );
 }
