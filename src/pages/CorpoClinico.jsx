@@ -83,14 +83,13 @@ export default function CorpoClinico() {
   const [formData, setFormData] = useState({
     name: '', username: '', category: 'medico', document: '',
     registration_id: '', main_sector: '', specialty: '', cbo: '',
-    cpf: '', email: '', phone: '', unit_id: '',
+    cpf: '', email: '', phone: '', unit_id: '', birth_date: '',
     status: 'ativo', app_role: 'assistencial', remuneration_type: 'mensal',
     hourly_rate: 120, daily_rate: 1500, monthly_salary: 1672,
     monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
     pix_key: '', bank_info: '', password: '',
     document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
     authorized_sectors: [],
-    // NOVO: Array para armazenar as unidades permitidas
     allowed_unit_ids: [] 
   });
 
@@ -109,7 +108,7 @@ export default function CorpoClinico() {
     setFormData({
       name: '', username: '', category: 'medico', document: '',
       registration_id: generatedMatricula, main_sector: sectors[0]?.name || 'UTI Geral',
-      specialty: '', cbo: '', cpf: '', email: '', phone: '',
+      specialty: '', cbo: '', cpf: '', email: '', phone: '', birth_date: '',
       unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
       status: 'ativo', app_role: 'assistencial', remuneration_type: 'mensal',
       hourly_rate: 120, daily_rate: 1500, monthly_salary: 1672,
@@ -117,7 +116,6 @@ export default function CorpoClinico() {
       pix_key: '', bank_info: '', password: '',
       document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
       authorized_sectors: (sectors || []).map(s => String(s.id)),
-      // NOVO: Inicia com a unidade atual selecionada por padrão
       allowed_unit_ids: [String(selectedUnitId || units[0]?.id || 'unit_h1')] 
     });
     setEditingProf(null);
@@ -139,7 +137,6 @@ export default function CorpoClinico() {
     const hourly = meta.hourly_rate !== undefined ? meta.hourly_rate : (prof.hourly_rate !== undefined ? prof.hourly_rate : 120);
     const daily = meta.daily_rate !== undefined ? meta.daily_rate : (prof.daily_rate !== undefined ? prof.daily_rate : 1500);
 
-    // NOVO: Puxa as unidades salvas ou define a padrão
     const savedUnits = meta.allowed_unit_ids || prof.unit_ids || (prof.unit_id ? [String(prof.unit_id)] : [String(units[0]?.id || '')]);
 
     setFormData({
@@ -154,6 +151,7 @@ export default function CorpoClinico() {
       cpf: prof.cpf || '',
       email: prof.email || '',
       phone: prof.phone || '',
+      birth_date: meta.birth_date || prof.birth_date || '',
       unit_id: prof.unit_id || selectedUnitId,
       status: profStatus,
       app_role: meta.app_role || prof.app_role || 'assistencial',
@@ -169,7 +167,7 @@ export default function CorpoClinico() {
       password: '',
       document_expiry: expiry,
       authorized_sectors: authSectors,
-      allowed_unit_ids: savedUnits // NOVO: Mapeia o estado
+      allowed_unit_ids: savedUnits 
     });
     setModalOpen(true);
   };
@@ -216,6 +214,18 @@ export default function CorpoClinico() {
     setNewCatModalOpen(false);
   };
 
+  // GERA A SENHA PADRÃO: DDMMYYYY + letra inicial minúscula
+  const handleGenerateDefaultPassword = () => {
+    if (!formData.birth_date || !formData.name) {
+      alert('⚠️ Preencha o Nome e a Data de Nascimento para gerar a senha padrão!');
+      return;
+    }
+    const [y, m, d] = formData.birth_date.split('-');
+    const firstLetter = formData.name.charAt(0).toLowerCase();
+    const defaultPass = `${d}${m}${y}${firstLetter}`;
+    setFormData(p => ({ ...p, password: defaultPass }));
+  };
+
   const handleSendWhatsApp = () => {
     const rawPhone = formData.phone;
     const cleanPhone = String(rawPhone || '').replace(/\D/g, '');
@@ -226,7 +236,7 @@ export default function CorpoClinico() {
     const pass = formData.password ? formData.password : '(sua senha cadastrada)';
     const siteUrl = window.location.origin;
 
-    const message = `*ScaleMedic - Gestão Hospitalar* 🏥\n\nOlá, *${formData.name}*!\nSeu cadastro profissional foi atualizado.\n\nAcesse sua escala com as credenciais abaixo:\n🌐 *Link:* ${siteUrl}/login\n👤 *Usuário:* ${loginUser}\n🔑 *Senha:* ${pass}\n\n_Ao acessar, verifique sua grade e fique atento às notificações do Mural._`;
+    const message = `*ScaleMedic - Gestão Hospitalar* 🏥\n\nOlá, *${formData.name}*!\nSeu cadastro profissional foi atualizado.\n\nAcesse sua escala com as credenciais abaixo:\n🌐 *Link:* ${siteUrl}/login\n👤 *Usuário:* ${loginUser}\n🔑 *Senha temporária:* ${pass}\n\n_Ao aceder, o sistema solicitará que cadastre uma senha segura e pessoal._`;
     window.open(`https://api.whatsapp.com/send?phone=${phoneWithDDI}&text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -234,7 +244,6 @@ export default function CorpoClinico() {
     e.preventDefault();
     if (!formData.name.trim()) return;
 
-    // VALIDAÇÃO MÚLTIPLAS UNIDADES
     if (formData.allowed_unit_ids.length === 0) {
       alert('Selecione pelo menos um hospital/unidade para o profissional.');
       return;
@@ -243,6 +252,9 @@ export default function CorpoClinico() {
     setSubmitting(true);
     try {
       const cleanUsername = (formData.username || formData.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
+      
+      // SOLUÇÃO DO EMAIL ÚNICO: Se estiver em branco, gera um fictício para o banco não dar erro de duplicação
+      const finalEmail = formData.email.trim() ? formData.email.trim().toLowerCase() : `${cleanUsername}.${Date.now()}@scalemedic.local`;
 
       const richMeta = {
         username: cleanUsername, category: formData.category, app_role: formData.app_role,
@@ -254,15 +266,16 @@ export default function CorpoClinico() {
         remuneration_type: formData.remuneration_type, hourly_rate: safeNumber(formData.hourly_rate),
         document_expiry: formData.document_expiry, status: formData.status,
         authorized_sectors: formData.authorized_sectors,
-        allowed_unit_ids: formData.allowed_unit_ids // SALVANDO AS UNIDADES NO META
+        allowed_unit_ids: formData.allowed_unit_ids,
+        birth_date: formData.birth_date
       };
 
       const profPayload = {
         company_id: company?.id || 'cmp_principal', 
-        unit_id: formData.allowed_unit_ids[0], // A primeira unidade age como unidade padrão legacy
-        unit_ids: formData.allowed_unit_ids, // SALVANDO AS UNIDADES NO BANCO
+        unit_id: formData.allowed_unit_ids[0], 
+        unit_ids: formData.allowed_unit_ids,
         name: formData.name.trim(), document: formData.document.trim(), specialty: formData.specialty.trim() || formData.main_sector,
-        cbo: formData.cbo.trim(), cpf: formData.cpf.trim(), email: formData.email.trim().toLowerCase(),
+        cbo: formData.cbo.trim(), cpf: formData.cpf.trim(), email: finalEmail,
         phone: formData.phone.trim(), status: formData.status, remuneration_type: formData.remuneration_type,
         hourly_rate: safeNumber(formData.hourly_rate), monthly_salary: safeNumber(formData.monthly_salary),
         daily_rate: safeNumber(formData.daily_rate), document_expiry: formData.document_expiry
@@ -276,31 +289,35 @@ export default function CorpoClinico() {
       }
 
       // Sincronização Inteligente com a Tabela Users do Supabase para o Login Múltiplas Unidades
-      const userEmail = (formData.email || `${cleanUsername}@scalemedic.local`).toLowerCase().trim();
       const userDataPayload = {
         company_id: company?.id || 'cmp_principal',
         selected_unit_id: formData.allowed_unit_ids[0],
-        allowed_unit_ids: formData.allowed_unit_ids, // Garante o login nas múltiplas unidades
+        allowed_unit_ids: formData.allowed_unit_ids, 
         app_role: formData.app_role,
         registration_code: formData.registration_id,
         is_active: formData.status === 'ativo',
-        status: formData.status
+        status: formData.status,
+        // Carimbo de Troca de Senha Obrigatória! Se enviamos uma senha, obriga a trocar
+        must_change_password: !!formData.password 
       };
 
       try {
-        const { data: existingUsers } = await supabase.from('users').select('*').eq('email', userEmail);
+        const { data: existingUsers } = await supabase.from('users').select('*').eq('email', finalEmail);
         if (existingUsers && existingUsers.length > 0) {
-          await supabase.from('users').update({
+          
+          let updatePayload = {
             username: cleanUsername,
             full_name: formData.name,
             is_active: formData.status === 'ativo',
             data: { ...(existingUsers[0].data || {}), ...userDataPayload }
-          }).eq('id', existingUsers[0].id);
+          };
+          if (formData.password) updatePayload.password = formData.password;
+
+          await supabase.from('users').update(updatePayload).eq('id', existingUsers[0].id);
         } else {
-          // Só insere senha se for usuário novo (ou se digitar uma nova)
           const finalPass = formData.password || '123456';
           await supabase.from('users').insert([{
-            email: userEmail,
+            email: finalEmail,
             username: cleanUsername,
             password: finalPass,
             full_name: formData.name,
@@ -310,7 +327,7 @@ export default function CorpoClinico() {
         }
       } catch (uErr) { console.warn('Aviso na sincronização de usuário:', uErr); }
 
-      setModalOpen(false); resetForm(); await syncGlobalData(); alert('Profissional e matriz de permissões salvos com sucesso!');
+      setModalOpen(false); resetForm(); await syncGlobalData(); alert('Profissional salvo com sucesso!');
     } catch (err) {
       alert('Erro ao salvar: ' + err.message);
     } finally {
@@ -419,7 +436,6 @@ export default function CorpoClinico() {
           const profStatus = prof.status || meta.status || 'ativo';
           const authSectorsCount = (meta.authorized_sectors || (sectors || []).map(s => String(s.id))).length;
 
-          // Exibição Limpa de Múltiplos Hospitais no Card
           const profUnits = meta.allowed_unit_ids || prof.unit_ids || (prof.unit_id ? [String(prof.unit_id)] : []);
           const profUnitsNames = units.filter(u => profUnits.includes(String(u.id))).map(u => u.name).join(', ') || 'Nenhuma unidade vinculada';
 
@@ -449,7 +465,6 @@ export default function CorpoClinico() {
                   <div className="flex justify-between"><span>Conselho:</span><strong>{prof.document || '—'}</strong></div>
                   <div className="flex justify-between"><span>Especialidade:</span><strong className="text-slate-900 dark:text-white truncate max-w-[140px]">{prof.specialty || meta.specialty || 'Geral'}</strong></div>
                   
-                  {/* UNIDADES MULTIPLAS LISTADAS AQUI NO CARD */}
                   <div className="flex justify-between items-center pt-1">
                     <span>Hospitais de Acesso:</span>
                     <strong className="text-[10px] text-sky-600 dark:text-sky-400 truncate max-w-[140px]" title={profUnitsNames}>
@@ -623,17 +638,21 @@ export default function CorpoClinico() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">CPF *</Label>
+                  <Label className="text-[11px] font-bold text-slate-900 dark:text-slate-200">CPF *</Label>
                   <Input value={formData.cpf} onChange={e => setFormData({...formData, cpf: e.target.value})} placeholder="000.000.000-00" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">Número de Registro no Conselho *</Label>
+                  <Label className="text-[11px] font-bold text-slate-900 dark:text-slate-200">Data Nasc. *</Label>
+                  <Input type="date" value={formData.birth_date} onChange={e => setFormData({...formData, birth_date: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono cursor-pointer" required />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-slate-900 dark:text-slate-200">Conselho *</Label>
                   <Input value={formData.document} onChange={e => setFormData({...formData, document: e.target.value})} placeholder="Ex: 2155 - RJ" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">Validade Credencial *</Label>
+                  <Label className="text-[11px] font-bold text-slate-900 dark:text-slate-200">Validade Cred.</Label>
                   <Input type="date" value={formData.document_expiry} onChange={e => setFormData({...formData, document_expiry: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono cursor-pointer" />
                 </div>
               </div>
@@ -662,7 +681,7 @@ export default function CorpoClinico() {
 
               <div className="space-y-1">
                 <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">E-mail Profissional</Label>
-                <Input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="email@exemplo.com" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                <Input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="email@exemplo.com (Opcional)" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
               </div>
             </div>
 
@@ -672,8 +691,9 @@ export default function CorpoClinico() {
                   <KeyRound className="w-4 h-4 text-sky-600" /> Credenciais de Login & Acesso
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'Mudar@123'}))} className="h-7 text-[10px] font-bold border-amber-300 text-amber-700 hover:bg-amber-50 cursor-pointer">Resetar Senha</Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'S@ude'+Math.floor(1000+Math.random()*9000)}))} className="h-7 text-[10px] font-bold border-sky-300 text-sky-600 hover:bg-sky-50 cursor-pointer"><RefreshCw className="w-3 h-3 mr-1" /> Gerar Aleatória</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={handleGenerateDefaultPassword} className="h-7 text-[10px] font-bold border-amber-300 text-amber-700 hover:bg-amber-50 cursor-pointer shadow-sm">
+                    <RefreshCw className="w-3 h-3 mr-1" /> Gerar Senha Padrão (Data Nasc)
+                  </Button>
                 </div>
               </div>
 
@@ -695,7 +715,6 @@ export default function CorpoClinico() {
               </Button>
             </div>
 
-            {/* O CHECKBOX MAGNÍFICO DE MÚLTIPLOS HOSPITAIS (O SEGREDO ESTÁ AQUI!) */}
             <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
               <div>
                 <Label className="font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
@@ -789,6 +808,42 @@ export default function CorpoClinico() {
             <DialogFooter className="pt-4 gap-2">
               <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-10 border-slate-200 dark:border-slate-700 cursor-pointer">Cancelar </Button>
               <Button type="submit" disabled={submitting || formData.allowed_unit_ids.length === 0} className="bg-sky-600 hover:bg-sky-500 text-white font-black text-xs h-10 px-8 rounded-xl shadow-md cursor-pointer transition-all">Salvar Perfil Profissional</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* O MODAL DA CATEGORIA DE VOLTA AO SEU LUGAR! */}
+      <Dialog open={newCatModalOpen} onOpenChange={setNewCatModalOpen}>
+        <DialogContent className="sm:max-w-sm bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black flex items-center gap-2">
+              <Plus className="w-5 h-5 text-rose-500" /> Adicionar Nova Categoria
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAddCustomCategory} className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nome da Profissão *</Label>
+              <Input 
+                value={newCatData.label} 
+                onChange={e => setNewCatData({...newCatData, label: e.target.value})} 
+                placeholder="Ex: Fonoaudiólogo" 
+                className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl" 
+                required 
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Conselho (Sigla)</Label>
+              <Input 
+                value={newCatData.council} 
+                onChange={e => setNewCatData({...newCatData, council: e.target.value})} 
+                placeholder="Ex: CREFONO" 
+                className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl" 
+              />
+            </div>
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setNewCatModalOpen(false)} className="text-xs h-10 rounded-xl cursor-pointer border-slate-200 dark:border-slate-700">Cancelar</Button>
+              <Button type="submit" className="text-xs h-10 bg-sky-600 hover:bg-sky-500 text-white font-black rounded-xl cursor-pointer">Adicionar</Button>
             </DialogFooter>
           </form>
         </DialogContent>
