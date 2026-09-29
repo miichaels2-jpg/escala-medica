@@ -11,7 +11,7 @@ import {
   Users, UserPlus, Search, CheckCircle2, 
   Clock, DollarSign, Edit3, KeyRound, Send, RefreshCw, Ban, 
   UserCheck, MessageSquare, Shield, UserCog, BadgeCheck, Eye, EyeOff,
-  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle, Building2, Check, ToggleLeft, ToggleRight, Power, Trash2
+  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle, Building2, Check, ToggleLeft, ToggleRight, Power, Trash2, Settings, Save
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -24,7 +24,7 @@ function formatCurrency(val) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(safeNumber(val));
 }
 
-const DEFAULT_CATEGORIES = [
+const defaultCats = [
   { id: 'medico', label: 'Médico(a)', council: 'CRM' },
   { id: 'enfermeiro', label: 'Enfermeiro(a)', council: 'COREN' },
   { id: 'fisioterapeuta', label: 'Fisioterapeuta', council: 'CREFITO' },
@@ -72,13 +72,25 @@ export default function CorpoClinico() {
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const [customCategories, setCustomCategories] = useState(() => {
-    try { return JSON.parse(window.localStorage.getItem('scale_custom_cats') || '[]'); } catch { return []; }
+  // GESTÃO UNIVERSAL DE CATEGORIAS
+  const [allCategories, setAllCategories] = useState(() => {
+    try { 
+      const stored = window.localStorage.getItem('scale_custom_cats');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return defaultCats;
   });
 
+  const [editingCatId, setEditingCatId] = useState(null);
   const [newCatData, setNewCatData] = useState({ label: '', council: 'Registro' });
 
-  const allCategories = useMemo(() => [...DEFAULT_CATEGORIES, ...customCategories], [customCategories]);
+  const saveCategories = (cats) => {
+    setAllCategories(cats);
+    try { window.localStorage.setItem('scale_custom_cats', JSON.stringify(cats)); } catch {}
+  };
 
   const [formData, setFormData] = useState({
     name: '', username: '', category: 'medico', document: '',
@@ -106,7 +118,7 @@ export default function CorpoClinico() {
   const resetForm = () => {
     const generatedMatricula = `MAT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
     setFormData({
-      name: '', username: '', category: 'medico', document: '',
+      name: '', username: '', category: allCategories[0]?.id || 'medico', document: '',
       registration_id: generatedMatricula, main_sector: sectors[0]?.name || 'UTI Geral',
       specialty: '', cbo: '', cpf: '', email: '', phone: '', birth_date: '',
       unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
@@ -201,32 +213,41 @@ export default function CorpoClinico() {
     });
   };
 
-  // GERENCIAMENTO DE CATEGORIAS CUSTOMIZADAS
-  const handleAddCustomCategory = (e) => {
+  // GERENCIAR CATEGORIAS
+  const handleSaveCategory = (e) => {
     e.preventDefault();
     if (!newCatData.label.trim()) return;
-    const newId = newCatData.label.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const newCatObj = { id: newId, label: newCatData.label.trim(), council: newCatData.council || 'Registro' };
-    const updated = [...customCategories, newCatObj];
-    setCustomCategories(updated);
-    try { window.localStorage.setItem('scale_custom_cats', JSON.stringify(updated)); } catch {}
-    setFormData(prev => ({ ...prev, category: newId }));
+
+    if (editingCatId) {
+      const updated = allCategories.map(c => c.id === editingCatId ? { ...c, label: newCatData.label.trim(), council: newCatData.council || 'Registro' } : c);
+      saveCategories(updated);
+      setEditingCatId(null);
+    } else {
+      const newId = newCatData.label.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
+      const newCatObj = { id: newId, label: newCatData.label.trim(), council: newCatData.council || 'Registro' };
+      saveCategories([...allCategories, newCatObj]);
+    }
     setNewCatData({ label: '', council: 'Registro' });
   };
 
-  const handleDeleteCustomCategory = (idToRemove) => {
-    const updated = customCategories.filter(c => c.id !== idToRemove);
-    setCustomCategories(updated);
-    try { window.localStorage.setItem('scale_custom_cats', JSON.stringify(updated)); } catch {}
-    if (formData.category === idToRemove) {
-      setFormData(prev => ({ ...prev, category: 'medico' }));
+  const handleEditCatClick = (cat) => {
+    setEditingCatId(cat.id);
+    setNewCatData({ label: cat.label, council: cat.council });
+  };
+
+  const handleDeleteCatClick = (id) => {
+    if(!confirm("Tem certeza que deseja excluir esta categoria?")) return;
+    const updated = allCategories.filter(c => c.id !== id);
+    saveCategories(updated);
+    if (formData.category === id) {
+      setFormData(prev => ({ ...prev, category: updated[0]?.id || '' }));
     }
   };
 
   // GERA A SENHA PADRÃO: DDMMYYYY + letra inicial minúscula
   const handleGenerateDefaultPassword = () => {
     if (!formData.birth_date || !formData.name) {
-      alert('⚠️ Preencha o Nome e a Data de Nascimento para gerar a senha padrão!');
+      alert('⚠️️ Preencha o Nome e a Data de Nascimento para gerar a senha padrão!');
       return;
     }
     const [y, m, d] = formData.birth_date.split('-');
@@ -245,7 +266,7 @@ export default function CorpoClinico() {
     const pass = formData.password ? formData.password : '(sua senha cadastrada)';
     const siteUrl = window.location.origin;
 
-    const message = `*ScaleMedic - Gestão Hospitalar* 🏥\n\nOlá, *${formData.name}*!\nSeu cadastro profissional foi atualizado.\n\nAcesse sua escala com as credenciais abaixo:\n🌐 *Link:* ${siteUrl}/login\n👤 *Usuário:* ${loginUser}\n🔑 *Senha temporária:* ${pass}\n\n_Ao acessar, o sistema solicitará que cadastre uma senha segura e pessoal._`;
+    const message = `*ScaleMedic - Gestão Hospitalar* 🏥\n\nOlá, *${formData.name}*!\nSeu cadastro profissional foi atualizado.\n\nAcesse sua escala com as credenciais abaixo:\n🌐 *Link:* ${siteUrl}/login\n👤 *Usuário:* ${loginUser}\n🔑 *Senha:* ${pass}\n\n_Ao acessar, o sistema solicitará que cadastre uma senha segura e pessoal._`;
     window.open(`https://api.whatsapp.com/send?phone=${phoneWithDDI}&text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -282,21 +303,12 @@ export default function CorpoClinico() {
         company_id: company?.id || 'cmp_principal', 
         unit_id: formData.allowed_unit_ids[0], 
         unit_ids: formData.allowed_unit_ids,
-        name: formData.name.trim(), 
-        document: formData.document.trim(), 
-        specialty: formData.specialty.trim() || formData.main_sector,
-        cbo: formData.cbo.trim(), 
-        cpf: formData.cpf.trim(), 
-        email: finalEmail,
-        phone: formData.phone.trim(), 
-        status: formData.status, 
-        remuneration_type: formData.remuneration_type,
-        hourly_rate: safeNumber(formData.hourly_rate), 
-        monthly_salary: safeNumber(formData.monthly_salary),
-        daily_rate: safeNumber(formData.daily_rate), 
-        document_expiry: formData.document_expiry,
-        birth_date: formData.birth_date,
-        data: richMeta
+        name: formData.name.trim(), document: formData.document.trim(), specialty: formData.specialty.trim() || formData.main_sector,
+        cbo: formData.cbo.trim(), cpf: formData.cpf.trim(), email: finalEmail,
+        phone: formData.phone.trim(), status: formData.status, remuneration_type: formData.remuneration_type,
+        hourly_rate: safeNumber(formData.hourly_rate), monthly_salary: safeNumber(formData.monthly_salary),
+        daily_rate: safeNumber(formData.daily_rate), document_expiry: formData.document_expiry,
+        birth_date: formData.birth_date
       };
 
       let savedProf = await autoHealingSave(editingProf?.id, profPayload);
@@ -565,18 +577,23 @@ export default function CorpoClinico() {
           <form onSubmit={handleSaveProfessional} className="space-y-5 py-2 text-xs">
             
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <HeartPulse className="w-4 h-4 text-slate-400" />
-                <Label className="text-xs font-black uppercase text-slate-500">Categoria Profissional *</Label>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <HeartPulse className="w-4 h-4 text-slate-400" />
+                  <Label className="text-xs font-black uppercase text-slate-500">Categoria Profissional *</Label>
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={() => { setEditingCatId(null); setNewCatData({label: '', council: 'Registro'}); setManageCatModalOpen(true); }} className="h-7 text-[10px] text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950 cursor-pointer font-bold">
+                  <Settings className="w-3.5 h-3.5 mr-1" /> Gerenciar Categorias
+                </Button>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {allCategories.map(cat => (
-                  <div key={cat.id} onClick={() => setFormData({ ...formData, category: cat.id })} className={`p-2 rounded-xl border cursor-pointer text-center transition-all ${formData.category === cat.id ? 'border-sky-600 bg-sky-50 dark:bg-sky-900/20 font-black shadow-sm ring-1 ring-sky-600 text-sky-700 dark:text-sky-400' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-white'}`}>
-                    <span className="text-[11px] block truncate">{cat.label}</span>
-                    <span className="text-[9px] opacity-60">Conselho: {cat.council}</span>
+                  <div key={cat.id} onClick={() => setFormData({ ...formData, category: cat.id })} className={`p-2 rounded-xl border cursor-pointer text-center transition-all flex flex-col justify-center ${formData.category === cat.id ? 'border-sky-600 bg-sky-50 dark:bg-sky-900/20 font-black shadow-sm ring-1 ring-sky-600 text-sky-700 dark:text-sky-400' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-white'}`}>
+                    <span className="text-[11px] block truncate px-1">{cat.label}</span>
+                    <span className="text-[9px] opacity-60 px-1 truncate">Conselho: {cat.council}</span>
                   </div>
                 ))}
-                <div onClick={() => setManageCatModalOpen(true)} className="p-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 cursor-pointer flex items-center justify-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-900 font-bold">
+                <div onClick={() => { setEditingCatId(null); setNewCatData({label: '', council: 'Registro'}); setManageCatModalOpen(true); }} className="p-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 cursor-pointer flex items-center justify-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-900 font-bold min-h-[50px]">
                   <Plus className="w-3 h-3 text-rose-500" />
                 </div>
               </div>
@@ -706,8 +723,11 @@ export default function CorpoClinico() {
                   <KeyRound className="w-4 h-4 text-sky-600" /> Credenciais de Login & Acesso
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Button type="button" size="sm" variant="outline" onClick={handleGenerateDefaultPassword} className="h-7 text-[10px] font-bold border-amber-300 text-amber-700 hover:bg-amber-50 cursor-pointer shadow-sm">
-                    <RefreshCw className="w-3 h-3 mr-1" /> Gerar Senha Padrão (Data Nasc)
+                  <Button type="button" size="sm" variant="outline" onClick={handleGenerateDefaultPassword} className="h-7 text-[10px] font-bold border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950 cursor-pointer shadow-sm">
+                    <RefreshCw className="w-3 h-3 mr-1" /> Resetar Senha
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'S@ude'+Math.floor(1000+Math.random()*9000)}))} className="h-7 text-[10px] font-bold border-sky-300 text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950 cursor-pointer">
+                    <RefreshCw className="w-3 h-3 mr-1" /> Gerar Aleatória
                   </Button>
                 </div>
               </div>
@@ -828,37 +848,47 @@ export default function CorpoClinico() {
         </DialogContent>
       </Dialog>
 
-      {/* GESTOR DE CATEGORIAS PROFISSIONAIS: Adicionar e Remover */}
+      {/* GESTOR DE CATEGORIAS PROFISSIONAIS: Adicionar, Editar e Remover */}
       <Dialog open={manageCatModalOpen} onOpenChange={setManageCatModalOpen}>
         <DialogContent className="sm:max-w-md bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
           <DialogHeader>
             <DialogTitle className="text-base font-black flex items-center gap-2">
-              <Plus className="w-5 h-5 text-sky-600" /> Gerenciar Categorias Profissionais
+              <Settings className="w-5 h-5 text-sky-600" /> Gerenciar Categorias Profissionais
             </DialogTitle>
           </DialogHeader>
 
           <div className="py-2 space-y-4">
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-              <Label className="text-[10px] font-black uppercase text-slate-500">Categorias Personalizadas</Label>
-              {customCategories.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">Nenhuma categoria personalizada criada.</p>
+              <Label className="text-[10px] font-black uppercase text-slate-500">Categorias Existentes</Label>
+              {allCategories.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">Nenhuma categoria encontrada.</p>
               ) : (
-                customCategories.map(c => (
+                allCategories.map(c => (
                   <div key={c.id} className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
                     <div>
                       <div className="text-xs font-bold text-slate-900 dark:text-white">{c.label}</div>
                       <div className="text-[10px] text-slate-500">Conselho: {c.council}</div>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => handleDeleteCustomCategory(c.id)} className="h-8 w-8 p-0 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950">
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => handleEditCatClick(c)} className="h-8 w-8 p-0 text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950 cursor-pointer">
+                        <Edit3 className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteCatClick(c.id)} className="h-8 w-8 p-0 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950 cursor-pointer">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 ))
               )}
             </div>
 
-            <form onSubmit={handleAddCustomCategory} className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-              <Label className="text-[10px] font-black uppercase text-slate-500">Adicionar Nova</Label>
+            <form onSubmit={handleSaveCategory} className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <Label className="text-[10px] font-black uppercase text-slate-500">{editingCatId ? 'Editar Categoria' : 'Adicionar Nova'}</Label>
+                {editingCatId && (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => { setEditingCatId(null); setNewCatData({label: '', council: 'Registro'}); }} className="h-5 text-[9px] text-slate-400 hover:text-slate-600 cursor-pointer">Cancelar Edição</Button>
+                )}
+              </div>
               <div className="space-y-1.5">
                 <Input 
                   value={newCatData.label} 
@@ -876,7 +906,7 @@ export default function CorpoClinico() {
                   className="h-10 flex-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl text-xs" 
                 />
                 <Button type="submit" className="h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl cursor-pointer shrink-0">
-                  <Plus className="w-4 h-4 mr-1" /> Salvar
+                  {editingCatId ? <Save className="w-4 h-4 mr-1" /> : <Plus className="w-4 h-4 mr-1" />} {editingCatId ? 'Salvar' : 'Adicionar'}
                 </Button>
               </div>
             </form>
