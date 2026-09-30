@@ -187,7 +187,7 @@ export default function Register() {
                     <Input 
                       value={formData.username} 
                       onChange={e => setFormData({...formData, username: e.target.value.toLowerCase().replace(/[^a-z0-9.]/g, '')})} 
-                      placeholder="Ex: dr.carlos" 
+                      placeholder="Ex: carlos" 
                       className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-sky-600 focus:bg-white dark:focus:bg-slate-900 transition-colors" 
                       required 
                     />
