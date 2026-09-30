@@ -24,7 +24,6 @@ function formatCurrency(val) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(safeNumber(val));
 }
 
-// Transformado em constante IMUTÁVEL (não podem ser apagadas)
 const DEFAULT_CATEGORIES = [
   { id: 'medico', label: 'Médico(a)', council: 'CRM', isDefault: true },
   { id: 'enfermeiro', label: 'Enfermeiro(a)', council: 'COREN', isDefault: true },
@@ -73,7 +72,6 @@ export default function CorpoClinico() {
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // GESTÃO DE CATEGORIAS SEPARADAS (Apenas as criadas pelo usuário vão pro LocalStorage)
   const [customCategories, setCustomCategories] = useState(() => {
     try { 
       const stored = window.localStorage.getItem('scale_custom_cats');
@@ -82,7 +80,6 @@ export default function CorpoClinico() {
     return [];
   });
 
-  // Junta as padrão com as customizadas para exibir no formulário
   const allCategories = useMemo(() => [...DEFAULT_CATEGORIES, ...customCategories], [customCategories]);
 
   const [editingCatId, setEditingCatId] = useState(null);
@@ -95,7 +92,7 @@ export default function CorpoClinico() {
 
   const [formData, setFormData] = useState({
     name: '', username: '', category: 'medico', document: '',
-    registration_id: '', main_sector: '', specialty: '', cbo: '',
+    registration_id: '', main_sector: '', specialty: '', rqe: '', cbo: '',
     cpf: '', email: '', phone: '', unit_id: '', birth_date: '',
     status: 'ativo', app_role: 'assistencial', remuneration_type: 'mensal',
     hourly_rate: 120, daily_rate: 1500, monthly_salary: 1672,
@@ -121,7 +118,7 @@ export default function CorpoClinico() {
     setFormData({
       name: '', username: '', category: allCategories[0]?.id || 'medico', document: '',
       registration_id: generatedMatricula, main_sector: sectors[0]?.name || 'UTI Geral',
-      specialty: '', cbo: '', cpf: '', email: '', phone: '', birth_date: '',
+      specialty: '', rqe: '', cbo: '', cpf: '', email: '', phone: '', birth_date: '',
       unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
       status: 'ativo', app_role: 'assistencial', remuneration_type: 'mensal',
       hourly_rate: 120, daily_rate: 1500, monthly_salary: 1672,
@@ -160,6 +157,7 @@ export default function CorpoClinico() {
       registration_id: generatedMatricula,
       main_sector: meta.main_sector || prof.specialty || sectors[0]?.name || 'UTI Geral',
       specialty: prof.specialty || meta.specialty || '',
+      rqe: prof.rqe || meta.rqe || '',
       cbo: meta.cbo || prof.cbo || '',
       cpf: prof.cpf || meta.cpf || '',
       email: prof.email || '',
@@ -214,7 +212,6 @@ export default function CorpoClinico() {
     });
   };
 
-  // GERENCIAR CATEGORIAS (Apenas as Customizadas podem ser editadas/excluídas)
   const handleSaveCategory = (e) => {
     e.preventDefault();
     if (!newCatData.label.trim()) return;
@@ -232,7 +229,7 @@ export default function CorpoClinico() {
   };
 
   const handleEditCatClick = (cat) => {
-    if(cat.isDefault) return; // Proteção extra
+    if(cat.isDefault) return;
     setEditingCatId(cat.id);
     setNewCatData({ label: cat.label, council: cat.council });
   };
@@ -246,7 +243,6 @@ export default function CorpoClinico() {
     }
   };
 
-  // GERA A SENHA PADRÃO QUE VOCÊ GOSTOU: DDMMYYYY + letra inicial minúscula
   const handleGenerateDefaultPassword = () => {
     if (!formData.birth_date || !formData.name) {
       alert('⚠️ Preencha o Nome e a Data de Nascimento para gerar a senha padrão!');
@@ -289,7 +285,7 @@ export default function CorpoClinico() {
 
       const richMeta = {
         username: cleanUsername, category: formData.category, app_role: formData.app_role,
-        main_sector: formData.main_sector, specialty: formData.specialty, cbo: formData.cbo,
+        main_sector: formData.main_sector, specialty: formData.specialty, rqe: formData.rqe, cbo: formData.cbo,
         registration_id: formData.registration_id, coop_tax_rate: safeNumber(formData.coop_tax_rate),
         daily_rate: safeNumber(formData.daily_rate), monthly_salary: safeNumber(formData.monthly_salary),
         monthly_work_hours: safeNumber(formData.monthly_work_hours), pix_type: formData.pix_type,
@@ -302,7 +298,6 @@ export default function CorpoClinico() {
         cpf: formData.cpf
       };
 
-      // Payload atualizado para garantir que os dados batem com a tabela
       const profPayload = {
         company_id: company?.id || 'cmp_principal', 
         unit_id: formData.allowed_unit_ids[0], 
@@ -310,6 +305,7 @@ export default function CorpoClinico() {
         name: formData.name.trim(), 
         document: formData.document.trim(), 
         specialty: formData.specialty.trim() || formData.main_sector,
+        rqe: formData.rqe.trim(),
         cbo: formData.cbo.trim(), 
         cpf: formData.cpf.trim(), 
         email: finalEmail,
@@ -321,7 +317,7 @@ export default function CorpoClinico() {
         daily_rate: safeNumber(formData.daily_rate), 
         document_expiry: formData.document_expiry,
         birth_date: formData.birth_date,
-        data: richMeta // <-- GARANTINDO QUE OS METADADOS VÃO PRO BANCO
+        data: richMeta 
       };
 
       let savedProf = await autoHealingSave(editingProf?.id, profPayload);
@@ -504,7 +500,7 @@ export default function CorpoClinico() {
                 
                 <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
                   <div className="flex justify-between"><span>Conselho:</span><strong>{prof.document || '—'}</strong></div>
-                  <div className="flex justify-between"><span>Especialidade:</span><strong className="text-slate-900 dark:text-white truncate max-w-[140px]">{prof.specialty || meta.specialty || 'Geral'}</strong></div>
+                  <div className="flex justify-between"><span>Especialidade:</span><strong className="text-slate-900 dark:text-white truncate max-w-[140px]">{prof.specialty || meta.specialty || 'Geral'} {meta.rqe ? `(RQE ${meta.rqe})` : ''}</strong></div>
                   
                   <div className="flex justify-between items-center pt-1">
                     <span>Hospitais de Acesso:</span>
@@ -672,10 +668,14 @@ export default function CorpoClinico() {
                 <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" required />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">Especialidade / Atuação *</Label>
                   <Input value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})} placeholder="Ex: Cirurgião Geral" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">RQE</Label>
+                  <Input value={formData.rqe} onChange={e => setFormData({...formData, rqe: e.target.value})} placeholder="Ex: 12345" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-mono" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs font-bold text-slate-900 dark:text-slate-200">Matrícula ID (Gerada Auto) *</Label>
@@ -861,7 +861,6 @@ export default function CorpoClinico() {
         </DialogContent>
       </Dialog>
 
-      {/* GESTOR DE CATEGORIAS PROFISSIONAIS */}
       <Dialog open={manageCatModalOpen} onOpenChange={setManageCatModalOpen}>
         <DialogContent className="sm:max-w-md bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
           <DialogHeader>
