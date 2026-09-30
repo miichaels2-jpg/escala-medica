@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Activity, Loader2, AlertCircle, CheckCircle2, ArrowLeft, 
-  ShieldCheck, HeartPulse, DollarSign, Landmark 
+  ShieldCheck, HeartPulse, DollarSign, Landmark, KeyRound
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -25,6 +25,7 @@ export default function Register() {
   const [formData, setFormData] = useState({
     category: 'medico',
     name: '',
+    username: '', // NOVO CAMPO: Login desejado
     specialty: '',
     rqe: '',
     cbo: '',
@@ -47,17 +48,17 @@ export default function Register() {
     e.preventDefault();
     setError('');
     
-    if (!formData.name || !formData.cpf || !formData.birth_date || !formData.phone || !formData.document) {
+    if (!formData.name || !formData.username || !formData.cpf || !formData.birth_date || !formData.phone || !formData.document) {
       setError('Preencha todos os campos obrigatórios (*).');
       return;
     }
 
     setLoading(true);
     try {
-      const cleanUsername = formData.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
+      // Limpeza final do usuário de login para evitar bugs de espaço e caracteres
+      const cleanUsername = formData.username.trim().toLowerCase().replace(/[^a-z0-9.]/g, '');
       const finalEmail = formData.email.trim() ? formData.email.trim().toLowerCase() : `${cleanUsername}.${Date.now()}@scalemedic.local`;
 
-      // O payload reflete a mesma estrutura robusta do Corpo Clínico
       const payload = {
         company_id: 'cmp_principal',
         name: formData.name.trim(),
@@ -70,10 +71,11 @@ export default function Register() {
         document_expiry: formData.document_expiry,
         phone: formData.phone.trim(),
         email: finalEmail,
-        status: 'pendente', // Vai para a aba "Pendentes" do Gestor
+        status: 'pendente', 
         data: {
           category: formData.category,
-          app_role: 'assistencial', // Perfil padrão inicial
+          username: cleanUsername, // Enviando o usuário desejado para a aba "Pendentes"
+          app_role: 'assistencial', 
           birth_date: formData.birth_date,
           cpf: formData.cpf,
           rqe: formData.rqe,
@@ -97,7 +99,7 @@ export default function Register() {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4 py-12 relative overflow-hidden transition-colors duration-500 font-sans">
       
-      {/* FUNDO PREMIUM (Watermark Médico + Efeitos Radiais) */}
+      {/* FUNDO PREMIUM */}
       <div className="absolute inset-0 z-0 pointer-events-none fixed">
         <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M28 20h4v8h8v4h-8v-8h-4v-8h-8v-4h8v-8z\' fill=\'%230ea5e9\' fill-opacity=\'0.03\' fill-rule=\'evenodd\'/%3E%3C/svg%3E')] opacity-100" />
         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[60%] bg-sky-600/20 rounded-full blur-[120px]" />
@@ -144,7 +146,6 @@ export default function Register() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               
-              {/* CATEGORIA PROFISSIONAL */}
               <div className="space-y-2">
                 <Label className="text-xs font-black uppercase text-slate-500">1. Categoria Profissional *</Label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -165,29 +166,42 @@ export default function Register() {
                 </div>
               </div>
 
-              {/* INFORMAÇÕES PESSOAIS E PROFISSIONAIS */}
               <div className="space-y-3">
                 <Label className="text-xs font-black uppercase text-slate-500">2. Dados Pessoais & Registro</Label>
                 
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Nome Completo Oficial *</Label>
-                  <Input 
-                    value={formData.name} 
-                    onChange={e => setFormData({...formData, name: e.target.value})} 
-                    placeholder="Ex: Carlos Eduardo Silva" 
-                    className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900" 
-                    required 
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Nome Completo Oficial *</Label>
+                    <Input 
+                      value={formData.name} 
+                      onChange={e => setFormData({...formData, name: e.target.value})} 
+                      placeholder="Ex: Carlos Eduardo Silva" 
+                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
+                      required 
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5 text-sky-500" /> Usuário Desejado *
+                    </Label>
+                    <Input 
+                      value={formData.username} 
+                      onChange={e => setFormData({...formData, username: e.target.value.toLowerCase().replace(/[^a-z0-9.]/g, '')})} 
+                      placeholder="Ex: dr.carlos" 
+                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-sky-600 focus:bg-white dark:focus:bg-slate-900 transition-colors" 
+                      required 
+                    />
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Especialidade / Atuação *</Label>
+                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Especialidade Principal *</Label>
                     <Input 
                       value={formData.specialty} 
                       onChange={e => setFormData({...formData, specialty: e.target.value})} 
                       placeholder="Ex: Clínica Médica" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900" 
+                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
                       required 
                     />
                   </div>
@@ -197,7 +211,7 @@ export default function Register() {
                       value={formData.rqe} 
                       onChange={e => setFormData({...formData, rqe: e.target.value})} 
                       placeholder="Ex: 12345" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-semibold focus:bg-white dark:focus:bg-slate-900" 
+                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -206,19 +220,19 @@ export default function Register() {
                       value={formData.cbo} 
                       onChange={e => setFormData({...formData, cbo: e.target.value})} 
                       placeholder="Ex: 225125" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900" 
+                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">CPF *</Label>
                     <Input 
                       value={formData.cpf} 
                       onChange={e => setFormData({...formData, cpf: e.target.value})} 
                       placeholder="000.000.000-00" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900" 
+                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
                       required 
                     />
                   </div>
@@ -228,17 +242,17 @@ export default function Register() {
                       type="date" 
                       value={formData.birth_date} 
                       onChange={e => setFormData({...formData, birth_date: e.target.value})} 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-semibold focus:bg-white dark:focus:bg-slate-900 cursor-pointer" 
+                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors cursor-pointer" 
                       required 
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Conselho *</Label>
+                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Conselho (Ex: CRM) *</Label>
                     <Input 
                       value={formData.document} 
                       onChange={e => setFormData({...formData, document: e.target.value})} 
                       placeholder="Ex: 1234 - RJ" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-semibold focus:bg-white dark:focus:bg-slate-900" 
+                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
                       required 
                     />
                   </div>
@@ -248,19 +262,19 @@ export default function Register() {
                       type="date" 
                       value={formData.document_expiry} 
                       onChange={e => setFormData({...formData, document_expiry: e.target.value})} 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-semibold focus:bg-white dark:focus:bg-slate-900 cursor-pointer" 
+                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors cursor-pointer" 
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Telefone / WhatsApp *</Label>
                     <Input 
                       value={formData.phone} 
                       onChange={e => setFormData({...formData, phone: e.target.value})} 
                       placeholder="(00) 90000-0000" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900" 
+                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
                       required 
                     />
                   </div>
@@ -271,7 +285,7 @@ export default function Register() {
                       value={formData.email} 
                       onChange={e => setFormData({...formData, email: e.target.value})} 
                       placeholder="email@exemplo.com" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900" 
+                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
                     />
                   </div>
                 </div>
