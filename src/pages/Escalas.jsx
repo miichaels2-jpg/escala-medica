@@ -443,6 +443,9 @@ export default function Escalas() {
   const [modalOpen, setModalOpen] = useState(false);
   const [generatorModalOpen, setGeneratorModalOpen] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState(null);
+  
+  // ---> A VARIÁVEL QUE FALTAVA FOI INSERIDA AQUI <---
+  const [submitting, setSubmitting] = useState(false);
 
   const registeredSpecialties = useMemo(() => {
     const set = new Set();
