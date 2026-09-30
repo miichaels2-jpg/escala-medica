@@ -173,7 +173,7 @@ export default function Login() {
     setLoadingAction(true);
     try {
       const updatedData = { ...pendingUser.data };
-      delete updatedData.must_change_password; // Remove a obrigatoriedade de trocar
+      delete updatedData.must_change_password;
 
       await supabase.from('users').update({ 
         password: newPassword,
@@ -182,14 +182,11 @@ export default function Login() {
 
       pendingUser.data = updatedData;
       
-      // Atualiza a senha lembrada se o "Lembrar-me" estiver ativado
       if (rememberMe) {
         window.localStorage.setItem('scale_remember_pass', newPassword);
       }
 
       setShowPasswordChangeModal(false);
-      
-      // Continua o fluxo para o próximo escudo
       continueLoginFlow(pendingUser, availableUnits);
     } catch (err) {
       setPasswordError('Erro de sistema ao salvar a nova senha.');
@@ -277,7 +274,9 @@ export default function Login() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Senha</Label>
-              <Link to="/forgot-password" className="text-[11px] font-bold text-sky-600 hover:text-sky-500 transition-colors">Esqueceu a senha?</Link>
+              <Button type="button" variant="link" className="h-auto p-0 text-[11px] font-bold text-sky-600 hover:text-sky-500 transition-colors cursor-pointer" onClick={() => alert('Procure a coordenação ou RH da sua unidade para solicitar o reset de senha da sua conta.')}>
+                Esqueceu a senha?
+              </Button>
             </div>
             <div className="relative">
               <Input 
@@ -319,6 +318,17 @@ export default function Login() {
             {loading ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Conectando...</> : 'Entrar no Sistema'}
           </Button>
         </form>
+
+        {/* ========================================================= */}
+        {/* BLOCO DE CADASTRO RESTAURADO ============================ */}
+        <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800/60 text-center">
+          <p className="text-xs text-slate-500 font-medium">
+            Novo na plataforma? {' '}
+            <Link to="/register" className="font-bold text-sky-600 hover:text-sky-500 transition-colors">Solicite seu credenciamento</Link>
+          </p>
+        </div>
+        {/* ========================================================= */}
+        
       </div>
 
       <div className="absolute bottom-6 text-center z-0 flex flex-col items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
