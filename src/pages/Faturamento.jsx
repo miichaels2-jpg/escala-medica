@@ -140,6 +140,7 @@ export default function Faturamento() {
     });
 
     (shifts || []).forEach(shift => {
+      // Isolamento de dados por unidade!
       if (String(shift.unit_id) !== String(selectedUnitId)) return;
       if (!shift || !shift.date || !shift.date.startsWith(monthPrefix)) return;
       if (!shift.professional_id || shift.status === 'vago') return;
@@ -179,6 +180,7 @@ export default function Faturamento() {
       let valorExtras = 0;
       let valorBrutoTotal = 0;
 
+      // Se for mês futuro, inicia zerado para ir somando conforme a escala for cumprida
       if (monthPrefix > todayStr.substring(0, 7)) {
         valorBrutoTotal = 0;
       } else {
@@ -187,6 +189,7 @@ export default function Faturamento() {
         } else if (item.remunType === 'diaria') {
           valorBrutoTotal = item.plantõesRealizados * item.valorPorPlantao;
         } else {
+          // MODALIDADE MENSALISTA COM REGRA DE PLANTÕES EXTRAS (COTA DE 20 PLANTÕES)
           const plantõesNormais = Math.min(item.plantõesRealizados, 20);
           valorBrutoRegular = plantõesNormais * item.valorPorPlantao;
 
@@ -214,7 +217,7 @@ export default function Faturamento() {
         valorLiquido,
         isPago
       };
-    }).filter(item => item.plantõesRealizados > 0 || item.plantõesFuturos > 0); 
+    }).filter(item => item.plantõesRealizados > 0 || item.plantõesFuturos > 0); // Oculta profissionais zerados no mês
   }, [professionals, shifts, monthPrefix, todayStr, selectedUnitId, pagamentosStatus]);
 
   const filteredReport = useMemo(() => {
@@ -240,44 +243,70 @@ export default function Faturamento() {
     return { bruto, liquido, plantões, horas, extras };
   }, [reportData]);
 
-  // EXPORTAÇÃO PARA EXCEL (CSV)
+  // =========================================================================
+  // EXPORTAÇÃO PARA EXCEL (CSV) - PERFEITAMENTE FORMATADO
+  // =========================================================================
   const handleExportExcel = () => {
-    if (filteredReport.length === 0) return alert('Não há dados para exportar.');
+    if (filteredReport.length === 0) return alert('Não há dados para exportar neste mês.');
     
     const headers = [
-      'Profissional', 'Matrícula', 'Especialidade', 'Plantoes_Realizados', 'Plantoes_Extras', 
-      'Horas_Totais', 'Base_Contratual', 'Valor_Bruto', 'Desconto_Taxa', 'Valor_Liquido', 
-      'Forma_Pagamento', 'Status_Pagamento'
+      'Profissional', 
+      'Matrícula', 
+      'Especialidade', 
+      'Regime Contratual',
+      'Plantões Cumpridos', 
+      'Plantões Extras', 
+      'Horas Totais', 
+      'Salário Base (R$)', 
+      'Valor Bruto Realizado (R$)', 
+      'Descontos/Taxa (R$)', 
+      'Valor Líquido a Pagar (R$)', 
+      'Dados Bancários/PIX', 
+      'Status do Pagamento'
     ];
     
     const rows = filteredReport.map(item => {
-      const formaPagamento = item.chavePix ? `PIX (${item.pixTipo}): ${item.chavePix}` : (item.banco ? `Banco: ${item.banco}` : 'Pendente');
+      const formaPagamento = item.chavePix ? `PIX (${item.pixTipo}): ${item.chavePix}` : (item.banco ? `Banco: ${item.banco}` : 'Pendente de Cadastro');
+      const regime = item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista (Diária)' : 'Fixo Mensal';
+      
+      // Funções para garantir que o Excel BR (que usa vírgula para decimal) entenda os números
+      const formatNumberForExcel = (num) => `"${safeNumber(num).toFixed(2).replace('.', ',')}"`;
+      const formatHourForExcel = (num) => `"${safeNumber(num).toFixed(1).replace('.', ',')}"`;
+      const cleanString = (str) => `"${(str || '').replace(/"/g, '""')}"`;
+
       return [
-        `"${item.prof.name}"`,
-        `"${item.matricula}"`,
-        `"${item.prof.specialty || 'Geral'}"`,
+        cleanString(item.prof.name),
+        cleanString(item.matricula),
+        cleanString(item.prof.specialty || 'Geral'),
+        cleanString(regime),
         item.plantõesRealizados,
         item.plantõesExtrasQtd,
-        item.horasRealizadas,
-        item.salarioBaseContratual,
-        item.valorBruto,
-        item.valorDesconto,
-        item.valorLiquido,
-        `"${formaPagamento}"`,
-        item.isPago ? '"Pago"' : '"Pendente"'
+        formatHourForExcel(item.horasRealizadas),
+        formatNumberForExcel(item.salarioBaseContratual),
+        formatNumberForExcel(item.valorBruto),
+        formatNumberForExcel(item.valorDesconto),
+        formatNumberForExcel(item.valorLiquido),
+        cleanString(formaPagamento),
+        item.isPago ? '"PAGO"' : '"Pendente"'
       ].join(';');
     });
     
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + headers.join(';') + "\n" + rows.join("\n");
-    const encodedUri = encodeURI(csvContent);
+    // Adiciona o BOM (\uFEFF) para garantir que acentos (UTF-8) abram perfeitamente no Excel
+    const csvContent = "\uFEFF" + headers.join(';') + "\n" + rows.join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `faturamento_${monthPrefix}.csv`);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Fechamento_Honorarios_${currentUnitName.replace(/[^a-zA-Z0-9]/g, '_')}_${monthPrefix}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  // =========================================================================
+  // IMPRESSÃO GERAL DA TABELA EM A4 BRANCO PAISAGEM
+  // =========================================================================
   const handlePrintConsolidatedReport = () => {
     const printWindow = window.open('', '_blank', 'width=1100,height=800');
     if (!printWindow) {
@@ -383,6 +412,9 @@ export default function Faturamento() {
     printWindow.document.close();
   };
 
+  // =========================================================================
+  // RECIBO OFICIAL INDIVIDUAL (2 VIAS)
+  // =========================================================================
   const handlePrintIndividualReceipt = (item) => {
     const printWindow = window.open('', '_blank', 'width=900,height=850');
     if (!printWindow) {
