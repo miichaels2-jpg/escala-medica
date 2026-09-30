@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
-  DollarSign, Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer, PlusCircle
+  DollarSign, Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer, PlusCircle, CheckCircle2, Download
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -37,12 +37,21 @@ export default function Faturamento() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProfModal, setSelectedProfModal] = useState(null);
 
+  // Estado para armazenar quem já foi pago neste mês
+  const [pagamentosStatus, setPagamentosStatus] = useState(() => {
+    try { 
+      const stored = window.localStorage.getItem('scale_faturamento_pagos');
+      return stored ? JSON.parse(stored) : {}; 
+    } catch { return {}; }
+  });
+
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
   const todayStr = getLocalDateString(new Date());
 
-  const currentUnitName = units.find(u => String(u.id) === String(selectedUnitId))?.name || company?.name || 'Hospital Principal';
+  const currentUnitObj = units.find(u => String(u.id) === String(selectedUnitId));
+  const currentUnitName = currentUnitObj?.name || company?.name || 'Hospital Principal';
 
   const sectorMap = useMemo(() => {
     const m = {};
@@ -60,7 +69,15 @@ export default function Faturamento() {
     return {};
   }
 
-  // CÁLCULO EXATO COM DISCRIMINAÇÃO DE BASE + PLANTÕES EXTRAS (BLINDADO POR UNIDADE)
+  const handleTogglePago = (profId) => {
+    setPagamentosStatus(prev => {
+      const key = `${profId}_${monthPrefix}`;
+      const nextState = { ...prev, [key]: !prev[key] };
+      try { window.localStorage.setItem('scale_faturamento_pagos', JSON.stringify(nextState)); } catch {}
+      return nextState;
+    });
+  };
+
   const reportData = useMemo(() => {
     const profsSummary = {};
 
@@ -123,7 +140,6 @@ export default function Faturamento() {
     });
 
     (shifts || []).forEach(shift => {
-      // Isolamento de dados por unidade!
       if (String(shift.unit_id) !== String(selectedUnitId)) return;
       if (!shift || !shift.date || !shift.date.startsWith(monthPrefix)) return;
       if (!shift.professional_id || shift.status === 'vago') return;
@@ -163,7 +179,6 @@ export default function Faturamento() {
       let valorExtras = 0;
       let valorBrutoTotal = 0;
 
-      // Se for mês futuro, inicia zerado para ir somando conforme a escala for cumprida
       if (monthPrefix > todayStr.substring(0, 7)) {
         valorBrutoTotal = 0;
       } else {
@@ -172,7 +187,6 @@ export default function Faturamento() {
         } else if (item.remunType === 'diaria') {
           valorBrutoTotal = item.plantõesRealizados * item.valorPorPlantao;
         } else {
-          // MODALIDADE MENSALISTA COM REGRA DE PLANTÕES EXTRAS (COTA DE 20 PLANTÕES)
           const plantõesNormais = Math.min(item.plantõesRealizados, 20);
           valorBrutoRegular = plantõesNormais * item.valorPorPlantao;
 
@@ -187,6 +201,8 @@ export default function Faturamento() {
 
       const valorDesconto = (valorBrutoTotal * item.taxRate) / 100;
       const valorLiquido = valorBrutoTotal - valorDesconto;
+      
+      const isPago = pagamentosStatus[`${item.prof.id}_${monthPrefix}`] || false;
 
       return {
         ...item,
@@ -195,10 +211,11 @@ export default function Faturamento() {
         valorExtras,
         valorBruto: valorBrutoTotal,
         valorDesconto,
-        valorLiquido
+        valorLiquido,
+        isPago
       };
-    }).filter(item => item.plantõesRealizados > 0 || item.plantõesFuturos > 0); // Oculta profissionais zerados no mês
-  }, [professionals, shifts, monthPrefix, todayStr, selectedUnitId]);
+    }).filter(item => item.plantõesRealizados > 0 || item.plantõesFuturos > 0); 
+  }, [professionals, shifts, monthPrefix, todayStr, selectedUnitId, pagamentosStatus]);
 
   const filteredReport = useMemo(() => {
     const term = searchQuery.toLowerCase().trim();
@@ -223,7 +240,44 @@ export default function Faturamento() {
     return { bruto, liquido, plantões, horas, extras };
   }, [reportData]);
 
-  // IMPRESSÃO GERAL DA TABELA EM A4 BRANCO PAISAGEM
+  // EXPORTAÇÃO PARA EXCEL (CSV)
+  const handleExportExcel = () => {
+    if (filteredReport.length === 0) return alert('Não há dados para exportar.');
+    
+    const headers = [
+      'Profissional', 'Matrícula', 'Especialidade', 'Plantoes_Realizados', 'Plantoes_Extras', 
+      'Horas_Totais', 'Base_Contratual', 'Valor_Bruto', 'Desconto_Taxa', 'Valor_Liquido', 
+      'Forma_Pagamento', 'Status_Pagamento'
+    ];
+    
+    const rows = filteredReport.map(item => {
+      const formaPagamento = item.chavePix ? `PIX (${item.pixTipo}): ${item.chavePix}` : (item.banco ? `Banco: ${item.banco}` : 'Pendente');
+      return [
+        `"${item.prof.name}"`,
+        `"${item.matricula}"`,
+        `"${item.prof.specialty || 'Geral'}"`,
+        item.plantõesRealizados,
+        item.plantõesExtrasQtd,
+        item.horasRealizadas,
+        item.salarioBaseContratual,
+        item.valorBruto,
+        item.valorDesconto,
+        item.valorLiquido,
+        `"${formaPagamento}"`,
+        item.isPago ? '"Pago"' : '"Pendente"'
+      ].join(';');
+    });
+    
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + headers.join(';') + "\n" + rows.join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `faturamento_${monthPrefix}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handlePrintConsolidatedReport = () => {
     const printWindow = window.open('', '_blank', 'width=1100,height=800');
     if (!printWindow) {
@@ -232,11 +286,20 @@ export default function Faturamento() {
     }
 
     const hospitalName = currentUnitName;
+    const logoLetter = hospitalName[0] || 'H';
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR');
 
+    // Integração das Logos (Empresa e Unidade)
+    const companyLogoHtml = company?.logo_url ? `<img src="${company.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` : `<div class="logo-badge">${logoLetter}</div>`;
+    const unitLogoHtml = currentUnitObj?.logo_url ? `<img src="${currentUnitObj.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` : '';
+
     const rowsHtml = filteredReport.map((item, idx) => {
       const formaPagto = item.chavePix ? `PIX: ${item.chavePix}` : (item.banco ? `Banco: ${item.banco}` : 'Pendente');
+      const statusPago = item.isPago 
+        ? `<span style="color: #166534; font-weight: bold;">[ PAGO ]</span>` 
+        : `<span style="color: #64748b;">Pendente</span>`;
+
       return `
         <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9fafb'};">
           <td style="border: 1px solid #111; padding: 6px 8px; font-weight: bold;">${item.prof.name}</td>
@@ -247,6 +310,7 @@ export default function Faturamento() {
           <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-size: 9px;">${formaPagto}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${formatCurrency(item.valorBruto)}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: right; font-weight: bold;">${formatCurrency(item.valorLiquido)}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${statusPago}</td>
         </tr>
       `;
     }).join('');
@@ -261,23 +325,28 @@ export default function Faturamento() {
           @page { size: A4 landscape; margin: 8mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000 !important; padding: 15px; font-size: 11px; }
-          .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; }
-          h1 { font-size: 18px; text-transform: uppercase; }
+          .header-box { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 15px; }
+          .logo-badge { width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px; }
+          .header-info h1 { font-size: 18px; text-transform: uppercase; font-weight: 900; margin-bottom: 2px; }
           table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 20px; font-size: 10px; }
           th { background: #f3f4f6; border: 1px solid #000; padding: 6px 8px; text-transform: uppercase; font-size: 9px; text-align: left; }
           .totals { display: flex; justify-content: flex-end; gap: 30px; font-size: 12px; margin-top: 10px; font-weight: bold; border-top: 2px solid #000; padding-top: 10px; }
         </style>
       </head>
       <body>
-        <div class="header">
-          <div>
-            <h1>${hospitalName}</h1>
-            <p>FECHAMENTO DE HONORÁRIOS E REPASSE DE PLANTÕES REALIZADOS</p>
-            <p>Competência: <b>${competencia}</b></p>
+        <div class="header-box">
+          <div style="display: flex; align-items: center;">
+            ${companyLogoHtml}
+            ${unitLogoHtml}
+            <div class="header-info" style="${unitLogoHtml ? 'margin-left: 15px;' : ''}">
+              <h1>${hospitalName}</h1>
+              <p>FECHAMENTO DE HONORÁRIOS E REPASSE DE PLANTÕES REALIZADOS</p>
+              <div style="margin-top: 4px;">Competência: <b>${competencia}</b></div>
+            </div>
           </div>
-          <div style="text-align: right; font-size: 9px;">
-            <p>DOCUMENTO OFICIAL AUDITÁVEL</p>
-            <p>Emissão: ${emissao}</p>
+          <div style="text-align: right; font-size: 9.5px;">
+            <div style="border: 1px solid #000; padding: 3px 8px; font-weight: 900; display: inline-block;">DOCUMENTO OFICIAL AUDITÁVEL</div>
+            <div style="margin-top: 4px;">Emissão: ${emissao}</div>
           </div>
         </div>
 
@@ -292,6 +361,7 @@ export default function Faturamento() {
               <th>Dados p/ Pagamento</th>
               <th style="text-align: right;">Bruto Realizado</th>
               <th style="text-align: right;">Líquido a Pagar</th>
+              <th style="text-align: center;">Status</th>
             </tr>
           </thead>
           <tbody>${rowsHtml}</tbody>
@@ -313,7 +383,6 @@ export default function Faturamento() {
     printWindow.document.close();
   };
 
-  // RECIBO OFICIAL EM 2 VIAS
   const handlePrintIndividualReceipt = (item) => {
     const printWindow = window.open('', '_blank', 'width=900,height=850');
     if (!printWindow) {
@@ -487,20 +556,28 @@ export default function Faturamento() {
 
         <div className="flex items-center gap-3">
           <Button 
+            onClick={handleExportExcel}
+            className="h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all"
+            title="Baixar Relatório em Excel/CSV"
+          >
+            <Download className="w-4 h-4" /> Exportar Excel
+          </Button>
+
+          <Button 
             onClick={handlePrintConsolidatedReport}
-            className="h-10 bg-white text-slate-900 hover:bg-slate-100 font-black text-xs px-5 rounded-2xl gap-2 shadow-lg"
+            className="h-10 bg-white text-slate-900 hover:bg-slate-100 font-black text-xs px-4 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all"
           >
             <Printer className="w-4 h-4" /> Imprimir Fechamento
           </Button>
 
           <div className="flex items-center bg-slate-900/90 border border-slate-800 p-1.5 rounded-2xl gap-2">
-            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white">
+            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white cursor-pointer">
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-xs font-black px-2 uppercase">
+            <span className="text-xs font-black px-2 uppercase cursor-default">
               {MONTH_NAMES[currentMonth]} {currentYear}
             </span>
-            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white">
+            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white cursor-pointer">
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -534,7 +611,7 @@ export default function Faturamento() {
         </Card>
       </div>
 
-      {/* TABELA DE CONCILIAÇÃO FINANCEIRA COM SALÁRIO REAL E DISCRIMINAÇÃO */}
+      {/* TABELA DE CONCILIAÇÃO FINANCEIRA COM STATUS DE PAGAMENTO */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
@@ -561,8 +638,8 @@ export default function Faturamento() {
                 <th className="py-3 px-4">Base Contratual</th>
                 <th className="py-3 px-4 text-center">Realizados (Plantões/h)</th>
                 <th className="py-3 px-4">Dados p/ Repasse</th>
-                <th className="py-3 px-4 text-right">Bruto Realizado</th>
                 <th className="py-3 px-4 text-right">Líquido a Pagar</th>
+                <th className="py-3 px-4 text-center">Status</th>
                 <th className="py-3 px-4 text-center">Ações</th>
               </tr>
             </thead>
@@ -613,15 +690,25 @@ export default function Faturamento() {
                         {formaPagto}
                       </td>
 
-                      <td className="py-3 px-4 text-right font-bold text-slate-700 dark:text-slate-300">
-                        {formatCurrency(item.valorBruto)}
-                      </td>
-
                       <td className="py-3 px-4 text-right">
                         <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">
                           {formatCurrency(item.valorLiquido)}
                         </span>
                         {item.taxRate > 0 && <div className="text-[9px] text-rose-500">-{item.taxRate}% retenção</div>}
+                      </td>
+
+                      {/* BOTÃO DE STATUS DE PAGAMENTO */}
+                      <td className="py-3 px-4 text-center">
+                        <button 
+                          onClick={() => handleTogglePago(item.prof.id)}
+                          className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all border ${
+                            item.isPago 
+                              ? 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800' 
+                              : 'bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 hover:bg-slate-200'
+                          }`}
+                        >
+                          {item.isPago ? '✓ Pago' : 'Pendente'}
+                        </button>
                       </td>
 
                       <td className="py-3 px-4 text-center">
@@ -631,7 +718,7 @@ export default function Faturamento() {
                             variant="outline" 
                             onClick={() => handlePrintIndividualReceipt(item)}
                             title="Imprimir Recibo em 2 Vias"
-                            className="h-8 text-xs font-bold gap-1 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-white"
+                            className="h-8 text-xs font-bold gap-1 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-white cursor-pointer"
                           >
                             <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Recibo
                           </Button>
@@ -640,7 +727,7 @@ export default function Faturamento() {
                             size="sm" 
                             variant="outline" 
                             onClick={() => setSelectedProfModal(item)}
-                            className="h-8 text-xs font-bold gap-1 rounded-xl"
+                            className="h-8 text-xs font-bold gap-1 rounded-xl cursor-pointer"
                           >
                             <FileText className="w-3.5 h-3.5 text-sky-600" /> Detalhar
                           </Button>
@@ -651,7 +738,7 @@ export default function Faturamento() {
                               variant="outline" 
                               onClick={() => handleSendStatementWhatsApp(item)}
                               title="Enviar Extrato no WhatsApp"
-                              className="h-8 px-2.5 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                              className="h-8 px-2.5 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 cursor-pointer"
                             >
                               <Send className="w-3.5 h-3.5" />
                             </Button>
@@ -733,12 +820,12 @@ export default function Faturamento() {
                 <Button 
                   variant="outline" 
                   onClick={() => handlePrintIndividualReceipt(selectedProfModal)}
-                  className="h-9 text-xs font-black gap-1.5"
+                  className="h-9 text-xs font-black gap-1.5 cursor-pointer"
                 >
                   <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Imprimir Recibo
                 </Button>
                 
-                <Button onClick={() => handleSendStatementWhatsApp(selectedProfModal)} className="h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-5 gap-2">
+                <Button onClick={() => handleSendStatementWhatsApp(selectedProfModal)} className="h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-5 gap-2 cursor-pointer">
                   <Send className="w-3.5 h-3.5" /> Enviar WhatsApp
                 </Button>
               </div>
