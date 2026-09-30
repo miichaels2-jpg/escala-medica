@@ -333,11 +333,11 @@ export default function CorpoClinico() {
         allowed_unit_ids: formData.allowed_unit_ids, 
         app_role: formData.app_role,
         registration_code: formData.registration_id,
-        is_active: formData.status === 'ativo',
         status: formData.status,
         must_change_password: !!formData.password 
       };
 
+      // CORREÇÃO: Remoção do "is_active" da raiz do Payload do User para evitar bloqueio do Banco
       try {
         const { data: existingUsers } = await supabase.from('users').select('*').eq('email', finalEmail);
         if (existingUsers && existingUsers.length > 0) {
@@ -345,8 +345,7 @@ export default function CorpoClinico() {
           let updatePayload = {
             username: cleanUsername,
             full_name: formData.name,
-            is_active: formData.status === 'ativo',
-            data: { ...(existingUsers[0].data || {}), ...userDataPayload }
+            data: { ...(existingUsers[0].data || {}), ...userDataPayload, is_active: formData.status === 'ativo' }
           };
           if (formData.password) updatePayload.password = formData.password;
 
@@ -358,8 +357,7 @@ export default function CorpoClinico() {
             username: cleanUsername,
             password: finalPass,
             full_name: formData.name,
-            is_active: formData.status === 'ativo',
-            data: userDataPayload
+            data: { ...userDataPayload, is_active: formData.status === 'ativo' }
           }]);
         }
       } catch (uErr) { console.warn('Aviso na sincronização de usuário:', uErr); }
