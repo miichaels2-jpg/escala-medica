@@ -410,7 +410,7 @@ export default function MinhaEscala() {
           </Button>
 
           <Button 
-            onClick={() => navigate('/mural')} 
+            onClick={() => navigate('/trocas')} 
             className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-5 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105"
           >
             <Flame className="w-4 h-4" /> Mural de Oportunidades
