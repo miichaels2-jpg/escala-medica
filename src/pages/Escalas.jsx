@@ -13,7 +13,7 @@ import {
   GripVertical, Printer, Sun, Moon, AlertTriangle, CheckCircle2, 
   Radio, Calendar as CalendarIcon, PanelLeftClose, PanelLeftOpen, 
   Filter, ArrowLeftRight, Minimize2, Target, ShieldAlert,
-  BellRing, Check, History
+  BellRing, Check, History, Copy
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -182,7 +182,7 @@ async function autoHealingSaveShift(id, initialPayload) {
 }
 
 export default function Escalas() {
-  const { shifts = [], sectors = [], professionals = [], selectedUnitId, company, isManager, syncGlobalData } = useAppData();
+  const { shifts = [], sectors = [], professionals = [], selectedUnitId, units = [], company, isManager, syncGlobalData } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState('mensal'); 
@@ -364,6 +364,71 @@ export default function Escalas() {
     alert(`A escala de "${secName}" voltou para Modo Rascunho.`);
   };
 
+  // MODAL DE DUPLICAR ESCALA 
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [duplicateConfig, setDuplicateConfig] = useState({
+    source_date: getLocalDateString(new Date(currentYear, currentMonth - 1, 1)).slice(0, 7), // Mês Anterior (YYYY-MM)
+    target_date: getLocalDateString(new Date(currentYear, currentMonth, 1)).slice(0, 7),     // Mês Atual
+    sector_id: 'todos'
+  });
+
+  const handleExecuteDuplicate = async (e) => {
+    e.preventDefault();
+    if (!confirm(`Isso fará uma cópia de todos os plantões de ${duplicateConfig.source_date} para ${duplicateConfig.target_date}. Confirma a operação?`)) return;
+
+    setSubmitting(true);
+    try {
+      const [sY, sM] = duplicateConfig.source_date.split('-');
+      const [tY, tM] = duplicateConfig.target_date.split('-');
+      const prefixSource = `${sY}-${sM}-`;
+      const prefixTarget = `${tY}-${tM}-`;
+
+      const sourceShifts = shifts.filter(s => {
+        if (!s.date.startsWith(prefixSource)) return false;
+        if (s.status === 'cancelado') return false;
+        if (duplicateConfig.sector_id !== 'todos' && String(s.sector_id) !== String(duplicateConfig.sector_id)) return false;
+        return true;
+      });
+
+      if (sourceShifts.length === 0) throw new Error("Nenhum plantão encontrado no mês de origem para ser copiado.");
+
+      let copiedCount = 0;
+      for (const shift of sourceShifts) {
+        const day = shift.date.split('-')[2];
+        const newDate = `${prefixTarget}${day}`;
+        
+        // Validação: Ignora dia 31 se o mês de destino só tiver 30 dias (ex: Copiar de Agosto pra Setembro)
+        const checkDate = new Date(parseInt(tY), parseInt(tM) - 1, parseInt(day));
+        if (checkDate.getMonth() !== parseInt(tM) - 1) continue; 
+
+        await autoHealingSaveShift(null, {
+          company_id: shift.company_id,
+          unit_id: shift.unit_id,
+          sector_id: shift.sector_id,
+          target_specialty: shift.target_specialty,
+          professional_id: shift.professional_id,
+          professional_name: shift.professional_name,
+          date: newDate,
+          shift_type: shift.shift_type,
+          start_time: shift.start_time,
+          end_time: shift.end_time,
+          // Se estava realizado no passado, vira "confirmado" (ou "vago" se não tiver profissional)
+          status: shift.status === 'realizado' ? 'confirmado' : shift.status, 
+          notes: shift.notes ? String(shift.notes).replace(/\[ESCALA_PUBLICADA\]/gi, '').replace(/\[AJUSTE_RETROATIVO:[^\]]+\]/gi, '').trim() : ''
+        });
+        copiedCount++;
+      }
+      
+      setDuplicateModalOpen(false);
+      await syncGlobalData();
+      alert(`✅ Sucesso! ${copiedCount} plantões foram duplicados com sucesso para ${duplicateConfig.target_date}.`);
+    } catch (err) {
+      alert("Erro ao duplicar: " + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const [selectedDays, setSelectedDays] = useState([]);
   const [traySearch, setTraySearch] = useState('');
   const [traySpecialtyFilter, setTraySpecialtyFilter] = useState('todas');
@@ -378,7 +443,6 @@ export default function Escalas() {
   const [modalOpen, setModalOpen] = useState(false);
   const [generatorModalOpen, setGeneratorModalOpen] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
 
   const registeredSpecialties = useMemo(() => {
     const set = new Set();
@@ -391,6 +455,10 @@ export default function Escalas() {
     start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar',
     professional_id: '', notes: '', retroactive_justification: ''
   });
+
+  const isEditingPastShift = useMemo(() => {
+    return isShiftPast({ date: formData.date, end_time: formData.end_time }, liveNow);
+  }, [formData.date, formData.end_time, liveNow]);
 
   const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if(s) m[String(s.id)] = s; }); return m; }, [sectors]);
   const professionalMap = useMemo(() => { const m = {}; (professionals || []).forEach(p => { if(p) m[String(p.id)] = p; }); return m; }, [professionals]);
@@ -470,6 +538,11 @@ export default function Escalas() {
     const dataVigencia = liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
     const dataEmissao = liveNow.toLocaleDateString('pt-BR') + ' às ' + liveNow.toLocaleTimeString('pt-BR');
 
+    // LOGOS CONFIGURÁVEIS (Empresa Matriz e Unidade Local)
+    const companyLogoHtml = company?.logo_url ? `<img src="${company.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` : `<div class="logo-badge">${logoLetter}</div>`;
+    const currentUnitObj = units?.find(u => String(u.id) === String(selectedUnitId));
+    const unitLogoHtml = currentUnitObj?.logo_url ? `<img src="${currentUnitObj.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` : '';
+
     const activeShiftsOnly = tvData.tableDayShifts.filter(shift => !isVacant(shift));
 
     const tableRowsHtml = activeShiftsOnly.length === 0
@@ -519,7 +592,7 @@ export default function Escalas() {
           body { font-family: Arial, sans-serif; background: #fff !important; color: #000 !important; padding: 15px; font-size: 11px; }
           .header-box { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 15px; }
           .logo-badge { width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px; }
-          .header-info h1 { font-size: 19px; font-weight: 900; text-transform: uppercase; }
+          .header-info h1 { font-size: 19px; font-weight: 900; text-transform: uppercase; margin-bottom: 2px;}
           table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 30px; }
           th { background-color: #e5e7eb; border: 1px solid #000; padding: 8px 10px; text-align: left; font-size: 9.5px; font-weight: 900; text-transform: uppercase; }
           .signatures-area { display: flex; justify-content: space-around; margin-top: 35px; }
@@ -530,11 +603,12 @@ export default function Escalas() {
       <body>
         <div class="header-box">
           <div style="display: flex; align-items: center;">
-            <div class="logo-badge">${logoLetter}</div>
-            <div class="header-info">
-              <h1>${hospitalName}</h1>
+            ${companyLogoHtml}
+            ${unitLogoHtml}
+            <div class="header-info" style="${unitLogoHtml ? 'margin-left: 15px;' : ''}">
+              <h1>${currentUnitObj ? currentUnitObj.name : hospitalName}</h1>
               <p>ESCALA OFICIAL DE PLANTÃO • MURAL HOSPITALAR</p>
-              <div>Vigência: <b>${dataVigencia}</b></div>
+              <div style="margin-top: 4px;">Vigência do Relatório: <b>${dataVigencia}</b></div>
             </div>
           </div>
           <div style="text-align: right; font-size: 9.5px;">
@@ -661,7 +735,7 @@ export default function Escalas() {
   }, [shifts]);
 
   const [generatorConfig, setGeneratorConfig] = useState({
-    sector_id: '', start_date: getLocalDateString(), duration_days: 30,
+    sector_id: '', start_date: getLocalDateString(), duration_days: 30, interval_days: 1,
     slots: [
       { id: 'slot_1', specialty: 'Clínica Médica', start_time: '07:00', end_time: '19:00', quantity: 2, shift_type: 'diurno' },
       { id: 'slot_2', specialty: 'Clínica Médica', start_time: '19:00', end_time: '07:00', quantity: 2, shift_type: 'noturno' }
@@ -705,8 +779,10 @@ export default function Escalas() {
     try {
       const startDt = new Date(generatorConfig.start_date + 'T12:00:00');
       const totalDays = parseInt(generatorConfig.duration_days) || 30;
+      const interval = parseInt(generatorConfig.interval_days) || 1;
 
-      for (let dayOffset = 0; dayOffset < totalDays; dayOffset++) {
+      // O loop agora respeita o intervalo (de 1 em 1, 5 em 5, 15 em 15...)
+      for (let dayOffset = 0; dayOffset < totalDays; dayOffset += interval) {
         const curDate = new Date(startDt);
         curDate.setDate(curDate.getDate() + dayOffset);
         const dateStr = getLocalDateString(curDate);
@@ -896,10 +972,6 @@ export default function Escalas() {
       setSelectedDays([]); await syncGlobalData();
     } catch (err) { alert('Erro ao alocar: ' + err.message); } finally { setDraggingProfId(null); }
   };
-
-  const isEditingPastShift = useMemo(() => {
-    return isShiftPast({ date: formData.date, end_time: formData.end_time }, liveNow);
-  }, [formData.date, formData.end_time, liveNow]);
 
   const handleSaveShift = async (e) => {
     e.preventDefault();
@@ -1264,9 +1336,14 @@ export default function Escalas() {
 
         <div className="flex items-center gap-2">
           {isManager && (
-            <Button onClick={() => { setGeneratorConfig(prev => ({ ...prev, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '') })); setGeneratorModalOpen(true); }} className="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-4 rounded-2xl shadow-md gap-1.5 shrink-0 cursor-pointer">
-              <SlidersHorizontal className="w-4 h-4" /> Configurar & Gerar Escala
-            </Button>
+            <>
+              <Button onClick={() => setDuplicateModalOpen(true)} variant="outline" className="h-9 text-indigo-600 hover:bg-indigo-50 border-indigo-200 font-black text-xs px-4 rounded-2xl shadow-sm gap-1.5 cursor-pointer">
+                <Copy className="w-4 h-4" /> Duplicar Mês
+              </Button>
+              <Button onClick={() => { setGeneratorConfig(prev => ({ ...prev, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '') })); setGeneratorModalOpen(true); }} className="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-4 rounded-2xl shadow-md gap-1.5 shrink-0 cursor-pointer">
+                <SlidersHorizontal className="w-4 h-4" /> Configurar & Gerar Escala
+              </Button>
+            </>
           )}
 
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shrink-0">
@@ -1711,6 +1788,23 @@ export default function Escalas() {
                   O plantão será disponibilizado no <b>Mural de Oportunidades</b> para que os profissionais assumam.
                 </p>
               )}
+
+              {/* CAMPO DE JUSTIFICATIVA RETROATIVA */}
+              {isEditingPastShift && formData.action_type === 'alocar' && (
+                <div className="space-y-1.5 pt-2 border-t border-slate-800">
+                  <Label className="text-xs font-bold text-amber-500 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Justificativa Retroativa *
+                  </Label>
+                  <p className="text-[10px] text-slate-400 leading-tight mb-1">Como este plantão já aconteceu, descreva o motivo do lançamento tardio para fins de auditoria financeira.</p>
+                  <Input 
+                    value={formData.retroactive_justification} 
+                    onChange={e => setFormData({...formData, retroactive_justification: e.target.value})} 
+                    placeholder="Ex: Profissional cobriu furo de última hora..." 
+                    className="h-10 bg-slate-950 border-amber-500/50 text-amber-100 rounded-xl" 
+                    required 
+                  />
+                </div>
+              )}
             </div>
             
             <DialogFooter className="pt-3 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between border-t border-slate-800 mt-2 gap-2">
@@ -1739,7 +1833,7 @@ export default function Escalas() {
       {/* 6. MODAL GERADOR E CONFIGURADOR DE ESCALAS EM MASSA                       */}
       {/* ========================================================================= */}
       <Dialog open={generatorModalOpen} onOpenChange={setGeneratorModalOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-6">
+        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-6">
           <DialogHeader className="border-b border-slate-800 pb-4">
             <DialogTitle className="text-lg font-black flex items-center gap-2 text-indigo-400">
               <SlidersHorizontal className="w-5 h-5" /> Gerador de Grade Padrão
@@ -1761,14 +1855,18 @@ export default function Escalas() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="space-y-1.5 sm:col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-slate-400">Data de Início da Grade</Label>
                 <Input type="date" value={generatorConfig.start_date} onChange={e => setGeneratorConfig({ ...generatorConfig, start_date: e.target.value })} className="h-10 bg-slate-900 border-slate-800 text-white rounded-xl cursor-pointer" required />
               </div>
-              <div className="space-y-1.5 sm:col-span-2">
+              <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-slate-400">Duração (Dias Sequenciais)</Label>
                 <Input type="number" min="1" max="365" value={generatorConfig.duration_days} onChange={e => setGeneratorConfig({ ...generatorConfig, duration_days: e.target.value })} className="h-10 bg-slate-900 border-slate-800 text-white rounded-xl" required />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-amber-400 flex items-center gap-1"><ArrowRight className="w-3.5 h-3.5"/> Repetir de N em N dias</Label>
+                <Input type="number" min="1" max="30" value={generatorConfig.interval_days} onChange={e => setGeneratorConfig({ ...generatorConfig, interval_days: e.target.value })} placeholder="Ex: 15" className="h-10 bg-slate-900 border-amber-500/50 text-amber-300 font-bold rounded-xl" required />
               </div>
             </div>
 
@@ -1817,7 +1915,7 @@ export default function Escalas() {
             <div className="p-4 bg-sky-950/30 border border-sky-900/50 rounded-2xl flex items-start gap-3">
               <CheckCircle2 className="w-5 h-5 text-sky-500 shrink-0 mt-0.5" />
               <p className="text-xs text-sky-200 leading-relaxed">
-                Este processo vai injetar <b>{(generatorConfig.slots.reduce((acc, slot) => acc + (parseInt(slot.quantity) || 0), 0)) * (parseInt(generatorConfig.duration_days) || 0)}</b> plantões vazios na grade, prontos para receberem alocação profissional ou serem mandados ao Mural.
+                As vagas serão injetadas a cada <b>{parseInt(generatorConfig.interval_days) || 1} dia(s)</b>, totalizando <b>{(generatorConfig.slots.reduce((acc, slot) => acc + (parseInt(slot.quantity) || 0), 0)) * Math.floor((parseInt(generatorConfig.duration_days) || 0) / (parseInt(generatorConfig.interval_days) || 1))}</b> plantões no período selecionado.
               </p>
             </div>
 
@@ -1890,6 +1988,56 @@ export default function Escalas() {
               Oficializar Escala
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* 8. MODAL DE DUPLICAR MÊS (COPIAR ESCALAS)                                 */}
+      {/* ========================================================================= */}
+      <Dialog open={duplicateModalOpen} onOpenChange={setDuplicateModalOpen}>
+        <DialogContent className="w-[95vw] sm:max-w-md bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-6">
+          <DialogHeader className="border-b border-slate-800 pb-4">
+            <DialogTitle className="text-lg font-black flex items-center gap-2 text-indigo-400">
+              <Copy className="w-5 h-5" /> Duplicar Escala
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleExecuteDuplicate} className="space-y-4 py-2">
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Copia toda a estrutura de plantões (vagas e alocações) de um mês anterior para um novo mês, mantendo os mesmos dias e profissionais.
+            </p>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-300">Setor a ser duplicado</Label>
+              <Select value={duplicateConfig.sector_id} onValueChange={v => setDuplicateConfig({ ...duplicateConfig, sector_id: v })}>
+                <SelectTrigger className="h-10 bg-slate-900 border-slate-700 text-white font-bold rounded-xl">
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
+                  <SelectItem value="todos" className="text-sky-400 font-bold">Todos os Setores</SelectItem>
+                  {(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-300">Mês de Origem</Label>
+                <Input type="month" value={duplicateConfig.source_date} onChange={e => setDuplicateConfig({ ...duplicateConfig, source_date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl cursor-pointer" required />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-300">Mês de Destino</Label>
+                <Input type="month" value={duplicateConfig.target_date} onChange={e => setDuplicateConfig({ ...duplicateConfig, target_date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl cursor-pointer" required />
+              </div>
+            </div>
+
+            <DialogFooter className="pt-4 border-t border-slate-800">
+              <Button type="button" variant="outline" onClick={() => setDuplicateModalOpen(false)} className="h-11 border-slate-700 text-slate-300 rounded-xl cursor-pointer">Cancelar</Button>
+              <Button type="submit" disabled={submitting} className="h-11 bg-indigo-600 hover:bg-indigo-500 text-white font-black px-6 rounded-xl shadow-lg shadow-indigo-500/20 cursor-pointer">
+                Processar Cópia
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
       
