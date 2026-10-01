@@ -167,26 +167,26 @@ export default function Painel() {
   const upcomingList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'upcoming'), [todayShifts]);
   const concludedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'concluded'), [todayShifts]);
 
-  // CORREÇÃO: Pega Vagas abertas ESTRITAMENTE do mês vigente (hoje, amanhã ou furos passados no próprio mês)
+  // CORREÇÃO MÁXIMA: Puxa TODAS as vagas em aberto do mês inteiro (hoje, amanhã, sábados futuros, ou furos do passado no mesmo mês)
   const vacantShifts = useMemo(() => {
     return unitShifts
       .filter((s) => {
         const sDate = (s.date || '').split('T')[0];
         
-        // Bloqueio do Mês: Ignora os furos de meses anteriores
+        // Bloqueio do Mês: Apenas do mês vigente!
         if (!sDate.startsWith(monthPrefix)) return false;
 
-        const isTargetDay = sDate <= todayStr || sDate === getLocalDateString(new Date(currentTime.getTime() + 86400000));
         const isVago = !s.professional_id || s.status === 'vago' || (s.professional_name || '').toLowerCase().includes('vaga');
         
-        return isTargetDay && isVago;
+        return isVago;
       })
       .map(s => ({ 
         ...s, 
         sectorName: toTitleCase(s.sector_name || sectors.find(sec => String(sec.id) === String(s.sector_id))?.name || 'Setor Geral'), 
         formattedDate: fmtDate(s.date) 
-      }));
-  }, [unitShifts, todayStr, currentTime, sectors, monthPrefix]);
+      }))
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '')); // Ordena cronologicamente
+  }, [unitShifts, monthPrefix, sectors]);
 
   const todayFinancials = useMemo(() => {
     let executedValue = 0; let plannedValue = 0;
@@ -246,16 +246,19 @@ export default function Painel() {
     return { targetTime: nextStart, incoming, outgoing };
   }, [upcomingList, activeNowList]);
 
+  // CORREÇÃO: Taxa Global baseada em TODO O MÊS VIGENTE
   const globalFillRate = useMemo(() => {
-    if (todayShifts.length === 0) return 100;
-    const vacantTodayCount = vacantShifts.filter(v => v.date === todayStr).length;
-    const totalProgrammedToday = todayShifts.length;
+    const monthShifts = unitShifts.filter(s => (s.date || '').startsWith(monthPrefix));
+    if (monthShifts.length === 0) return 100;
+
+    const totalProgrammedMonth = monthShifts.length;
+    const vacantMonthCount = vacantShifts.length;
     
-    if (vacantTodayCount === 0) return 100;
+    if (vacantMonthCount === 0) return 100;
     
-    const filled = Math.max(0, totalProgrammedToday - vacantTodayCount);
-    return Math.round((filled / totalProgrammedToday) * 100);
-  }, [todayShifts, vacantShifts, todayStr]);
+    const filled = Math.max(0, totalProgrammedMonth - vacantMonthCount);
+    return Math.round((filled / totalProgrammedMonth) * 100);
+  }, [unitShifts, monthPrefix, vacantShifts]);
 
   const hourlyCurveData = useMemo(() => {
     const buckets = [ 
@@ -563,7 +566,7 @@ export default function Painel() {
               <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-emerald-600" /> Eficiência de Cobertura
               </h3>
-              <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Hoje</span>
+              <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Neste Mês</span>
             </div>
 
             <div className="py-6 flex flex-col items-center justify-center relative">
