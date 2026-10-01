@@ -705,33 +705,33 @@ export default function Escalas() {
         <meta charset="utf-8">
         <title>Escala Oficial - ${escapeHtml(unitName)}</title>
         <style>
-          @page { size: A4 landscape; margin: 8mm; }
-          * { box-sizing: border-box; }
-          html, body { width: 100%; }
-          body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #fff !important; color: #000 !important; padding: 0; font-size: 10px; line-height: 1.3; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-          .header-box { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 2px solid #0f172a; padding: 0 0 10px; margin: 0 0 12px; break-inside: avoid; page-break-inside: avoid; }
-          .brand { display: flex; align-items: center; min-width: 0; }
-          .logos { display: flex; align-items: center; flex: 0 0 auto; }
-          .print-logo { display: block; max-width: 100px; max-height: 38px; object-fit: contain; }
-          .company-logo { margin-right: 10px; }
-          .unit-logo { margin-left: 10px; padding-left: 10px; border-left: 1px solid #cbd5e1; }
-          .logo-fallback { display: flex; width: 38px; height: 38px; align-items: center; justify-content: center; border: 1.5px solid #0f172a; border-radius: 6px; margin-right: 10px; font-size: 20px; font-weight: 900; }
-          .header-info { min-width: 0; }
-          .header-info h1 { margin: 0 0 2px; color: #0f172a; font-size: 17px; font-weight: 900; line-height: 1.2; text-transform: uppercase; }
-          .header-info p { margin: 0; color: #334155; font-size: 9px; font-weight: 700; }
-          .header-info .validity { margin-top: 3px; color: #475569; font-size: 9px; }
-          .document-meta { flex: 0 0 auto; text-align: right; color: #334155; font-size: 9px; line-height: 1.5; }
-          .document-label { display: inline-block; margin-bottom: 3px; padding: 2px 6px; border: 1px solid #64748b; font-size: 8px; font-weight: 900; }
-          table { width: 100%; table-layout: fixed; border-collapse: collapse; border: 1px solid #64748b; margin: 0 0 12px; }
-          thead { display: table-header-group; }
-          tr { break-inside: avoid; page-break-inside: avoid; }
-          th { background-color: #e2e8f0; border: 1px solid #64748b; padding: 6px 7px; color: #0f172a; text-align: left; font-size: 8px; font-weight: 900; text-transform: uppercase; }
-          td { overflow-wrap: anywhere; border: 1px solid #94a3b8 !important; padding: 6px 7px !important; line-height: 1.3; }
-          .signatures-area { display: flex; justify-content: space-around; gap: 24px; margin-top: 18px; break-inside: avoid; page-break-inside: avoid; }
-          .sig-box { text-align: center; width: 42%; }
-          .sig-line { height: 26px; border-bottom: 1px solid #64748b; margin-bottom: 5px; }
-          @media screen { body { padding: 15px; } }
-        </style>
+          @page { size: A4 landscape; margin: 8mm; }
+          * { box-sizing: border-box; }
+          html, body { width: 100%; }
+          body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #fff !important; color: #000 !important; padding: 0; font-size: 10px; line-height: 1.3; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+          .header-box { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 2px solid #0f172a; padding: 0 0 10px; margin: 0 0 12px; break-inside: avoid; page-break-inside: avoid; }
+          .brand { display: flex; align-items: center; min-width: 0; }
+          .logos { display: flex; align-items: center; flex: 0 0 auto; }
+          .print-logo { display: block; max-width: 100px; max-height: 38px; object-fit: contain; }
+          .company-logo { margin-right: 10px; }
+          .unit-logo { margin-left: 10px; padding-left: 10px; border-left: 1px solid #cbd5e1; }
+          .logo-fallback { display: flex; width: 38px; height: 38px; align-items: center; justify-content: center; border: 1.5px solid #0f172a; border-radius: 6px; margin-right: 10px; font-size: 20px; font-weight: 900; }
+          .header-info { min-width: 0; }
+          .header-info h1 { margin: 0 0 2px; color: #0f172a; font-size: 17px; font-weight: 900; line-height: 1.2; text-transform: uppercase; }
+          .header-info p { margin: 0; color: #334155; font-size: 9px; font-weight: 700; }
+          .header-info .validity { margin-top: 3px; color: #475569; font-size: 9px; }
+          .document-meta { flex: 0 0 auto; text-align: right; color: #334155; font-size: 9px; line-height: 1.5; }
+          .document-label { display: inline-block; margin-bottom: 3px; padding: 2px 6px; border: 1px solid #64748b; font-size: 8px; font-weight: 900; }
+          table { width: 100%; table-layout: fixed; border-collapse: collapse; border: 1px solid #64748b; margin: 0 0 12px; }
+          thead { display: table-header-group; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
+          th { background-color: #e2e8f0; border: 1px solid #64748b; padding: 6px 7px; color: #0f172a; text-align: left; font-size: 8px; font-weight: 900; text-transform: uppercase; }
+          td { overflow-wrap: anywhere; border: 1px solid #94a3b8 !important; padding: 6px 7px !important; line-height: 1.3; }
+          .signatures-area { display: flex; justify-content: space-around; gap: 24px; margin-top: 18px; break-inside: avoid; page-break-inside: avoid; }
+          .sig-box { text-align: center; width: 42%; }
+          .sig-line { height: 26px; border-bottom: 1px solid #64748b; margin-bottom: 5px; }
+          @media screen { body { padding: 15px; } }
+        </style>
       </head>
       <body>
         <div class="header-box">
