@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   Building2, Save, UserPlus, Trash2, 
   Settings, Hospital, ShieldCheck, FileText,
-  Mail, MapPin, Edit, Plus, RotateCcw, Activity, AlertTriangle, Phone, Copy, Image as ImageIcon
+  Mail, MapPin, Edit, Plus, RotateCcw, Activity, AlertTriangle, Phone, Copy, Image as ImageIcon, UploadCloud
 } from 'lucide-react';
 
 function getLocalDateString(d = new Date()) {
@@ -97,10 +97,8 @@ export default function Configuracoes() {
   const visibleUsers = useMemo(() => {
     return companyUsers.filter(u => {
       if (u.role === 'admin' && u.id === 'usr_admin') return true;
-
       const allowedUnits = u.data?.allowed_unit_ids || [];
       const legacyUnit = u.data?.unit_id || u.data?.selected_unit_id || u.unit_id;
-      
       return allowedUnits.includes(String(selectedUnitId)) || String(legacyUnit) === String(selectedUnitId);
     });
   }, [companyUsers, selectedUnitId]);
@@ -111,6 +109,23 @@ export default function Configuracoes() {
     const now = new Date();
     return Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
   }, [contractForm.contract_end]);
+
+  // FUNÇÃO UNIVERSAL DE UPLOAD DE ARQUIVO (Imagem -> Base64)
+  const handleImageUpload = (e, setFormState) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert('A imagem é muito grande. Escolha uma logo com tamanho máximo de 2MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFormState(prev => ({ ...prev, logo_url: reader.result }));
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSaveCurrentUnit = async (e) => {
     e.preventDefault();
@@ -138,7 +153,7 @@ export default function Configuracoes() {
       const payload = {
         name: contractForm.name,
         cnpj: contractForm.cnpj,
-        logo_url: contractForm.logo_url, // Salva na raiz da tabela company, se a coluna existir (ou no data abaixo)
+        logo_url: contractForm.logo_url,
         data: {
           ...(company?.data || {}),
           billing_cycle: contractForm.billing_cycle,
@@ -279,13 +294,6 @@ export default function Configuracoes() {
     finally { setSaving(false); }
   };
 
-  const handleSelectCompany = async (id) => {
-    if (!user?.id) return;
-    await supabase.from('users').update({ data: { ...(user.data||{}), company_id: id } }).eq('id', user.id);
-    await refreshAllData();
-    window.location.reload();
-  };
-
   const handleAutoFillFromContract = () => {
     setNewUnitForm(prev => ({
       ...prev,
@@ -372,10 +380,36 @@ export default function Configuracoes() {
               ) : (
                 <form onSubmit={handleSaveCurrentUnit} className="space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div className="space-y-1.5 sm:col-span-2 border-b border-slate-100 dark:border-slate-800 pb-5 mb-1">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"><ImageIcon className="w-4 h-4 text-sky-500" /> Logo da Unidade / Hospital (Link de Imagem)</Label>
-                      <p className="text-[10px] text-slate-500 mb-2">Cole aqui o endereço URL da imagem (JPG, PNG) para que a logo desta unidade apareça nos relatórios impressos.</p>
-                      <Input value={unitForm.logo_url || ''} onChange={(e) => setUnitForm(p => ({...p, logo_url: e.target.value}))} placeholder="https://exemplo.com/logo-unidade.png" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-sky-600 dark:text-cyan-400 rounded-xl font-mono text-[11px]" />
+                    
+                    {/* NOVO: UPLOAD DE ARQUIVO DA UNIDADE */}
+                    <div className="space-y-2 sm:col-span-2 border-b border-slate-100 dark:border-slate-800 pb-5 mb-1">
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"><ImageIcon className="w-4 h-4 text-sky-500" /> Logomarca da Unidade</Label>
+                      <p className="text-[10px] text-slate-500">Selecione uma imagem do seu computador (PNG ou JPG). Ela sairá impressa nos relatórios desta unidade específica.</p>
+                      
+                      <div className="flex items-center gap-4 mt-2">
+                        <div className="w-16 h-16 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-slate-900 shrink-0">
+                          {unitForm.logo_url ? (
+                            <img src={unitForm.logo_url} alt="Logo Preview" className="w-full h-full object-contain p-1" />
+                          ) : (
+                            <ImageIcon className="w-6 h-6 text-slate-300 dark:text-slate-600" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <label className="flex items-center justify-center gap-2 w-full h-11 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                            <UploadCloud className="w-4 h-4 text-sky-600" />
+                            <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Procurar Imagem</span>
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setUnitForm)} />
+                          </label>
+                          <div className="flex items-center justify-between mt-1.5">
+                            <span className="text-[9px] text-slate-400">Tamanho máximo: 2MB</span>
+                            {unitForm.logo_url && (
+                              <button type="button" onClick={() => setUnitForm(prev => ({...prev, logo_url: ''}))} className="text-[9px] font-bold text-rose-500 hover:underline">
+                                Remover Imagem
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="space-y-1.5 sm:col-span-2">
@@ -443,15 +477,41 @@ export default function Configuracoes() {
                 <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
                   <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Gestão de Contrato & Matriz
                 </h3>
-                <p className="text-xs text-slate-500 mt-1">Dados de faturamento, vigência e identidade (Logo) da empresa administradora (Matriz). Esta empresa pode gerenciar quantos hospitais quiser.</p>
+                <p className="text-xs text-slate-500 mt-1">Dados de faturamento, vigência e identidade corporativa da rede (Matriz). Esta logo sairá em todos os documentos da rede.</p>
               </div>
 
               <form onSubmit={handleSaveContract} className="space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  <div className="space-y-1.5 sm:col-span-2 border-b border-slate-100 dark:border-slate-800 pb-5 mb-1">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"><ImageIcon className="w-4 h-4 text-indigo-500" /> Logo Principal da Rede / Matriz (Link de Imagem)</Label>
-                    <p className="text-[10px] text-slate-500 mb-2">Insira a URL da logo principal da sua rede. Esta imagem será a principal em todos os relatórios da rede inteira.</p>
-                    <Input value={contractForm.logo_url || ''} onChange={(e) => setContractForm(p => ({...p, logo_url: e.target.value}))} placeholder="https://exemplo.com/logo-matriz.png" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-indigo-600 dark:text-indigo-400 rounded-xl font-mono text-[11px]" />
+                  
+                  {/* NOVO: UPLOAD DE ARQUIVO DA MATRIZ */}
+                  <div className="space-y-2 sm:col-span-2 border-b border-slate-100 dark:border-slate-800 pb-5 mb-1">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"><ImageIcon className="w-4 h-4 text-indigo-500" /> Logomarca da Matriz / Rede</Label>
+                    <p className="text-[10px] text-slate-500">Selecione a logomarca principal da rede no seu computador.</p>
+                    
+                    <div className="flex items-center gap-4 mt-2">
+                      <div className="w-16 h-16 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-slate-900 shrink-0">
+                        {contractForm.logo_url ? (
+                          <img src={contractForm.logo_url} alt="Logo Preview" className="w-full h-full object-contain p-1" />
+                        ) : (
+                          <ImageIcon className="w-6 h-6 text-slate-300 dark:text-slate-600" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <label className="flex items-center justify-center gap-2 w-full h-11 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                          <UploadCloud className="w-4 h-4 text-indigo-600" />
+                          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Procurar Imagem</span>
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setContractForm)} />
+                        </label>
+                        <div className="flex items-center justify-between mt-1.5">
+                          <span className="text-[9px] text-slate-400">Tamanho máximo: 2MB</span>
+                          {contractForm.logo_url && (
+                            <button type="button" onClick={() => setContractForm(prev => ({...prev, logo_url: ''}))} className="text-[9px] font-bold text-rose-500 hover:underline">
+                              Remover Imagem
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-1.5 sm:col-span-2">
@@ -511,7 +571,7 @@ export default function Configuracoes() {
                   <Building2 className="w-5 h-5 text-sky-600 dark:text-cyan-400" /> Cadastrar Múltiplos Hospitais
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Adicione novos hospitais que pertencem a este contrato com logotipo, CNPJ, endereço e contatos completos.
+                  Adicione novos hospitais que pertencem a este contrato com logotipo independente, CNPJ, endereço e contatos completos.
                 </p>
               </div>
               <Button onClick={() => openUnitModal()} className="shrink-0 h-10 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs px-5 rounded-xl shadow-md cursor-pointer">
@@ -531,7 +591,7 @@ export default function Configuracoes() {
                     <div className="space-y-2">
                       <div className="flex items-start justify-between">
                         <div className="p-2.5 rounded-xl bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400">
-                          <Hospital className="w-5 h-5" />
+                          {u.logo_url ? <img src={u.logo_url} className="w-5 h-5 object-contain" alt="logo" /> : <Hospital className="w-5 h-5" />}
                         </div>
                         <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
                           u.status === 'inativo' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
@@ -549,11 +609,6 @@ export default function Configuracoes() {
                         <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                           <Phone className="w-3.5 h-3.5 shrink-0" />
                           <span>{u.phone}</span>
-                        </div>
-                      )}
-                      {u.logo_url && (
-                        <div className="flex items-center gap-1.5 text-[9px] text-sky-500 mt-2 border-t border-slate-200 dark:border-slate-800 pt-1.5">
-                          <ImageIcon className="w-3 h-3" /> Possui Logo Cadastrada
                         </div>
                       )}
                     </div>
@@ -591,9 +646,26 @@ export default function Configuracoes() {
                     </Button>
                   )}
 
-                  <div className="space-y-1.5">
-                    <Label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1"><ImageIcon className="w-3.5 h-3.5 text-sky-500" /> URL da Logo (Unidade)</Label>
-                    <Input value={newUnitForm.logo_url || ''} onChange={e => setNewUnitForm({...newUnitForm, logo_url: e.target.value})} placeholder="https://exemplo.com/logo.png" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl text-sky-600 dark:text-cyan-400 font-mono text-[10px]" />
+                  {/* UPLOAD IMAGEM PARA MODAL DE NOVA UNIDADE */}
+                  <div className="space-y-1.5 border-b border-slate-100 dark:border-slate-800 pb-4 mb-2">
+                    <Label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1"><ImageIcon className="w-3.5 h-3.5 text-sky-500" /> Logomarca da Unidade</Label>
+                    
+                    <div className="flex items-center gap-4 mt-2">
+                      <div className="w-14 h-14 rounded-2xl border border-slate-300 dark:border-slate-700 flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-slate-900 shrink-0">
+                        {newUnitForm.logo_url ? (
+                          <img src={newUnitForm.logo_url} alt="Logo Preview" className="w-full h-full object-contain p-1" />
+                        ) : (
+                          <ImageIcon className="w-5 h-5 text-slate-300 dark:text-slate-600" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <label className="flex items-center justify-center gap-2 w-full h-10 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                          <UploadCloud className="w-4 h-4 text-sky-600" />
+                          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Procurar Imagem</span>
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setNewUnitForm)} />
+                        </label>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">
