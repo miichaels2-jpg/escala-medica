@@ -194,20 +194,20 @@ export default function Relatorios() {
   };
 
   const handleClearFilters = () => {
-    const clearedFilters = {
-      start: '',
-      end: '',
+    const initialFilters = {
+      start: firstDay,
+      end: lastDay,
       sector: 'todos',
       profStatus: 'todos',
       search: ''
     };
-    setDateStart('');
-    setDateEnd('');
+    setDateStart(firstDay);
+    setDateEnd(lastDay);
     setSelectedSector('todos');
     setProfStatusFilter('todos');
     setSearchQuery('');
-    setAppliedFilters(clearedFilters);
-    setHasSearched(true);
+    setAppliedFilters(initialFilters);
+    setHasSearched(false);
   };
 
   const profMap = useMemo(() => {
