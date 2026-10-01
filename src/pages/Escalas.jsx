@@ -524,6 +524,8 @@ export default function Escalas() {
   const [selectedDays, setSelectedDays] = useState([]);
   const [traySearch, setTraySearch] = useState('');
   const [traySpecialtyFilter, setTraySpecialtyFilter] = useState('todas');
+  const [scheduleProfessionalSearch, setScheduleProfessionalSearch] = useState('');
+  const [scheduleSpecialtyFilter, setScheduleSpecialtyFilter] = useState('todas');
   const [draggingProfId, setDraggingProfId] = useState(null);
 
   const [liveNow, setLiveNow] = useState(() => new Date());
@@ -1178,18 +1180,47 @@ export default function Escalas() {
     });
   }, [shifts, currentYear, currentMonth, selectedSectorId, filterTurno, startDateFilter]);
 
-  const shiftsByDate = useMemo(() => {
-    const map = {};
-    monthlyShifts.forEach(s => { if (!map[s.date]) map[s.date] = []; map[s.date].push(s); });
-    return map;
-  }, [monthlyShifts]);
+  const scheduleSpecialties = useMemo(() => {
+    const specialties = new Set(
+      monthlyShifts
+        .map(shift => extractSpecialty(shift, professionalMap))
+        .filter(Boolean)
+    );
+    return Array.from(specialties).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [monthlyShifts, professionalMap]);
+
+  const scheduleFilteredShifts = useMemo(() => {
+    if (scheduleSpecialtyFilter === 'todas') return monthlyShifts;
+    const selectedSpecialty = normalize(scheduleSpecialtyFilter);
+    return monthlyShifts.filter(shift =>
+      normalize(extractSpecialty(shift, professionalMap)) === selectedSpecialty
+    );
+  }, [monthlyShifts, scheduleSpecialtyFilter, professionalMap]);
+
+  const scheduleVisibleShifts = useMemo(() => {
+    const searchTerm = normalize(scheduleProfessionalSearch);
+    if (!searchTerm) return scheduleFilteredShifts;
+    return scheduleFilteredShifts.filter(shift => {
+      const professionalName = professionalMap[String(shift.professional_id)]?.name || getShiftName(shift);
+      return normalize(professionalName).includes(searchTerm);
+    });
+  }, [scheduleFilteredShifts, scheduleProfessionalSearch, professionalMap]);
+
+  const shiftsByDate = useMemo(() => {
+    const map = {};
+    scheduleVisibleShifts.forEach(shift => {
+      if (!map[shift.date]) map[shift.date] = [];
+      map[shift.date].push(shift);
+    });
+    return map;
+  }, [scheduleVisibleShifts]);
 
   // Mapa visual da capacidade configurada para cada dia/horário.
   // A chave representa um slot físico da grade: setor + horário + especialidade.
   const vacancyGroupsByDate = useMemo(() => {
     const map = {};
 
-    monthlyShifts.forEach(shift => {
+    scheduleFilteredShifts.forEach(shift => {
       if (!shift?.date) return;
 
       const dateKey = shift.date;
@@ -1232,7 +1263,7 @@ export default function Escalas() {
     });
 
     return result;
-  }, [monthlyShifts, professionalMap]);
+  }, [scheduleFilteredShifts, professionalMap]);
 
   const allActiveProfessionals = useMemo(() => (professionals || []).filter(p => p?.status === 'ativo'), [professionals]);
 
@@ -1300,7 +1331,14 @@ export default function Escalas() {
       targets.push(candidate);
     }
 
-    if (!confirm(`Alocar ${prof.name} em ${targets.length} vaga(s) de ${startTime} às ${endTime}?`)) {
+    const targetSummary = targets.map(target => {
+      const targetSpecialty = extractSpecialty(target);
+      const targetSector = sectorMap[String(target.sector_id)]?.name || 'Setor';
+      return `• ${formatDateBR(target.date)} | ${target.start_time}-${target.end_time} | ${targetSpecialty} | ${targetSector}`;
+    }).join('\n');
+
+    const vacancyCountText = targets.length === 1 ? '1 vaga' : `${targets.length} vagas`;
+    if (!confirm(`Confirme a alocação de ${prof.name}:\n\n${targetSummary}\n\nIsso preencherá ${vacancyCountText}. Deseja continuar?`)) {
       setDraggingProfId(null);
       return;
     }
@@ -1859,8 +1897,62 @@ export default function Escalas() {
       {/* 3. ABA 1: GRADE MENSAL COM BADGE VISUAL DE PUBLICADO                      */}
       {/* ========================================================================= */}
       {activeTab === 'mensal' && (
-        <div className="flex flex-col lg:flex-row gap-4 items-start">
-          {isManager && (
+        <div className="space-y-3">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm print:hidden">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-2.5">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                Filtrar plantões da grade
+              </div>
+              <div className="text-[10px] text-slate-400">
+                O setor é controlado pelo filtro geral acima. As vagas abertas continuam visíveis ao buscar um profissional.
+              </div>
+            </div>
+            <div className="relative w-full lg:w-64 shrink-0">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input
+                placeholder="Buscar profissional na escala..."
+                value={scheduleProfessionalSearch}
+                onChange={e => setScheduleProfessionalSearch(e.target.value)}
+                className="pl-8 h-9 text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl"
+                aria-label="Buscar profissional na escala"
+              />
+            </div>
+            <Select value={scheduleSpecialtyFilter} onValueChange={setScheduleSpecialtyFilter}>
+              <SelectTrigger className="w-full lg:w-56 h-9 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl">
+                <SelectValue placeholder="Todas as especialidades" />
+              </SelectTrigger>
+              <SelectContent className="bg-white dark:bg-slate-900 z-[99999]">
+                <SelectItem value="todas">Todas as especialidades</SelectItem>
+                {scheduleSpecialties.map(specialty => (
+                  <SelectItem key={specialty} value={specialty}>{specialty}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {(scheduleProfessionalSearch || scheduleSpecialtyFilter !== 'todas') && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setScheduleProfessionalSearch('');
+                  setScheduleSpecialtyFilter('todas');
+                }}
+                className="h-9 px-3 text-xs font-bold rounded-xl shrink-0"
+              >
+                <X className="w-3.5 h-3.5 mr-1" /> Limpar
+              </Button>
+            )}
+          </div>
+          {(scheduleProfessionalSearch || scheduleSpecialtyFilter !== 'todas') && (
+            <div className="mt-2 text-[10px] font-semibold text-sky-700 dark:text-sky-300" role="status" aria-live="polite">
+              {scheduleVisibleShifts.length} plantão(ões) encontrado(s) na grade
+              {scheduleProfessionalSearch && ' • vagas abertas continuam no mapa para facilitar a alocação'}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-4 items-start">
+          {isManager && (
             <aside className={`transition-all duration-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3 roll-professionals ${trayCollapsed ? 'w-full lg:w-14 p-2.5 items-center' : 'w-full lg:w-72'}`}>
               <div className="flex items-center justify-between">
                 {!trayCollapsed && (
@@ -1927,6 +2019,11 @@ export default function Escalas() {
                 const manha = dayShifts.filter(s => { const h = parseInt((s.start_time || '07:00').split(':')[0]); return h >= 6 && h < 13; });
                 const tarde = dayShifts.filter(s => { const h = parseInt((s.start_time || '07:00').split(':')[0]); return h >= 13 && h < 18; });
                 const noite = dayShifts.filter(s => { const h = parseInt((s.start_time || '07:00').split(':')[0]); return h >= 18 || h < 6; });
+                const dayVacancyGroups = vacancyGroupsByDate[dateStr] || [];
+                const dayVacantCount = dayVacancyGroups.reduce((sum, group) => sum + group.vacant, 0);
+                const hasOverdueVacancy = dayVacancyGroups.some(group =>
+                  group.shifts.some(shift => isVacant(shift) && isShiftPast(shift, liveNow))
+                );
 
                 const renderCard = (shift) => {
                   const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
@@ -1979,11 +2076,11 @@ export default function Escalas() {
                       </div>
 
                       {isDatePublished ? (
-                        <span title="Escala oficializada e publicada para esta data" className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-600 text-white flex items-center gap-0.5">
-                          <Check className="w-2.5 h-2.5" /> Publicado
+<span title="Escala oficializada e publicada para esta data" className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-600 text-white flex items-center gap-0.5 ring-1 ring-white/40">
+<CheckCheck className="w-2.5 h-2.5" /> Publicada
                         </span>
                       ) : (
-                        <span title="Escala em modo rascunho" className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">
+<span title="Rascunho: alterações ainda não foram publicadas" className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 ring-1 ring-amber-300/70 dark:ring-amber-500/40">
                           Rascunho
                         </span>
                       )}
@@ -1995,12 +2092,14 @@ export default function Escalas() {
                             <Target className="w-3 h-3" /> Mapa de Vagas
                           </span>
                           <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-300">
-                            {(vacancyGroupsByDate[dateStr] || []).reduce((sum, g) => sum + g.vacant, 0)} em aberto
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 ${dayVacantCount ? (hasOverdueVacancy ? 'bg-rose-600 text-white' : 'bg-amber-500 text-white') : 'bg-emerald-600 text-white'}`}>
+                              {dayVacantCount} {dayVacantCount === 1 ? 'vaga aberta' : 'vagas abertas'}
+                            </span>
                           </span>
                         </div>
 
                         <div className="space-y-1">
-                          {(vacancyGroupsByDate[dateStr] || []).map(group => {
+                          {dayVacancyGroups.map(group => {
                             const sectorName = sectorMap[String(group.sector_id)]?.name;
                             const isOpen = group.vacant > 0;
                             return (
@@ -2030,7 +2129,7 @@ export default function Escalas() {
                                 }}
                                 className={`rounded-lg border px-2 py-1.5 transition-all ${
                                   isOpen
-                                    ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 hover:border-amber-500 cursor-pointer'
+                                    ? `border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 hover:border-amber-500 cursor-pointer ${draggingProfId ? 'ring-2 ring-sky-500 ring-offset-1 shadow-md' : ''}`
                                     : 'border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/70 dark:bg-emerald-950/20'
                                 }`}
                                 title={isOpen ? 'Arraste um profissional para este horário ou clique para alocar' : 'Horário completamente preenchido'}
@@ -2074,7 +2173,7 @@ export default function Escalas() {
                         <div className="space-y-1">
                           <span className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200 block">☀️ Manhã</span>
                           {manha.map(renderCard)}
-                        </div>
+        </div>
                       )}
                       {tarde.length > 0 && (
                         <div className="space-y-1">
@@ -2095,7 +2194,8 @@ export default function Escalas() {
             </div>
           </div>
         </div>
-      )}
+</div>
+)}
 
       {/* ========================================================================= */}
       {/* 4. ABA 2: PLANTÃO DO DIA (RESTAURADA E OPERACIONAL)                       */}
