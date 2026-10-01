@@ -123,6 +123,8 @@ export default function Relatorios() {
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
 
+  const currentYear = today.getFullYear(); // ADICIONADO AQUI NO TOPO
+
   const [dateStart, setDateStart] = useState(firstDay);
   const [dateEnd, setDateEnd] = useState(lastDay);
   const [selectedSector, setSelectedSector] = useState('todos');
@@ -164,7 +166,6 @@ export default function Relatorios() {
     return profMap[String(shift.professional_id)] || profMap[normalize(getShiftName(shift))];
   }, [profMap]);
 
-  // Filtragem flexível com ORDENAÇÃO CRESCENTE DE DATA/HORA
   const filteredShifts = useMemo(() => {
     if (!hasSearched) return [];
     const term = normalize(appliedFilters.search);
@@ -224,19 +225,13 @@ export default function Relatorios() {
     }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }, [professionals, appliedFilters, hasSearched]);
 
-  // ==========================================
-  // FILTRO INTELIGENTE DE ANIVERSARIANTES
-  // ==========================================
   const birthDaysList = useMemo(() => {
     if (!hasSearched || !appliedFilters.start || !appliedFilters.end) return [];
     
     const startObj = new Date(appliedFilters.start + 'T12:00:00');
     const endObj = new Date(appliedFilters.end + 'T12:00:00');
-    const filterMonthStart = startObj.getMonth() + 1; // 1 a 12
-    const filterMonthEnd = endObj.getMonth() + 1;
+    const filterMonthStart = startObj.getMonth() + 1;
     
-    // Suportar seleção de meses, se o usuário selecionou apenas um mês (ex: 01/09 a 30/09)
-    // Se o filtro for muito abrangente, pegamos do mês de início
     const targetMonthStr = String(filterMonthStart).padStart(2, '0');
 
     return filteredProfessionals.filter(p => {
@@ -247,7 +242,6 @@ export default function Relatorios() {
       if (parts.length !== 3) return false;
       const bMonth = parts[1];
       
-      // Checa se o mês do aniversário cai dentro do filtro selecionado
       return bMonth === targetMonthStr;
     }).map(p => {
       const parts = (p.birth_date || p.birthDate || p.data_nascimento).split('-');
@@ -261,7 +255,7 @@ export default function Relatorios() {
         birthDateFormatted: `${parts[2]}/${parts[1]}`,
         ageTurns: currentAge
       };
-    }).sort((a, b) => a.birthDayNum - b.birthDayNum); // Ordena cronologicamente pelos dias do mês
+    }).sort((a, b) => a.birthDayNum - b.birthDayNum); 
   }, [filteredProfessionals, appliedFilters, currentYear, hasSearched]);
 
   const { totalShiftsCount, filledShiftsCount, vacantShiftsCount, vacantShiftItems } = useMemo(() => {
@@ -664,8 +658,7 @@ export default function Relatorios() {
       </html>
     `;
 
-    // Novo motor Blob super resistente
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -1142,7 +1135,7 @@ export default function Relatorios() {
               { id: 'escalas', label: 'Extrato de Plantões', icon: CalendarDays },
               { id: 'base_setores', label: 'Estrutura de Setores', icon: Building2 },
               { id: 'base_profissionais', label: 'Base de Profissionais', icon: Contact2 },
-              { id: 'aniversariantes', label: 'Aniversariantes do Mês', icon: Gift }, // NOVA ABA AQUI
+              { id: 'aniversariantes', label: 'Aniversariantes do Mês', icon: Gift }, 
               { id: 'profissionais', label: 'Produtividade Médica', icon: Users },
               { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
             ].map(tab => {
@@ -1269,7 +1262,7 @@ export default function Relatorios() {
 
                         if (isVago) {
                           if (isPast) {
-                            profNameRender = <span className="text-rose-600 dark:text-rose-500">⚠️️ FALTA / NÃO OCUPADO</span>;
+                            profNameRender = <span className="text-rose-600 dark:text-rose-500">⚠️ FALTA / NÃO OCUPADO</span>;
                             badgeClass = 'bg-rose-100 dark:bg-rose-500/20 text-rose-800 dark:text-rose-500 border-rose-200 dark:border-rose-500/50';
                             badgeText = 'Furo de Escala';
                           } else {
