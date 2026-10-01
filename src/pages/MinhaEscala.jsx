@@ -22,15 +22,30 @@ function formatCurrency(val) {
 
 function formatDateBR(dateStr) {
   if (!dateStr) return '—';
-  const parts = String(dateStr).trim().split('-');
+  const parts = String(dateStr).trim().split('T')[0].split('-');
   return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(dateStr);
 }
 
-function getLocalDateString(d = new Date()) {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+function getShiftDateTime(date, time) {
+  const [year, month, day] = String(date || '').split('T')[0].split('-').map(Number);
+  const [hour = 0, minute = 0] = String(time || '00:00').split(':').map(Number);
+  return new Date(year, month - 1, day, hour, minute);
+}
+
+function getShiftBoundaries(shift) {
+  const start = getShiftDateTime(shift.date, shift.start_time || '07:00');
+  const end = getShiftDateTime(shift.date, shift.end_time || '19:00');
+  if (end <= start) end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+function hasValidCoordinates(unit) {
+  if (!unit || unit.lat === null || unit.lat === undefined || unit.lat === '' ||
+      unit.lng === null || unit.lng === undefined || unit.lng === '') return false;
+  const lat = Number(unit.lat);
+  const lng = Number(unit.lng);
+  return Number.isFinite(lat) && Number.isFinite(lng) &&
+    lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 }
 
 // CÁLCULO DE DISTÂNCIA ENTRE DUAS COORDENADAS (Fórmula de Haversine em metros)
@@ -78,11 +93,10 @@ export default function MinhaEscala() {
   const [loading, setLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [now, setNow] = useState(() => new Date());
-  const [showPastShifts, setShowPastShifts] = useState(true);
+  const [showPastShifts, setShowPastShifts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Estados para Geolocalização do Aparelho
-  const [userLocation, setUserLocation] = useState(null);
   const [locationError, setLocationError] = useState('');
 
   useEffect(() => {
@@ -96,8 +110,6 @@ export default function MinhaEscala() {
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
-  const todayStr = useMemo(() => getLocalDateString(now), [now]);
-
   const currentProfessional = useMemo(() => {
     return (professionals || []).find(p => 
       String(p.id) === String(myProfId) || 
@@ -159,7 +171,6 @@ export default function MinhaEscala() {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          setUserLocation(coords);
           setLocationError('');
           resolve(coords);
         },
@@ -188,41 +199,35 @@ export default function MinhaEscala() {
 
   // AÇÃO DE PONTO: VALIDA TEMPO (15m MÁX) E ESPAÇO (GEOFENCE 100m)
   const handleCheckAction = async (shift, actionType) => {
-    const nowTotalMin = now.getHours() * 60 + now.getMinutes();
-    
-    const [sH, sM] = (shift.start_time || '07:00').split(':').map(Number);
-    const [eH, eM] = (shift.end_time || '19:00').split(':').map(Number);
-    
-    const startMinObj = sH * 60 + sM;
-    let endMinObj = eH * 60 + eM;
-    if (endMinObj <= startMinObj) endMinObj += 24 * 60; 
+    setLocationError('');
+    const { start, end } = getShiftBoundaries(shift);
+    const target = actionType === 'in' ? start : end;
+    const diffToTarget = now.getTime() - target.getTime();
+    const limitMs = 15 * 60 * 1000;
 
-    let targetTime = actionType === 'in' ? startMinObj : endMinObj;
-    let effNow = nowTotalMin;
-    
-    if (endMinObj > 24 * 60 && nowTotalMin < startMinObj) effNow += 24 * 60;
-
-    const limitMinutes = 15;
-    const diffToTarget = effNow - targetTime;
-
-    if (diffToTarget < -limitMinutes) {
+    if (diffToTarget < -limitMs) {
       alert(`Bloqueado: O ${actionType === 'in' ? 'Check-in' : 'Check-out'} só é liberado 15 minutos ANTES do horário.`);
       return;
     }
-    if (diffToTarget > limitMinutes) {
+    if (diffToTarget > limitMs) {
       alert(`Bloqueado: O limite de tolerância para ${actionType === 'in' ? 'Check-in' : 'Check-out'} de 15 minutos já estourou. Fale com a gestão para um ajuste retroativo.`);
+      return;
+    }
+
+    const unitObj = (units || []).find(u => String(u.id) === String(shift.unit_id));
+    const unitLat = Number(unitObj?.lat);
+    const unitLng = Number(unitObj?.lng);
+    if (!hasValidCoordinates(unitObj)) {
+      setLocationError('Ponto indisponível: as coordenadas desta unidade não estão cadastradas ou são inválidas.');
+      alert('Não é possível registrar o ponto porque as coordenadas desta unidade não estão cadastradas ou são inválidas. Avise a gestão.');
       return;
     }
 
     const loc = await requestLocation();
     if (!loc) {
-      alert(`GPS não encontrado: ${locationError || 'Por favor, ative a localização do seu celular para bater o ponto.'}`);
+      alert('GPS não encontrado. Ative a localização do dispositivo e permita o acesso no navegador para registrar o ponto.');
       return;
     }
-
-    const unitObj = (units || []).find(u => String(u.id) === String(shift.unit_id));
-    const unitLat = unitObj?.lat || -22.9068; // Exemplo Default
-    const unitLng = unitObj?.lng || -43.1729; 
 
     const distanceInMeters = getDistanceInMeters(loc.lat, loc.lng, unitLat, unitLng);
     
@@ -244,57 +249,33 @@ export default function MinhaEscala() {
   };
 
   const enrichedShifts = useMemo(() => {
-    const nowHour = now.getHours();
-    const nowMin = now.getMinutes();
-    const nowTotalMin = nowHour * 60 + nowMin;
-
     const list = (shifts || []).map(s => {
-      const [startH, startM] = (s.start_time || '07:00').split(':').map(Number);
-      const [endH, endM] = (s.end_time || '19:00').split(':').map(Number);
-      const startMin = (startH || 7) * 60 + (startM || 0);
-      let endMin = (endH || 19) * 60 + (endM || 0);
-      if (endMin <= startMin) endMin += 24 * 60;
-
-      let effNow = nowTotalMin;
-      if (endMin > 24 * 60 && nowTotalMin < startMin) effNow += 24 * 60;
-
-      const sDate = (s.date || '').split('T')[0];
-      const isPastDay = sDate < todayStr;
-      const isToday = sDate === todayStr;
+      const { start: startDateTime, end: endDateTime } = getShiftBoundaries(s);
+      const nowMs = now.getTime();
 
       const notesStr = String(s.notes || '');
       const isPendingApproval = s.status === 'aguardando_aprovacao_gestor' || notesStr.includes('[AGUARDANDO_GESTOR]');
 
-      let state = 'programado';
+      let state = nowMs < startDateTime.getTime() ? 'programado' : 'concluido';
       let timeLeftDesc = '';
+      const startDiffMs = startDateTime.getTime() - nowMs;
+      const endDiffMs = endDateTime.getTime() - nowMs;
 
-      const startDateTime = new Date(`${sDate}T${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}:00`);
-      const diffMs = startDateTime.getTime() - now.getTime();
-      const countdownDiffMinutes = Math.round(diffMs / 60000);
-
-      if (isPastDay) {
-        state = 'concluido';
-      } else if (isToday) {
-        if (effNow >= startMin && effNow < endMin) {
-          state = 'ativo';
-          const left = endMin - effNow;
-          timeLeftDesc = `Resta ${Math.floor(left / 60)}h ${left % 60}m`;
-        } else if (effNow >= endMin) {
-          state = 'concluido';
-        } else {
-          state = 'programado';
-          const toStart = startMin - effNow;
-          timeLeftDesc = `Inicia em ${Math.floor(toStart / 60)}h ${toStart % 60}m`;
-        }
-      } else {
-        state = 'programado';
+      if (startDiffMs <= 0 && endDiffMs > 0) {
+        state = 'ativo';
+        const left = Math.ceil(endDiffMs / 60000);
+        timeLeftDesc = `Resta ${Math.floor(left / 60)}h ${left % 60}m`;
+      } else if (startDiffMs > 0) {
+        const countdownDiffMinutes = Math.ceil(startDiffMs / 60000);
         const days = Math.floor(countdownDiffMinutes / 1440);
         const hours = Math.floor((countdownDiffMinutes % 1440) / 60);
         timeLeftDesc = days > 0 ? `Inicia em ${days}d e ${hours}h` : `Inicia em ${hours}h`;
+      } else {
+        state = 'concluido';
       }
 
-      let duration = (endH - startH) + (endM - startM) / 60;
-      if (duration <= 0) duration += 24;
+      let duration = (endDateTime.getTime() - startDateTime.getTime()) / 3600000;
+      duration = Math.round(duration * 10) / 10;
 
       const sectorName = s.sector_name || sectorMap[s.sector_id]?.name || 'Setor Hospitalar';
       const unitObj = (units || []).find(u => String(u.id) === String(s.unit_id));
@@ -302,6 +283,10 @@ export default function MinhaEscala() {
 
       const checkinMatch = notesStr.match(/\[CHECKIN:([^\]]+)\]/);
       const checkoutMatch = notesStr.match(/\[CHECKOUT:([^\]]+)\]/);
+      const checkinTime = checkinMatch ? checkinMatch[1] : null;
+      const checkoutTime = checkoutMatch ? checkoutMatch[1] : null;
+      const checkinDiff = nowMs - startDateTime.getTime();
+      const checkoutDiff = nowMs - endDateTime.getTime();
 
       return {
         ...s,
@@ -309,40 +294,55 @@ export default function MinhaEscala() {
         unitName,
         state,
         isPendingApproval,
-        duration: Math.round(duration * 10) / 10,
+        duration,
         timeLeftDesc,
         startDateTime,
-        startMin,
-        endMin,
+        endDateTime,
         shiftValue: getShiftValue(s),
-        checkinTime: checkinMatch ? checkinMatch[1] : null,
-        checkoutTime: checkoutMatch ? checkoutMatch[1] : null
+        checkinTime,
+        checkoutTime,
+        canCheckIn: !checkinTime && checkinDiff >= -900000 && checkinDiff <= 900000,
+        canCheckOut: !!checkinTime && !checkoutTime && checkoutDiff >= -900000 && checkoutDiff <= 900000
       };
     });
 
     return list.map(item => {
       const hasConflict = list.some(other => {
         if (other.id === item.id) return false;
-        if (other.date !== item.date) return false;
         if (other.status === 'cancelado' || other.status === 'vago') return false;
-        return Math.max(item.startMin, other.startMin) < Math.min(item.endMin, other.endMin);
+        return Math.max(item.startDateTime.getTime(), other.startDateTime.getTime()) <
+          Math.min(item.endDateTime.getTime(), other.endDateTime.getTime());
       });
       return { ...item, hasConflict };
     });
-  }, [shifts, now, todayStr, sectorMap, units, company, getShiftValue]);
+  }, [shifts, now, sectorMap, units, company, getShiftValue]);
 
   const conflictingShiftsCount = useMemo(() => enrichedShifts.filter(s => s.hasConflict).length, [enrichedShifts]);
   
   const activeShiftNow = useMemo(() => {
-    const todayShifts = enrichedShifts.filter(s => (s.date || '').split('T')[0] === todayStr);
-    return todayShifts.find(s => s.state === 'ativo') || todayShifts.sort((a, b) => a.startDateTime.getTime() - b.startDateTime.getTime())[0] || null;
-  }, [enrichedShifts, todayStr]);
+    return enrichedShifts
+      .filter(s => s.state === 'ativo')
+      .sort((a, b) => a.endDateTime.getTime() - b.endDateTime.getTime())[0] || null;
+  }, [enrichedShifts]);
 
   const nextHighlightedShift = useMemo(() => {
     const upcoming = enrichedShifts.filter(s => s.state === 'programado' && s.id !== activeShiftNow?.id);
     if (upcoming.length === 0) return null;
     return upcoming.sort((a, b) => a.startDateTime.getTime() - b.startDateTime.getTime())[0];
   }, [enrichedShifts, activeShiftNow]);
+
+  const pendingCheckoutShift = useMemo(() => enrichedShifts
+    .filter(s => s.checkinTime && !s.checkoutTime &&
+      now.getTime() >= s.startDateTime.getTime() - 900000 &&
+      now.getTime() <= s.endDateTime.getTime() + 900000)
+    .sort((a, b) => b.startDateTime.getTime() - a.startDateTime.getTime())[0] || null,
+  [enrichedShifts, now]);
+
+  const featuredShift = activeShiftNow || pendingCheckoutShift || nextHighlightedShift;
+  const featuredShiftUnit = featuredShift
+    ? (units || []).find(u => String(u.id) === String(featuredShift.unit_id))
+    : null;
+  const featuredShiftHasCoordinates = hasValidCoordinates(featuredShiftUnit);
 
   const monthShifts = useMemo(() => enrichedShifts.filter(s => (s.date || '').startsWith(monthPrefix)), [enrichedShifts, monthPrefix]);
 
@@ -527,7 +527,7 @@ export default function MinhaEscala() {
             Olá, Dr(a). {currentProfessional?.name ? currentProfessional.name.split(' ')[0] : user?.full_name?.split(' ')[0] || 'Profissional'}!
           </h1>
           <p className="text-xs md:text-sm text-slate-300 font-medium">
-            Sua escala inteligente com Geofencing de Check-in/out e matriz de valores apurados.
+            Consulte seus plantões, acompanhe horários e, se desejar, registre check-in e check-out.
           </p>
         </div>
 
@@ -567,56 +567,90 @@ export default function MinhaEscala() {
       )}
 
       {/* CARD DE PLANTÃO DO DIA COM GEOFENCING E LOCK DE TEMPO */}
-      {activeShiftNow && (
-        <div className="p-6 rounded-3xl bg-emerald-500/10 border-2 border-emerald-500/60 shadow-xl text-emerald-950 dark:text-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+      {featuredShift && (
+        <div className={`p-5 md:p-6 rounded-3xl border-2 shadow-lg text-slate-950 dark:text-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in ${
+          featuredShift.state === 'ativo'
+            ? 'bg-emerald-500/10 border-emerald-500/60'
+            : featuredShift === pendingCheckoutShift
+            ? 'bg-amber-500/10 border-amber-500/50'
+            : 'bg-sky-500/10 border-sky-500/50'
+        }`}>
           <div className="flex items-center gap-4">
-            <div className={`p-3.5 rounded-2xl text-white font-bold shadow-md shrink-0 ${activeShiftNow.state === 'ativo' ? 'bg-emerald-600 animate-pulse' : 'bg-sky-600'}`}>
-              {activeShiftNow.state === 'ativo' ? <Radio className="w-7 h-7" /> : <Timer className="w-7 h-7" />}
+            <div className={`p-3 rounded-2xl text-white font-bold shadow-md shrink-0 ${
+              featuredShift.state === 'ativo' ? 'bg-emerald-600' : featuredShift === pendingCheckoutShift ? 'bg-amber-600' : 'bg-sky-600'
+            }`}>
+              {featuredShift.state === 'ativo' ? <Radio className="w-6 h-6" /> : <Timer className="w-6 h-6" />}
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className={`text-xs font-black uppercase px-3 py-1 rounded-full text-white tracking-wider ${activeShiftNow.state === 'ativo' ? 'bg-emerald-600' : 'bg-sky-600'}`}>
-                  {activeShiftNow.state === 'ativo' ? '● Plantão em Andamento' : 'Plantão de Hoje'}
+                <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full text-white tracking-wider ${
+                  featuredShift.state === 'ativo' ? 'bg-emerald-600' : featuredShift === pendingCheckoutShift ? 'bg-amber-600' : 'bg-sky-600'
+                }`}>
+                  {featuredShift.state === 'ativo'
+                    ? 'Plantão em andamento'
+                    : featuredShift === pendingCheckoutShift
+                    ? 'Check-out disponível'
+                    : 'Próximo plantão'}
                 </span>
-                <span className={`font-mono text-xs font-bold ${activeShiftNow.state === 'ativo' ? 'text-emerald-600 dark:text-emerald-400' : 'text-sky-600 dark:text-sky-400'}`}>
-                  {activeShiftNow.timeLeftDesc}
+                <span className="font-mono text-xs font-bold text-slate-600 dark:text-slate-300">
+                  {featuredShift.timeLeftDesc || (featuredShift === pendingCheckoutShift ? 'Janela de check-out' : '')}
                 </span>
               </div>
-              <h3 className="text-xl font-black text-slate-900 dark:text-white mt-1.5 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                <span className={activeShiftNow.state === 'ativo' ? 'text-emerald-600 dark:text-emerald-400' : 'text-sky-600 dark:text-sky-400'}>🏥 {activeShiftNow.unitName}</span>
-                <span className="hidden sm:inline">•</span>
-                <span>{activeShiftNow.sectorName}</span>
-                <span className="hidden sm:inline">•</span>
-                <span className="text-sm opacity-80">{activeShiftNow.start_time} às {activeShiftNow.end_time}</span>
+              <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="text-sky-700 dark:text-sky-300">🏥 {featuredShift.unitName}</span>
+                <span className="text-slate-400">·</span>
+                <span>{featuredShift.sectorName}</span>
+                <span className="text-slate-400">·</span>
+                <span className="text-sm font-bold">{formatDateBR(featuredShift.date)} · {featuredShift.start_time}–{featuredShift.end_time}</span>
               </h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold mt-0.5 flex items-center gap-1">
-                <MapPin className="w-3 h-3"/> O ponto requer proximidade física (GPS &lt; 100m) e tolerância de 15 min.
+              <p className={`text-[11px] font-semibold mt-1 flex items-center gap-1 ${
+                featuredShiftHasCoordinates ? 'text-slate-500 dark:text-slate-400' : 'text-amber-700 dark:text-amber-300'
+              }`}>
+                <MapPin className="w-3 h-3 shrink-0" />
+                {featuredShiftHasCoordinates
+                  ? 'Ponto opcional: GPS a até 100 m, disponível 15 min antes/depois do horário.'
+                    : 'Ponto indisponível: coordenadas da unidade ausentes ou inválidas.'}
               </p>
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 shrink-0">
-            {locationError && <span className="text-[9px] text-rose-500 font-bold block max-w-[150px] text-right leading-tight mb-1">{locationError}</span>}
+          <div className="flex flex-col sm:min-w-44 gap-2 shrink-0">
+            {locationError && <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold leading-tight">{locationError}</span>}
             <Button 
-              onClick={() => handleCheckAction(activeShiftNow, 'in')} 
-              disabled={!!activeShiftNow.checkinTime}
-              className={`h-10 text-xs font-black rounded-xl gap-2 cursor-pointer ${activeShiftNow.checkinTime ? 'bg-slate-200 text-slate-500 dark:bg-slate-800' : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'}`}
+              onClick={() => handleCheckAction(featuredShift, 'in')}
+              disabled={!featuredShift.canCheckIn || !featuredShiftHasCoordinates}
+              className={`h-10 text-xs font-black rounded-xl gap-2 ${
+                featuredShift.canCheckIn && featuredShiftHasCoordinates
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md cursor-pointer'
+                  : 'bg-slate-200 text-slate-500 dark:bg-slate-800 cursor-not-allowed'
+              }`}
             >
-              <LogIn className="w-4 h-4" /> {activeShiftNow.checkinTime ? `Check-in: ${activeShiftNow.checkinTime}` : 'Fazer Check-in'}
+              <LogIn className="w-4 h-4" />
+              {featuredShift.checkinTime ? `Check-in · ${featuredShift.checkinTime}` : 'Fazer check-in'}
             </Button>
             <Button 
-              onClick={() => handleCheckAction(activeShiftNow, 'out')} 
-              disabled={!!activeShiftNow.checkoutTime || !activeShiftNow.checkinTime}
-              className={`h-10 text-xs font-black rounded-xl gap-2 cursor-pointer ${activeShiftNow.checkoutTime ? 'bg-slate-200 text-slate-500 dark:bg-slate-800' : 'bg-rose-600 hover:bg-rose-500 text-white shadow-md'}`}
+              onClick={() => handleCheckAction(featuredShift, 'out')}
+              disabled={!featuredShift.canCheckOut || !featuredShiftHasCoordinates}
+              className={`h-10 text-xs font-black rounded-xl gap-2 ${
+                featuredShift.canCheckOut && featuredShiftHasCoordinates
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-md cursor-pointer'
+                  : 'bg-slate-200 text-slate-500 dark:bg-slate-800 cursor-not-allowed'
+              }`}
             >
-              <LogOut className="w-4 h-4" /> {activeShiftNow.checkoutTime ? `Check-out: ${activeShiftNow.checkoutTime}` : 'Fazer Check-out'}
+              <LogOut className="w-4 h-4" />
+              {featuredShift.checkoutTime ? `Check-out · ${featuredShift.checkoutTime}` : 'Fazer check-out'}
             </Button>
+            <span className="text-[9px] text-slate-500 dark:text-slate-400 text-center">
+              {featuredShift.canCheckIn || featuredShift.canCheckOut
+                ? 'Ação voluntária, sem bloquear o plantão.'
+                : 'Check-in/out libera até 15 min antes ou depois.'}
+            </span>
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-black uppercase tracking-wider text-slate-400">Plantões Cumpridos</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -627,7 +661,7 @@ export default function MinhaEscala() {
           <p className="text-[11px] text-slate-500 mt-1 font-semibold">{monthMetrics.horas}h totais em {MONTH_NAMES[currentMonth]}</p>
         </Card>
 
-        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+        <Card className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-black uppercase tracking-wider text-slate-400">Repasse Apurado</span>
             <DollarSign className="w-4 h-4 text-emerald-600" />
@@ -638,7 +672,7 @@ export default function MinhaEscala() {
           <p className="text-[11px] text-slate-500 mt-1 font-semibold">Base de cálculo até hoje</p>
         </Card>
 
-        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+        <Card className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-black uppercase tracking-wider text-slate-400">Próximos Plantões</span>
             <CalendarCheck className="w-4 h-4 text-indigo-600" />
@@ -685,6 +719,7 @@ export default function MinhaEscala() {
               const isAtivo = shift.state === 'ativo';
               const isPending = shift.isPendingApproval;
               const hasConflict = shift.hasConflict;
+              const isNext = shift.id === nextHighlightedShift?.id;
 
               return (
                 <div 
@@ -696,6 +731,8 @@ export default function MinhaEscala() {
                       ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-md ring-1 ring-emerald-500/40' 
                       : isPending
                       ? 'border-amber-300 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/20'
+                      : isNext
+                      ? 'border-indigo-400 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 shadow-sm ring-1 ring-indigo-300/50'
                       : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:border-sky-400'
                   }`}
                 >
@@ -721,9 +758,11 @@ export default function MinhaEscala() {
                             ? 'bg-emerald-600 text-white animate-pulse' 
                             : isPending
                             ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                            : isNext
+                            ? 'bg-indigo-600 text-white'
                             : 'bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300'
                         }`}>
-                          {isAtivo ? '● Ao Vivo' : isPending ? '⏳ Em Análise' : 'Programado'}
+                          {isAtivo ? '● Ao Vivo' : isPending ? '⏳ Em Análise' : isNext ? 'Próximo plantão' : 'Programado'}
                         </span>
                       </div>
                     </div>
@@ -769,6 +808,13 @@ export default function MinhaEscala() {
                 </div>
               );
             })}
+            {upcomingMonthShifts.length === 0 && (
+              <div className="md:col-span-2 lg:col-span-3 py-10 text-center rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
+                <CalendarCheck className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+                <p className="text-sm font-bold text-slate-600 dark:text-slate-300">Nenhum plantão futuro nesta competência</p>
+                <p className="text-xs text-slate-500 mt-1">Use as setas para consultar outros meses. O próximo plantão, quando houver, aparece em destaque acima.</p>
+              </div>
+            )}
           </div>
         )}
       </div>
