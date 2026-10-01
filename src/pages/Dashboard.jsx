@@ -141,10 +141,14 @@ export default function Painel() {
     return { profById: byId, profByName: byName };
   }, [professionals]);
 
+  // CORREÇÃO: Filtragem EXATA dos plantões da unidade
+  const unitShifts = useMemo(() => {
+    return (shifts || []).filter(s => String(s.unit_id) === String(unitId) && s.status !== 'cancelado');
+  }, [shifts, unitId]);
+
   const todayShifts = useMemo(() => {
-    return (shifts || [])
+    return unitShifts
       .filter((s) => {
-        if (!s || s.status === 'cancelado') return false;
         const sDate = (s.date || '').split('T')[0];
         const status = computeShiftLiveStatus(s, currentTime);
         return sDate === todayStr || status.isLive;
@@ -157,26 +161,28 @@ export default function Painel() {
         const order = { active: 0, upcoming: 1, concluded: 2 };
         return (order[a.lifecycle.state] ?? 99) - (order[b.lifecycle.state] ?? 99);
       });
-  }, [shifts, todayStr, currentTime]);
+  }, [unitShifts, todayStr, currentTime]);
 
   const activeNowList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'active'), [todayShifts]);
   const upcomingList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'upcoming'), [todayShifts]);
   const concludedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'concluded'), [todayShifts]);
 
+  // CORREÇÃO: Pega Vagas abertas do dia, furos e vagas futuras próximas
   const vacantShifts = useMemo(() => {
-    return (shifts || [])
+    return unitShifts
       .filter((s) => {
         const sDate = (s.date || '').split('T')[0];
-        const isTargetDay = sDate === todayStr || sDate === getLocalDateString(new Date(currentTime.getTime() + 86400000));
+        // Checa se a data é hoje, amanhã ou se o plantão já passou (furo do dia)
+        const isTargetDay = sDate <= todayStr || sDate === getLocalDateString(new Date(currentTime.getTime() + 86400000));
         const isVago = !s.professional_id || s.status === 'vago' || (s.professional_name || '').toLowerCase().includes('vaga');
-        return isTargetDay && isVago && s.status !== 'cancelado';
+        return isTargetDay && isVago;
       })
       .map(s => ({ 
         ...s, 
         sectorName: toTitleCase(s.sector_name || sectors.find(sec => String(sec.id) === String(s.sector_id))?.name || 'Setor Geral'), 
         formattedDate: fmtDate(s.date) 
       }));
-  }, [shifts, todayStr, currentTime, sectors]);
+  }, [unitShifts, todayStr, currentTime, sectors]);
 
   const todayFinancials = useMemo(() => {
     let executedValue = 0; let plannedValue = 0;
@@ -236,10 +242,17 @@ export default function Painel() {
     return { targetTime: nextStart, incoming, outgoing };
   }, [upcomingList, activeNowList]);
 
+  // CORREÇÃO: Cruzamento real! Desconta os furos (vagas de hoje) do total de plantões programados
   const globalFillRate = useMemo(() => {
     if (todayShifts.length === 0) return 100;
-    const filled = todayShifts.length - vacantShifts.filter(v => v.date === todayStr).length;
-    return Math.max(0, Math.min(100, Math.round((filled / todayShifts.length) * 100)));
+    const vacantTodayCount = vacantShifts.filter(v => v.date === todayStr).length;
+    const totalProgrammedToday = todayShifts.length;
+    
+    if (vacantTodayCount === 0) return 100;
+    
+    // Se tem vaga, tira 100%
+    const filled = Math.max(0, totalProgrammedToday - vacantTodayCount);
+    return Math.round((filled / totalProgrammedToday) * 100);
   }, [todayShifts, vacantShifts, todayStr]);
 
   const hourlyCurveData = useMemo(() => {
@@ -417,8 +430,8 @@ export default function Painel() {
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0 font-bold shadow-md animate-bounce"><Flame className="w-5 h-5" /></div>
               <div>
-                <strong className="text-sm font-black flex items-center gap-2">Alerta Crítico: {vacantShifts.length} vaga(s) sem plantonista hoje/amanhã</strong>
-                <span className="text-xs text-rose-700 dark:text-rose-300">Clique na vaga abaixo para abrir a escala e preencher imediatamente:</span>
+                <strong className="text-sm font-black flex items-center gap-2">Alerta Crítico: {vacantShifts.length} vaga(s) com desfalque no momento</strong>
+                <span className="text-xs text-rose-700 dark:text-rose-300">A ocupação geral não atingiu 100%. Clique na vaga abaixo para preencher:</span>
               </div>
             </div>
           </div>
