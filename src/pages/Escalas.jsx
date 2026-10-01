@@ -270,6 +270,26 @@ export default function Escalas() {
   const [filterTurno, setFilterTurno] = useState('todos'); 
   const [startDateFilter, setStartDateFilter] = useState('');
 
+const openTvMode = async () => {
+  setActiveTab('tv');
+  if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+  try {
+    await document.documentElement.requestFullscreen();
+  } catch (error) {
+    console.warn('Não foi possível ativar a tela cheia do navegador para o modo TV:', error);
+  }
+};
+
+const closeTvMode = async () => {
+  setActiveTab('mensal');
+  if (!document.fullscreenElement || !document.exitFullscreen) return;
+  try {
+    await document.exitFullscreen();
+  } catch (error) {
+    console.warn('Não foi possível sair da tela cheia do navegador:', error);
+  }
+};
+
   const [selectedSectorId, setSelectedSectorId] = useState(() => {
     try { return window.localStorage.getItem('scale_filter_sector_id') || 'todos'; } catch { return 'todos'; }
   });
@@ -708,17 +728,17 @@ export default function Escalas() {
           @page { size: A4 landscape; margin: 8mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: Arial, Helvetica, sans-serif; background: #fff !important; color: #000 !important; padding: 15px; font-size: 11px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-          .header-box { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 15px; break-inside: avoid; page-break-inside: avoid; }
-          .brand { display: flex; align-items: center; min-width: 0; }
+          .header-box { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 66px; border-bottom: 2px solid #000; padding: 0 0 10px; margin-bottom: 12px; break-inside: avoid; page-break-inside: avoid; }
+          .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
           .logos { display: flex; align-items: center; flex: 0 0 auto; }
-          .print-logo { display: block; max-width: 140px; max-height: 55px; object-fit: contain; }
-          .company-logo { margin-right: 15px; }
-          .unit-logo { margin-left: 15px; padding-left: 15px; border-left: 2px solid #eee; }
-          .logo-fallback { display: flex; width: 55px; height: 55px; align-items: center; justify-content: center; border: 2px solid #000; border-radius: 8px; margin-right: 15px; font-size: 28px; font-weight: 900; }
+          .print-logo { display: block; width: 82px; height: 46px; object-fit: contain; }
+          .company-logo { margin-right: 8px; }
+          .unit-logo { margin-left: 8px; padding-left: 8px; border-left: 1px solid #cbd5e1; }
+          .logo-fallback { display: flex; width: 46px; height: 46px; align-items: center; justify-content: center; border: 2px solid #000; border-radius: 8px; margin-right: 8px; font-size: 23px; font-weight: 900; }
           .header-info { min-width: 0; }
-          .header-info h1 { margin: 0 0 2px; color: #000; font-size: 18px; font-weight: 900; line-height: 1.2; text-transform: uppercase; }
-          .header-info p { margin: 0; color: #000; font-size: 10px; font-weight: 700; }
-          .header-info .validity { margin-top: 4px; color: #000; font-size: 10px; }
+          .header-info h1 { margin: 0 0 3px; color: #000; font-size: 18px; font-weight: 900; line-height: 1.15; text-transform: uppercase; }
+          .header-info p { margin: 0; color: #000; font-size: 9px; font-weight: 700; line-height: 1.3; }
+          .header-info .validity { margin-top: 3px; color: #000; font-size: 9px; line-height: 1.3; }
           .document-meta { flex: 0 0 auto; text-align: right; color: #000; font-size: 9.5px; line-height: 1.5; }
           .document-label { display: inline-block; margin-bottom: 3px; padding: 3px 8px; border: 1px solid #000; font-size: 9px; font-weight: 900; }
           table { width: 100%; table-layout: fixed; border-collapse: collapse; border: 2px solid #000; margin: 0 0 20px; font-size: 10px; }
@@ -1683,7 +1703,7 @@ export default function Escalas() {
   // =========================================================================
   if (activeTab === 'tv') {
     return (
-      <div className="fixed inset-0 z-[99999] bg-slate-950 text-white flex flex-col justify-between p-6 lg:p-8 select-none overflow-hidden font-sans">
+      <div className="fixed inset-0 z-[99999] h-screen w-screen min-h-[100dvh] bg-slate-950 text-white flex flex-col justify-between p-6 lg:p-8 select-none overflow-hidden font-sans">
         <div className="flex items-center justify-between border-b border-slate-800 pb-4 shrink-0">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-2xl">
@@ -1713,7 +1733,7 @@ export default function Escalas() {
             </div>
 
             <button 
-              onClick={() => setActiveTab('mensal')} 
+              onClick={closeTvMode}
               className="p-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors cursor-pointer"
               title="Sair do Modo TV"
             >
@@ -1808,7 +1828,7 @@ export default function Escalas() {
 
         <div className="border-t border-slate-800 pt-3 shrink-0 flex items-center justify-between text-xs text-slate-400 font-bold">
           <div>ScaleMedic Enterprise CCO • Hospital Santa Clara</div>
-          <Button onClick={() => setActiveTab('mensal')} variant="outline" className="h-8 text-xs border-slate-700 text-slate-300 cursor-pointer">
+          <Button onClick={closeTvMode} variant="outline" className="h-8 text-xs border-slate-700 text-slate-300 cursor-pointer">
             Fechar Modo TV
           </Button>
         </div>
@@ -2088,7 +2108,7 @@ export default function Escalas() {
             <button onClick={() => setActiveTab('dia')} className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer ${activeTab === 'dia' ? 'bg-white dark:bg-sky-600 shadow-sm text-sky-600 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}><Clock className="w-3.5 h-3.5" /> Plantão do Dia</button>
           </div>
 
-          <Button variant="outline" onClick={() => setActiveTab('tv')} className="h-9 px-4 text-xs font-black rounded-2xl gap-2 bg-slate-50 dark:bg-slate-950 text-amber-600 border-slate-200 hover:bg-slate-100 cursor-pointer">
+          <Button variant="outline" onClick={openTvMode} className="h-9 px-4 text-xs font-black rounded-2xl gap-2 bg-slate-50 dark:bg-slate-950 text-amber-600 border-slate-200 hover:bg-slate-100 cursor-pointer">
             <MonitorPlay className="w-4 h-4" /> <span>Modo TV CCO</span>
           </Button>
 
