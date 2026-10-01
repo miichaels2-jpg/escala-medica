@@ -71,7 +71,7 @@ const MONTH_NAMES = [
 ];
 
 export default function MinhaEscala() {
-  const { user, company, units, professionals = [], sectors = [], loading: appLoading, syncGlobalData } = useAppData();
+  const { user, company, units, professionals = [], sectors = [], selectedUnitId, loading: appLoading, syncGlobalData } = useAppData();
   const navigate = useNavigate();
 
   const [shifts, setShifts] = useState([]);
@@ -188,20 +188,18 @@ export default function MinhaEscala() {
 
   // AÇÃO DE PONTO: VALIDA TEMPO (15m MÁX) E ESPAÇO (GEOFENCE 100m)
   const handleCheckAction = async (shift, actionType) => {
-    // 1. Regra de Janela de Tempo (+/- 15 minutos)
     const nowTotalMin = now.getHours() * 60 + now.getMinutes();
     
-    // Converte os horários do plantão
     const [sH, sM] = (shift.start_time || '07:00').split(':').map(Number);
     const [eH, eM] = (shift.end_time || '19:00').split(':').map(Number);
     
     const startMinObj = sH * 60 + sM;
     let endMinObj = eH * 60 + eM;
-    if (endMinObj <= startMinObj) endMinObj += 24 * 60; // Vira o dia
+    if (endMinObj <= startMinObj) endMinObj += 24 * 60; 
 
     let targetTime = actionType === 'in' ? startMinObj : endMinObj;
     let effNow = nowTotalMin;
-    // Se a saída passa de meia noite e ainda estamos na madrugada
+    
     if (endMinObj > 24 * 60 && nowTotalMin < startMinObj) effNow += 24 * 60;
 
     const limitMinutes = 15;
@@ -216,7 +214,6 @@ export default function MinhaEscala() {
       return;
     }
 
-    // 2. Regra de Geolocalização (Raio de 100 Metros)
     const loc = await requestLocation();
     if (!loc) {
       alert(`GPS não encontrado: ${locationError || 'Por favor, ative a localização do seu celular para bater o ponto.'}`);
@@ -224,8 +221,7 @@ export default function MinhaEscala() {
     }
 
     const unitObj = (units || []).find(u => String(u.id) === String(shift.unit_id));
-    // Puxa as coords da unidade. Se não tiver no cadastro ainda, coloca uma default para o sistema não quebrar.
-    const unitLat = unitObj?.lat || -22.9068; // Exemplo Rio de Janeiro
+    const unitLat = unitObj?.lat || -22.9068; // Exemplo Default
     const unitLng = unitObj?.lng || -43.1729; 
 
     const distanceInMeters = getDistanceInMeters(loc.lat, loc.lng, unitLat, unitLng);
@@ -337,10 +333,8 @@ export default function MinhaEscala() {
 
   const conflictingShiftsCount = useMemo(() => enrichedShifts.filter(s => s.hasConflict).length, [enrichedShifts]);
   
-  // No lugar de ser só o que está "ativo" (agora), a gente busca o plantão de hoje que o médico pode bater o ponto.
   const activeShiftNow = useMemo(() => {
     const todayShifts = enrichedShifts.filter(s => (s.date || '').split('T')[0] === todayStr);
-    // Preferência pelo que está rodando, se não houver, mostra o mais próximo de hoje para ele dar check-in 15m antes
     return todayShifts.find(s => s.state === 'ativo') || todayShifts.sort((a, b) => a.startDateTime.getTime() - b.startDateTime.getTime())[0] || null;
   }, [enrichedShifts, todayStr]);
 
@@ -439,6 +433,21 @@ export default function MinhaEscala() {
 
     const regimeLabel = profMeta.remuneration_type === 'mensal' ? 'Fixo Mensal' : profMeta.remuneration_type === 'produtividade' ? 'Produtividade' : 'Plantão Dinâmico';
 
+    // ----------------------------------------------------
+    // LÓGICA DE INJEÇÃO DAS LOGOS COMO NO FATURAMENTO
+    // ----------------------------------------------------
+    const currentUnitObj = (units || []).find(u => String(u.id) === String(selectedUnitId));
+    const hospitalName = currentUnitObj?.name || company?.name || 'Hospital Principal';
+    const logoLetter = hospitalName[0] || 'H';
+
+    const companyLogoHtml = company?.logo_url || company?.data?.logo_url 
+      ? `<img src="${company.logo_url || company.data?.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` 
+      : `<div style="width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px;">${logoLetter}</div>`;
+    
+    const unitLogoHtml = currentUnitObj?.logo_url 
+      ? `<img src="${currentUnitObj.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` 
+      : '';
+
     const html = `
       <!DOCTYPE html>
       <html lang="pt-BR">
@@ -448,7 +457,7 @@ export default function MinhaEscala() {
         <style>
           @page { size: A4 portrait; margin: 10mm; }
           body { font-family: Arial, sans-serif; background: #fff; color: #000; padding: 15px; font-size: 11px; }
-          .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; }
+          .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
           table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-top: 15px; }
           th { background: #e2e8f0; border: 1px solid #000; padding: 6px 8px; text-transform: uppercase; font-size: 9.5px; }
           .summary { margin-top: 20px; border-top: 2px solid #000; padding-top: 10px; display: flex; justify-content: space-between; font-size: 12px; font-weight: bold; }
@@ -456,11 +465,15 @@ export default function MinhaEscala() {
       </head>
       <body>
         <div class="header">
-          <div>
-            <h1 style="font-size: 18px; text-transform: uppercase; margin: 0;">ScaleMedic (Rede Global)</h1>
-            <p style="margin: 3px 0;">ESPELHO INDIVIDUAL DE PLANTÕES • PRESTAÇÃO DE CONTAS</p>
-            <p style="margin: 3px 0;">Profissional: <b>Dr(a). ${profNome}</b> (ID: ${matricula})</p>
-            <p style="margin: 3px 0;">Regime: <b>${regimeLabel}</b></p>
+          <div style="display: flex; align-items: center;">
+            ${companyLogoHtml}
+            ${unitLogoHtml}
+            <div style="${unitLogoHtml ? 'margin-left: 15px;' : ''}">
+              <h1 style="font-size: 18px; text-transform: uppercase; margin: 0;">${hospitalName}</h1>
+              <p style="margin: 3px 0;">ESPELHO INDIVIDUAL DE PLANTÕES • PRESTAÇÃO DE CONTAS</p>
+              <p style="margin: 3px 0;">Profissional: <b>Dr(a). ${profNome}</b> (ID: ${matricula})</p>
+              <p style="margin: 3px 0;">Regime: <b>${regimeLabel}</b></p>
+            </div>
           </div>
           <div style="text-align: right; font-size: 9.5px;">
             <p style="margin: 0;">Competência: <b>${competencia}</b></p>
@@ -668,48 +681,163 @@ export default function MinhaEscala() {
           <div className="py-16 text-center text-slate-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />Carregando...</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {monthShifts.map(shift => {
+            {upcomingMonthShifts.map(shift => {
               const isAtivo = shift.state === 'ativo';
-              const isConc = shift.state === 'concluido';
+              const isPending = shift.isPendingApproval;
+              const hasConflict = shift.hasConflict;
 
               return (
-                <div key={shift.id} className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${isConc ? 'opacity-80 bg-slate-50 dark:bg-slate-950/40 border-slate-200' : 'bg-white border-slate-300 dark:bg-slate-900 dark:border-slate-700 shadow-sm'}`}>
+                <div 
+                  key={shift.id} 
+                  className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
+                    hasConflict
+                      ? 'border-2 border-rose-500 bg-rose-50/40 dark:bg-rose-950/20 shadow-md ring-2 ring-rose-500/20'
+                      : isAtivo 
+                      ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-md ring-1 ring-emerald-500/40' 
+                      : isPending
+                      ? 'border-amber-300 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/20'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:border-sky-400'
+                  }`}
+                >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-black font-mono text-slate-900 dark:text-white">
-                        {formatDateBR(shift.date)}
-                      </span>
-                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${isConc ? 'bg-slate-200 text-slate-600' : 'bg-sky-100 text-sky-700'}`}>
-                        {isConc ? 'Concluído' : 'A Realizar'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black font-mono text-slate-900 dark:text-white">
+                          {formatDateBR(shift.date)}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-500">
+                          ({new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' })})
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        {hasConflict && (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-600 text-white flex items-center gap-1 animate-pulse">
+                            <ShieldAlert className="w-3 h-3" /> Choque Horário
+                          </span>
+                        )}
+                        <span className={`text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                          isAtivo 
+                            ? 'bg-emerald-600 text-white animate-pulse' 
+                            : isPending
+                            ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                            : 'bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300'
+                        }`}>
+                          {isAtivo ? '● Ao Vivo' : isPending ? '⏳ Em Análise' : 'Programado'}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="text-sm font-black text-slate-900 dark:text-white truncate">
-                      <span className="text-sky-600">🏥 {shift.unitName}</span> • {shift.sectorName}
+                    <div className="text-sm font-black text-slate-900 dark:text-white truncate flex items-center gap-1.5">
+                      <span className="text-sky-600">🏥 {shift.unitName}</span>
+                      <span className="text-slate-300 dark:text-slate-700">•</span>
+                      <span>{shift.sectorName}</span>
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-slate-500 font-mono">
-                      <span>{shift.start_time} às {shift.end_time}</span>
+                      <span>Horário: <b>{shift.start_time} às {shift.end_time}</b></span>
                       <span>{shift.duration}h</span>
                     </div>
 
                     {shift.shiftValue?.type === 'valor' && (
                       <div className="text-xs text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 pt-1 border-t border-slate-100 dark:border-slate-800">
-                        <DollarSign className="w-3.5 h-3.5" /> Valor Apurado: {formatCurrency(shift.shiftValue.value)}
-                      </div>
-                    )}
-                    
-                    {isConc && (shift.checkinTime || shift.checkoutTime) && (
-                      <div className="text-[10px] font-mono text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
-                        <span>In: {shift.checkinTime || '--:--'}</span>
-                        <span>Out: {shift.checkoutTime || '--:--'}</span>
+                        <DollarSign className="w-3.5 h-3.5" />
+                        Valor Previsto: {formatCurrency(shift.shiftValue.value)}
                       </div>
                     )}
                   </div>
+
+                  {!isAtivo && (
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                      {isPending ? (
+                        <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                          <Clock3 className="w-3.5 h-3.5 animate-pulse" /> Aguardando Gestão
+                        </span>
+                      ) : (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => handlePassShiftToMural(shift)}
+                          disabled={submitting}
+                          className="h-8 text-[11px] font-bold border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl gap-1.5 cursor-pointer"
+                        >
+                          <Flame className="w-3.5 h-3.5" /> Passar no Mural
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
+        )}
+      </div>
+
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <h3 className="text-sm font-black text-slate-800 dark:text-slate-200">
+              Plantões Já Concluídos ({completedMonthShifts.length})
+            </h3>
+          </div>
+
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => setShowPastShifts(!showPastShifts)}
+            className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+          >
+            {showPastShifts ? (
+              <span className="flex items-center gap-1">Ocultar <ChevronUp className="w-3.5 h-3.5" /></span>
+            ) : (
+              <span className="flex items-center gap-1">Expandir <ChevronDown className="w-3.5 h-3.5" /></span>
+            )}
+          </Button>
+        </div>
+
+        {showPastShifts && (
+          completedMonthShifts.length === 0 ? (
+            <p className="text-xs text-slate-400 py-4 text-center">Nenhum plantão concluído até o momento nesta competência.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 opacity-85">
+              {completedMonthShifts.map(shift => (
+                <div key={shift.id} className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 text-xs flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-slate-900 dark:text-white block">
+                      {formatDateBR(shift.date)}
+                    </span>
+                    <span className="text-[9px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-black px-2 py-0.5 rounded-lg shrink-0">
+                      ✓ Concluído
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-0.5">
+                    <span className="text-[11px] text-sky-700 dark:text-sky-400 font-bold block truncate">
+                      🏥 {shift.unitName}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block truncate">
+                      {shift.sectorName}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mt-1 border-t border-slate-200 dark:border-slate-800 pt-1.5">
+                    <span>{shift.start_time} - {shift.end_time} ({shift.duration}h)</span>
+                    {shift.shiftValue?.type === 'valor' && (
+                      <span className="font-bold text-emerald-600">{formatCurrency(shift.shiftValue.value)}</span>
+                    )}
+                  </div>
+                  
+                  {(shift.checkinTime || shift.checkoutTime) && (
+                    <div className="flex items-center justify-between text-[9px] font-mono text-slate-500 bg-white dark:bg-slate-900 p-1.5 rounded-lg mt-0.5 border border-slate-100 dark:border-slate-800">
+                      <span>In: <b className="text-emerald-600">{shift.checkinTime || '--:--'}</b></span>
+                      <span>Out: <b className="text-rose-600">{shift.checkoutTime || '--:--'}</b></span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
         )}
       </div>
     </div>
