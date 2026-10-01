@@ -442,7 +442,7 @@ export default function Trocas() {
 
       {/* 2. BARRA DE NAVEGAÇÃO POR ABAS */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-3">
-        <div className="flex items-center gap-2 overflow-x-auto">
+        <div className="flex flex-wrap items-center gap-2">
           <button 
             onClick={() => setActiveTab('vagas')} 
             className={`px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
@@ -487,29 +487,31 @@ export default function Trocas() {
         </div>
 
         {activeTab === 'vagas' && (
-          <div className="flex items-center gap-1.5 overflow-x-auto shrink-0 pb-1">
-            <span className="text-[10px] font-black uppercase text-slate-400 mr-1 flex items-center gap-1">
-              <Filter className="w-3 h-3" /> Especialidade:
-            </span>
-            <button 
-              onClick={() => setSelectedSpecialtyFilter('todas')} 
-              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                selectedSpecialtyFilter === 'todas' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-              }`}
-            >
-              Todas
-            </button>
-            {allHospitalSpecialties.map(spec => (
-              <button 
-                key={spec} 
-                onClick={() => setSelectedSpecialtyFilter(spec)} 
-                className={`px-3 py-1 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer ${
-                  selectedSpecialtyFilter === spec ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 mr-1 flex items-center gap-1">
+                <Filter className="w-3 h-3" /> Especialidade
+              </span>
+              <button
+                onClick={() => setSelectedSpecialtyFilter('todas')}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                  selectedSpecialtyFilter === 'todas' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
               >
-                {spec}
+                Todas
               </button>
-            ))}
+              {allHospitalSpecialties.map(spec => (
+                <button
+                  key={spec}
+                  onClick={() => setSelectedSpecialtyFilter(spec)}
+                  className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                    selectedSpecialtyFilter === spec ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {spec}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -544,30 +546,35 @@ export default function Trocas() {
                     }`}
                   >
                     <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
-                        <div>
-                          <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-500/30">
-                            Vaga: {realSpecialty}
+                      <div className="flex items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+                        <div className="min-w-0">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                            Plantão disponível
                           </span>
-                          <h3 className="font-black text-base text-slate-900 dark:text-white mt-2">
+                          <h3 className="font-black text-base text-slate-900 dark:text-white mt-1 break-words">
                             {sector?.name || 'Setor Hospitalar'}
                           </h3>
                         </div>
-                        <span className="text-xs font-mono font-black px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-950 text-sky-600 dark:text-sky-400 border border-slate-200 dark:border-slate-800">
-                          {shift.start_time || '07:00'} às {shift.end_time || '19:00'}
-                        </span>
+                        <div className="shrink-0 text-right">
+                          <span className="block text-sm font-mono font-black text-slate-900 dark:text-white">
+                            {shift.start_time || '07:00'}–{shift.end_time || '19:00'}
+                          </span>
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Horário</span>
+                        </div>
                       </div>
 
-                      <div className="space-y-2 text-xs text-slate-600 dark:text-slate-300">
-                        <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
-                          <Calendar className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-                          <span>{new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</span>
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                        <Calendar className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                        <span>{new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</span>
+                      </div>
+
+                      <div className="flex items-start gap-2 rounded-xl bg-amber-50/80 dark:bg-amber-500/10 border border-amber-200/80 dark:border-amber-500/20 px-3 py-2">
+                        <Stethoscope className="w-4 h-4 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <span className="block text-[9px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400">Especialidade necessária</span>
+                          <span className="text-xs font-black text-slate-900 dark:text-white break-words">{realSpecialty}</span>
                         </div>
-                        
-                        <div className="flex items-center gap-2 text-slate-500">
-                          <Stethoscope className="w-4 h-4" />
-                          <span>Exigência: <b>{realSpecialty}</b></span>
-                        </div>
+                      </div>
 
                         {originName ? (
                           <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-[11px] flex items-center gap-2">
@@ -579,7 +586,6 @@ export default function Trocas() {
                             Vaga institucional aberta
                           </div>
                         )}
-                      </div>
 
                       {conflictInfo.hasConflict && (
                         <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 space-y-1">
@@ -674,12 +680,17 @@ export default function Trocas() {
                       </div>
 
                       <div className="space-y-2 text-xs">
-                        <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-1">
-                          <span className="text-[10px] uppercase font-bold text-slate-400 block">Solicitante da Liberação:</span>
-                          <strong className="text-sm font-black text-slate-900 dark:text-white block truncate">
-                            👨‍⚕️ {requesterName}
-                          </strong>
-                          <span className="text-[11px] text-slate-500 block">Especialidade: {realSpecialty}</span>
+                        <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                          <div>
+                            <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 block">Solicitante da liberação</span>
+                            <strong className="text-sm font-black text-slate-900 dark:text-white block truncate mt-0.5">
+                              {requesterName}
+                            </strong>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                            <Stethoscope className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                            <span className="truncate">{realSpecialty}</span>
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 font-medium">
@@ -743,16 +754,20 @@ export default function Trocas() {
                 return (
                   <Card key={shift.id} className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-3">
                     <div>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <span className="text-[10px] font-bold uppercase text-slate-400">{sector?.name || 'Setor'}</span>
-                          <h4 className="font-black text-sm text-slate-900 dark:text-white mt-0.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{sector?.name || 'Setor'}</span>
+                          <h4 className="font-black text-sm text-slate-900 dark:text-white mt-1">
                             {new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'long' })}
                           </h4>
                         </div>
-                        <span className="font-mono text-xs font-bold text-sky-600 px-2 py-0.5 rounded-lg bg-sky-50 dark:bg-sky-950">
-                          {shift.start_time} - {shift.end_time}
+                        <span className="shrink-0 font-mono text-xs font-black text-sky-700 dark:text-sky-300 px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-950">
+                          {shift.start_time}–{shift.end_time}
                         </span>
+                      </div>
+                      <div className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                        <Stethoscope className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                        <span>{extractSpecialty(shift, myProf)}</span>
                       </div>
                     </div>
 
@@ -828,6 +843,9 @@ export default function Trocas() {
                           <td className="py-3 px-4">
                             <strong className="block text-slate-900 dark:text-white">{sector?.name || 'Setor'}</strong>
                             <span className="font-mono text-[11px] text-slate-400">{shift.start_time} às {shift.end_time}</span>
+                            <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                              <Stethoscope className="w-3 h-3 shrink-0" /> {extractSpecialty(shift, null)}
+                            </span>
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
