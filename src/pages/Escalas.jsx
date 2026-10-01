@@ -71,6 +71,17 @@ function normalize(value) {
   return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
+function isProfessionalAuthorizedForSector(professional, sectorId) {
+if (!sectorId) return true;
+
+const authorizedSectors = professional?.data?.authorized_sectors
+  ?? professional?.metadata?.authorized_sectors
+  ?? professional?.authorized_sectors;
+if (!Array.isArray(authorizedSectors)) return true;
+
+return authorizedSectors.some(id => String(id) === String(sectorId));
+}
+
 function getShiftName(shift) {
   return shift.professional_name || shift.professional?.name || shift.professionalName || '';
 }
@@ -955,7 +966,16 @@ const closeTvMode = async () => {
     const unavailable = [];
 
     (professionals || []).filter(p => p?.status === 'ativo').forEach(prof => {
-      const conflict = checkProfessionalConflict(
+if (!isProfessionalAuthorizedForSector(prof, formData.sector_id)) {
+  const sectorName = sectorMap[String(formData.sector_id)]?.name || 'este setor';
+  unavailable.push({
+    ...prof,
+    conflictReason: `Não autorizado para ${sectorName}`
+  });
+  return;
+}
+
+const conflict = checkProfessionalConflict(
         prof.id, 
         formData.date, 
         formData.start_time, 
@@ -975,7 +995,7 @@ const closeTvMode = async () => {
     });
 
     return { available, unavailable };
-  }, [professionals, formData.date, formData.start_time, formData.end_time, editingShiftId, shifts, sectorMap]);
+}, [professionals, formData.date, formData.sector_id, formData.start_time, formData.end_time, editingShiftId, shifts, sectorMap]);
 
   const allScaleConflicts = useMemo(() => {
     const list = (shifts || []).filter(s => s && s.status !== 'cancelado' && s.status !== 'vago' && s.professional_id);
@@ -1152,6 +1172,7 @@ const closeTvMode = async () => {
     const requiredSpecialty = normalize(extractSpecialty(shift));
     return (professionals || [])
       .filter(prof => prof?.status === 'ativo')
+      .filter(prof => isProfessionalAuthorizedForSector(prof, shift.sector_id))
       .filter(prof => {
         if (!requiredSpecialty) return true;
         return !prof.specialty || normalize(prof.specialty) === requiredSpecialty || requiredSpecialty === 'geral';
@@ -1196,8 +1217,13 @@ const closeTvMode = async () => {
     const validationDraft = {};
     for (const row of assignments) {
       const profId = bulkAllocationDraft[String(row.id)];
+      const prof = professionalMap[String(profId)];
+      if (prof && !isProfessionalAuthorizedForSector(prof, row.sector_id)) {
+        const sectorName = sectorMap[String(row.sector_id)]?.name || 'este setor';
+        alert(`⛔ ${prof.name || 'Profissional'} não está autorizado(a) para o setor ${sectorName}.`);
+        return;
+      }
       if (getBulkDraftConflict(row, profId, validationDraft)) {
-        const prof = professionalMap[String(profId)];
         alert(`⛔ Conflito de escala: ${prof?.name || 'Profissional'} não pode ser alocado em ${formatDateBR(row.date)} das ${row.start_time} às ${row.end_time} porque existe outro plantão sobreposto.`);
         return;
       }
@@ -1435,10 +1461,11 @@ const closeTvMode = async () => {
     return (professionals || []).filter(p => {
       if (p?.status !== 'ativo') return false;
       if (traySpecialtyFilter !== 'todas' && (p.specialty || '').toLowerCase() !== traySpecialtyFilter.toLowerCase()) return false;
-      if (!term) return true;
-      return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowerCase().includes(term);
-    });
-  }, [professionals, traySearch, traySpecialtyFilter]);
+if (selectedSectorId !== 'todos' && !isProfessionalAuthorizedForSector(p, selectedSectorId)) return false;
+if (!term) return true;
+return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowerCase().includes(term);
+});
+}, [professionals, traySearch, traySpecialtyFilter, selectedSectorId]);
 
   const handleDayClick = (dateStr, e) => {
     if (e.ctrlKey || e.metaKey) {
@@ -1480,6 +1507,13 @@ const closeTvMode = async () => {
 
       if (!candidate) {
         alert(`Não existe vaga aberta para ${formatDateBR(d)} • ${startTime} às ${endTime} • ${specialty || 'Geral'} neste setor.`);
+        setDraggingProfId(null);
+        return;
+      }
+
+      if (!isProfessionalAuthorizedForSector(prof, candidate.sector_id)) {
+        const sectorName = sectorMap[String(candidate.sector_id)]?.name || 'este setor';
+        alert(`⛔ ${prof.name || 'O profissional'} não está autorizado(a) para o setor ${sectorName}.`);
         setDraggingProfId(null);
         return;
       }
@@ -1566,7 +1600,19 @@ const closeTvMode = async () => {
       return;
     }
 
-    if (!isMural && formData.professional_id) {
+const selectedProfessional = professionalMap[String(formData.professional_id)];
+if (!isMural && formData.professional_id && !selectedProfessional) {
+  alert('O profissional selecionado não está mais disponível nesta unidade. Atualize a tela e selecione novamente.');
+  return;
+}
+if (!isMural && formData.professional_id &&
+    !isProfessionalAuthorizedForSector(selectedProfessional, formData.sector_id)) {
+  const sectorName = sectorMap[String(formData.sector_id)]?.name || 'este setor';
+  alert(`⛔ ${selectedProfessional?.name || 'O profissional selecionado'} não está autorizado(a) para o setor ${sectorName}.`);
+  return;
+}
+
+if (!isMural && formData.professional_id) {
       const conflict = checkProfessionalConflict(
         formData.professional_id, 
         formData.date, 
@@ -3001,6 +3047,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                   const assignedId = bulkAllocationDraft[String(row.id)] || '';
                   const candidates = getBulkCandidates(row, bulkAllocationDraft);
                   const assignedProf = assignedId ? professionalMap[String(assignedId)] : null;
+                  const assignedProfAuthorized = assignedProf && isProfessionalAuthorizedForSector(assignedProf, row.sector_id);
 
                   return (
                     <div key={row.id} className="grid grid-cols-[95px_120px_minmax(120px,1fr)_minmax(220px,1.5fr)_90px] items-center bg-slate-950 hover:bg-slate-900/80">
@@ -3020,7 +3067,9 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                         >
                           <option value="">Selecionar profissional...</option>
                           {assignedProf && !candidates.some(p => String(p.id) === String(assignedProf.id)) && (
-                            <option value={String(assignedProf.id)}>{assignedProf.name} • selecionado</option>
+                            <option value={String(assignedProf.id)} disabled={!assignedProfAuthorized}>
+                              {assignedProf.name} • {assignedProfAuthorized ? 'selecionado' : 'não autorizado para este setor'}
+                            </option>
                           )}
                           {candidates.map(p => (
                             <option key={p.id} value={String(p.id)}>

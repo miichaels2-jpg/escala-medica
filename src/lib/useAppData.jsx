@@ -282,6 +282,7 @@ export function useAppData() {
     swaps: unitSwaps,
     professionals: unitProfessionals,
     allCompanyProfessionals: globalState.professionals,
+    allCompanySectors: globalState.sectors,
     professionalMap,
     sectorMap,
     isAdmin,

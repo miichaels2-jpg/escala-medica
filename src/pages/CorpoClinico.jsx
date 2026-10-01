@@ -103,7 +103,16 @@ async function autoHealingSave(id, initialPayload) {
 }
 
 export default function CorpoClinico() {
-  const { professionals, sectors, units, selectedUnitId, company, isManager, syncGlobalData } = useAppData();
+  const {
+    professionals,
+    sectors,
+    allCompanySectors,
+    units,
+    selectedUnitId,
+    company,
+    isManager,
+    syncGlobalData
+  } = useAppData();
 
   const [activeTab, setActiveTab] = useState('ativos'); 
   const [searchQuery, setSearchQuery] = useState('');
@@ -175,7 +184,7 @@ export default function CorpoClinico() {
     const generatedMatricula = `MAT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
     setFormData({
       name: '', username: '', category: allCategories[0]?.id || 'medico', document: '',
-      registration_id: generatedMatricula, main_sector: sectors[0]?.name || 'UTI Geral',
+      registration_id: generatedMatricula,       main_sector: allCompanySectors[0]?.name || 'UTI Geral',
       specialty: '', rqe: '', cbo: '', cpf: '', email: '', phone: '', birth_date: '',
       unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
       status: 'ativo', app_role: 'assistencial', 
@@ -183,7 +192,7 @@ export default function CorpoClinico() {
       coop_tax_rate: 0, pix_type: 'CPF',
       pix_key: '', bank_info: '', password: '',
       document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
-      authorized_sectors: (sectors || []).map(s => String(s.id)),
+      authorized_sectors: (allCompanySectors || []).map(s => String(s.id)),
       allowed_unit_ids: [String(selectedUnitId || units[0]?.id || 'unit_h1')] 
     });
     setEditingProf(null);
@@ -197,7 +206,9 @@ export default function CorpoClinico() {
     const meta = getProfMeta(prof);
     const generatedMatricula = meta.registration_id || prof.registration_id || `MAT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const expiry = prof.document_expiry || meta.document_expiry || new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0];
-    const authSectors = meta.authorized_sectors || (sectors || []).map(s => String(s.id));
+    const authSectors = Array.isArray(meta.authorized_sectors)
+      ? meta.authorized_sectors.map(String)
+      : (allCompanySectors || []).map(s => String(s.id));
     const profStatus = prof.status || meta.status || 'ativo';
 
     const savedUnits = meta.allowed_unit_ids || prof.unit_ids || (prof.unit_id ? [String(prof.unit_id)] : [String(units[0]?.id || '')]);
@@ -312,11 +323,12 @@ export default function CorpoClinico() {
 
   const handleToggleSectorAuth = (secId) => {
     setFormData(prev => {
-      const current = prev.authorized_sectors || [];
-      if (current.includes(secId)) {
-        return { ...prev, authorized_sectors: current.filter(id => id !== secId) };
+      const normalizedSectorId = String(secId);
+      const current = (prev.authorized_sectors || []).map(String);
+      if (current.includes(normalizedSectorId)) {
+        return { ...prev, authorized_sectors: current.filter(id => id !== normalizedSectorId) };
       } else {
-        return { ...prev, authorized_sectors: [...current, secId] };
+        return { ...prev, authorized_sectors: [...current, normalizedSectorId] };
       }
     });
   };
@@ -777,8 +789,11 @@ export default function CorpoClinico() {
         hasPrimaryMonthlySalary ? unitMonthlySalaries[primaryUnitId] : formData.monthly_salary,
         0
       );
+      const authorizedSectors = (formData.authorized_sectors || []).map(String);
+      const existingMeta = editingProf ? getProfMeta(editingProf) : {};
 
       const richMeta = {
+        ...existingMeta,
         username: cleanUsername, category: formData.category, app_role: formData.app_role,
         main_sector: formData.main_sector, specialty: formData.specialty, rqe: formData.rqe, cbo: formData.cbo,
         registration_id: formData.registration_id, coop_tax_rate: safeNumber(formData.coop_tax_rate),
@@ -788,7 +803,7 @@ export default function CorpoClinico() {
         unit_rates: formData.unit_rates, // MATRIZ SALVA!
         pix_type: formData.pix_type, bank_info: formData.bank_info.trim(), pix_key: formData.pix_key.trim(),
         document_expiry: formData.document_expiry, status: formData.status,
-        authorized_sectors: formData.authorized_sectors, allowed_unit_ids: formData.allowed_unit_ids,
+        authorized_sectors: authorizedSectors, allowed_unit_ids: formData.allowed_unit_ids,
         birth_date: formData.birth_date, cpf: formData.cpf
       };
 
@@ -1161,6 +1176,44 @@ export default function CorpoClinico() {
                   </label>
                 ))}
               </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <div>
+                <Label className="font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  Setores autorizados para alocação
+                </Label>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  O profissional só poderá ser selecionado em plantões dos setores marcados.
+                </p>
+              </div>
+              {(allCompanySectors || []).length === 0 ? (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-200">
+                  Cadastre os setores da unidade antes de definir as permissões por setor.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {(allCompanySectors || []).map(sector => {
+                    const isAuthorized = (formData.authorized_sectors || [])
+                      .some(sectorId => String(sectorId) === String(sector.id));
+                    return (
+                      <label key={sector.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        isAuthorized
+                          ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 hover:border-indigo-300'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={isAuthorized}
+                          onChange={() => handleToggleSectorAuth(sector.id)}
+                          className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                        />
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{sector.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-4">

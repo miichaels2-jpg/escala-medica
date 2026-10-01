@@ -1,6 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
+import { calculateProductivityPoolAllocations } from '@/lib/productivityCalculations';
+import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +33,12 @@ function getLocalDateString(d = new Date()) {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function formatDateBR(dateValue) {
+  if (!dateValue) return '—';
+  const parts = String(dateValue).split('T')[0].split('-');
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(dateValue);
 }
 
 function normalizeText(value) {
@@ -77,17 +85,65 @@ function getProfessionalMeta(professional) {
   return getProfessionalFinancialMeta(professional);
 }
 
+function getStoredProductivityAttendance(professional, unitId, date) {
+  const stored = getProfessionalMeta(professional)
+    .daily_productivity_attendance?.[String(unitId)]?.[String(date)];
+  const rawCount = typeof stored === 'object' && stored !== null ? stored.count : stored;
+  if (rawCount === null || rawCount === undefined || rawCount === '') return null;
+  const count = Number(rawCount);
+  return Number.isSafeInteger(count) && count >= 0 ? count : null;
+}
+
+function isProductivityProfessional(professional) {
+  const meta = getProfessionalMeta(professional);
+  return ['produtividade', 'production'].includes(normalizeText(
+    meta.remuneration_type || professional?.remuneration_type || ''
+  ));
+}
+
+function getSpreadsheetDate(value, fallbackDate) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Date(Date.UTC(1899, 11, 30) + value * 86_400_000).toISOString().slice(0, 10);
+  }
+  const text = String(value || '').trim();
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const br = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (br) return `${br[3]}-${String(br[2]).padStart(2, '0')}-${String(br[1]).padStart(2, '0')}`;
+  return fallbackDate;
+}
+
+function getSpreadsheetCellValue(cell) {
+  const value = cell?.value;
+  if (value && typeof value === 'object') {
+    if ('result' in value) return value.result;
+    if (Array.isArray(value.richText)) return value.richText.map(part => part.text || '').join('');
+    if ('text' in value) return value.text;
+  }
+  return value;
+}
+
 function getPaymentStatusKey(unitId, professionalId, monthPrefix) {
   return `${unitId}_${professionalId}_${monthPrefix}`;
 }
 
 export default function Faturamento() {
-  const { shifts = [], professionals = [], sectors = [], company, selectedUnitId, units = [] } = useAppData();
+  const { shifts = [], professionals = [], sectors = [], company, selectedUnitId, units = [], isManager, syncGlobalData } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [now, setNow] = useState(() => new Date());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProfModal, setSelectedProfModal] = useState(null);
+  const [productivityUnitDraft, setProductivityUnitDraft] = useState('');
+  const [productivityConfigSaving, setProductivityConfigSaving] = useState(false);
+  const [productionEntryOpen, setProductionEntryOpen] = useState(false);
+  const [productionDate, setProductionDate] = useState(() => getLocalDateString());
+  const [productionDraft, setProductionDraft] = useState({});
+  const [productionSaving, setProductionSaving] = useState(false);
+  const [productionImporting, setProductionImporting] = useState(false);
+  const [productionError, setProductionError] = useState('');
+  const productivityFileInputRef = useRef(null);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setNow(new Date()), 60_000);
@@ -112,12 +168,93 @@ export default function Faturamento() {
 
   const currentUnitObj = units.find(u => String(u.id) === String(selectedUnitId));
   const currentUnitName = currentUnitObj?.name || company?.name || 'Hospital Principal';
+  const productivityRule = company?.data?.productivity_pool_rule || null;
+  const productivityRuleUnitId = productivityRule?.unit_id ? String(productivityRule.unit_id) : '';
+  const isProductivityPoolUnit = Boolean(productivityRuleUnitId && productivityRuleUnitId === String(selectedUnitId));
+
+  useEffect(() => {
+    setProductivityUnitDraft(productivityRuleUnitId);
+  }, [company?.id, productivityRuleUnitId]);
 
   const sectorMap = useMemo(() => {
     const m = {};
     (sectors || []).forEach(s => { if (s) m[String(s.id)] = s; });
     return m;
   }, [sectors]);
+
+  const productivityProfessionalsById = useMemo(() => {
+    const map = new Map();
+    professionals.forEach(professional => {
+      if (professional?.id && (isProductivityPoolUnit || isProductivityProfessional(professional))) {
+        map.set(String(professional.id), professional);
+      }
+    });
+    return map;
+  }, [professionals, isProductivityPoolUnit]);
+
+  const productionEntryRows = useMemo(() => {
+    if (!isProductivityPoolUnit || String(selectedUnitId) !== productivityRuleUnitId) return [];
+    const byProfessional = new Map();
+    shifts.forEach(shift => {
+      if (!shift || String(shift.unit_id) !== String(selectedUnitId) ||
+        String(shift.date || '').split('T')[0] !== productionDate || !isBillableShift(shift)) return;
+      const professional = productivityProfessionalsById.get(String(shift.professional_id));
+      if (!professional) return;
+      const key = String(professional.id);
+      const row = byProfessional.get(key) || { professional, shiftCount: 0 };
+      row.shiftCount += 1;
+      byProfessional.set(key, row);
+    });
+    return [...byProfessional.values()].sort((a, b) => (a.professional.name || '').localeCompare(b.professional.name || ''));
+  }, [isProductivityPoolUnit, productivityRuleUnitId, selectedUnitId, productionDate, shifts, productivityProfessionalsById]);
+
+  useEffect(() => {
+    if (!productionEntryOpen) return;
+    setProductionDraft(Object.fromEntries(productionEntryRows.map(({ professional }) => [
+      String(professional.id),
+      String(getStoredProductivityAttendance(professional, selectedUnitId, productionDate) ?? '')
+    ])));
+    setProductionError('');
+  }, [productionEntryOpen, productionDate, selectedUnitId, productionEntryRows]);
+
+  const productivityAllocations = useMemo(() => {
+    if (!isProductivityPoolUnit || !productivityRuleUnitId) {
+      return calculateProductivityPoolAllocations([], 150);
+    }
+
+    const recordsByProfessionalDay = new Map();
+    shifts.forEach(shift => {
+      if (!shift || String(shift.unit_id) !== productivityRuleUnitId ||
+        !String(shift.date || '').startsWith(monthPrefix) || !isBillableShift(shift)) return;
+      const professionalId = String(shift.professional_id);
+      const professional = productivityProfessionalsById.get(professionalId);
+      const schedule = getShiftSchedule(shift);
+      if (!schedule) return;
+      const status = normalizeText(shift.status);
+      const date = String(shift.date).split('T')[0];
+      if (date > todayStr) return;
+      const isCompleted = ['realizado', 'concluido', 'concluida'].includes(status) || schedule.end <= now;
+      const id = `${date}:${professionalId}`;
+      const existing = recordsByProfessionalDay.get(id);
+      if (existing) {
+        if (!isCompleted) existing.attendance_count = null;
+        return;
+      }
+      recordsByProfessionalDay.set(id, {
+        id,
+        date,
+        professional_id: professionalId,
+        attendance_count: isCompleted && professional
+          ? getStoredProductivityAttendance(professional, productivityRuleUnitId, date)
+          : null
+      });
+    });
+
+    return calculateProductivityPoolAllocations(
+      [...recordsByProfessionalDay.values()],
+      safeNumber(productivityRule?.daily_amount, 150)
+    );
+  }, [isProductivityPoolUnit, productivityRuleUnitId, productivityRule?.daily_amount, shifts, monthPrefix, todayStr, now, productivityProfessionalsById]);
 
   useEffect(() => {
     if (professionals.length === 0) return;
@@ -172,6 +309,262 @@ export default function Faturamento() {
     });
   };
 
+  const handleSaveProductivityConfiguration = async () => {
+    if (!isManager) return;
+    if (!company?.id) {
+      alert('A empresa não foi identificada. Atualize os dados e tente novamente.');
+      return;
+    }
+    if (productivityUnitDraft && !units.some(unit => String(unit.id) === String(productivityUnitDraft))) {
+      alert('Selecione uma unidade válida para a regra de produtividade.');
+      return;
+    }
+    if (productivityUnitDraft && productivityRuleUnitId &&
+      String(productivityUnitDraft) !== productivityRuleUnitId &&
+      !confirm('A regra diária de R$ 150 será transferida para outra unidade. Deseja continuar?')) return;
+
+    setProductivityConfigSaving(true);
+    try {
+      const companyData = company.data && typeof company.data === 'object' && !Array.isArray(company.data)
+        ? company.data
+        : {};
+      const nextData = { ...companyData };
+      if (productivityUnitDraft) {
+        nextData.productivity_pool_rule = {
+          unit_id: String(productivityUnitDraft),
+          daily_amount: 150
+        };
+      } else {
+        delete nextData.productivity_pool_rule;
+      }
+      const { error } = await supabase.from('companies').update({ data: nextData }).eq('id', company.id);
+      if (error) throw error;
+      await syncGlobalData();
+      alert(productivityUnitDraft
+        ? `Regra de produtividade de R$ 150 por dia ativada para ${units.find(unit => String(unit.id) === String(productivityUnitDraft))?.name}.`
+        : 'Regra de produtividade diária desativada.');
+    } catch (error) {
+      console.error('Falha ao salvar a configuração de produtividade diária:', error);
+      alert(`A configuração não foi salva. ${error?.message || 'Verifique a conexão e tente novamente.'}`);
+    } finally {
+      setProductivityConfigSaving(false);
+    }
+  };
+
+  const handleDownloadProductivityTemplate = async () => {
+    try {
+      const ExcelJS = await import('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Atendimentos diários');
+      worksheet.columns = [
+        { header: 'PROFISSIONAL', key: 'professional', width: 34 },
+        { header: 'QTD ATENDIMENTO', key: 'attendance', width: 20 },
+        { header: 'ESCALA', key: 'schedule', width: 22 },
+        { header: 'DATA', key: 'date', width: 16 },
+        { header: 'ID PROFISSIONAL', key: 'id', width: 34 },
+        { header: 'VALOR RATEADO (R$)', key: 'amount', width: 22 }
+      ];
+      productionEntryRows.forEach(({ professional, shiftCount }, index) => {
+        const rowNumber = index + 2;
+        const row = worksheet.addRow({
+          professional: professional.name,
+          attendance: null,
+          schedule: `${shiftCount} plantão(ões)`,
+          date: new Date(`${productionDate}T12:00:00`),
+          id: String(professional.id),
+          amount: { formula: `IFERROR(B${rowNumber}*150/SUM(B$2:B$${productionEntryRows.length + 1}),0)` }
+        });
+        row.getCell(4).numFmt = 'dd/mm/yyyy';
+        row.getCell(6).numFmt = '"R$" #,##0.00';
+      });
+      worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF312E81' } };
+      worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Atendimentos_${productionDate}_${String(selectedUnitId).replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Falha ao gerar o modelo Excel de produtividade:', error);
+      alert(`Não foi possível gerar o modelo Excel. ${error?.message || 'Tente novamente.'}`);
+    }
+  };
+
+  const handleImportProductivityWorkbook = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+      setProductionError('Use um arquivo .xlsx. Arquivos .xls antigos não são compatíveis.');
+      return;
+    }
+
+    setProductionImporting(true);
+    setProductionError('');
+    try {
+      const ExcelJS = await import('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(await file.arrayBuffer());
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) throw new Error('O arquivo não contém uma planilha.');
+
+      let headerRowNumber = 0;
+      let columns = {};
+      worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        if (headerRowNumber) return;
+        const found = {};
+        row.eachCell({ includeEmpty: false }, (cell, columnNumber) => {
+          const header = normalizeText(getSpreadsheetCellValue(cell));
+          if (header.includes('profissional') && !header.includes('id')) found.professional = columnNumber;
+          if (header.includes('qtd') && (header.includes('atendimento') || header.includes('atendimentos'))) found.attendance = columnNumber;
+          if (header.includes('data')) found.date = columnNumber;
+          if (header.includes('id') && header.includes('profissional')) found.professionalId = columnNumber;
+        });
+        if (found.professional && found.attendance) {
+          headerRowNumber = rowNumber;
+          columns = found;
+        }
+      });
+      if (!headerRowNumber) throw new Error('Não encontrei os cabeçalhos PROFISSIONAL e QTD ATENDIMENTO.');
+
+      const currentById = new Map(productionEntryRows.map(({ professional }) => [String(professional.id), professional]));
+      const currentByName = new Map();
+      productionEntryRows.forEach(({ professional }) => {
+        const name = normalizeText(professional.name);
+        const matches = currentByName.get(name) || [];
+        matches.push(professional);
+        currentByName.set(name, matches);
+      });
+
+      const imported = {};
+      const errors = [];
+      worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+        if (rowNumber <= headerRowNumber) return;
+        const name = String(getSpreadsheetCellValue(row.getCell(columns.professional)) || '').trim();
+        if (!name) return;
+        const countValue = getSpreadsheetCellValue(row.getCell(columns.attendance));
+        const countString = String(countValue ?? '').trim();
+        const dateValue = columns.date ? getSpreadsheetCellValue(row.getCell(columns.date)) : null;
+        const rowDate = getSpreadsheetDate(dateValue, productionDate);
+        const idValue = columns.professionalId
+          ? String(getSpreadsheetCellValue(row.getCell(columns.professionalId)) || '').trim()
+          : '';
+        let professional = idValue ? currentById.get(idValue) : null;
+        if (!professional) {
+          const matches = currentByName.get(normalizeText(name)) || [];
+          professional = matches.length === 1 ? matches[0] : null;
+          if (matches.length > 1) errors.push(`${name}: nome duplicado; inclua o ID PROFISSIONAL.`);
+        }
+        if (!professional) {
+          errors.push(`${name}: profissional não escalado na unidade/data selecionada.`);
+          return;
+        }
+        if (rowDate !== productionDate) {
+          errors.push(`${name}: a data ${formatDateBR(rowDate)} não corresponde à data selecionada ${formatDateBR(productionDate)}.`);
+          return;
+        }
+        if (!/^\d+$/.test(countString) || !Number.isSafeInteger(Number(countString))) {
+          errors.push(`${name}: quantidade de atendimentos inválida.`);
+          return;
+        }
+        const professionalId = String(professional.id);
+        if (Object.prototype.hasOwnProperty.call(imported, professionalId)) {
+          errors.push(`${name}: profissional repetido no arquivo.`);
+          return;
+        }
+        imported[professionalId] = countString;
+      });
+
+      if (Object.keys(imported).length === 0 && errors.length === 0) {
+        throw new Error('O arquivo não contém linhas de produção para importar.');
+      }
+      if (errors.length > 0) {
+        setProductionError(`Nenhuma linha foi aplicada. ${errors.slice(0, 8).join(' ')}`);
+        return;
+      }
+      setProductionDraft(previous => ({ ...previous, ...imported }));
+      setProductionError(`${Object.keys(imported).length} registro(s) importado(s) para conferência. Revise os valores e clique em Salvar atendimentos.`);
+    } catch (error) {
+      console.error('Falha ao importar a planilha de produtividade:', error);
+      setProductionError(`Não foi possível importar a planilha. ${error?.message || 'Confira o arquivo e tente novamente.'}`);
+    } finally {
+      setProductionImporting(false);
+    }
+  };
+
+  const handleSaveDailyProduction = async () => {
+    if (!isManager || !isProductivityPoolUnit) return;
+    if (productionEntryRows.length === 0) {
+      setProductionError('Não há profissionais com plantão na unidade nesta data.');
+      return;
+    }
+    const attendanceRows = productionEntryRows.map(({ professional }) => {
+      const rawCount = productionDraft[String(professional.id)] ?? '';
+      return { professional, rawCount, count: /^\d+$/.test(String(rawCount).trim()) ? Number(rawCount) : null };
+    });
+    const invalidRows = attendanceRows.filter(row => row.count === null || !Number.isSafeInteger(row.count));
+    if (invalidRows.length > 0) {
+      setProductionError(`Informe um número inteiro igual ou maior que zero para: ${invalidRows.map(row => row.professional.name).join(', ')}.`);
+      return;
+    }
+
+    setProductionSaving(true);
+    setProductionError('');
+    try {
+      const updatedAt = new Date().toISOString();
+      const results = await Promise.all(attendanceRows.map(async ({ professional, count }) => {
+        const profileData = professional.data && typeof professional.data === 'object' && !Array.isArray(professional.data)
+          ? professional.data
+          : {};
+        const attendanceByUnit = profileData.daily_productivity_attendance &&
+          typeof profileData.daily_productivity_attendance === 'object' &&
+          !Array.isArray(profileData.daily_productivity_attendance)
+          ? profileData.daily_productivity_attendance
+          : {};
+        const unitRecords = attendanceByUnit[String(selectedUnitId)] &&
+          typeof attendanceByUnit[String(selectedUnitId)] === 'object' &&
+          !Array.isArray(attendanceByUnit[String(selectedUnitId)])
+          ? attendanceByUnit[String(selectedUnitId)]
+          : {};
+        const data = {
+          ...profileData,
+          daily_productivity_attendance: {
+            ...attendanceByUnit,
+            [String(selectedUnitId)]: {
+              ...unitRecords,
+              [productionDate]: { count, updated_at: updatedAt }
+            }
+          }
+        };
+        const { error } = await supabase.from('professionals').update({ data }).eq('id', professional.id);
+        return { professional, error };
+      }));
+      const failed = results.filter(result => result.error);
+      await syncGlobalData();
+      if (failed.length > 0) {
+        console.error('Falha ao salvar uma parte dos registros de produtividade:', failed.map(result => result.error));
+        setProductionError(
+          `${results.length - failed.length} registro(s) foram salvos; falharam: ${failed.map(result => result.professional.name).join(', ')}. Confira e tente salvar novamente.`
+        );
+        return;
+      }
+      setProductionEntryOpen(false);
+      alert(`Atendimentos de ${formatDateBR(productionDate)} salvos para ${attendanceRows.length} profissional(is).`);
+    } catch (error) {
+      console.error('Falha ao salvar os atendimentos diários:', error);
+      setProductionError(`Não foi possível salvar os atendimentos. ${error?.message || 'Verifique a conexão e tente novamente.'}`);
+    } finally {
+      setProductionSaving(false);
+    }
+  };
+
   const reportData = useMemo(() => {
     const profsSummary = {};
 
@@ -179,7 +572,9 @@ export default function Faturamento() {
       if (!p) return;
       const meta = getProfessionalMeta(p);
 
-      const remunType = normalizeText(meta.remuneration_type || p.remuneration_type || 'plantao');
+      const remunType = isProductivityPoolUnit
+        ? 'produtividade'
+        : normalizeText(meta.remuneration_type || p.remuneration_type || 'plantao');
       const unitRates = meta.unit_rates || {};
       const legacySalary = safeNumber(meta.monthly_salary !== undefined ? meta.monthly_salary : p.monthly_salary, 0);
       const primaryUnitId = p.unit_id || meta.allowed_unit_ids?.[0] || p.unit_ids?.[0];
@@ -220,6 +615,8 @@ export default function Faturamento() {
       };
     });
 
+    const productivityPayoutDisplayed = new Set();
+    const productivityDaysAwaitingInput = new Set();
     (shifts || []).forEach(shift => {
       if (!shift) return;
       if (String(shift.unit_id) !== String(selectedUnitId)) return;
@@ -248,7 +645,20 @@ export default function Faturamento() {
           profRef.plantõesRealizados += 1;
           profRef.horasRealizadas += Math.round(schedule.duration * 10) / 10;
           if (remunerationEstimate.requiresProduction) {
-            profRef.plantõesAguardandoProducao += 1;
+            const dailyKey = `${shiftDate}:${pId}`;
+            const countKey = `${shiftDate}:${pId}`;
+            const dayIsIncomplete = !isProductivityPoolUnit ||
+              productivityAllocations.incompleteDates.has(shiftDate);
+            if (dayIsIncomplete && !productivityDaysAwaitingInput.has(countKey)) {
+              productivityDaysAwaitingInput.add(countKey);
+              profRef.plantõesAguardandoProducao += 1;
+            }
+            if (!dayIsIncomplete && !productivityPayoutDisplayed.has(dailyKey)) {
+              const dailyAmount = productivityAllocations.allocationsByDateAndProfessional.get(dailyKey) || 0;
+              valorDoPlantaoAtual = dailyAmount;
+              profRef.valorApuradoPlantões += dailyAmount;
+              productivityPayoutDisplayed.add(dailyKey);
+            }
           } else if (!['mensal', 'monthly', 'salario mensal'].includes(profRef.remunType)) {
             valorDoPlantaoAtual = remunerationEstimate.amount;
             tarifaPendente = remunerationEstimate.missingRate;
@@ -264,7 +674,11 @@ export default function Faturamento() {
           duration: Math.round(schedule.duration * 10) / 10,
           valorAplicado: valorDoPlantaoAtual,
           tarifaPendente,
-          aguardandoProducao: isRealizado && remunerationEstimate.requiresProduction,
+          aguardandoProducao: isRealizado && remunerationEstimate.requiresProduction &&
+            (!isProductivityPoolUnit || productivityAllocations.incompleteDates.has(shiftDate)),
+          atendimentoDia: remunerationEstimate.requiresProduction
+            ? getStoredProductivityAttendance(profRef.prof, selectedUnitId, shiftDate)
+            : null,
           isRealizado
         });
       }
@@ -279,13 +693,14 @@ export default function Faturamento() {
         if (['mensal', 'monthly', 'salario mensal'].includes(item.remunType)) {
           valorBrutoTotal = item.salarioBaseContratual;
         } else if (['produtividade', 'production'].includes(item.remunType)) {
-          valorBrutoTotal = 0; // Calculado externamente ou via lançamento avulso
+          valorBrutoTotal = item.valorApuradoPlantões;
         } else {
           // 'plantao': O bruto é a soma exata do que foi apurado no laço acima
           valorBrutoTotal = item.valorApuradoPlantões;
         }
       }
 
+      if (item.plantõesAguardandoProducao > 0) valorBrutoTotal = 0;
       valorBrutoTotal = roundCurrency(valorBrutoTotal);
       const valorDesconto = roundCurrency((valorBrutoTotal * item.taxRate) / 100);
       const valorLiquido = roundCurrency(valorBrutoTotal - valorDesconto);
@@ -304,7 +719,7 @@ export default function Faturamento() {
       item.plantõesFuturos > 0 ||
       (['mensal', 'monthly', 'salario mensal'].includes(item.remunType) && item.profStatus === 'ativo' && item.isAssignedToCurrentUnit)
     );
-  }, [professionals, shifts, monthPrefix, selectedUnitId, pagamentosStatus, todayStr, now]);
+  }, [professionals, shifts, monthPrefix, selectedUnitId, pagamentosStatus, todayStr, now, productivityAllocations, isProductivityPoolUnit]);
 
   const filteredReport = useMemo(() => {
     const term = normalizeText(searchQuery);
@@ -808,6 +1223,48 @@ export default function Faturamento() {
         </Card>
       </div>
 
+      {(isManager || isProductivityPoolUnit) && (
+        <Card className="space-y-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-500/30 dark:bg-indigo-950/20">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-sm font-black text-indigo-950 dark:text-indigo-200">Produtividade diária por unidade</h2>
+              <p className="mt-1 text-xs text-indigo-900/80 dark:text-indigo-200/80">
+                Uma única unidade pode usar o rateio diário de R$ 150. O valor unitário é R$ 150 dividido pelo total de atendimentos do dia; cada profissional recebe atendimentos × valor unitário.
+              </p>
+            </div>
+            {isProductivityPoolUnit && isManager && (
+              <Button type="button" onClick={() => setProductionEntryOpen(true)} className="shrink-0 bg-indigo-600 text-white hover:bg-indigo-700">
+                Lançar atendimentos do dia
+              </Button>
+            )}
+          </div>
+          {isManager && (
+            <div className="flex flex-col gap-2 border-t border-indigo-200 pt-3 dark:border-indigo-500/20 sm:flex-row sm:items-end">
+              <label className="flex-1 space-y-1 text-[10px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                Unidade exclusiva para esta regra
+                <select
+                  value={productivityUnitDraft}
+                  onChange={event => setProductivityUnitDraft(event.target.value)}
+                  className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold normal-case text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                >
+                  <option value="">Não configurar</option>
+                  {units.map(unit => <option key={unit.id} value={String(unit.id)}>{unit.name}</option>)}
+                </select>
+              </label>
+              <Button type="button" disabled={productivityConfigSaving} onClick={handleSaveProductivityConfiguration} className="h-10 bg-slate-900 px-4 text-xs font-black text-white hover:bg-slate-700 dark:bg-indigo-600 dark:hover:bg-indigo-500">
+                {productivityConfigSaving ? 'Salvando...' : productivityUnitDraft ? 'Salvar unidade da regra' : 'Desativar regra'}
+              </Button>
+            </div>
+          )}
+          {productivityRuleUnitId && (
+            <div className="rounded-xl border border-indigo-200 bg-white/80 p-3 text-xs text-indigo-950 dark:border-indigo-500/20 dark:bg-slate-900/80 dark:text-indigo-100">
+              Unidade configurada: <strong>{units.find(unit => String(unit.id) === productivityRuleUnitId)?.name || 'Unidade não encontrada'}</strong> · Limite diário compartilhado: <strong>{formatCurrency(safeNumber(productivityRule.daily_amount, 150))}</strong>.
+              {isProductivityPoolUnit && <span> O total só é liberado após o registro da produção de todos os profissionais com plantão naquela data.</span>}
+            </div>
+          )}
+        </Card>
+      )}
+
       {(shiftsWithoutRate > 0 || shiftsAwaitingProduction > 0 || shiftsWithoutProfessional > 0 || shiftsWithInvalidSchedule > 0 || professionalsWithoutMonthlySalary > 0) && (
         <Card className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-950/20">
           <div className="flex items-start gap-3">
@@ -821,7 +1278,10 @@ export default function Faturamento() {
               )}
               {shiftsAwaitingProduction > 0 && (
                 <p className="text-xs text-amber-800 dark:text-amber-200">
-                  {shiftsAwaitingProduction} plantão(ões) por produtividade aguardam lançamento da produção; ficam fora dos valores apurados e não podem ser marcados como pagos até a apuração.
+                  {shiftsAwaitingProduction} dia(s) de produtividade aguardam apuração completa. {!isProductivityPoolUnit
+                    ? 'A regra do pool diário ainda não está configurada para esta unidade.'
+                    : 'A apuração fica pendente até o gestor registrar os atendimentos de todos os profissionais escalados no dia.'}
+                  {' '}O pagamento não pode ser marcado até os dados estarem completos.
                 </p>
               )}
               {professionalsWithoutMonthlySalary > 0 && (
@@ -944,7 +1404,7 @@ export default function Faturamento() {
                         <span className="font-bold text-slate-900 dark:text-white">{item.plantõesRealizados} plantões</span>
                         <div className="text-[10px] font-mono text-slate-400">{item.horasRealizadas.toFixed(1).replace('.', ',')}h totais</div>
                         {item.plantõesAguardandoProducao > 0 && (
-                          <div className="mt-1 text-[9px] font-bold text-indigo-600 dark:text-indigo-400">{item.plantõesAguardandoProducao} aguardando apuração</div>
+                          <div className="mt-1 text-[9px] font-bold text-indigo-600 dark:text-indigo-400">{item.plantõesAguardandoProducao} dia(s) pendente(s)</div>
                         )}
                       </td>
 
@@ -1017,6 +1477,82 @@ export default function Faturamento() {
         </div>
       </div>
 
+      <Dialog open={productionEntryOpen} onOpenChange={setProductionEntryOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-white sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black text-indigo-700 dark:text-indigo-300">
+              Lançamento diário de atendimentos
+            </DialogTitle>
+            <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              Informe a quantidade de cada profissional escalado. A apuração só será liberada quando todos tiverem um número informado, inclusive zero.
+            </p>
+          </DialogHeader>
+          <label className="space-y-1 text-[10px] font-black uppercase tracking-wide text-slate-500">
+            Data da produção
+            <Input type="date" value={productionDate} onChange={event => setProductionDate(event.target.value)} className="h-10 text-sm" />
+          </label>
+          <input
+            ref={productivityFileInputRef}
+            type="file"
+            accept=".xlsx"
+            onChange={handleImportProductivityWorkbook}
+            className="hidden"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" disabled={productionEntryRows.length === 0 || productionImporting} onClick={handleDownloadProductivityTemplate} className="h-9 text-xs font-bold">
+              Baixar modelo Excel
+            </Button>
+            <Button type="button" variant="outline" disabled={productionEntryRows.length === 0 || productionImporting} onClick={() => productivityFileInputRef.current?.click()} className="h-9 text-xs font-bold">
+              {productionImporting ? 'Importando...' : 'Importar Excel'}
+            </Button>
+          </div>
+          <div className="max-h-[48vh] space-y-2 overflow-y-auto pr-1">
+            {productionEntryRows.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-xs text-slate-500 dark:border-slate-700">
+                Não há profissionais com plantão por produtividade nessa unidade e data.
+              </p>
+            ) : productionEntryRows.map(({ professional, shiftCount }) => (
+              <div key={professional.id} className="grid grid-cols-[minmax(0,1fr)_120px] items-center gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-black">{professional.name}</p>
+                  <p className="mt-1 text-[10px] text-slate-500">{professional.specialty || 'Especialidade não informada'} · {shiftCount} plantão(ões)</p>
+                </div>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={productionDraft[String(professional.id)] ?? ''}
+                  onChange={event => setProductionDraft(previous => ({
+                    ...previous,
+                    [String(professional.id)]: event.target.value
+                  }))}
+                  aria-label={`Quantidade de atendimentos de ${professional.name}`}
+                  placeholder="Atendimentos"
+                  className="h-10 text-right font-mono"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="rounded-xl bg-indigo-50 p-3 text-xs text-indigo-950 dark:bg-indigo-500/10 dark:text-indigo-100">
+            Total informado: <strong>{Object.values(productionDraft).reduce((total, value) => total + (/^\d+$/.test(String(value)) ? Number(value) : 0), 0)}</strong> atendimento(s) · Pool diário: <strong>{formatCurrency(safeNumber(productivityRule?.daily_amount, 150))}</strong>
+            {' '}· Valor por atendimento: <strong>{(() => {
+              const count = Object.values(productionDraft).reduce((total, value) => total + (/^\d+$/.test(String(value)) ? Number(value) : 0), 0);
+              return count > 0
+                ? new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 6 }).format(safeNumber(productivityRule?.daily_amount, 150) / count)
+                : 'aguardando total maior que zero';
+            })()}</strong>
+          </div>
+          {productionError && <p role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs font-semibold text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">{productionError}</p>}
+          <div className="flex justify-end gap-2 border-t border-slate-200 pt-3 dark:border-slate-800">
+            <Button type="button" variant="outline" onClick={() => setProductionEntryOpen(false)} disabled={productionSaving}>Cancelar</Button>
+            <Button type="button" onClick={handleSaveDailyProduction} disabled={productionSaving || productionEntryRows.length === 0} className="bg-indigo-600 font-bold text-white hover:bg-indigo-700">
+              {productionSaving ? 'Salvando...' : 'Salvar atendimentos'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* MODAL DE DETALHAMENTO */}
       <Dialog open={!!selectedProfModal} onOpenChange={() => setSelectedProfModal(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-slate-200 dark:border-slate-800">
@@ -1077,7 +1613,9 @@ export default function Faturamento() {
                             </span>
                           )}
                           {['produtividade', 'production'].includes(selectedProfModal.remunType) && p.isRealizado && (
-                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">Aguardando lançamento da produção</span>
+                            <span className={`text-[10px] font-bold ${p.aguardandoProducao ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                              Atendimentos: {p.atendimentoDia ?? 'não lançado'} · {p.aguardandoProducao ? 'Aguardando apuração diária' : `Rateio: ${formatCurrency(p.valorAplicado)}`}
+                            </span>
                           )}
                           <span className="font-mono font-bold text-sky-600 bg-sky-50 dark:bg-sky-950/30 px-2 py-1 rounded-lg">
                             {p.duration}h
