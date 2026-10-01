@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { 
   Building2, Save, UserPlus, Trash2, 
   Settings, Hospital, ShieldCheck, FileText,
-  Mail, MapPin, Edit, Plus, RotateCcw, Activity, AlertTriangle, Phone, Copy
+  Mail, MapPin, Edit, Plus, RotateCcw, Activity, AlertTriangle, Phone, Copy, Image as ImageIcon
 } from 'lucide-react';
 
 function getLocalDateString(d = new Date()) {
@@ -31,8 +31,8 @@ export default function Configuracoes() {
   const activeUnits = units?.length > 0 ? units : (company?.data?.units || []);
   const currentUnit = activeUnits.find(u => String(u.id) === String(selectedUnitId));
 
-  const [unitForm, setUnitForm] = useState({ name: '', address: '', phone: '', email: '', cnpj: '', primary_contact: '', status: 'ativo' });
-  const [contractForm, setContractForm] = useState({ name: '', cnpj: '', billing_cycle: 'mensal', contract_start: '', contract_end: '' });
+  const [unitForm, setUnitForm] = useState({ name: '', address: '', phone: '', email: '', cnpj: '', primary_contact: '', logo_url: '', status: 'ativo' });
+  const [contractForm, setContractForm] = useState({ name: '', cnpj: '', billing_cycle: 'mensal', contract_start: '', contract_end: '', logo_url: '' });
   
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('user');
@@ -40,13 +40,7 @@ export default function Configuracoes() {
   const [unitModalOpen, setUnitModalOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState(null);
   const [newUnitForm, setNewUnitForm] = useState({ 
-    name: '', 
-    cnpj: '', 
-    address: '', 
-    phone: '', 
-    email: '', 
-    primary_contact: '', 
-    status: 'ativo' 
+    name: '', cnpj: '', address: '', phone: '', email: '', primary_contact: '', logo_url: '', status: 'ativo' 
   });
 
   const isAdmin = user?.role === 'admin' || user?.app_role === 'gestor';
@@ -79,7 +73,8 @@ export default function Configuracoes() {
         cnpj: company.cnpj || company.data?.cnpj || '', 
         billing_cycle: company.data?.billing_cycle || 'mensal',
         contract_start: company.data?.contract_start || '',
-        contract_end: company.data?.contract_end || ''
+        contract_end: company.data?.contract_end || '',
+        logo_url: company.logo_url || company.data?.logo_url || ''
       });
     }
   }, [loading, company, isAdmin]);
@@ -93,21 +88,19 @@ export default function Configuracoes() {
         phone: currentUnit.phone || '',
         email: currentUnit.email || '',
         primary_contact: currentUnit.primary_contact || '',
+        logo_url: currentUnit.logo_url || '',
         status: currentUnit.status || 'ativo'
       });
     }
   }, [currentUnit, selectedUnitId]);
 
-  // CORREÇÃO: Filtra os usuários para mostrar APENAS quem tem permissão explícita na unidade atual
   const visibleUsers = useMemo(() => {
     return companyUsers.filter(u => {
-      // Se for o Admin root principal, ele tem acesso a tudo e aparece em todas
       if (u.role === 'admin' && u.id === 'usr_admin') return true;
 
       const allowedUnits = u.data?.allowed_unit_ids || [];
       const legacyUnit = u.data?.unit_id || u.data?.selected_unit_id || u.unit_id;
       
-      // Se a unidade selecionada no topo da tela estiver na lista de permitidas deste usuário, ele aparece. Caso contrário, é ocultado.
       return allowedUnits.includes(String(selectedUnitId)) || String(legacyUnit) === String(selectedUnitId);
     });
   }, [companyUsers, selectedUnitId]);
@@ -145,11 +138,13 @@ export default function Configuracoes() {
       const payload = {
         name: contractForm.name,
         cnpj: contractForm.cnpj,
+        logo_url: contractForm.logo_url, // Salva na raiz da tabela company, se a coluna existir (ou no data abaixo)
         data: {
           ...(company?.data || {}),
           billing_cycle: contractForm.billing_cycle,
           contract_start: contractForm.contract_start,
-          contract_end: contractForm.contract_end
+          contract_end: contractForm.contract_end,
+          logo_url: contractForm.logo_url
         }
       };
 
@@ -164,7 +159,7 @@ export default function Configuracoes() {
       }
       
       await refreshAllData();
-      alert('Contrato matriz atualizado com sucesso!');
+      alert('Contrato matriz e logotipo atualizados com sucesso!');
     } catch (err) { 
       alert('Erro ao salvar contrato: ' + (err.message || 'Falha de comunicação com o banco.')); 
     } finally { 
@@ -206,17 +201,13 @@ export default function Configuracoes() {
     if (unit) {
       setEditingUnit(unit);
       setNewUnitForm({ 
-        name: unit.name || '', 
-        cnpj: unit.cnpj || '', 
-        address: unit.address || '', 
-        phone: unit.phone || '', 
-        email: unit.email || '', 
-        primary_contact: unit.primary_contact || '', 
-        status: unit.status || 'ativo' 
+        name: unit.name || '', cnpj: unit.cnpj || '', address: unit.address || '', 
+        phone: unit.phone || '', email: unit.email || '', primary_contact: unit.primary_contact || '', 
+        logo_url: unit.logo_url || '', status: unit.status || 'ativo' 
       });
     } else {
       setEditingUnit(null);
-      setNewUnitForm({ name: '', cnpj: '', address: '', phone: '', email: '', primary_contact: '', status: 'ativo' });
+      setNewUnitForm({ name: '', cnpj: '', address: '', phone: '', email: '', primary_contact: '', logo_url: '', status: 'ativo' });
     }
     setUnitModalOpen(true);
   };
@@ -353,6 +344,8 @@ export default function Configuracoes() {
       </div>
 
       <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
+        
+        {/* ABA: HOSPITAL ATUAL */}
         {activeTab === 'unidade_atual' && (
           <div className="max-w-4xl">
             <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
@@ -379,6 +372,12 @@ export default function Configuracoes() {
               ) : (
                 <form onSubmit={handleSaveCurrentUnit} className="space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="space-y-1.5 sm:col-span-2 border-b border-slate-100 dark:border-slate-800 pb-5 mb-1">
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"><ImageIcon className="w-4 h-4 text-sky-500" /> Logo da Unidade / Hospital (Link de Imagem)</Label>
+                      <p className="text-[10px] text-slate-500 mb-2">Cole aqui o endereço URL da imagem (JPG, PNG) para que a logo desta unidade apareça nos relatórios impressos.</p>
+                      <Input value={unitForm.logo_url || ''} onChange={(e) => setUnitForm(p => ({...p, logo_url: e.target.value}))} placeholder="https://exemplo.com/logo-unidade.png" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-sky-600 dark:text-cyan-400 rounded-xl font-mono text-[11px]" />
+                    </div>
+
                     <div className="space-y-1.5 sm:col-span-2">
                       <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nome Oficial do Hospital *</Label>
                       <Input value={unitForm.name} onChange={(e) => setUnitForm(p => ({...p, name: e.target.value}))} required className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
@@ -416,6 +415,7 @@ export default function Configuracoes() {
           </div>
         )}
 
+        {/* ABA: CONTRATO MATRIZ */}
         {activeTab === 'contrato' && (
           <div className="max-w-4xl">
             {daysToExpiration !== null && daysToExpiration <= 30 && daysToExpiration >= 0 && (
@@ -443,11 +443,17 @@ export default function Configuracoes() {
                 <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
                   <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Gestão de Contrato & Matriz
                 </h3>
-                <p className="text-xs text-slate-500 mt-1">Dados de faturamento e vigência do seu contrato com a ScaleMedic. Esta empresa pode gerenciar quantos hospitais quiser.</p>
+                <p className="text-xs text-slate-500 mt-1">Dados de faturamento, vigência e identidade (Logo) da empresa administradora (Matriz). Esta empresa pode gerenciar quantos hospitais quiser.</p>
               </div>
 
               <form onSubmit={handleSaveContract} className="space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="space-y-1.5 sm:col-span-2 border-b border-slate-100 dark:border-slate-800 pb-5 mb-1">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"><ImageIcon className="w-4 h-4 text-indigo-500" /> Logo Principal da Rede / Matriz (Link de Imagem)</Label>
+                    <p className="text-[10px] text-slate-500 mb-2">Insira a URL da logo principal da sua rede. Esta imagem será a principal em todos os relatórios da rede inteira.</p>
+                    <Input value={contractForm.logo_url || ''} onChange={(e) => setContractForm(p => ({...p, logo_url: e.target.value}))} placeholder="https://exemplo.com/logo-matriz.png" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-indigo-600 dark:text-indigo-400 rounded-xl font-mono text-[11px]" />
+                  </div>
+
                   <div className="space-y-1.5 sm:col-span-2">
                     <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Razão Social (Empresa Pagadora) *</Label>
                     <Input value={contractForm.name} onChange={(e) => setContractForm(p => ({...p, name: e.target.value}))} required className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-bold" />
@@ -496,6 +502,7 @@ export default function Configuracoes() {
           </div>
         )}
 
+        {/* ABA: GERENCIAR UNIDADES */}
         {activeTab === 'unidades' && (
           <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 mb-6 gap-4">
@@ -504,7 +511,7 @@ export default function Configuracoes() {
                   <Building2 className="w-5 h-5 text-sky-600 dark:text-cyan-400" /> Cadastrar Múltiplos Hospitais
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Adicione novos hospitais que pertencem a este contrato com CNPJ, endereço e contatos completos.
+                  Adicione novos hospitais que pertencem a este contrato com logotipo, CNPJ, endereço e contatos completos.
                 </p>
               </div>
               <Button onClick={() => openUnitModal()} className="shrink-0 h-10 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs px-5 rounded-xl shadow-md cursor-pointer">
@@ -544,6 +551,11 @@ export default function Configuracoes() {
                           <span>{u.phone}</span>
                         </div>
                       )}
+                      {u.logo_url && (
+                        <div className="flex items-center gap-1.5 text-[9px] text-sky-500 mt-2 border-t border-slate-200 dark:border-slate-800 pt-1.5">
+                          <ImageIcon className="w-3 h-3" /> Possui Logo Cadastrada
+                        </div>
+                      )}
                     </div>
 
                     <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
@@ -578,6 +590,11 @@ export default function Configuracoes() {
                       <Copy className="w-3.5 h-3.5 mr-2" /> Preencher com dados do Contrato Matriz
                     </Button>
                   )}
+
+                  <div className="space-y-1.5">
+                    <Label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1"><ImageIcon className="w-3.5 h-3.5 text-sky-500" /> URL da Logo (Unidade)</Label>
+                    <Input value={newUnitForm.logo_url || ''} onChange={e => setNewUnitForm({...newUnitForm, logo_url: e.target.value})} placeholder="https://exemplo.com/logo.png" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl text-sky-600 dark:text-cyan-400 font-mono text-[10px]" />
+                  </div>
 
                   <div className="space-y-1.5">
                     <Label className="font-bold text-slate-700 dark:text-slate-300">Nome Oficial do Hospital *</Label>
@@ -634,6 +651,7 @@ export default function Configuracoes() {
           </Card>
         )}
 
+        {/* ABA: USUARIOS / EQUIPE */}
         {activeTab === 'usuarios' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
             <div className="lg:col-span-1 space-y-6">
