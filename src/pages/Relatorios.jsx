@@ -10,7 +10,7 @@ import {
   CalendarDays, ShieldAlert, CheckCircle2,
   Activity, Clock, Printer as PrinterIcon,
   AlertTriangle, Stethoscope, FileSpreadsheet,
-  Filter, Check, Target, ShieldCheck, Contact2, Gift
+  Filter, Check, Target, ShieldCheck, Contact2, Gift, ArrowLeftRight
 } from 'lucide-react';
 
 function safeNumber(value, fallback = 0) {
@@ -123,7 +123,7 @@ export default function Relatorios() {
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
 
-  const currentYear = today.getFullYear(); // ADICIONADO AQUI NO TOPO
+  const currentYear = today.getFullYear();
 
   const [dateStart, setDateStart] = useState(firstDay);
   const [dateEnd, setDateEnd] = useState(lastDay);
@@ -199,6 +199,31 @@ export default function Relatorios() {
       return timeA.localeCompare(timeB);
     });
   }, [shifts, sectors, appliedFilters, hasSearched]);
+
+  // ==========================================
+  // AUDITORIA DE TROCAS E REPASSES (MURAL)
+  // ==========================================
+  const swapsList = useMemo(() => {
+    if (!hasSearched) return [];
+    return filteredShifts.filter(s => s.notes && /\[SOLICITADO_POR:/i.test(s.notes)).map(s => {
+      const reqMatch = s.notes.match(/\[SOLICITADO_POR:\s*([^\]]+)\]/i);
+      const requester = reqMatch ? reqMatch[1] : 'Desconhecido';
+      const isPending = s.status === 'aguardando_aprovacao_gestor' || s.notes.includes('[AGUARDANDO_GESTOR]');
+      
+      let currentProf = titleCase(getShiftName(s));
+      if (!currentProf || isVacant(s)) {
+        currentProf = 'Mural (Aberto)';
+      }
+
+      return {
+        ...s,
+        requester: titleCase(requester),
+        currentProf,
+        isPending,
+        swapStatus: isPending ? 'Aguardando Gestão' : 'Repasse Concluído'
+      };
+    });
+  }, [filteredShifts, hasSearched]);
 
   const filteredProfessionals = useMemo(() => {
     if (!hasSearched) return [];
@@ -496,6 +521,34 @@ export default function Relatorios() {
       html += `<tr><td colspan="7" style="border:none; height:20px;"></td></tr>`;
     }
 
+    if (mode === 'all' || activeTab === 'trocas') {
+      html += `
+          <tr><td colspan="6" class="section-title">HISTÓRICO DE TROCAS E REPASSES (MURAL)</td></tr>
+          <tr>
+            <th>Data do Plantão</th>
+            <th>Setor Clínico</th>
+            <th>Horário</th>
+            <th>Dono Original (Solicitante)</th>
+            <th>Assumido Por (Atual)</th>
+            <th>Status da Troca</th>
+          </tr>
+      `;
+      swapsList.forEach((s, i) => {
+        const rowClass = i % 2 === 0 ? '' : 'class="row-alt"';
+        html += `
+          <tr ${rowClass}>
+            <td>${formatDate(s.date)}</td>
+            <td>${getSectorName(s, sectors)}</td>
+            <td>${s.start_time || ''} às ${s.end_time || ''}</td>
+            <td style="font-weight:bold; color:#be123c;">${s.requester}</td>
+            <td style="font-weight:bold; color:#059669;">${s.currentProf}</td>
+            <td>${s.swapStatus}</td>
+          </tr>
+        `;
+      });
+      html += `<tr><td colspan="6" style="border:none; height:20px;"></td></tr>`;
+    }
+
     if (mode === 'all' || activeTab === 'base_setores') {
       html += `
           <tr><td colspan="5" class="section-title">ESTRUTURA DE SETORES</td></tr>
@@ -560,7 +613,6 @@ export default function Relatorios() {
       html += `<tr><td colspan="10" style="border:none; height:20px;"></td></tr>`;
     }
 
-    // EXCEL DA ABA ANIVERSARIANTES
     if (mode === 'all' || activeTab === 'aniversariantes') {
       html += `
           <tr><td colspan="4" class="section-title">ANIVERSARIANTES DO MÊS (${birthDaysList.length})</td></tr>
@@ -836,6 +888,41 @@ export default function Relatorios() {
       printHtml += `</tbody></table>`;
     }
 
+    if (mode === 'all' || activeTab === 'trocas') {
+      printHtml += `
+        <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Histórico de Trocas e Repasses (Mural)</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Setor Clínico</th>
+              <th class="text-center">Horário</th>
+              <th>Dono Original</th>
+              <th>Assumido Por</th>
+              <th class="text-center">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      if (swapsList.length === 0) {
+        printHtml += `<tr><td colspan="6" class="text-center" style="color: #64748b; padding: 20px;">Nenhum repasse ou troca registrada no período.</td></tr>`;
+      } else {
+        swapsList.forEach(s => {
+          printHtml += `
+            <tr>
+              <td class="font-bold">${formatDate(s.date)}</td>
+              <td>${getSectorName(s, sectors)}</td>
+              <td class="text-center font-bold">${s.start_time} - ${s.end_time}</td>
+              <td style="color:#be123c; font-weight:bold;">${s.requester}</td>
+              <td style="color:#059669; font-weight:bold;">${s.currentProf}</td>
+              <td class="text-center font-bold">${s.swapStatus}</td>
+            </tr>
+          `;
+        });
+      }
+      printHtml += `</tbody></table>`;
+    }
+
     if (mode === 'all' || activeTab === 'base_setores') {
       printHtml += `
         <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Estrutura de Setores</div>
@@ -896,7 +983,6 @@ export default function Relatorios() {
       printHtml += `</tbody></table>`;
     }
 
-    // IMPRESSÃO PDF ABA ANIVERSARIANTES
     if (mode === 'all' || activeTab === 'aniversariantes') {
       printHtml += `
         <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Aniversariantes do Mês (${birthDaysList.length})</div>
@@ -1133,6 +1219,7 @@ export default function Relatorios() {
             {[
               { id: 'executivo', label: 'Dashboard Executivo', icon: BarChart3 },
               { id: 'escalas', label: 'Extrato de Plantões', icon: CalendarDays },
+              { id: 'trocas', label: 'Trocas e Repasses', icon: ArrowLeftRight },
               { id: 'base_setores', label: 'Estrutura de Setores', icon: Building2 },
               { id: 'base_profissionais', label: 'Base de Profissionais', icon: Contact2 },
               { id: 'aniversariantes', label: 'Aniversariantes do Mês', icon: Gift }, 
@@ -1154,6 +1241,9 @@ export default function Relatorios() {
                   <Icon className="w-4 h-4" /> {tab.label}
                   {tab.id === 'aniversariantes' && birthDaysList.length > 0 && (
                     <span className="ml-1 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold">{birthDaysList.length}</span>
+                  )}
+                  {tab.id === 'trocas' && swapsList.length > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[9px] font-bold">{swapsList.length}</span>
                   )}
                 </button>
               );
@@ -1284,6 +1374,50 @@ export default function Relatorios() {
                       })}
                       {filteredShifts.length === 0 && (
                         <tr><td colSpan="5" className="py-8 text-center text-slate-500">Nenhum plantão filtrado no período.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {/* NOVA ABA: TROCAS E MURAL */}
+            {activeTab === 'trocas' && (
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
+                  <h3 className="font-black text-sm uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                    <ArrowLeftRight className="w-5 h-5" /> Histórico de Trocas e Repasses ({swapsList.length})
+                  </h3>
+                </div>
+                <div className="overflow-x-auto mt-4">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                        <th className="py-3 px-3">Data</th>
+                        <th className="py-3 px-3">Setor Clínico</th>
+                        <th className="py-3 px-3 text-center">Horário</th>
+                        <th className="py-3 px-3">Dono Original</th>
+                        <th className="py-3 px-3">Assumido Por</th>
+                        <th className="py-3 px-3 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
+                      {swapsList.map((s, idx) => (
+                        <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                          <td className="py-3 px-3 font-bold font-mono text-slate-700 dark:text-slate-300">{formatDate(s.date)}</td>
+                          <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{getSectorName(s, sectors)}</td>
+                          <td className="py-3 px-3 font-mono text-center text-slate-500 dark:text-slate-400">{s.start_time} - {s.end_time}</td>
+                          <td className="py-3 px-3 font-bold text-rose-600 dark:text-rose-400">{s.requester}</td>
+                          <td className="py-3 px-3 font-bold text-emerald-600 dark:text-emerald-400">{s.currentProf}</td>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${s.isPending ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400' : 'bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-400'}`}>
+                              {s.swapStatus}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {swapsList.length === 0 && (
+                        <tr><td colSpan="6" className="py-8 text-center text-slate-500">Nenhum repasse ou troca registrada com base nos filtros atuais.</td></tr>
                       )}
                     </tbody>
                   </table>
