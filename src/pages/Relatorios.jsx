@@ -9,7 +9,7 @@ import {
   BarChart3, Users, DollarSign, Building2,
   CalendarDays, Activity, Printer as PrinterIcon,
   AlertTriangle, Stethoscope, FileSpreadsheet,
-  Filter, Check, Contact2, Gift, ArrowLeftRight
+  Filter, Check, Contact2, Gift, ArrowLeftRight, RotateCcw
 } from 'lucide-react';
 
 function safeNumber(value, fallback = 0) {
@@ -190,6 +190,23 @@ export default function Relatorios() {
       profStatus: profStatusFilter,
       search: searchQuery
     });
+    setHasSearched(true);
+  };
+
+  const handleClearFilters = () => {
+    const clearedFilters = {
+      start: '',
+      end: '',
+      sector: 'todos',
+      profStatus: 'todos',
+      search: ''
+    };
+    setDateStart('');
+    setDateEnd('');
+    setSelectedSector('todos');
+    setProfStatusFilter('todos');
+    setSearchQuery('');
+    setAppliedFilters(clearedFilters);
     setHasSearched(true);
   };
 
@@ -475,7 +492,9 @@ export default function Relatorios() {
     return { valid, expired, nearExpiry, missing, total: filteredProfessionals.length };
   }, [filteredProfessionals]);
 
-  const periodLabel = `${formatDate(appliedFilters.start)} até ${formatDate(appliedFilters.end)}`;
+  const periodLabel = appliedFilters.start || appliedFilters.end
+    ? `${appliedFilters.start ? formatDate(appliedFilters.start) : 'Início'} até ${appliedFilters.end ? formatDate(appliedFilters.end) : 'Hoje'}`
+    : 'Todo o período';
   const currentUnitObj = (units || []).find(u => String(u.id) === String(selectedUnitId));
   const hospitalName = currentUnitObj?.name || company?.name || 'Hospital Principal';
   const appliedSectorName = appliedFilters.sector === 'todos'
@@ -1253,7 +1272,7 @@ export default function Relatorios() {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-3 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-7 gap-3 items-end">
           <div className="space-y-1.5">
             <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Data Inicial</Label>
             <Input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 dark:[color-scheme:dark] transition-colors" />
@@ -1298,6 +1317,16 @@ export default function Relatorios() {
           <div>
             <Button onClick={handleApplyFilters} className="w-full h-11 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs rounded-xl shadow-lg gap-2 cursor-pointer transition-colors border-none dark:border-solid dark:border-cyan-500/50">
               <Check className="w-4 h-4" /> Aplicar filtros
+            </Button>
+          </div>
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleClearFilters}
+              className="w-full h-11 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer transition-colors"
+            >
+              <RotateCcw className="w-4 h-4" /> Limpar filtros
             </Button>
           </div>
         </div>
