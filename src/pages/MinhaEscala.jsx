@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { 
   CalendarDays, Clock, Building2, Repeat, CheckCircle2, Loader2, DollarSign, AlertCircle, 
   Radio, Printer, ChevronLeft, ChevronRight, Send, Timer, Sparkles, Flame, ArrowRight, 
-  Layers, CalendarCheck, Zap, ChevronDown, ChevronUp, Clock3, ShieldAlert
+  Layers, CalendarCheck, Zap, ChevronDown, ChevronUp, Clock3, ShieldAlert, LogIn, LogOut
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -86,6 +86,15 @@ export default function MinhaEscala() {
     ) || null;
   }, [professionals, myProfId, user]);
 
+  const profMeta = useMemo(() => {
+    if (!currentProfessional) return {};
+    try {
+      const stored = window.localStorage.getItem(`prof_meta_${currentProfessional.id}`);
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return currentProfessional.data || {};
+  }, [currentProfessional]);
+
   const sectorMap = useMemo(() => {
     const m = {};
     (sectors || []).forEach(s => { if (s) m[String(s.id)] = s; });
@@ -120,43 +129,33 @@ export default function MinhaEscala() {
     if (!appLoading) loadMyShifts();
   }, [appLoading, loadMyShifts]);
 
-  const remunConfig = useMemo(() => {
-    let meta = {};
-    if (currentProfessional?.id) {
-      try {
-        const stored = window.localStorage.getItem(`prof_meta_${currentProfessional.id}`);
-        if (stored) meta = JSON.parse(stored);
-      } catch {}
-    }
-
-    const remunType = meta.remuneration_type || currentProfessional?.remuneration_type || 'mensal';
+  // FUNÇÃO UNIVERSAL DE CÁLCULO DE VALOR DO PLANTÃO
+  const getShiftValue = useCallback((shift) => {
+    const remunType = profMeta.remuneration_type || 'plantao';
+    if (remunType === 'mensal') return { type: 'mensal', value: 0 };
+    if (remunType === 'produtividade') return { type: 'produtividade', value: 0 };
     
-    let baseSalario = 1672;
-    if (meta.monthly_salary !== undefined && meta.monthly_salary !== null) {
-      baseSalario = safeNumber(meta.monthly_salary, 1672);
-    } else if (currentProfessional?.monthly_salary !== undefined && currentProfessional?.monthly_salary !== null) {
-      baseSalario = safeNumber(currentProfessional.monthly_salary, 1672);
-    }
+    const rates = profMeta.unit_rates?.[shift.unit_id] || {};
+    const d = new Date((shift.date || '').split('T')[0] + 'T12:00:00');
+    const isFds = d.getDay() === 0 || d.getDay() === 6; 
+    const isNight = shift.shift_type === 'noturno' || shift.start_time >= '18:00' || shift.start_time < '06:00';
+    
+    const val = isFds ? rates.fds : (isNight ? rates.noturno : rates.diurno);
+    return { type: 'valor', value: Number(val || 0) };
+  }, [profMeta]);
 
-    const dailyRate = meta.daily_rate !== undefined ? safeNumber(meta.daily_rate) : safeNumber(currentProfessional?.daily_rate, 0);
-    const hourlyRate = meta.hourly_rate !== undefined ? safeNumber(meta.hourly_rate) : safeNumber(currentProfessional?.hourly_rate, 0);
+  const handleCheckAction = async (shift, actionType) => {
+    const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const tag = `[${actionType === 'in' ? 'CHECKIN' : 'CHECKOUT'}:${timeStr}]`;
+    if (!confirm(`Confirmar ${actionType === 'in' ? 'Check-in' : 'Check-out'} às ${timeStr}?`)) return;
 
-    let valorPorPlantao = 0;
-    let valorPorHora = 0;
-
-    if (remunType === 'mensal') {
-      valorPorPlantao = baseSalario / 20;
-      valorPorHora = baseSalario / 220;
-    } else if (remunType === 'diaria') {
-      valorPorPlantao = dailyRate > 0 ? dailyRate : (baseSalario / 20);
-      valorPorHora = valorPorPlantao / 12;
-    } else {
-      valorPorHora = hourlyRate > 0 ? hourlyRate : (baseSalario / 220);
-      valorPorPlantao = valorPorHora * 12;
-    }
-
-    return { valorPorPlantao: safeNumber(valorPorPlantao, 83.6), valorPorHora: safeNumber(valorPorHora, 7.6), remunType, salarioBase: baseSalario };
-  }, [currentProfessional]);
+    try {
+      const newNotes = `${shift.notes || ''} ${tag}`.trim();
+      await autoHealingSaveShift(shift.id, { notes: newNotes });
+      await loadMyShifts();
+      alert(`${actionType === 'in' ? 'Check-in' : 'Check-out'} registrado com sucesso!`);
+    } catch (e) { alert('Erro ao registrar ponto: ' + e.message); }
+  };
 
   const enrichedShifts = useMemo(() => {
     const nowHour = now.getHours();
@@ -212,9 +211,11 @@ export default function MinhaEscala() {
       if (duration <= 0) duration += 24;
 
       const sectorName = s.sector_name || sectorMap[s.sector_id]?.name || 'Setor Hospitalar';
-      
       const unitObj = (units || []).find(u => String(u.id) === String(s.unit_id));
       const unitName = unitObj ? unitObj.name : (company?.name || 'Unidade Principal');
+
+      const checkinMatch = notesStr.match(/\[CHECKIN:([^\]]+)\]/);
+      const checkoutMatch = notesStr.match(/\[CHECKOUT:([^\]]+)\]/);
 
       return {
         ...s,
@@ -226,7 +227,10 @@ export default function MinhaEscala() {
         timeLeftDesc,
         startDateTime,
         startMin,
-        endMin
+        endMin,
+        shiftValue: getShiftValue(s),
+        checkinTime: checkinMatch ? checkinMatch[1] : null,
+        checkoutTime: checkoutMatch ? checkoutMatch[1] : null
       };
     });
 
@@ -239,7 +243,7 @@ export default function MinhaEscala() {
       });
       return { ...item, hasConflict };
     });
-  }, [shifts, now, todayStr, sectorMap, units, company]);
+  }, [shifts, now, todayStr, sectorMap, units, company, getShiftValue]);
 
   const conflictingShiftsCount = useMemo(() => enrichedShifts.filter(s => s.hasConflict).length, [enrichedShifts]);
   const activeShiftNow = useMemo(() => enrichedShifts.find(s => s.state === 'ativo') || null, [enrichedShifts]);
@@ -264,15 +268,23 @@ export default function MinhaEscala() {
   }), [monthShifts]);
 
   const monthMetrics = useMemo(() => {
-    let cumpridos = 0; let futuros = 0; let horas = 0;
+    let cumpridos = 0; let futuros = 0; let horas = 0; let valorBruto = 0;
+    
+    if (profMeta.remuneration_type === 'mensal') {
+      valorBruto = safeNumber(profMeta.monthly_salary);
+    }
+
     monthShifts.forEach(s => {
-      if (s.state === 'concluido' || s.state === 'ativo') { cumpridos += 1; horas += s.duration; } 
+      if (s.state === 'concluido' || s.state === 'ativo') { 
+        cumpridos += 1; 
+        horas += s.duration; 
+        if (s.shiftValue?.type === 'valor') valorBruto += s.shiftValue.value;
+      } 
       else { futuros += 1; }
     });
-    const valorBruto = cumpridos * remunConfig.valorPorPlantao;
-    const extrasQtd = Math.max(0, cumpridos - 20);
-    return { cumpridos, futuros, horas: Math.round(horas * 10) / 10, valorBruto, extrasQtd, totalMes: monthShifts.length };
-  }, [monthShifts, remunConfig]);
+    
+    return { cumpridos, futuros, horas: Math.round(horas * 10) / 10, valorBruto, totalMes: monthShifts.length };
+  }, [monthShifts, profMeta]);
 
   const handlePassShiftToMural = async (shift) => {
     const requesterName = currentProfessional?.name || user?.full_name || 'Profissional';
@@ -311,17 +323,24 @@ export default function MinhaEscala() {
 
     const allOrdered = [...monthShifts].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
-    const rowsHtml = allOrdered.map((s, idx) => `
+    const rowsHtml = allOrdered.map((s, idx) => {
+      const statusHtml = s.state === 'concluido' ? 'CONCLUÍDO' : s.state === 'ativo' ? 'EM ATENDIMENTO' : 'PROGRAMADO';
+      const points = (s.checkinTime || s.checkoutTime) ? `<br><span style="font-size:8px; color:#555;">In: ${s.checkinTime||'--'} Out: ${s.checkoutTime||'--'}</span>` : '';
+      
+      return `
       <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
         <td style="border: 1px solid #000; padding: 6px 8px; font-weight: bold;">${formatDateBR(s.date)}</td>
         <td style="border: 1px solid #000; padding: 6px 8px; text-transform: uppercase;"><b>${s.unitName}</b> - ${s.sectorName}</td>
         <td style="border: 1px solid #000; padding: 6px 8px; font-family: monospace; text-align: center;">${s.start_time} às ${s.end_time}</td>
-        <td style="border: 1px solid #000; padding: 6px 8px; text-align: center;">${s.duration}h</td>
+        <td style="border: 1px solid #000; padding: 6px 8px; text-align: center;">${s.duration}h ${points}</td>
         <td style="border: 1px solid #000; padding: 6px 8px; text-align: center; font-weight: bold;">
-          ${s.state === 'concluido' ? 'CONCLUÍDO' : s.state === 'ativo' ? 'EM ATENDIMENTO' : 'PROGRAMADO'}
+          ${statusHtml}
         </td>
       </tr>
-    `).join('');
+      `;
+    }).join('');
+
+    const regimeLabel = profMeta.remuneration_type === 'mensal' ? 'Fixo Mensal' : profMeta.remuneration_type === 'produtividade' ? 'Produtividade' : 'Plantão Dinâmico';
 
     const html = `
       <!DOCTYPE html>
@@ -344,6 +363,7 @@ export default function MinhaEscala() {
             <h1 style="font-size: 18px; text-transform: uppercase; margin: 0;">ScaleMedic (Rede Global)</h1>
             <p style="margin: 3px 0;">ESPELHO INDIVIDUAL DE PLANTÕES • PRESTAÇÃO DE CONTAS</p>
             <p style="margin: 3px 0;">Profissional: <b>Dr(a). ${profNome}</b> (ID: ${matricula})</p>
+            <p style="margin: 3px 0;">Regime: <b>${regimeLabel}</b></p>
           </div>
           <div style="text-align: right; font-size: 9.5px;">
             <p style="margin: 0;">Competência: <b>${competencia}</b></p>
@@ -357,7 +377,7 @@ export default function MinhaEscala() {
               <th style="width: 15%;">Data</th>
               <th style="width: 40%;">Unidade / Setor</th>
               <th style="width: 15%; text-align: center;">Horário</th>
-              <th style="width: 15%; text-align: center;">Duração</th>
+              <th style="width: 15%; text-align: center;">Duração/Ponto</th>
               <th style="width: 15%; text-align: center;">Status</th>
             </tr>
           </thead>
@@ -369,7 +389,7 @@ export default function MinhaEscala() {
         <div class="summary">
           <span>Plantões Cumpridos: ${monthMetrics.cumpridos} de ${monthMetrics.totalMes}</span>
           <span>Horas Efetivadas: ${monthMetrics.horas}h</span>
-          <span>Produção Apurada: ${formatCurrency(monthMetrics.valorBruto)}</span>
+          <span>Produção Apurada: ${profMeta.remuneration_type === 'produtividade' ? 'A Calcular' : formatCurrency(monthMetrics.valorBruto)}</span>
         </div>
 
         <div style="margin-top: 50px; display: flex; justify-content: space-around; text-align: center; font-size: 10px;">
@@ -397,7 +417,7 @@ export default function MinhaEscala() {
             Olá, Dr(a). {currentProfessional?.name ? currentProfessional.name.split(' ')[0] : user?.full_name?.split(' ')[0] || 'Profissional'}!
           </h1>
           <p className="text-xs md:text-sm text-slate-300 font-medium">
-            Gerencie sua agenda de plantões (em todos os hospitais), acompanhe seu repasse e solicite trocas à coordenação.
+            Sua escala inteligente com Check-in/out e cálculo dinâmico por unidade.
           </p>
         </div>
 
@@ -436,6 +456,7 @@ export default function MinhaEscala() {
         </div>
       )}
 
+      {/* CARD DE PLANTÃO ATIVO COM CHECK-IN E CHECK-OUT */}
       {activeShiftNow && (
         <div className="p-6 rounded-3xl bg-emerald-500/10 border-2 border-emerald-500/60 shadow-xl text-emerald-950 dark:text-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
           <div className="flex items-center gap-4">
@@ -458,17 +479,24 @@ export default function MinhaEscala() {
                 <span className="hidden sm:inline">•</span>
                 <span className="text-sm opacity-80">{activeShiftNow.start_time} às {activeShiftNow.end_time}</span>
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
-                Jornada de {activeShiftNow.duration}h computada no fechamento deste mês.
-              </p>
             </div>
           </div>
 
-          <div className="text-right shrink-0 bg-white/60 dark:bg-slate-900/60 p-4 rounded-2xl border border-emerald-500/30">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Diária Apurada</span>
-            <div className="text-2xl font-black font-mono text-emerald-600 dark:text-emerald-400">
-              {formatCurrency(remunConfig.valorPorPlantao)}
-            </div>
+          <div className="flex flex-col gap-2 shrink-0">
+            <Button 
+              onClick={() => handleCheckAction(activeShiftNow, 'in')} 
+              disabled={!!activeShiftNow.checkinTime}
+              className={`h-10 text-xs font-black rounded-xl gap-2 cursor-pointer ${activeShiftNow.checkinTime ? 'bg-slate-200 text-slate-500 dark:bg-slate-800' : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'}`}
+            >
+              <LogIn className="w-4 h-4" /> {activeShiftNow.checkinTime ? `Check-in: ${activeShiftNow.checkinTime}` : 'Fazer Check-in'}
+            </Button>
+            <Button 
+              onClick={() => handleCheckAction(activeShiftNow, 'out')} 
+              disabled={!!activeShiftNow.checkoutTime || !activeShiftNow.checkinTime}
+              className={`h-10 text-xs font-black rounded-xl gap-2 cursor-pointer ${activeShiftNow.checkoutTime ? 'bg-slate-200 text-slate-500 dark:bg-slate-800' : 'bg-rose-600 hover:bg-rose-500 text-white shadow-md'}`}
+            >
+              <LogOut className="w-4 h-4" /> {activeShiftNow.checkoutTime ? `Check-out: ${activeShiftNow.checkoutTime}` : 'Fazer Check-out'}
+            </Button>
           </div>
         </div>
       )}
@@ -505,7 +533,9 @@ export default function MinhaEscala() {
                   ⏰ {nextHighlightedShift.start_time} às {nextHighlightedShift.end_time} ({nextHighlightedShift.duration}h)
                 </span>
                 <span>•</span>
-                <span>Diária Prevista: <b>{formatCurrency(remunConfig.valorPorPlantao)}</b></span>
+                {nextHighlightedShift.shiftValue?.type === 'valor' && (
+                  <span>Diária Prevista: <b>{formatCurrency(nextHighlightedShift.shiftValue.value)}</b></span>
+                )}
               </div>
             </div>
           </div>
@@ -539,11 +569,9 @@ export default function MinhaEscala() {
             </div>
           </div>
           <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
-            {monthMetrics.cumpridos} <span className="text-xs font-bold text-slate-400">/ 20 meta</span>
+            {monthMetrics.cumpridos}
           </div>
-          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-semibold">
-            {monthMetrics.extrasQtd > 0 ? `+${monthMetrics.extrasQtd} plantões extras` : `${Math.max(0, 20 - monthMetrics.cumpridos)} para atingir a meta`}
-          </p>
+          <p className="text-[11px] text-slate-500 mt-1 font-semibold">{monthMetrics.horas}h totais concluídas</p>
         </Card>
 
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
@@ -563,17 +591,15 @@ export default function MinhaEscala() {
 
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-400">Repasse Acumulado</span>
+            <span className="text-xs font-black uppercase tracking-wider text-slate-400">Repasse Apurado</span>
             <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-3 font-mono">
-            {formatCurrency(monthMetrics.valorBruto)}
+            {profMeta.remuneration_type === 'produtividade' ? 'COMISSÃO' : formatCurrency(monthMetrics.valorBruto)}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1 font-semibold">
-            {formatCurrency(remunConfig.valorPorPlantao)} por plantão dia
-          </p>
+          <p className="text-[11px] text-slate-500 mt-1 font-semibold">Base de cálculo apurada até hoje</p>
         </Card>
 
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
@@ -690,10 +716,12 @@ export default function MinhaEscala() {
                       <span>{shift.duration}h</span>
                     </div>
 
-                    <div className="text-xs text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 pt-1 border-t border-slate-100 dark:border-slate-800">
-                      <DollarSign className="w-3.5 h-3.5" />
-                      Valor: {formatCurrency(remunConfig.valorPorPlantao)}
-                    </div>
+                    {shift.shiftValue?.type === 'valor' && (
+                      <div className="text-xs text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 pt-1 border-t border-slate-100 dark:border-slate-800">
+                        <DollarSign className="w-3.5 h-3.5" />
+                        Valor Previsto: {formatCurrency(shift.shiftValue.value)}
+                      </div>
+                    )}
                   </div>
 
                   {!isAtivo && (
@@ -751,24 +779,38 @@ export default function MinhaEscala() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 opacity-85">
               {completedMonthShifts.map(shift => (
-                <div key={shift.id} className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 text-xs flex items-center justify-between">
-                  <div className="space-y-0.5">
+                <div key={shift.id} className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 text-xs flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
                     <span className="font-mono font-bold text-slate-900 dark:text-white block">
                       {formatDateBR(shift.date)}
                     </span>
-                    <span className="text-[11px] text-sky-700 dark:text-sky-400 font-bold block truncate max-w-[140px]">
-                      🏥 {shift.unitName}
-                    </span>
-                    <span className="text-[10px] text-slate-500 block truncate max-w-[140px]">
-                      {shift.sectorName}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      {shift.start_time} - {shift.end_time} ({shift.duration}h)
+                    <span className="text-[9px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-black px-2 py-0.5 rounded-lg shrink-0">
+                      ✓ Concluído
                     </span>
                   </div>
-                  <span className="text-[9px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-black px-2 py-0.5 rounded-lg shrink-0">
-                    ✓ Concluído
-                  </span>
+                  
+                  <div className="space-y-0.5">
+                    <span className="text-[11px] text-sky-700 dark:text-sky-400 font-bold block truncate">
+                      🏥 {shift.unitName}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block truncate">
+                      {shift.sectorName}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mt-1 border-t border-slate-200 dark:border-slate-800 pt-1.5">
+                    <span>{shift.start_time} - {shift.end_time} ({shift.duration}h)</span>
+                    {shift.shiftValue?.type === 'valor' && (
+                      <span className="font-bold text-emerald-600">{formatCurrency(shift.shiftValue.value)}</span>
+                    )}
+                  </div>
+                  
+                  {(shift.checkinTime || shift.checkoutTime) && (
+                    <div className="flex items-center justify-between text-[9px] font-mono text-slate-500 bg-white dark:bg-slate-900 p-1.5 rounded-lg mt-0.5 border border-slate-100 dark:border-slate-800">
+                      <span>In: <b className="text-emerald-600">{shift.checkinTime || '--:--'}</b></span>
+                      <span>Out: <b className="text-rose-600">{shift.checkoutTime || '--:--'}</b></span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
