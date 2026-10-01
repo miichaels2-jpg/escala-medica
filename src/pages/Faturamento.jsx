@@ -37,7 +37,6 @@ export default function Faturamento() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProfModal, setSelectedProfModal] = useState(null);
 
-  // Estado para armazenar quem já foi pago neste mês
   const [pagamentosStatus, setPagamentosStatus] = useState(() => {
     try { 
       const stored = window.localStorage.getItem('scale_faturamento_pagos');
@@ -140,7 +139,6 @@ export default function Faturamento() {
     });
 
     (shifts || []).forEach(shift => {
-      // Isolamento de dados por unidade!
       if (String(shift.unit_id) !== String(selectedUnitId)) return;
       if (!shift || !shift.date || !shift.date.startsWith(monthPrefix)) return;
       if (!shift.professional_id || shift.status === 'vago') return;
@@ -180,7 +178,6 @@ export default function Faturamento() {
       let valorExtras = 0;
       let valorBrutoTotal = 0;
 
-      // Se for mês futuro, inicia zerado para ir somando conforme a escala for cumprida
       if (monthPrefix > todayStr.substring(0, 7)) {
         valorBrutoTotal = 0;
       } else {
@@ -189,7 +186,6 @@ export default function Faturamento() {
         } else if (item.remunType === 'diaria') {
           valorBrutoTotal = item.plantõesRealizados * item.valorPorPlantao;
         } else {
-          // MODALIDADE MENSALISTA COM REGRA DE PLANTÕES EXTRAS (COTA DE 20 PLANTÕES)
           const plantõesNormais = Math.min(item.plantõesRealizados, 20);
           valorBrutoRegular = plantõesNormais * item.valorPorPlantao;
 
@@ -243,8 +239,9 @@ export default function Faturamento() {
     return { bruto, liquido, plantões, horas, extras };
   }, [reportData]);
 
+
   // =========================================================================
-  // EXPORTAÇÃO PARA EXCEL (Gerador Nativo .xls com Formatação Perfeita)
+  // EXPORTAÇÃO EXCEL NATIVA (COM ESTILOS CONTÁBEIS E DE TEMPO)
   // =========================================================================
   const handleExportExcel = () => {
     if (filteredReport.length === 0) return alert('Não há dados para exportar neste mês.');
@@ -253,7 +250,13 @@ export default function Faturamento() {
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR');
 
-    // Montamos as linhas da tabela
+    // Transforma as horas decimais (ex: 182.5) para o formato de relógio (ex: 182:30) para o Excel
+    const formatHourForExcel = (num) => {
+      const h = Math.floor(safeNumber(num));
+      const m = Math.round((safeNumber(num) - h) * 60);
+      return `${h}:${String(m).padStart(2, '0')}`;
+    };
+
     const rowsHtml = filteredReport.map(item => {
       const formaPagamento = item.chavePix ? `PIX (${item.pixTipo}): ${item.chavePix}` : (item.banco ? `Banco: ${item.banco}` : 'Pendente de Cadastro');
       const regime = item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista (Diária)' : 'Fixo Mensal';
@@ -264,41 +267,45 @@ export default function Faturamento() {
           <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${item.matricula}</td>
           <td style="border: 1px solid #cbd5e1;">${item.prof.specialty || 'Geral'}</td>
           <td style="border: 1px solid #cbd5e1;">${regime}</td>
-          <td style="border: 1px solid #cbd5e1; text-align: center;">${item.plantõesRealizados}</td>
-          <td style="border: 1px solid #cbd5e1; text-align: center;">${item.plantõesExtrasQtd}</td>
-          <td style="border: 1px solid #cbd5e1; text-align: center; mso-number-format:'0\\.0';">${item.horasRealizadas.toFixed(1).replace('.', ',')}</td>
-          <td style="border: 1px solid #cbd5e1; text-align: right; mso-number-format:'\\#\\,\\#\\#0\\.00';">${item.salarioBaseContratual.toFixed(2).replace('.', ',')}</td>
-          <td style="border: 1px solid #cbd5e1; text-align: right; mso-number-format:'\\#\\,\\#\\#0\\.00';">${item.valorBruto.toFixed(2).replace('.', ',')}</td>
-          <td style="border: 1px solid #cbd5e1; text-align: right; mso-number-format:'\\#\\,\\#\\#0\\.00'; color: #ef4444;">${item.valorDesconto.toFixed(2).replace('.', ',')}</td>
-          <td style="border: 1px solid #cbd5e1; text-align: right; mso-number-format:'\\#\\,\\#\\#0\\.00'; font-weight: bold; color: #059669;">${item.valorLiquido.toFixed(2).replace('.', ',')}</td>
+          <td class="num" style="border: 1px solid #cbd5e1;">${item.plantõesRealizados}</td>
+          <td class="num" style="border: 1px solid #cbd5e1;">${item.plantõesExtrasQtd}</td>
+          <td class="time" style="border: 1px solid #cbd5e1;">${formatHourForExcel(item.horasRealizadas)}</td>
+          <td class="money" style="border: 1px solid #cbd5e1; color: #334155;">${item.salarioBaseContratual.toFixed(2).replace('.', ',')}</td>
+          <td class="money" style="border: 1px solid #cbd5e1;">${item.valorBruto.toFixed(2).replace('.', ',')}</td>
+          <td class="money" style="border: 1px solid #cbd5e1; color: #ef4444;">${item.valorDesconto.toFixed(2).replace('.', ',')}</td>
+          <td class="money" style="border: 1px solid #cbd5e1; font-weight: bold; color: #059669;">${item.valorLiquido.toFixed(2).replace('.', ',')}</td>
           <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${formaPagamento}</td>
           <td style="border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: ${item.isPago ? '#059669' : '#f59e0b'};">${item.isPago ? 'PAGO' : 'Pendente'}</td>
         </tr>
       `;
     }).join('');
 
-    // Estrutura HTML que o Excel reconhece com CSS nativo
     const htmlTemplate = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
         <meta charset="utf-8" />
         <style>
           table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
-          th { background-color: #f1f5f9; border: 1px solid #cbd5e1; font-weight: bold; text-align: center; padding: 8px; }
-          td { padding: 6px; }
+          th { background-color: #1e293b; color: #ffffff; border: 1px solid #cbd5e1; font-weight: bold; text-align: center; padding: 10px; }
+          td { padding: 6px; vertical-align: middle; }
+          /* Máscara oficial do Excel para Formato Contábil no Brasil */
+          .money { mso-number-format: "_-\\[\\$R\\$-pt-BR\\]\\* \\#\\,\\#\\#0\\.00_-"; text-align: right; }
+          /* Máscara oficial do Excel para Carga Horária */
+          .time { mso-number-format: "\\[h\\]\\:mm"; text-align: center; font-weight: bold; }
+          .num { mso-number-format: "0"; text-align: center; }
         </style>
       </head>
       <body>
         <table>
           <tr>
-            <td colspan="13" style="font-size: 20px; font-weight: bold; text-align: center; background-color: #0f172a; color: #ffffff; padding: 10px;">${hospitalName}</td>
+            <td colspan="13" style="font-size: 20px; font-weight: bold; text-align: center; background-color: #0f172a; color: #ffffff; padding: 12px;">${hospitalName}</td>
           </tr>
           <tr>
-            <td colspan="13" style="font-size: 14px; font-weight: bold; text-align: center; background-color: #1e293b; color: #94a3b8; padding: 5px;">RELATÓRIO OFICIAL DE FATURAMENTO E REPASSE</td>
+            <td colspan="13" style="font-size: 14px; font-weight: bold; text-align: center; background-color: #1e293b; color: #94a3b8; padding: 6px;">RELATÓRIO OFICIAL DE FATURAMENTO E REPASSE</td>
           </tr>
           <tr>
-            <td colspan="6" style="font-weight: bold; padding: 10px 0;">Competência: ${competencia}</td>
-            <td colspan="7" style="text-align: right; padding: 10px 0;">Emissão: ${emissao}</td>
+            <td colspan="6" style="font-weight: bold; padding: 10px 0;">Competência Mês: ${competencia}</td>
+            <td colspan="7" style="text-align: right; padding: 10px 0;">Emissão do Relatório: ${emissao}</td>
           </tr>
           <tr><td colspan="13"></td></tr>
           <tr>
@@ -312,21 +319,21 @@ export default function Faturamento() {
             <th>Salário Base (R$)</th>
             <th>Valor Bruto (R$)</th>
             <th>Descontos/Taxa (R$)</th>
-            <th>Valor Líquido (R$)</th>
-            <th>Dados p/ Pagamento</th>
-            <th>Status do Repasse</th>
+            <th>Valor Líquido a Pagar (R$)</th>
+            <th>Dados Bancários/PIX</th>
+            <th>Status do Pagamento</th>
           </tr>
           ${rowsHtml}
           <tr><td colspan="13"></td></tr>
           <tr>
             <td colspan="4" style="font-weight: bold; text-align: right; padding: 8px;">TOTAIS GERAIS DA UNIDADE:</td>
-            <td style="font-weight: bold; text-align: center; border: 1px solid #000; background-color: #f8fafc;">${totals.plantões}</td>
-            <td style="font-weight: bold; text-align: center; border: 1px solid #000; background-color: #f8fafc;">${totals.extras}</td>
-            <td style="font-weight: bold; text-align: center; border: 1px solid #000; background-color: #f8fafc; mso-number-format:'0\\.0';">${totals.horas.toFixed(1).replace('.', ',')}</td>
+            <td class="num" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${totals.plantões}</td>
+            <td class="num" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${totals.extras}</td>
+            <td class="time" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${formatHourForExcel(totals.horas)}</td>
             <td style="border: 1px solid #000; background-color: #f8fafc;"></td>
-            <td style="font-weight: bold; text-align: right; border: 1px solid #000; background-color: #f8fafc; mso-number-format:'\\#\\,\\#\\#0\\.00';">${totals.bruto.toFixed(2).replace('.', ',')}</td>
-            <td style="border: 1px solid #000; background-color: #f8fafc;"></td>
-            <td style="font-weight: bold; text-align: right; border: 1px solid #000; background-color: #f8fafc; color: #059669; font-size: 14px; mso-number-format:'\\#\\,\\#\\#0\\.00';">${totals.liquido.toFixed(2).replace('.', ',')}</td>
+            <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${totals.bruto.toFixed(2).replace('.', ',')}</td>
+            <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc; color: #ef4444;">${(totals.bruto - totals.liquido).toFixed(2).replace('.', ',')}</td>
+            <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc; color: #059669; font-size: 14px;">${totals.liquido.toFixed(2).replace('.', ',')}</td>
             <td colspan="2"></td>
           </tr>
         </table>
@@ -334,7 +341,6 @@ export default function Faturamento() {
       </html>
     `;
 
-    // Novo motor via Blob (evita travamentos)
     const blob = new Blob([htmlTemplate], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -345,9 +351,6 @@ export default function Faturamento() {
     document.body.removeChild(link);
   };
 
-  // =========================================================================
-  // IMPRESSÃO GERAL DA TABELA EM A4 BRANCO PAISAGEM
-  // =========================================================================
   const handlePrintConsolidatedReport = () => {
     const printWindow = window.open('', '_blank', 'width=1100,height=800');
     if (!printWindow) {
@@ -360,7 +363,6 @@ export default function Faturamento() {
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR');
 
-    // Integração das Logos (Empresa e Unidade)
     const companyLogoHtml = company?.logo_url ? `<img src="${company.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` : `<div class="logo-badge">${logoLetter}</div>`;
     const unitLogoHtml = currentUnitObj?.logo_url ? `<img src="${currentUnitObj.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` : '';
 
@@ -453,9 +455,6 @@ export default function Faturamento() {
     printWindow.document.close();
   };
 
-  // =========================================================================
-  // RECIBO OFICIAL INDIVIDUAL (2 VIAS)
-  // =========================================================================
   const handlePrintIndividualReceipt = (item) => {
     const printWindow = window.open('', '_blank', 'width=900,height=850');
     if (!printWindow) {
@@ -631,7 +630,7 @@ export default function Faturamento() {
           <Button 
             onClick={handleExportExcel}
             className="h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all"
-            title="Baixar Relatório em Excel (Abre formatado no Excel)"
+            title="Baixar Relatório em Excel Formatado"
           >
             <Download className="w-4 h-4" /> Exportar Planilha (.xls)
           </Button>
@@ -872,7 +871,7 @@ export default function Faturamento() {
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-slate-900 dark:text-white">
-                              {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }) }
+                              {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
                             </span>
                             <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase ${p.isRealizado ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
                               {p.isRealizado ? 'Realizado' : 'A Realizar'}
