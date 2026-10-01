@@ -120,7 +120,18 @@ function getProfessionalCost(professional, hours, shift) {
   if (type === 'diaria' || type === 'daily' || type === 'plantao') {
     return safeNumber(meta.daily_rate ?? meta.dailyRate ?? meta.valor_plantao, 0);
   }
-  return safeNumber(meta.monthly_salary ?? meta.monthlySalary ?? meta.salary ?? meta.salario, 0) / 20;
+  const unitMonthlySalaries = meta.unit_monthly_salaries || {};
+  const unitId = shift?.unit_id;
+  const unitSalary = unitMonthlySalaries[String(unitId)];
+  const hasUnitSalary = Object.prototype.hasOwnProperty.call(unitMonthlySalaries, String(unitId)) &&
+    unitSalary !== '' && unitSalary !== null && unitSalary !== undefined;
+  const legacySalary = safeNumber(meta.monthly_salary ?? meta.monthlySalary ?? meta.salary ?? meta.salario, 0);
+  if (hasUnitSalary) return safeNumber(unitSalary, 0) / 20;
+  if (Object.keys(unitMonthlySalaries).length > 0) {
+    const primaryUnitId = professional?.unit_id || meta.allowed_unit_ids?.[0] || professional?.unit_ids?.[0];
+    return String(primaryUnitId) === String(unitId) ? legacySalary / 20 : 0;
+  }
+  return legacySalary / 20;
 }
 
 function getLocalDateInputValue(date) {

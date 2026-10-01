@@ -84,6 +84,25 @@ function isBillableShift(shift) {
     .some(marker => professionalName.includes(marker));
 }
 
+function getProfessionalMeta(professional) {
+  if (!professional) return {};
+  let localMeta = {};
+  try {
+    const stored = window.localStorage.getItem(`prof_meta_${professional.id}`);
+    const parsed = stored ? JSON.parse(stored) : null;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) localMeta = parsed;
+  } catch (error) {
+    console.warn(`Não foi possível carregar os dados locais do profissional ${professional.id}:`, error);
+  }
+  const serverMeta = [professional.data, professional.metadata]
+    .filter(source => source && typeof source === 'object' && !Array.isArray(source));
+  return Object.assign({}, localMeta, ...serverMeta);
+}
+
+function getPaymentStatusKey(unitId, professionalId, monthPrefix) {
+  return `${unitId}_${professionalId}_${monthPrefix}`;
+}
+
 export default function Faturamento() {
   const { shifts = [], professionals = [], sectors = [], company, selectedUnitId, units = [] } = useAppData();
 
@@ -122,28 +141,44 @@ export default function Faturamento() {
     return m;
   }, [sectors]);
 
-  function getProfMeta(prof) {
-    if (!prof) return {};
-    const serverMeta = [
-      prof.data,
-      prof.metadata
-    ].filter(source => source && typeof source === 'object' && !Array.isArray(source));
-    let localMeta = {};
-    try {
-      const stored = window.localStorage.getItem(`prof_meta_${prof.id}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) localMeta = parsed;
+  useEffect(() => {
+    if (professionals.length === 0) return;
+    const migratedStatus = { ...pagamentosStatus };
+    let changed = false;
+
+    professionals.forEach(professional => {
+      if (!professional?.id) return;
+      const meta = getProfessionalMeta(professional);
+      const primaryUnitId = professional.unit_id || meta.allowed_unit_ids?.[0] || professional.unit_ids?.[0];
+      if (!primaryUnitId) return;
+      const legacyPrefix = `${professional.id}_`;
+      Object.keys(migratedStatus).forEach(legacyKey => {
+        if (!legacyKey.startsWith(legacyPrefix)) return;
+        const month = legacyKey.slice(legacyPrefix.length);
+        if (!/^\d{4}-\d{2}$/.test(month)) return;
+
+        const scopedKey = getPaymentStatusKey(primaryUnitId, professional.id, month);
+        if (!Object.prototype.hasOwnProperty.call(migratedStatus, scopedKey)) {
+          migratedStatus[scopedKey] = migratedStatus[legacyKey];
+        }
+        delete migratedStatus[legacyKey];
+        changed = true;
+      });
+    });
+
+    if (changed) {
+      setPagamentosStatus(migratedStatus);
+      try {
+        window.localStorage.setItem('scale_faturamento_pagos', JSON.stringify(migratedStatus));
+      } catch (error) {
+        console.warn('Não foi possível migrar os status de pagamento para as unidades:', error);
       }
-    } catch (error) {
-      console.warn(`Não foi possível carregar os dados locais do profissional ${prof.id}:`, error);
     }
-    return Object.assign({}, localMeta, ...serverMeta);
-  }
+  }, [professionals, pagamentosStatus]);
 
   const handleTogglePago = (profId) => {
     setPagamentosStatus(prev => {
-      const key = `${profId}_${monthPrefix}`;
+      const key = getPaymentStatusKey(selectedUnitId, profId, monthPrefix);
       const nextState = { ...prev, [key]: !prev[key] };
       try {
         window.localStorage.setItem('scale_faturamento_pagos', JSON.stringify(nextState));
@@ -159,12 +194,27 @@ export default function Faturamento() {
 
     (professionals || []).forEach(p => {
       if (!p) return;
-      const meta = getProfMeta(p);
+      const meta = getProfessionalMeta(p);
 
       const remunType = meta.remuneration_type || p.remuneration_type || 'plantao';
       const unitRates = meta.unit_rates || {};
+      const unitMonthlySalaries = meta.unit_monthly_salaries || {};
       
-      const salaryBase = safeNumber(meta.monthly_salary !== undefined ? meta.monthly_salary : p.monthly_salary, 0);
+      const legacySalary = safeNumber(meta.monthly_salary !== undefined ? meta.monthly_salary : p.monthly_salary, 0);
+      const primaryUnitId = p.unit_id || meta.allowed_unit_ids?.[0] || p.unit_ids?.[0];
+      const hasUnitSalaryEntry = Object.prototype.hasOwnProperty.call(unitMonthlySalaries, String(selectedUnitId));
+      const unitSalaryValue = unitMonthlySalaries[String(selectedUnitId)];
+      const hasUnitSalary = hasUnitSalaryEntry && unitSalaryValue !== '' && unitSalaryValue !== null && unitSalaryValue !== undefined;
+      const isPrimaryUnit = String(primaryUnitId) === String(selectedUnitId);
+      const salaryBase = remunType === 'mensal'
+        ? hasUnitSalary
+          ? safeNumber(unitSalaryValue, 0)
+          : !hasUnitSalaryEntry && isPrimaryUnit ? legacySalary : 0
+        : legacySalary;
+      const assignedUnitIds = Array.isArray(meta.allowed_unit_ids)
+        ? meta.allowed_unit_ids
+        : Array.isArray(p.unit_ids) ? p.unit_ids : (p.unit_id ? [p.unit_id] : []);
+      const isAssignedToCurrentUnit = assignedUnitIds.some(unitId => String(unitId) === String(selectedUnitId)) || isPrimaryUnit;
       const taxRate = meta.coop_tax_rate ?? p.coop_tax_rate ?? 0;
       const matricula = meta.registration_id || p.registration_id || 'MAT-XXXX';
       const chavePix = (meta.pix_key || p.pix_key || '').trim();
@@ -174,12 +224,16 @@ export default function Faturamento() {
       profsSummary[String(p.id)] = {
         prof: p,
         profStatus: normalizeText(p.status || meta.status || 'ativo'),
+        isAssignedToCurrentUnit,
         matricula,
         chavePix,
         pixTipo,
         banco,
         remunType,
         salarioBaseContratual: salaryBase,
+        monthlySalaryMissing: remunType === 'mensal' && (
+          !hasUnitSalary && (!isPrimaryUnit || hasUnitSalaryEntry)
+        ),
         unitRates,
         taxRate: safeNumber(taxRate),
         plantõesRealizados: 0,
@@ -256,7 +310,7 @@ export default function Faturamento() {
       valorBrutoTotal = roundCurrency(valorBrutoTotal);
       const valorDesconto = roundCurrency((valorBrutoTotal * item.taxRate) / 100);
       const valorLiquido = roundCurrency(valorBrutoTotal - valorDesconto);
-      const isPago = pagamentosStatus[`${item.prof.id}_${monthPrefix}`] || false;
+      const isPago = pagamentosStatus[getPaymentStatusKey(selectedUnitId, item.prof.id, monthPrefix)] || false;
 
       return {
         ...item,
@@ -268,7 +322,7 @@ export default function Faturamento() {
     }).filter(item =>
       item.plantõesRealizados > 0 ||
       item.plantõesFuturos > 0 ||
-      (item.remunType === 'mensal' && item.profStatus === 'ativo')
+      (item.remunType === 'mensal' && item.profStatus === 'ativo' && item.isAssignedToCurrentUnit)
     );
   }, [professionals, shifts, monthPrefix, selectedUnitId, pagamentosStatus, todayStr, now]);
 
@@ -312,6 +366,7 @@ export default function Faturamento() {
   }).length, [shifts, monthPrefix, selectedUnitId]);
 
   const shiftsWithoutRate = reportData.reduce((total, item) => total + item.plantõesSemTarifa, 0);
+  const professionalsWithoutMonthlySalary = reportData.filter(item => item.monthlySalaryMissing).length;
   const paymentSummary = useMemo(() => reportData.reduce((summary, item) => {
     const bucket = item.isPago ? 'paid' : 'pending';
     summary[bucket].count += 1;
@@ -763,7 +818,7 @@ export default function Faturamento() {
         </Card>
       </div>
 
-      {(shiftsWithoutRate > 0 || shiftsWithoutProfessional > 0 || shiftsWithInvalidSchedule > 0) && (
+      {(shiftsWithoutRate > 0 || shiftsWithoutProfessional > 0 || shiftsWithInvalidSchedule > 0 || professionalsWithoutMonthlySalary > 0) && (
         <Card className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-950/20">
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -772,6 +827,11 @@ export default function Faturamento() {
               {shiftsWithoutRate > 0 && (
                 <p className="text-xs text-amber-800 dark:text-amber-200">
                   {shiftsWithoutRate} plantão(ões) realizado(s) sem tarifa cadastrada na unidade. Esses valores aparecem como R$ 0,00 e deixam o total bruto incompleto.
+                </p>
+              )}
+              {professionalsWithoutMonthlySalary > 0 && (
+                <p className="text-xs text-amber-800 dark:text-amber-200">
+                  {professionalsWithoutMonthlySalary} profissional(is) em regime mensal não têm valor cadastrado para esta unidade. O valor não foi atribuído ao fechamento.
                 </p>
               )}
               {shiftsWithoutProfessional > 0 && (

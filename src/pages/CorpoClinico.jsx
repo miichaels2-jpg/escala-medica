@@ -16,7 +16,17 @@ import {
 
 function safeNumber(val, fb = 0) {
   if (val === null || val === undefined || val === '') return fb;
-  const n = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  if (typeof val === 'number') return Number.isFinite(val) ? val : fb;
+  let normalized = String(val).replace(/[R$\s]/g, '');
+  if (normalized.includes(',') && normalized.includes('.')) {
+    normalized = normalized.lastIndexOf(',') > normalized.lastIndexOf('.')
+      ? normalized.replace(/\./g, '').replace(',', '.')
+      : normalized.replace(/,/g, '');
+  } else {
+    normalized = normalized.replace(',', '.');
+  }
+  if (!normalized) return fb;
+  const n = Number(normalized);
   return Number.isFinite(n) ? n : fb;
 }
 
@@ -136,7 +146,8 @@ export default function CorpoClinico() {
     cpf: '', email: '', phone: '', unit_id: '', birth_date: '',
     status: 'ativo', app_role: 'assistencial', 
     remuneration_type: 'plantao', // NOVO: plantao, mensal ou produtividade
-    monthly_salary: 0,
+    monthly_salary: '',
+    unit_monthly_salaries: {},
     unit_rates: {}, // NOVO: Matriz de valores por unidade
     coop_tax_rate: 0, pix_type: 'CPF',
     pix_key: '', bank_info: '', password: '',
@@ -147,12 +158,17 @@ export default function CorpoClinico() {
 
   function getProfMeta(prof) {
     if (!prof) return {};
+    let localMeta = {};
     try {
       const stored = window.localStorage.getItem(`prof_meta_${prof.id}`);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    if (prof.data && typeof prof.data === 'object') return prof.data;
-    return {};
+      const parsed = stored ? JSON.parse(stored) : null;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) localMeta = parsed;
+    } catch (error) {
+      console.warn(`Não foi possível carregar os dados locais do profissional ${prof.id}:`, error);
+    }
+    const serverMeta = [prof.data, prof.metadata]
+      .filter(source => source && typeof source === 'object' && !Array.isArray(source));
+    return Object.assign({}, localMeta, ...serverMeta);
   }
 
   const resetForm = () => {
@@ -163,7 +179,7 @@ export default function CorpoClinico() {
       specialty: '', rqe: '', cbo: '', cpf: '', email: '', phone: '', birth_date: '',
       unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
       status: 'ativo', app_role: 'assistencial', 
-      remuneration_type: 'plantao', monthly_salary: 0, unit_rates: {},
+      remuneration_type: 'plantao', monthly_salary: '', unit_monthly_salaries: {}, unit_rates: {},
       coop_tax_rate: 0, pix_type: 'CPF',
       pix_key: '', bank_info: '', password: '',
       document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
@@ -185,6 +201,17 @@ export default function CorpoClinico() {
     const profStatus = prof.status || meta.status || 'ativo';
 
     const savedUnits = meta.allowed_unit_ids || prof.unit_ids || (prof.unit_id ? [String(prof.unit_id)] : [String(units[0]?.id || '')]);
+    const primaryUnitId = String(
+      savedUnits.some(unitId => String(unitId) === String(prof.unit_id))
+        ? prof.unit_id
+        : savedUnits[0] || ''
+    );
+    const legacyMonthlySalary = meta.monthly_salary !== undefined ? meta.monthly_salary : prof.monthly_salary;
+    const savedMonthlySalaries = meta.unit_monthly_salaries || (
+      primaryUnitId && legacyMonthlySalary !== undefined
+        ? { [primaryUnitId]: safeNumber(legacyMonthlySalary, 0) }
+        : {}
+    );
 
     setFormData({
       name: prof.name || prof.full_name || '',
@@ -200,11 +227,12 @@ export default function CorpoClinico() {
       email: prof.email || '',
       phone: prof.phone || '',
       birth_date: meta.birth_date || prof.birth_date || '',
-      unit_id: prof.unit_id || selectedUnitId,
+      unit_id: primaryUnitId || selectedUnitId,
       status: profStatus,
       app_role: meta.app_role || prof.app_role || 'assistencial',
       remuneration_type: meta.remuneration_type || 'plantao',
-      monthly_salary: safeNumber(meta.monthly_salary !== undefined ? meta.monthly_salary : prof.monthly_salary, 0),
+      monthly_salary: String(safeNumber(legacyMonthlySalary, 0)),
+      unit_monthly_salaries: savedMonthlySalaries,
       unit_rates: meta.unit_rates || {},
       coop_tax_rate: safeNumber(meta.coop_tax_rate ?? prof.coop_tax_rate, 0),
       pix_type: meta.pix_type || 'CPF',
@@ -226,6 +254,42 @@ export default function CorpoClinico() {
         [uid]: { ...(prev.unit_rates[uid] || {}), [field]: val }
       }
     }));
+  };
+
+  const handleUnitMonthlySalaryChange = (uid, val) => {
+    setFormData(prev => ({
+      ...prev,
+      unit_monthly_salaries: {
+        ...prev.unit_monthly_salaries,
+        [uid]: val
+      },
+      monthly_salary: String(uid) === String(
+        prev.allowed_unit_ids.some(unitId => String(unitId) === String(prev.unit_id))
+          ? prev.unit_id
+          : prev.allowed_unit_ids[0]
+      )
+        ? val
+        : prev.monthly_salary
+    }));
+  };
+
+  const handleAllowedUnitToggle = (unitId, checked) => {
+    setFormData(prev => {
+      const nextAllowedUnits = checked
+        ? [...new Set([...prev.allowed_unit_ids.map(String), String(unitId)])]
+        : prev.allowed_unit_ids.filter(id => String(id) !== String(unitId)).map(String);
+      const keepsPrimary = nextAllowedUnits.some(id => String(id) === String(prev.unit_id));
+      const nextPrimary = keepsPrimary ? String(prev.unit_id) : nextAllowedUnits[0] || '';
+      const nextLegacySalary = Object.prototype.hasOwnProperty.call(prev.unit_monthly_salaries, nextPrimary)
+        ? prev.unit_monthly_salaries[nextPrimary]
+        : '';
+      return {
+        ...prev,
+        allowed_unit_ids: nextAllowedUnits,
+        unit_id: nextPrimary,
+        monthly_salary: nextPrimary === String(prev.unit_id) ? prev.monthly_salary : nextLegacySalary
+      };
+    });
   };
 
   const handleToggleStatusQuick = async (prof) => {
@@ -339,10 +403,10 @@ export default function CorpoClinico() {
         ['status', 'ativo, inativo, pendente, em_analise ou recusado. Padrão: ativo.'],
         ['perfil_acesso', `ID ou nome do perfil: ${ACCESS_ROLES.map(role => `${role.id} (${role.label})`).join('; ')}. Padrão: assistencial.`],
         ['regime_remuneracao', 'plantao, mensal ou produtividade. Padrão: plantao.'],
-        ['salario_mensal / retencao_percentual', 'Use números, sem símbolo de moeda. Exemplo: 12500,50.'],
+        ['salario_mensal / retencao_percentual', 'Use números, sem símbolo de moeda. salario_mensal é compatível com a unidade principal; para regime mensal em várias unidades, informe mensal em valores_por_unidade_json. Exemplo: 12500,50.'],
         ['tipo_pix', 'CPF, CNPJ, Email, Telefone ou Aleatoria.'],
         ['data_nascimento / validade_credencial', 'Formato recomendado: AAAA-MM-DD; também aceita DD/MM/AAAA.'],
-        ['valores_por_unidade_json', 'Opcional. JSON com IDs das unidades e valores diurno/noturno/fds. Exemplo: {"ID_UNIDADE":{"diurno":1200,"noturno":1400,"fds":1800}}.'],
+        ['valores_por_unidade_json', 'Opcional. JSON por ID de unidade. Para plantão: diurno/noturno/fds. Para mensal: mensal. Exemplo: {"ID_UNIDADE":{"diurno":1200,"noturno":1400,"fds":1800,"mensal":5000}}.'],
         ['Importante', 'Não inclua senhas. A importação cadastra os perfis, mas não cria contas de acesso. Revise a prévia antes de importar.']
       ];
       const guide = workbook.addWorksheet('Orientações');
@@ -441,6 +505,10 @@ export default function CorpoClinico() {
     const coopTaxRate = parseNonNegative(row.retencao_percentual, 'retencao_percentual');
 
     let unitRates = {};
+    let unitMonthlySalaries = {};
+    if (row.salario_mensal !== '' && allowedUnitIds[0]) {
+      unitMonthlySalaries[allowedUnitIds[0]] = monthlySalary;
+    }
     if (row.valores_por_unidade_json) {
       try {
         const parsed = JSON.parse(row.valores_por_unidade_json);
@@ -466,11 +534,26 @@ export default function CorpoClinico() {
             if (!Number.isFinite(amount) || amount < 0) errors.push(`${field} inválido na unidade ${unitId}`);
             else unitRates[unitId][field] = amount;
           });
+          if (values.mensal !== '' && values.mensal !== null && values.mensal !== undefined) {
+            const amount = Number(values.mensal);
+            if (!Number.isFinite(amount) || amount < 0) errors.push(`mensal inválido na unidade ${unitId}`);
+            else unitMonthlySalaries[unitId] = amount;
+          }
         });
       } catch (error) {
         errors.push(`valores_por_unidade_json inválido: ${error.message}`);
       }
     }
+    if (remunerationAliases[remunerationInput] === 'mensal') {
+      allowedUnitIds.forEach(unitId => {
+        if (!Object.prototype.hasOwnProperty.call(unitMonthlySalaries, unitId)) {
+          errors.push(`informe o valor mensal da unidade ${unitId} em salario_mensal ou valores_por_unidade_json`);
+        }
+      });
+    }
+    const primaryMonthlySalary = unitMonthlySalaries[allowedUnitIds[0]] !== undefined
+      ? safeNumber(unitMonthlySalaries[allowedUnitIds[0]], monthlySalary)
+      : monthlySalary;
 
     const cpf = row.cpf || '';
     const email = row.email.toLowerCase();
@@ -518,7 +601,8 @@ export default function CorpoClinico() {
       registration_id: registrationId,
       coop_tax_rate: coopTaxRate,
       remuneration_type: remunerationAliases[remunerationInput] || 'plantao',
-      monthly_salary: monthlySalary,
+      monthly_salary: primaryMonthlySalary,
+      unit_monthly_salaries: unitMonthlySalaries,
       unit_rates: unitRates,
       pix_type: pixType || 'CPF',
       bank_info: row.dados_bancarios || '',
@@ -544,7 +628,7 @@ export default function CorpoClinico() {
       phone: row.telefone || '',
       status: statusAliases[statusInput] || 'ativo',
       remuneration_type: remunerationAliases[remunerationInput] || 'plantao',
-      monthly_salary: monthlySalary,
+      monthly_salary: primaryMonthlySalary,
       document_expiry: expiryDate || '',
       birth_date: birthDate || '',
       data: richMeta
@@ -658,18 +742,49 @@ export default function CorpoClinico() {
       alert('Selecione pelo menos um hospital/unidade para o profissional.');
       return;
     }
+    if (formData.remuneration_type === 'mensal') {
+      const missingMonthlyUnits = formData.allowed_unit_ids.filter(unitId => {
+        const hasUnitValue = Object.prototype.hasOwnProperty.call(formData.unit_monthly_salaries, unitId);
+        const isPrimaryUnit = String(unitId) === String(
+          formData.allowed_unit_ids.some(id => String(id) === String(formData.unit_id))
+            ? formData.unit_id
+            : formData.allowed_unit_ids[0]
+        );
+        const value = hasUnitValue
+          ? formData.unit_monthly_salaries[unitId]
+          : isPrimaryUnit ? formData.monthly_salary : '';
+        return value === '' || value === null || value === undefined || !Number.isFinite(safeNumber(value, NaN)) || safeNumber(value, -1) < 0;
+      });
+      if (missingMonthlyUnits.length > 0) {
+        const names = missingMonthlyUnits.map(unitId => units.find(unit => String(unit.id) === String(unitId))?.name || unitId);
+        alert(`Informe um valor fixo mensal válido para cada unidade permitida: ${names.join(', ')}.`);
+        return;
+      }
+    }
 
     setSubmitting(true);
     try {
       const cleanUsername = (formData.username || formData.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
       const finalEmail = formData.email.trim() ? formData.email.trim().toLowerCase() : `${cleanUsername}.${Date.now()}@scalemedic.local`;
+      const primaryUnitId = String(
+        formData.allowed_unit_ids.some(unitId => String(unitId) === String(formData.unit_id))
+          ? formData.unit_id
+          : formData.allowed_unit_ids[0] || ''
+      );
+      const unitMonthlySalaries = { ...formData.unit_monthly_salaries };
+      const hasPrimaryMonthlySalary = primaryUnitId && Object.prototype.hasOwnProperty.call(unitMonthlySalaries, primaryUnitId);
+      const monthlySalary = safeNumber(
+        hasPrimaryMonthlySalary ? unitMonthlySalaries[primaryUnitId] : formData.monthly_salary,
+        0
+      );
 
       const richMeta = {
         username: cleanUsername, category: formData.category, app_role: formData.app_role,
         main_sector: formData.main_sector, specialty: formData.specialty, rqe: formData.rqe, cbo: formData.cbo,
         registration_id: formData.registration_id, coop_tax_rate: safeNumber(formData.coop_tax_rate),
         remuneration_type: formData.remuneration_type, 
-        monthly_salary: safeNumber(formData.monthly_salary),
+        monthly_salary: monthlySalary,
+        unit_monthly_salaries: unitMonthlySalaries,
         unit_rates: formData.unit_rates, // MATRIZ SALVA!
         pix_type: formData.pix_type, bank_info: formData.bank_info.trim(), pix_key: formData.pix_key.trim(),
         document_expiry: formData.document_expiry, status: formData.status,
@@ -679,14 +794,14 @@ export default function CorpoClinico() {
 
       const profPayload = {
         company_id: company?.id || 'cmp_principal', 
-        unit_id: formData.allowed_unit_ids[0], 
+        unit_id: primaryUnitId,
         unit_ids: formData.allowed_unit_ids,
         name: formData.name.trim(), document: formData.document.trim(), 
         specialty: formData.specialty.trim() || formData.main_sector,
         rqe: formData.rqe.trim(), cbo: formData.cbo.trim(), cpf: formData.cpf.trim(), 
         email: finalEmail, phone: formData.phone.trim(), status: formData.status, 
         remuneration_type: formData.remuneration_type,
-        monthly_salary: safeNumber(formData.monthly_salary),
+        monthly_salary: monthlySalary,
         document_expiry: formData.document_expiry, birth_date: formData.birth_date,
         data: richMeta 
       };
@@ -1039,11 +1154,7 @@ export default function CorpoClinico() {
                     <input
                       type="checkbox"
                       checked={formData.allowed_unit_ids.includes(String(u.id))}
-                      onChange={(e) => {
-                        const id = String(u.id);
-                        if (e.target.checked) setFormData({ ...formData, allowed_unit_ids: [...formData.allowed_unit_ids, id] });
-                        else setFormData({ ...formData, allowed_unit_ids: formData.allowed_unit_ids.filter(i => i !== id) });
-                      }}
+                      onChange={e => handleAllowedUnitToggle(u.id, e.target.checked)}
                       className="w-4 h-4 text-sky-600 rounded cursor-pointer"
                     />
                     <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{u.name}</span>
@@ -1071,9 +1182,35 @@ export default function CorpoClinico() {
                 </div>
 
                 {formData.remuneration_type === 'mensal' && (
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold">Salário Fixo Mensal (R$)</Label>
-                    <Input type="number" step="0.01" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                  <div className="space-y-3 sm:col-span-2">
+                    <div>
+                      <Label className="text-[11px] font-bold">Valor Fixo Mensal por Unidade</Label>
+                      <p className="mt-1 text-[10px] text-slate-500">O faturamento de cada unidade usa somente o valor informado para ela.</p>
+                    </div>
+                    {formData.allowed_unit_ids.map(uid => {
+                      const unitName = units.find(unit => String(unit.id) === String(uid))?.name || 'Unidade';
+                      const primaryUnitId = formData.allowed_unit_ids.some(id => String(id) === String(formData.unit_id))
+                        ? formData.unit_id
+                        : formData.allowed_unit_ids[0];
+                      const monthlyValue = Object.prototype.hasOwnProperty.call(formData.unit_monthly_salaries, uid)
+                        ? formData.unit_monthly_salaries[uid]
+                        : String(uid) === String(primaryUnitId) ? formData.monthly_salary : '';
+                      return (
+                        <div key={uid} className="grid grid-cols-1 items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950 sm:grid-cols-[minmax(0,1fr)_220px]">
+                          <Label htmlFor={`monthly-salary-${uid}`} className="text-xs font-bold text-slate-700 dark:text-slate-300">{unitName}</Label>
+                          <Input
+                            id={`monthly-salary-${uid}`}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={monthlyValue}
+                            onChange={e => handleUnitMonthlySalaryChange(uid, e.target.value)}
+                            placeholder="Valor mensal (R$)"
+                            className="h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 

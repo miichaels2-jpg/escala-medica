@@ -135,27 +135,49 @@ export default function Painel() {
 
   function getProfMeta(prof) {
     if (!prof) return {};
-    try { const stored = window.localStorage.getItem(`prof_meta_${prof.id}`); if (stored) return JSON.parse(stored); } catch {}
-    if (prof.data && typeof prof.data === 'object') return prof.data;
-    return {};
+    let localMeta = {};
+    try {
+      const stored = window.localStorage.getItem(`prof_meta_${prof.id}`);
+      const parsed = stored ? JSON.parse(stored) : null;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) localMeta = parsed;
+    } catch (error) {
+      console.warn(`Não foi possível carregar os dados locais do profissional ${prof.id}:`, error);
+    }
+    const serverMeta = [prof.data, prof.metadata]
+      .filter(source => source && typeof source === 'object' && !Array.isArray(source));
+    return Object.assign({}, localMeta, ...serverMeta);
   }
 
   const { profById, profByName } = useMemo(() => {
     const byId = {}; const byName = {};
     (professionals || []).forEach((p) => {
       const meta = getProfMeta(p);
+      const monthlyByUnit = meta.unit_monthly_salaries || {};
+      const hasUnitSalary = Object.prototype.hasOwnProperty.call(monthlyByUnit, String(unitId)) &&
+        monthlyByUnit[String(unitId)] !== '' &&
+        monthlyByUnit[String(unitId)] !== null &&
+        monthlyByUnit[String(unitId)] !== undefined;
+      const primaryUnitId = p.unit_id || meta.allowed_unit_ids?.[0] || p.unit_ids?.[0];
+      const legacySalary = meta.monthly_salary !== undefined ? meta.monthly_salary : p.monthly_salary;
+      const remunerationType = meta.remuneration_type || p.remuneration_type || 'mensal';
       const mergedProf = { 
         ...p, 
-        monthly_salary: meta.monthly_salary !== undefined ? meta.monthly_salary : p.monthly_salary, 
+        monthly_salary: remunerationType !== 'mensal'
+          ? legacySalary
+          : hasUnitSalary
+            ? monthlyByUnit[String(unitId)]
+            : Object.keys(monthlyByUnit).length > 0
+              ? String(primaryUnitId) === String(unitId) ? legacySalary : 0
+              : legacySalary,
         hourly_rate: meta.hourly_rate !== undefined ? meta.hourly_rate : p.hourly_rate, 
         daily_rate: meta.daily_rate !== undefined ? meta.daily_rate : p.daily_rate, 
-        remuneration_type: meta.remuneration_type || p.remuneration_type || 'mensal' 
+        remuneration_type: remunerationType
       };
       if (p.id) byId[p.id] = mergedProf;
       if (p.name) byName[normalizeStr(p.name)] = mergedProf;
     });
     return { profById: byId, profByName: byName };
-  }, [professionals]);
+  }, [professionals, unitId]);
 
   const unitShifts = useMemo(() => {
     return (shifts || []).filter(s => String(s.unit_id) === String(unitId) && s.status !== 'cancelado');

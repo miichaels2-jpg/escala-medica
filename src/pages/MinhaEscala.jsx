@@ -119,11 +119,17 @@ export default function MinhaEscala() {
 
   const profMeta = useMemo(() => {
     if (!currentProfessional) return {};
+    let localMeta = {};
     try {
       const stored = window.localStorage.getItem(`prof_meta_${currentProfessional.id}`);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    return currentProfessional.data || {};
+      const parsed = stored ? JSON.parse(stored) : null;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) localMeta = parsed;
+    } catch (error) {
+      console.warn(`Não foi possível carregar os dados locais do profissional ${currentProfessional.id}:`, error);
+    }
+    const serverMeta = [currentProfessional.data, currentProfessional.metadata]
+      .filter(source => source && typeof source === 'object' && !Array.isArray(source));
+    return Object.assign({}, localMeta, ...serverMeta);
   }, [currentProfessional]);
 
   const sectorMap = useMemo(() => {
@@ -362,7 +368,23 @@ export default function MinhaEscala() {
     let cumpridos = 0; let futuros = 0; let horas = 0; let valorBruto = 0;
     
     if (profMeta.remuneration_type === 'mensal') {
-      valorBruto = safeNumber(profMeta.monthly_salary);
+      const monthlyByUnit = profMeta.unit_monthly_salaries || {};
+      const allowedUnits = Array.isArray(profMeta.allowed_unit_ids)
+        ? profMeta.allowed_unit_ids
+        : Array.isArray(currentProfessional?.unit_ids)
+          ? currentProfessional.unit_ids
+          : currentProfessional?.unit_id ? [currentProfessional.unit_id] : [];
+      if (Object.keys(monthlyByUnit).length > 0) {
+        const salaryUnitIds = allowedUnits.length > 0 ? allowedUnits : Object.keys(monthlyByUnit);
+        valorBruto = salaryUnitIds.reduce((total, unitId) => {
+          const unitSalary = monthlyByUnit[String(unitId)];
+          return unitSalary === '' || unitSalary === null || unitSalary === undefined
+            ? total
+            : total + safeNumber(unitSalary);
+        }, 0);
+      } else {
+        valorBruto = safeNumber(profMeta.monthly_salary);
+      }
     }
 
     monthShifts.forEach(s => {
@@ -375,7 +397,7 @@ export default function MinhaEscala() {
     });
     
     return { cumpridos, futuros, horas: Math.round(horas * 10) / 10, valorBruto, totalMes: monthShifts.length };
-  }, [monthShifts, profMeta]);
+  }, [monthShifts, profMeta, currentProfessional]);
 
   const handlePassShiftToMural = async (shift) => {
     const requesterName = currentProfessional?.name || user?.full_name || 'Profissional';
