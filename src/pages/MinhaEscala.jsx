@@ -129,7 +129,7 @@ export default function MinhaEscala() {
     if (!appLoading) loadMyShifts();
   }, [appLoading, loadMyShifts]);
 
-  // FUNÇÃO UNIVERSAL DE CÁLCULO DE VALOR DO PLANTÃO
+  // FUNÇÃO UNIVERSAL DE CÁLCULO DE VALOR DO PLANTÃO (Matriz Dinâmica)
   const getShiftValue = useCallback((shift) => {
     const remunType = profMeta.remuneration_type || 'plantao';
     if (remunType === 'mensal') return { type: 'mensal', value: 0 };
@@ -224,11 +224,11 @@ export default function MinhaEscala() {
         state,
         isPendingApproval,
         duration: Math.round(duration * 10) / 10,
+        shiftValue: getShiftValue(s),
         timeLeftDesc,
         startDateTime,
         startMin,
         endMin,
-        shiftValue: getShiftValue(s),
         checkinTime: checkinMatch ? checkinMatch[1] : null,
         checkoutTime: checkoutMatch ? checkoutMatch[1] : null
       };
@@ -324,23 +324,19 @@ export default function MinhaEscala() {
     const allOrdered = [...monthShifts].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
     const rowsHtml = allOrdered.map((s, idx) => {
-      const statusHtml = s.state === 'concluido' ? 'CONCLUÍDO' : s.state === 'ativo' ? 'EM ATENDIMENTO' : 'PROGRAMADO';
-      const points = (s.checkinTime || s.checkoutTime) ? `<br><span style="font-size:8px; color:#555;">In: ${s.checkinTime||'--'} Out: ${s.checkoutTime||'--'}</span>` : '';
-      
+      const checkInOutHtml = (s.checkinTime || s.checkoutTime) ? `<br><span style="font-size:9px; color:#555;">In: ${s.checkinTime||'--'} | Out: ${s.checkoutTime||'--'}</span>` : '';
       return `
       <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
         <td style="border: 1px solid #000; padding: 6px 8px; font-weight: bold;">${formatDateBR(s.date)}</td>
         <td style="border: 1px solid #000; padding: 6px 8px; text-transform: uppercase;"><b>${s.unitName}</b> - ${s.sectorName}</td>
-        <td style="border: 1px solid #000; padding: 6px 8px; font-family: monospace; text-align: center;">${s.start_time} às ${s.end_time}</td>
-        <td style="border: 1px solid #000; padding: 6px 8px; text-align: center;">${s.duration}h ${points}</td>
+        <td style="border: 1px solid #000; padding: 6px 8px; font-family: monospace; text-align: center;">${s.start_time} às ${s.end_time} ${checkInOutHtml}</td>
+        <td style="border: 1px solid #000; padding: 6px 8px; text-align: center;">${s.duration}h</td>
         <td style="border: 1px solid #000; padding: 6px 8px; text-align: center; font-weight: bold;">
-          ${statusHtml}
+          ${s.state === 'concluido' ? 'CONCLUÍDO' : s.state === 'ativo' ? 'EM ATENDIMENTO' : 'PROGRAMADO'}
         </td>
       </tr>
       `;
     }).join('');
-
-    const regimeLabel = profMeta.remuneration_type === 'mensal' ? 'Fixo Mensal' : profMeta.remuneration_type === 'produtividade' ? 'Produtividade' : 'Plantão Dinâmico';
 
     const html = `
       <!DOCTYPE html>
@@ -363,7 +359,6 @@ export default function MinhaEscala() {
             <h1 style="font-size: 18px; text-transform: uppercase; margin: 0;">ScaleMedic (Rede Global)</h1>
             <p style="margin: 3px 0;">ESPELHO INDIVIDUAL DE PLANTÕES • PRESTAÇÃO DE CONTAS</p>
             <p style="margin: 3px 0;">Profissional: <b>Dr(a). ${profNome}</b> (ID: ${matricula})</p>
-            <p style="margin: 3px 0;">Regime: <b>${regimeLabel}</b></p>
           </div>
           <div style="text-align: right; font-size: 9.5px;">
             <p style="margin: 0;">Competência: <b>${competencia}</b></p>
@@ -376,8 +371,8 @@ export default function MinhaEscala() {
             <tr>
               <th style="width: 15%;">Data</th>
               <th style="width: 40%;">Unidade / Setor</th>
-              <th style="width: 15%; text-align: center;">Horário</th>
-              <th style="width: 15%; text-align: center;">Duração/Ponto</th>
+              <th style="width: 15%; text-align: center;">Horário (Check-in/out)</th>
+              <th style="width: 15%; text-align: center;">Duração</th>
               <th style="width: 15%; text-align: center;">Status</th>
             </tr>
           </thead>
@@ -389,7 +384,7 @@ export default function MinhaEscala() {
         <div class="summary">
           <span>Plantões Cumpridos: ${monthMetrics.cumpridos} de ${monthMetrics.totalMes}</span>
           <span>Horas Efetivadas: ${monthMetrics.horas}h</span>
-          <span>Produção Apurada: ${profMeta.remuneration_type === 'produtividade' ? 'A Calcular' : formatCurrency(monthMetrics.valorBruto)}</span>
+          <span>Produção Apurada: ${profMeta.remuneration_type === 'produtividade' ? 'COMISSÃO' : formatCurrency(monthMetrics.valorBruto)}</span>
         </div>
 
         <div style="margin-top: 50px; display: flex; justify-content: space-around; text-align: center; font-size: 10px;">
@@ -456,7 +451,7 @@ export default function MinhaEscala() {
         </div>
       )}
 
-      {/* CARD DE PLANTÃO ATIVO COM CHECK-IN E CHECK-OUT */}
+      {/* COMPONENTE DE CHECK-IN / CHECK-OUT */}
       {activeShiftNow && (
         <div className="p-6 rounded-3xl bg-emerald-500/10 border-2 border-emerald-500/60 shadow-xl text-emerald-950 dark:text-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
           <div className="flex items-center gap-4">
@@ -479,6 +474,9 @@ export default function MinhaEscala() {
                 <span className="hidden sm:inline">•</span>
                 <span className="text-sm opacity-80">{activeShiftNow.start_time} às {activeShiftNow.end_time}</span>
               </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
+                Jornada de {activeShiftNow.duration}h computada no fechamento deste mês.
+              </p>
             </div>
           </div>
 
@@ -501,135 +499,45 @@ export default function MinhaEscala() {
         </div>
       )}
 
-      {nextHighlightedShift && (
-        <div className="rounded-3xl border border-sky-300 dark:border-sky-800 bg-gradient-to-r from-sky-50 via-white to-sky-50/50 dark:from-slate-900 dark:via-sky-950/30 dark:to-slate-900 p-6 shadow-md flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="flex items-start sm:items-center gap-4">
-            <div className="p-4 rounded-2xl bg-sky-600 text-white font-black shadow-lg shadow-sky-600/30 shrink-0">
-              <Zap className="w-8 h-8" />
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black uppercase tracking-wider text-sky-600 dark:text-sky-400 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5" /> Próximo Plantão Agendado
-                </span>
-                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 font-mono">
-                  {nextHighlightedShift.timeLeftDesc}
-                </span>
-              </div>
-
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <span className="text-sky-600">🏥 {nextHighlightedShift.unitName}</span> 
-                <span className="text-slate-300 dark:text-slate-600">•</span>
-                <span>{nextHighlightedShift.sectorName}</span>
-              </h2>
-
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300 font-medium">
-                <span className="font-bold text-slate-900 dark:text-white">
-                  📅 {formatDateBR(nextHighlightedShift.date)} ({new Date(nextHighlightedShift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' })})
-                </span>
-                <span>•</span>
-                <span className="font-mono font-bold text-sky-600 dark:text-sky-400">
-                  ⏰ {nextHighlightedShift.start_time} às {nextHighlightedShift.end_time} ({nextHighlightedShift.duration}h)
-                </span>
-                <span>•</span>
-                {nextHighlightedShift.shiftValue?.type === 'valor' && (
-                  <span>Diária Prevista: <b>{formatCurrency(nextHighlightedShift.shiftValue.value)}</b></span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 shrink-0">
-            {nextHighlightedShift.isPendingApproval ? (
-              <div className="px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-black flex items-center gap-1.5">
-                <Clock3 className="w-4 h-4 animate-pulse" />
-                Aguardando autorização da gestão
-              </div>
-            ) : (
-              <Button 
-                onClick={() => handlePassShiftToMural(nextHighlightedShift)}
-                disabled={submitting}
-                variant="outline"
-                className="h-10 text-xs font-black rounded-xl border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 gap-1.5 cursor-pointer"
-              >
-                <Flame className="w-4 h-4" /> Passar no Mural
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-black uppercase tracking-wider text-slate-400">Plantões Cumpridos</span>
-            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
             {monthMetrics.cumpridos}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1 font-semibold">{monthMetrics.horas}h totais concluídas</p>
-        </Card>
-
-        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-400">Horas Realizadas</span>
-            <div className="p-2 rounded-xl bg-sky-50 dark:bg-sky-950 text-sky-600">
-              <Clock className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
-            {monthMetrics.horas}h <span className="text-xs font-bold text-slate-400">computadas</span>
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1 font-semibold">
-            Em {monthMetrics.cumpridos} turnos finalizados
-          </p>
+          <p className="text-[11px] text-slate-500 mt-1 font-semibold">{monthMetrics.horas}h totais em {MONTH_NAMES[currentMonth]}</p>
         </Card>
 
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-black uppercase tracking-wider text-slate-400">Repasse Apurado</span>
-            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600">
-              <DollarSign className="w-4 h-4" />
-            </div>
+            <DollarSign className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-3 font-mono">
             {profMeta.remuneration_type === 'produtividade' ? 'COMISSÃO' : formatCurrency(monthMetrics.valorBruto)}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1 font-semibold">Base de cálculo apurada até hoje</p>
+          <p className="text-[11px] text-slate-500 mt-1 font-semibold">Base de cálculo até hoje</p>
         </Card>
 
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-400">Plantões a Realizar</span>
-            <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600">
-              <CalendarCheck className="w-4 h-4" />
-            </div>
+            <span className="text-xs font-black uppercase tracking-wider text-slate-400">Próximos Plantões</span>
+            <CalendarCheck className="w-4 h-4 text-indigo-600" />
           </div>
           <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
-            {monthMetrics.futuros} <span className="text-xs font-bold text-slate-400">turnos</span>
+            {monthMetrics.futuros}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1 font-semibold">
-            Programados na grade do mês
-          </p>
+          <p className="text-[11px] text-slate-500 mt-1 font-semibold">Agendados no mês vigente</p>
         </Card>
       </div>
 
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
-              <h2 className="text-lg font-black text-slate-900 dark:text-white">
-                Plantões a Realizar (Escala Futura & Hoje)
-              </h2>
-            </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Turnos que faltam cumprir em {MONTH_NAMES[currentMonth]} {currentYear}, ordenados a partir da data atual.
-            </p>
+            <h2 className="text-lg font-black text-slate-900 dark:text-white">Sua Grade de Plantões</h2>
           </div>
 
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-1 rounded-2xl gap-2">
@@ -646,175 +554,52 @@ export default function MinhaEscala() {
         </div>
 
         {loading ? (
-          <div className="py-16 text-center text-slate-400">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-sky-600" />
-            Carregando sua grade pessoal de plantões...
-          </div>
-        ) : upcomingMonthShifts.length === 0 ? (
-          <div className="py-12 text-center text-slate-400 text-xs border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl p-6">
-            <CheckCircle2 className="w-8 h-8 mx-auto mb-2 opacity-40 text-emerald-500" />
-            Parabéns! Você não possui nenhum plantão pendente para realizar este mês.<br />
-            Caso queira assumir plantões extras, consulte o <b>Mural de Oportunidades</b>.
-          </div>
+          <div className="py-16 text-center text-slate-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />Carregando...</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {upcomingMonthShifts.map(shift => {
+            {monthShifts.map(shift => {
               const isAtivo = shift.state === 'ativo';
-              const isPending = shift.isPendingApproval;
-              const hasConflict = shift.hasConflict;
+              const isConc = shift.state === 'concluido';
 
               return (
-                <div 
-                  key={shift.id} 
-                  className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
-                    hasConflict
-                      ? 'border-2 border-rose-500 bg-rose-50/40 dark:bg-rose-950/20 shadow-md ring-2 ring-rose-500/20'
-                      : isAtivo 
-                      ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-md ring-1 ring-emerald-500/40' 
-                      : isPending
-                      ? 'border-amber-300 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/20'
-                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:border-sky-400'
-                  }`}
-                >
+                <div key={shift.id} className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${isConc ? 'opacity-80 bg-slate-50 dark:bg-slate-950/40 border-slate-200' : 'bg-white border-slate-300 dark:bg-slate-900 dark:border-slate-700 shadow-sm'}`}>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-black font-mono text-slate-900 dark:text-white">
-                          {formatDateBR(shift.date)}
-                        </span>
-                        <span className="text-[10px] font-bold text-slate-500">
-                          ({new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' })})
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        {hasConflict && (
-                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-600 text-white flex items-center gap-1 animate-pulse">
-                            <ShieldAlert className="w-3 h-3" /> Choque Horário
-                          </span>
-                        )}
-                        <span className={`text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full ${
-                          isAtivo 
-                            ? 'bg-emerald-600 text-white animate-pulse' 
-                            : isPending
-                            ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
-                            : 'bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300'
-                        }`}>
-                          {isAtivo ? '● Ao Vivo' : isPending ? '⏳ Em Análise' : 'Programado'}
-                        </span>
-                      </div>
+                      <span className="text-xs font-black font-mono text-slate-900 dark:text-white">
+                        {formatDateBR(shift.date)}
+                      </span>
+                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${isConc ? 'bg-slate-200 text-slate-600' : 'bg-sky-100 text-sky-700'}`}>
+                        {isConc ? 'Concluído' : 'A Realizar'}
+                      </span>
                     </div>
 
-                    <div className="text-sm font-black text-slate-900 dark:text-white truncate flex items-center gap-1.5">
-                      <span className="text-sky-600">🏥 {shift.unitName}</span>
-                      <span className="text-slate-300 dark:text-slate-700">•</span>
-                      <span>{shift.sectorName}</span>
+                    <div className="text-sm font-black text-slate-900 dark:text-white truncate">
+                      <span className="text-sky-600">🏥 {shift.unitName}</span> • {shift.sectorName}
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-slate-500 font-mono">
-                      <span>Horário: <b>{shift.start_time} às {shift.end_time}</b></span>
+                      <span>{shift.start_time} às {shift.end_time}</span>
                       <span>{shift.duration}h</span>
                     </div>
 
                     {shift.shiftValue?.type === 'valor' && (
                       <div className="text-xs text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 pt-1 border-t border-slate-100 dark:border-slate-800">
-                        <DollarSign className="w-3.5 h-3.5" />
-                        Valor Previsto: {formatCurrency(shift.shiftValue.value)}
+                        <DollarSign className="w-3.5 h-3.5" /> Valor Apurado: {formatCurrency(shift.shiftValue.value)}
+                      </div>
+                    )}
+                    
+                    {/* VISUALIZAÇÃO DO CHECK-IN/OUT NA GRADE */}
+                    {isConc && (shift.checkinTime || shift.checkoutTime) && (
+                      <div className="text-[10px] font-mono text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+                        <span>In: {shift.checkinTime || '--:--'}</span>
+                        <span>Out: {shift.checkoutTime || '--:--'}</span>
                       </div>
                     )}
                   </div>
-
-                  {!isAtivo && (
-                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
-                      {isPending ? (
-                        <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                          <Clock3 className="w-3.5 h-3.5 animate-pulse" /> Aguardando Gestão
-                        </span>
-                      ) : (
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => handlePassShiftToMural(shift)}
-                          disabled={submitting}
-                          className="h-8 text-[11px] font-bold border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl gap-1.5 cursor-pointer"
-                        >
-                          <Flame className="w-3.5 h-3.5" /> Passar no Mural
-                        </Button>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })}
           </div>
-        )}
-      </div>
-
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <h3 className="text-sm font-black text-slate-800 dark:text-slate-200">
-              Plantões Já Concluídos ({completedMonthShifts.length})
-            </h3>
-          </div>
-
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => setShowPastShifts(!showPastShifts)}
-            className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer"
-          >
-            {showPastShifts ? (
-              <span className="flex items-center gap-1">Ocultar <ChevronUp className="w-3.5 h-3.5" /></span>
-            ) : (
-              <span className="flex items-center gap-1">Expandir <ChevronDown className="w-3.5 h-3.5" /></span>
-            )}
-          </Button>
-        </div>
-
-        {showPastShifts && (
-          completedMonthShifts.length === 0 ? (
-            <p className="text-xs text-slate-400 py-4 text-center">Nenhum plantão concluído até o momento nesta competência.</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 opacity-85">
-              {completedMonthShifts.map(shift => (
-                <div key={shift.id} className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 text-xs flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-slate-900 dark:text-white block">
-                      {formatDateBR(shift.date)}
-                    </span>
-                    <span className="text-[9px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-black px-2 py-0.5 rounded-lg shrink-0">
-                      ✓ Concluído
-                    </span>
-                  </div>
-                  
-                  <div className="space-y-0.5">
-                    <span className="text-[11px] text-sky-700 dark:text-sky-400 font-bold block truncate">
-                      🏥 {shift.unitName}
-                    </span>
-                    <span className="text-[10px] text-slate-500 block truncate">
-                      {shift.sectorName}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mt-1 border-t border-slate-200 dark:border-slate-800 pt-1.5">
-                    <span>{shift.start_time} - {shift.end_time} ({shift.duration}h)</span>
-                    {shift.shiftValue?.type === 'valor' && (
-                      <span className="font-bold text-emerald-600">{formatCurrency(shift.shiftValue.value)}</span>
-                    )}
-                  </div>
-                  
-                  {(shift.checkinTime || shift.checkoutTime) && (
-                    <div className="flex items-center justify-between text-[9px] font-mono text-slate-500 bg-white dark:bg-slate-900 p-1.5 rounded-lg mt-0.5 border border-slate-100 dark:border-slate-800">
-                      <span>In: <b className="text-emerald-600">{shift.checkinTime || '--:--'}</b></span>
-                      <span>Out: <b className="text-rose-600">{shift.checkoutTime || '--:--'}</b></span>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )
         )}
       </div>
     </div>
