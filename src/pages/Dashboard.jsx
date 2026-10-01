@@ -179,27 +179,29 @@ export default function Painel() {
   }, [unitShifts, todayStr, currentTime]);
 
   const activeNowList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'active' && !isVacantShift(s)), [todayShifts]);
-  const upcomingList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'upcoming' && !isVacantShift(s)), [todayShifts]);
+  const upcomingList = useMemo(() => todayShifts
+    .filter((s) => s.lifecycle.state === 'upcoming' && !isVacantShift(s))
+    .sort((a, b) =>
+      String(a.date || '').split('T')[0].localeCompare(String(b.date || '').split('T')[0]) ||
+      String(a.start_time || '').localeCompare(String(b.start_time || ''))
+    ), [todayShifts]);
   const concludedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'concluded' && !isVacantShift(s)), [todayShifts]);
 
-  // CORREÇÃO MÁXIMA: Puxa TODAS as vagas em aberto do mês inteiro (hoje, amanhã, sábados futuros, ou furos do passado no mesmo mês)
-  const vacantShifts = useMemo(() => {
-    return unitShifts
-      .filter((s) => {
-        const sDate = (s.date || '').split('T')[0];
-        
-        // Bloqueio do Mês: Apenas do mês vigente!
-        if (!sDate.startsWith(monthPrefix)) return false;
+  const monthlyShifts = useMemo(() => unitShifts.filter(shift =>
+    String(shift.date || '').split('T')[0].startsWith(monthPrefix)
+  ), [unitShifts, monthPrefix]);
 
-        return isVacantShift(s);
-      })
-      .map(s => ({ 
+  // Inclui vagas futuras e turnos descobertos que já passaram neste mês.
+  const vacantShifts = useMemo(() => {
+    return monthlyShifts
+      .filter(isVacantShift)
+      .map(s => ({
         ...s, 
         sectorName: toTitleCase(s.sector_name || sectors.find(sec => String(sec.id) === String(s.sector_id))?.name || 'Setor Geral'), 
         formattedDate: fmtDate(s.date) 
       }))
       .sort((a, b) => (a.date || '').localeCompare(b.date || '')); // Ordena cronologicamente
-  }, [unitShifts, monthPrefix, sectors]);
+  }, [monthlyShifts, sectors]);
 
   const todayFinancials = useMemo(() => {
     let executedValue = 0; let plannedValue = 0;
@@ -238,15 +240,16 @@ export default function Painel() {
   const sectorsCoverage = useMemo(() => {
     const map = {};
     (sectors || []).forEach((sec) => { 
-      map[sec.id] = { id: sec.id, name: toTitleCase(sec.name), specialty: sec.specialty || 'Geral', total: 0, active: 0, upcoming: 0, vacant: 0 }; 
+      map[sec.id] = { id: sec.id, name: toTitleCase(sec.name), specialty: sec.specialty || 'Geral', total: 0, active: 0, upcoming: 0, concluded: 0, vacant: 0 };
     });
     todayShifts.forEach((s) => {
       const secId = s.sector_id || 'sem_setor';
-      if (!map[secId]) map[secId] = { id: secId, name: toTitleCase(s.sector_name || 'Setor Geral'), specialty: 'Geral', total: 0, active: 0, upcoming: 0, vacant: 0 };
+      if (!map[secId]) map[secId] = { id: secId, name: toTitleCase(s.sector_name || 'Setor Geral'), specialty: 'Geral', total: 0, active: 0, upcoming: 0, concluded: 0, vacant: 0 };
       map[secId].total += 1;
       const isVacant = isVacantShift(s);
       if (!isVacant && s.lifecycle.state === 'active') map[secId].active += 1;
       if (!isVacant && s.lifecycle.state === 'upcoming') map[secId].upcoming += 1;
+      if (!isVacant && s.lifecycle.state === 'concluded') map[secId].concluded += 1;
       if (isVacant) map[secId].vacant += 1;
     });
     return Object.values(map);
@@ -260,19 +263,11 @@ export default function Painel() {
     return { targetTime: nextStart, incoming, outgoing };
   }, [upcomingList, activeNowList]);
 
-  // CORREÇÃO: Taxa Global baseada em TODO O MÊS VIGENTE
   const globalFillRate = useMemo(() => {
-    const monthShifts = unitShifts.filter(s => (s.date || '').startsWith(monthPrefix));
-    if (monthShifts.length === 0) return 100;
-
-    const totalProgrammedMonth = monthShifts.length;
+    if (monthlyShifts.length === 0) return null;
     const vacantMonthCount = vacantShifts.length;
-    
-    if (vacantMonthCount === 0) return 100;
-    
-    const filled = Math.max(0, totalProgrammedMonth - vacantMonthCount);
-    return Math.round((filled / totalProgrammedMonth) * 100);
-  }, [unitShifts, monthPrefix, vacantShifts]);
+    return Math.round(((monthlyShifts.length - vacantMonthCount) / monthlyShifts.length) * 100);
+  }, [monthlyShifts, vacantShifts]);
 
   const hourlyCurveData = useMemo(() => {
     const buckets = [ 
@@ -322,7 +317,7 @@ export default function Painel() {
             </div>
           </div>
           <div className="hidden lg:flex items-center gap-5">
-            <div className={`px-4 py-2.5 rounded-2xl border flex items-center gap-3 ${vacantShifts.length > 0 ? 'bg-rose-500/10 border-rose-500/40 text-rose-300' : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'}`}><div className={`w-3 h-3 rounded-full ${vacantShifts.length > 0 ? 'bg-rose-500 animate-ping' : 'bg-emerald-400'}`} /><div><div className="text-xs font-black uppercase tracking-wider">{vacantShifts.length > 0 ? 'Alerta Assistencial' : 'Operação Estável'}</div><div className="text-[10px] font-bold opacity-80">{vacantShifts.length > 0 ? `${vacantShifts.length} vaga(s) desocupada(s)` : 'Todos os postos cobertos'}</div></div></div>
+            <div className={`px-4 py-2.5 rounded-2xl border flex items-center gap-3 ${vacantShifts.length > 0 ? 'bg-rose-500/10 border-rose-500/40 text-rose-300' : monthlyShifts.length > 0 ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-amber-500/10 border-amber-500/40 text-amber-300'}`}><div className={`w-3 h-3 rounded-full ${vacantShifts.length > 0 ? 'bg-rose-500 animate-ping' : monthlyShifts.length > 0 ? 'bg-emerald-400' : 'bg-amber-400'}`} /><div><div className="text-xs font-black uppercase tracking-wider">{vacantShifts.length > 0 ? 'Alerta Assistencial' : monthlyShifts.length > 0 ? 'Sem vagas descobertas' : 'Escala não cadastrada'}</div><div className="text-[10px] font-bold opacity-80">{vacantShifts.length > 0 ? `${vacantShifts.length} vaga(s) desocupada(s) no mês` : monthlyShifts.length > 0 ? 'Plantões cadastrados sem vagas em aberto' : 'Nenhum plantão cadastrado neste mês'}</div></div></div>
             <div className="bg-slate-900 border border-slate-800 px-5 py-2.5 rounded-2xl text-right"><div className="text-2xl lg:text-4xl font-black font-mono tracking-tight text-cyan-400">{currentTime.toLocaleTimeString('pt-BR')}</div><div className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Oficial CCO</div></div>
             <button title="Sair da tela cheia" onClick={closeTvMode} className="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors cursor-pointer"><Minimize2 className="h-5 w-5" /></button>
           </div>
@@ -338,23 +333,23 @@ export default function Painel() {
                     return (
                       <div key={sec.id} className={`p-3.5 rounded-2xl border flex flex-col justify-between transition-all ${hasVacant ? 'border-rose-500/80 bg-rose-950/30 shadow-lg' : sec.active > 0 ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800/80 bg-slate-900/40'}`}>
                         <div>
-                          <div className="flex items-center justify-between"><h3 className="font-black text-xs sm:text-sm text-white truncate max-w-[150px]">{sec.name}</h3><span className={`text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full uppercase whitespace-nowrap ${hasVacant ? 'bg-rose-500 text-white font-black animate-pulse' : sec.active > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>{hasShifts ? `${sec.active} ativo(s)` : 'Sem plantão'}</span></div>
-                          <div className="flex items-center justify-between text-[10px] sm:text-xs text-slate-400 mt-2 font-medium"><span>Ocupação do posto</span><strong className="text-white font-mono">{sec.active} / {sec.total}</strong></div>
+                          <div className="flex items-center justify-between"><h3 className="font-black text-xs sm:text-sm text-white truncate max-w-[150px]">{sec.name}</h3><span className={`text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full uppercase whitespace-nowrap ${hasVacant ? 'bg-rose-500 text-white font-black animate-pulse' : sec.active > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>{hasVacant ? `${sec.vacant} descoberto(s)` : sec.active > 0 ? `${sec.active} em andamento` : hasShifts && sec.upcoming > 0 ? `${sec.upcoming} a assumir` : hasShifts ? `${sec.concluded} concluído(s)` : 'Sem plantão'}</span></div>
+                          <div className="flex items-center justify-between text-[10px] sm:text-xs text-slate-400 mt-2 font-medium"><span>Em andamento / turnos do dia</span><strong className="text-white font-mono">{sec.active} / {sec.total}</strong></div>
                           <div className="w-full h-2 bg-slate-800 rounded-full mt-2 overflow-hidden"><div className={`h-full transition-all duration-500 ${hasVacant ? 'bg-rose-500' : sec.active > 0 ? 'bg-emerald-400' : 'bg-transparent'}`} style={{ width: `${hasShifts ? Math.min(100, Math.max(6, percent)) : 0}%` }} /></div>
                         </div>
-                        <div className="pt-2">{hasVacant ? <div className="text-[10px] sm:text-[11px] text-rose-400 font-black flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {sec.vacant} desfalque(s)</div> : <div className="text-[9px] sm:text-[10px] text-slate-400 font-semibold">{hasShifts ? `${sec.upcoming} a assumir a seguir` : 'Nenhum plantão hoje'}</div>}</div>
+                        <div className="pt-2">{hasVacant ? <div className="text-[10px] sm:text-[11px] text-rose-400 font-black flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {sec.vacant} desfalque(s)</div> : <div className="text-[9px] sm:text-[10px] text-slate-400 font-semibold">{hasShifts ? `${sec.active} em andamento · ${sec.upcoming} a assumir · ${sec.concluded} concluído(s)` : 'Nenhum plantão hoje'}</div>}</div>
                       </div>
                     );
                   })}
                 </div>
-                <div className="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] sm:text-xs text-slate-400 font-bold shrink-0"><span>Taxa Global: <b className="text-white font-mono text-xs sm:text-sm">{globalFillRate}%</b></span><span className="text-sky-400 hidden sm:block">Auditoria Contínua</span></div>
+                <div className="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] sm:text-xs text-slate-400 font-bold shrink-0"><span>Cobertura mensal: <b className="text-white font-mono text-xs sm:text-sm">{globalFillRate === null ? '—' : `${globalFillRate}%`}</b></span><span className="text-sky-400 hidden sm:block">Auditoria Contínua</span></div>
               </div>
             </div>
             <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5 shadow-2xl flex flex-col h-auto lg:h-full lg:overflow-hidden">
               <div className="flex flex-col flex-1 h-full lg:overflow-hidden">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0"><span className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" /> Ativos Agora ({activeNowList.length})</span><span className="text-[9px] font-mono text-slate-400 hidden sm:block">EM ATENDIMENTO</span></div>
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0"><span className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" /> Em andamento ({activeNowList.length})</span><span className="text-[9px] font-mono text-slate-400 hidden sm:block">PELO HORÁRIO DA ESCALA</span></div>
                 <div className="flex-1 space-y-2.5 lg:overflow-y-auto pr-1 pb-1">
-                  {activeNowList.length === 0 ? <div className="py-10 text-center text-xs text-slate-500">Nenhum plantonista em atendimento neste minuto.</div> : activeNowList.map(s => {
+                  {activeNowList.length === 0 ? <div className="py-10 text-center text-xs text-slate-500">Nenhum plantão alocado está em andamento agora.</div> : activeNowList.map(s => {
                     const prof = profById[s.professional_id] || profByName[normalizeStr(s.professional_name)]; const profName = toTitleCase(prof?.name || s.professional_name || 'Profissional'); const sectorName = toTitleCase(s.sector_name || sectors.find(sec => String(sec.id) === String(s.sector_id))?.name || 'Setor Geral');
                     return (
                       <div key={s.id} className="p-3.5 rounded-2xl bg-slate-950 border border-emerald-500/40 flex items-center justify-between shadow-md">
@@ -462,21 +457,29 @@ export default function Painel() {
             ))}
           </div>
         </div>
-      ) : (
+      ) : monthlyShifts.length > 0 ? (
         <div className="p-4 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-emerald-600 text-white font-bold"><CheckCircle2 className="w-4 h-4" /></div>
-            <div><strong className="text-xs font-black uppercase tracking-wider block">Escala Hospitalar 100% Homologada no Mês</strong><span className="text-[11px] text-emerald-700 dark:text-emerald-400">Todos os postos e setores clínicos do período vigente possuem médicos alocados.</span></div>
+            <div><strong className="text-xs font-black uppercase tracking-wider block">Nenhuma vaga descoberta neste mês</strong><span className="text-[11px] text-emerald-700 dark:text-emerald-400">Todos os plantões cadastrados no período possuem profissional alocado. A publicação da escala é acompanhada separadamente.</span></div>
           </div>
-          <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono px-3 py-1 rounded-xl bg-emerald-500/20">ZERO DESFALQUES</span>
+          <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono px-3 py-1 rounded-xl bg-emerald-500/20">SEM VAGAS</span>
+        </div>
+      ) : (
+        <div className="p-4 rounded-3xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 flex items-center gap-3 shadow-sm">
+          <CalendarDays className="w-5 h-5 text-slate-500 shrink-0" />
+          <div>
+            <strong className="text-xs font-black uppercase tracking-wider block">Nenhum plantão cadastrado neste mês</strong>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">A cobertura mensal será calculada quando houver plantões na escala.</span>
+          </div>
         </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 rounded-3xl border border-emerald-200 dark:border-emerald-800/60 bg-gradient-to-br from-white to-emerald-50/40 dark:from-slate-900 dark:to-emerald-950/20 shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between"><span className="text-xs font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-400">Médicos no Posto Agora</span><span className="p-2 rounded-xl bg-emerald-600 text-white shadow-md animate-pulse"><Clock className="w-4 h-4" /></span></div>
-          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">{activeNowList.length} <span className="text-sm font-bold text-slate-500">em atendimento</span></div>
-          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-semibold">Presença física confirmada na unidade</p>
+          <div className="flex items-center justify-between"><span className="text-xs font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-400">Profissionais com Plantão Ativo</span><span className="p-2 rounded-xl bg-emerald-600 text-white shadow-md animate-pulse"><Clock className="w-4 h-4" /></span></div>
+          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">{activeNowList.length} <span className="text-sm font-bold text-slate-500">em andamento</span></div>
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-semibold">Plantões cujo horário está ativo na escala</p>
         </Card>
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between"><span className="text-xs font-black uppercase tracking-wider text-slate-500">Plantões do Dia</span><span className="p-2 rounded-xl bg-sky-50 dark:bg-sky-950 text-sky-600 dark:text-sky-400"><CalendarDays className="w-4 h-4" /></span></div>
@@ -500,9 +503,9 @@ export default function Painel() {
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
             <div>
               <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-sky-600" /> Ocupação Real por Setor Clínico
+                <Building2 className="w-5 h-5 text-sky-600" /> Cobertura da Escala por Setor
               </h3>
-              <p className="text-xs text-slate-500">Capacidade e presença nos postos assistenciais hoje ({fmtDate(todayStr)})</p>
+              <p className="text-xs text-slate-500">Plantões descobertos, em andamento, a iniciar ou concluídos hoje ({fmtDate(todayStr)})</p>
             </div>
             <span className="text-xs font-black px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
               {sectorsCoverage.length} Setores Mapeados
@@ -588,22 +591,22 @@ export default function Painel() {
                 <circle cx="60" cy="60" r="48" className="text-slate-100 dark:text-slate-800" strokeWidth="12" stroke="currentColor" fill="transparent" />
                 <circle 
                   cx="60" cy="60" r="48" 
-                  className={globalFillRate === 100 ? "text-emerald-500" : "text-sky-500"} 
+                  className={globalFillRate === null ? "text-slate-300 dark:text-slate-700" : globalFillRate === 100 ? "text-emerald-500" : "text-sky-500"}
                   strokeWidth="12" 
                   strokeDasharray={2 * Math.PI * 48}
-                  strokeDashoffset={2 * Math.PI * 48 * (1 - globalFillRate / 100)}
+                  strokeDashoffset={globalFillRate === null ? 2 * Math.PI * 48 : 2 * Math.PI * 48 * (1 - globalFillRate / 100)}
                   strokeLinecap="round" stroke="currentColor" fill="transparent" 
                 />
               </svg>
               <div className="absolute flex flex-col items-center justify-center text-center">
-                <span className="text-4xl font-black font-mono tracking-tight text-slate-900 dark:text-white">{globalFillRate}%</span>
-                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider mt-0.5">Coberto</span>
+                <span className="text-4xl font-black font-mono tracking-tight text-slate-900 dark:text-white">{globalFillRate === null ? '—' : `${globalFillRate}%`}</span>
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider mt-0.5">{globalFillRate === null ? 'Sem escala' : 'Cobertura'}</span>
               </div>
             </div>
 
             <div className="space-y-2 text-xs">
               <div className="flex justify-between items-center p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850/50 font-medium">
-                <span className="text-slate-500">Postos com Médico Ativo:</span>
+                <span className="text-slate-500">Plantões em andamento:</span>
                 <strong className="text-emerald-600 font-mono font-black">{activeNowList.length} turnos</strong>
               </div>
               <div className="flex justify-between items-center p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850/50 font-medium">
