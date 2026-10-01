@@ -115,7 +115,7 @@ function getProfessionalCost(professional, hours) {
 }
 
 export default function Relatorios() {
-  const { shifts = [], sectors = [], professionals = [], company } = useAppData();
+  const { shifts = [], sectors = [], professionals = [], company, units = [], selectedUnitId } = useAppData();
 
   const [activeTab, setActiveTab] = useState('executivo');
   
@@ -200,9 +200,6 @@ export default function Relatorios() {
     });
   }, [shifts, sectors, appliedFilters, hasSearched]);
 
-  // ==========================================
-  // AUDITORIA DE TROCAS E REPASSES (MURAL)
-  // ==========================================
   const swapsList = useMemo(() => {
     if (!hasSearched) return [];
     return filteredShifts.filter(s => s.notes && /\[SOLICITADO_POR:/i.test(s.notes)).map(s => {
@@ -256,7 +253,6 @@ export default function Relatorios() {
     const startObj = new Date(appliedFilters.start + 'T12:00:00');
     const endObj = new Date(appliedFilters.end + 'T12:00:00');
     const filterMonthStart = startObj.getMonth() + 1;
-    
     const targetMonthStr = String(filterMonthStart).padStart(2, '0');
 
     return filteredProfessionals.filter(p => {
@@ -439,7 +435,8 @@ export default function Relatorios() {
   }, [filteredProfessionals]);
 
   const periodLabel = `${formatDate(appliedFilters.start)} até ${formatDate(appliedFilters.end)}`;
-  const hospitalName = company?.name || 'Hospital Principal';
+  const currentUnitObj = (units || []).find(u => String(u.id) === String(selectedUnitId));
+  const hospitalName = currentUnitObj?.name || company?.name || 'Hospital Principal';
 
   // ==========================================
   // EXPORTAÇÃO EXCEL NATIVA
@@ -722,7 +719,7 @@ export default function Relatorios() {
   };
 
   // ==========================================
-  // IMPRESSÃO HTML PURA (Isolada, A4 Branco c/ Quebra)
+  // IMPRESSÃO HTML PURA (Isolada, A4 Branco c/ Quebra) COM LOGOS
   // ==========================================
   const triggerPrint = (mode) => {
     if (!hasSearched) {
@@ -738,6 +735,16 @@ export default function Relatorios() {
 
     const docEmissao = `${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`;
 
+    // Lógica para injetar a logo da Rede e da Unidade
+    const logoLetter = hospitalName[0] || 'H';
+    const companyLogoHtml = company?.logo_url || company?.data?.logo_url 
+      ? `<img src="${company.logo_url || company.data?.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` 
+      : `<div style="width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px;">${logoLetter}</div>`;
+    
+    const unitLogoHtml = currentUnitObj?.logo_url 
+      ? `<img src="${currentUnitObj.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` 
+      : '';
+
     let printHtml = `
       <!DOCTYPE html>
       <html lang="pt-BR">
@@ -749,10 +756,10 @@ export default function Relatorios() {
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000000 !important; font-size: 11px; padding: 10px; }
           
-          .header { border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 20px; }
-          .h-title { font-size: 24px; font-weight: 900; text-transform: uppercase; color: #0f172a; margin-bottom: 4px; }
-          .h-subtitle { font-size: 13px; font-weight: bold; color: #334155; text-transform: uppercase; }
-          .h-info { display: flex; justify-content: space-between; font-size: 10px; margin-top: 15px; padding-top: 8px; border-top: 1px solid #cbd5e1; }
+          .header { border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
+          .h-title { font-size: 20px; font-weight: 900; text-transform: uppercase; color: #0f172a; margin-bottom: 2px; }
+          .h-subtitle { font-size: 11px; font-weight: bold; color: #334155; text-transform: uppercase; }
+          .h-info { font-size: 10px; text-align: right; }
           
           .section-title { font-size: 13px; font-weight: 900; background-color: #f1f5f9; padding: 8px; border: 1px solid #94a3b8; text-transform: uppercase; margin-bottom: 12px; page-break-after: avoid; }
           .section-title.alert { background-color: #fee2e2; color: #9f1239; border-color: #fda4af; }
@@ -783,11 +790,17 @@ export default function Relatorios() {
       </head>
       <body>
         <div class="header">
-          <div class="h-title">${hospitalName}</div>
-          <div class="h-subtitle">Dossiê Executivo Oficial - ScaleMedic</div>
+          <div style="display: flex; align-items: center;">
+            ${companyLogoHtml}
+            ${unitLogoHtml}
+            <div style="${unitLogoHtml ? 'margin-left: 15px;' : ''}">
+              <div class="h-title">${hospitalName}</div>
+              <div class="h-subtitle">Dossiê Executivo Oficial - ScaleMedic</div>
+            </div>
+          </div>
           <div class="h-info">
-            <span><b>Período Analisado:</b> ${periodLabel}</span>
-            <span><b>Emissão:</b> ${docEmissao}</span>
+            <div style="margin-bottom: 4px;"><b>Período Analisado:</b> ${periodLabel}</div>
+            <div><b>Emissão:</b> ${docEmissao}</div>
           </div>
         </div>
     `;
