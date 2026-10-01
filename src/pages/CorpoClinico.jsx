@@ -11,7 +11,7 @@ import {
   Users, UserPlus, Search, CheckCircle2, 
   Clock, DollarSign, Edit3, KeyRound, Send, RefreshCw, Ban, 
   UserCheck, MessageSquare, Shield, UserCog, BadgeCheck, Eye, EyeOff,
-  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle, Building2, Check, ToggleLeft, ToggleRight, Power, Trash2, Settings, Save, Lock
+  HeartPulse, Plus, CreditCard, Landmark, Calendar, AlertTriangle, Building2, Check, ToggleLeft, ToggleRight, Power, Trash2, Settings, Save, Lock, Hospital
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -94,9 +94,11 @@ export default function CorpoClinico() {
     name: '', username: '', category: 'medico', document: '',
     registration_id: '', main_sector: '', specialty: '', rqe: '', cbo: '',
     cpf: '', email: '', phone: '', unit_id: '', birth_date: '',
-    status: 'ativo', app_role: 'assistencial', remuneration_type: 'mensal',
-    hourly_rate: 120, daily_rate: 1500, monthly_salary: 1672,
-    monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
+    status: 'ativo', app_role: 'assistencial', 
+    remuneration_type: 'plantao', // NOVO: plantao, mensal ou produtividade
+    monthly_salary: 0,
+    unit_rates: {}, // NOVO: Matriz de valores por unidade
+    coop_tax_rate: 0, pix_type: 'CPF',
     pix_key: '', bank_info: '', password: '',
     document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
     authorized_sectors: [],
@@ -120,9 +122,9 @@ export default function CorpoClinico() {
       registration_id: generatedMatricula, main_sector: sectors[0]?.name || 'UTI Geral',
       specialty: '', rqe: '', cbo: '', cpf: '', email: '', phone: '', birth_date: '',
       unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
-      status: 'ativo', app_role: 'assistencial', remuneration_type: 'mensal',
-      hourly_rate: 120, daily_rate: 1500, monthly_salary: 1672,
-      monthly_work_hours: 220, coop_tax_rate: 0, pix_type: 'CPF',
+      status: 'ativo', app_role: 'assistencial', 
+      remuneration_type: 'plantao', monthly_salary: 0, unit_rates: {},
+      coop_tax_rate: 0, pix_type: 'CPF',
       pix_key: '', bank_info: '', password: '',
       document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
       authorized_sectors: (sectors || []).map(s => String(s.id)),
@@ -141,11 +143,6 @@ export default function CorpoClinico() {
     const expiry = prof.document_expiry || meta.document_expiry || new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0];
     const authSectors = meta.authorized_sectors || (sectors || []).map(s => String(s.id));
     const profStatus = prof.status || meta.status || 'ativo';
-
-    const remunType = meta.remuneration_type || prof.remuneration_type || 'mensal';
-    const sal = meta.monthly_salary !== undefined ? meta.monthly_salary : (prof.monthly_salary !== undefined ? prof.monthly_salary : 1672);
-    const hourly = meta.hourly_rate !== undefined ? meta.hourly_rate : (prof.hourly_rate !== undefined ? prof.hourly_rate : 120);
-    const daily = meta.daily_rate !== undefined ? meta.daily_rate : (prof.daily_rate !== undefined ? prof.daily_rate : 1500);
 
     const savedUnits = meta.allowed_unit_ids || prof.unit_ids || (prof.unit_id ? [String(prof.unit_id)] : [String(units[0]?.id || '')]);
 
@@ -166,11 +163,9 @@ export default function CorpoClinico() {
       unit_id: prof.unit_id || selectedUnitId,
       status: profStatus,
       app_role: meta.app_role || prof.app_role || 'assistencial',
-      remuneration_type: remunType,
-      hourly_rate: safeNumber(hourly, 120),
-      daily_rate: safeNumber(daily, 1500),
-      monthly_salary: safeNumber(sal, 1672),
-      monthly_work_hours: safeNumber(meta.monthly_work_hours ?? prof.monthly_work_hours, 220),
+      remuneration_type: meta.remuneration_type || 'plantao',
+      monthly_salary: safeNumber(meta.monthly_salary !== undefined ? meta.monthly_salary : prof.monthly_salary, 0),
+      unit_rates: meta.unit_rates || {},
       coop_tax_rate: safeNumber(meta.coop_tax_rate ?? prof.coop_tax_rate, 0),
       pix_type: meta.pix_type || 'CPF',
       pix_key: meta.pix_key || '',
@@ -181,6 +176,16 @@ export default function CorpoClinico() {
       allowed_unit_ids: savedUnits 
     });
     setModalOpen(true);
+  };
+
+  const handleUnitRateChange = (uid, field, val) => {
+    setFormData(prev => ({
+      ...prev,
+      unit_rates: {
+        ...prev.unit_rates,
+        [uid]: { ...(prev.unit_rates[uid] || {}), [field]: val }
+      }
+    }));
   };
 
   const handleToggleStatusQuick = async (prof) => {
@@ -280,43 +285,32 @@ export default function CorpoClinico() {
     setSubmitting(true);
     try {
       const cleanUsername = (formData.username || formData.name).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.');
-      
       const finalEmail = formData.email.trim() ? formData.email.trim().toLowerCase() : `${cleanUsername}.${Date.now()}@scalemedic.local`;
 
       const richMeta = {
         username: cleanUsername, category: formData.category, app_role: formData.app_role,
         main_sector: formData.main_sector, specialty: formData.specialty, rqe: formData.rqe, cbo: formData.cbo,
         registration_id: formData.registration_id, coop_tax_rate: safeNumber(formData.coop_tax_rate),
-        daily_rate: safeNumber(formData.daily_rate), monthly_salary: safeNumber(formData.monthly_salary),
-        monthly_work_hours: safeNumber(formData.monthly_work_hours), pix_type: formData.pix_type,
-        pix_key: formData.pix_key.trim(), bank_info: formData.bank_info.trim(),
-        remuneration_type: formData.remuneration_type, hourly_rate: safeNumber(formData.hourly_rate),
+        remuneration_type: formData.remuneration_type, 
+        monthly_salary: safeNumber(formData.monthly_salary),
+        unit_rates: formData.unit_rates, // MATRIZ SALVA!
+        pix_type: formData.pix_type, bank_info: formData.bank_info.trim(), pix_key: formData.pix_key.trim(),
         document_expiry: formData.document_expiry, status: formData.status,
-        authorized_sectors: formData.authorized_sectors,
-        allowed_unit_ids: formData.allowed_unit_ids,
-        birth_date: formData.birth_date,
-        cpf: formData.cpf
+        authorized_sectors: formData.authorized_sectors, allowed_unit_ids: formData.allowed_unit_ids,
+        birth_date: formData.birth_date, cpf: formData.cpf
       };
 
       const profPayload = {
         company_id: company?.id || 'cmp_principal', 
         unit_id: formData.allowed_unit_ids[0], 
         unit_ids: formData.allowed_unit_ids,
-        name: formData.name.trim(), 
-        document: formData.document.trim(), 
+        name: formData.name.trim(), document: formData.document.trim(), 
         specialty: formData.specialty.trim() || formData.main_sector,
-        rqe: formData.rqe.trim(),
-        cbo: formData.cbo.trim(), 
-        cpf: formData.cpf.trim(), 
-        email: finalEmail,
-        phone: formData.phone.trim(), 
-        status: formData.status, 
+        rqe: formData.rqe.trim(), cbo: formData.cbo.trim(), cpf: formData.cpf.trim(), 
+        email: finalEmail, phone: formData.phone.trim(), status: formData.status, 
         remuneration_type: formData.remuneration_type,
-        hourly_rate: safeNumber(formData.hourly_rate), 
         monthly_salary: safeNumber(formData.monthly_salary),
-        daily_rate: safeNumber(formData.daily_rate), 
-        document_expiry: formData.document_expiry,
-        birth_date: formData.birth_date,
+        document_expiry: formData.document_expiry, birth_date: formData.birth_date,
         data: richMeta 
       };
 
@@ -337,37 +331,27 @@ export default function CorpoClinico() {
         must_change_password: !!formData.password 
       };
 
-      // CORREÇÃO: Remoção do "is_active" da raiz do Payload do User para evitar bloqueio do Banco
       try {
         const { data: existingUsers } = await supabase.from('users').select('*').eq('email', finalEmail);
         if (existingUsers && existingUsers.length > 0) {
-          
           let updatePayload = {
             username: cleanUsername,
             full_name: formData.name,
             data: { ...(existingUsers[0].data || {}), ...userDataPayload, is_active: formData.status === 'ativo' }
           };
           if (formData.password) updatePayload.password = formData.password;
-
           await supabase.from('users').update(updatePayload).eq('id', existingUsers[0].id);
         } else {
           const finalPass = formData.password || '123456';
           await supabase.from('users').insert([{
-            email: finalEmail,
-            username: cleanUsername,
-            password: finalPass,
-            full_name: formData.name,
-            data: { ...userDataPayload, is_active: formData.status === 'ativo' }
+            email: finalEmail, username: cleanUsername, password: finalPass,
+            full_name: formData.name, data: { ...userDataPayload, is_active: formData.status === 'ativo' }
           }]);
         }
       } catch (uErr) { console.warn('Aviso na sincronização de usuário:', uErr); }
 
       setModalOpen(false); resetForm(); await syncGlobalData(); alert('Profissional salvo com sucesso!');
-    } catch (err) {
-      alert('Erro ao salvar: ' + err.message);
-    } finally {
-      setSubmitting(false);
-    }
+    } catch (err) { alert('Erro ao salvar: ' + err.message); } finally { setSubmitting(false); }
   };
 
   const counts = useMemo(() => {
@@ -409,7 +393,7 @@ export default function CorpoClinico() {
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-400"><Users className="w-4 h-4" /> Gestão de Pessoal & Matrícula</div>
           <h2 className="mt-1 text-2xl sm:text-3xl font-black">Corpo Clínico & Matrículas</h2>
-          <p className="text-xs text-slate-300">Cadastro de profissionais, validade de credenciais, repasse PIX e matriz de habilitação por setor.</p>
+          <p className="text-xs text-slate-300">Cadastro de profissionais, matriz de valores por unidade e liberação de acessos.</p>
         </div>
         {isManager && (<Button onClick={handleOpenNew} className="bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs h-10 px-5 rounded-xl shadow-lg gap-1.5 shrink-0 cursor-pointer"><UserPlus className="w-4 h-4" /> Novo Profissional</Button>)}
       </div>
@@ -431,56 +415,33 @@ export default function CorpoClinico() {
           const meta = getProfMeta(prof);
           const catId = meta.category || prof.category || 'medico';
           const catObj = allCategories.find(c => c.id === catId) || allCategories[0];
-          
-          const remunType = meta.remuneration_type || prof.remuneration_type || 'mensal';
-          let remunValue = 1672;
-          let remunLabel = '/ Mês Fixo';
+          const profStatus = prof.status || meta.status || 'ativo';
+          const authSectorsCount = (meta.authorized_sectors || (sectors || []).map(s => String(s.id))).length;
+          const profUnits = meta.allowed_unit_ids || prof.unit_ids || (prof.unit_id ? [String(prof.unit_id)] : []);
+          const profUnitsNames = units.filter(u => profUnits.includes(String(u.id))).map(u => u.name).join(', ') || 'Nenhuma unidade vinculada';
 
-          if (remunType === 'hora') {
-            remunValue = safeNumber(meta.hourly_rate !== undefined ? meta.hourly_rate : prof.hourly_rate, 120);
-            remunLabel = '/ Hora';
-          } else if (remunType === 'diaria') {
-            remunValue = safeNumber(meta.daily_rate !== undefined ? meta.daily_rate : prof.daily_rate, 1500);
-            remunLabel = '/ Plantão';
-          } else {
-            remunValue = safeNumber(meta.monthly_salary !== undefined ? meta.monthly_salary : prof.monthly_salary, 1672);
-            remunLabel = '/ Mês Fixo';
-          }
+          const regimeType = meta.remuneration_type || 'plantao';
+          let regimeLabel = 'Por Plantão Dinâmico';
+          if (regimeType === 'mensal') regimeLabel = 'Fixo Mensal';
+          if (regimeType === 'produtividade') regimeLabel = 'Produtividade / Comissão';
 
           const expiry = prof.document_expiry || meta.document_expiry || '';
-          
           let diffDays = null;
           let isExpired = false;
           let isNearExpiry = false;
 
           if (expiry) {
-            const todayObj = new Date();
-            todayObj.setHours(0, 0, 0, 0);
-
+            const todayObj = new Date(); todayObj.setHours(0, 0, 0, 0);
             const [exY, exM, exD] = expiry.split('-').map(Number);
-            const expiryObj = new Date(exY, exM - 1, exD);
-            expiryObj.setHours(0, 0, 0, 0);
-
-            const diffTime = expiryObj.getTime() - todayObj.getTime();
-            diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-
+            const expiryObj = new Date(exY, exM - 1, exD); expiryObj.setHours(0, 0, 0, 0);
+            diffDays = Math.round((expiryObj.getTime() - todayObj.getTime()) / (1000 * 60 * 60 * 24));
             isExpired = diffDays < 0;
             isNearExpiry = diffDays >= 0 && diffDays <= 30;
           }
 
-          const profStatus = prof.status || meta.status || 'ativo';
-          const authSectorsCount = (meta.authorized_sectors || (sectors || []).map(s => String(s.id))).length;
-
-          const profUnits = meta.allowed_unit_ids || prof.unit_ids || (prof.unit_id ? [String(prof.unit_id)] : []);
-          const profUnitsNames = units.filter(u => profUnits.includes(String(u.id))).map(u => u.name).join(', ') || 'Nenhuma unidade vinculada';
-
           return (
             <Card key={prof.id} className={`p-5 rounded-3xl border-2 transition-all flex flex-col justify-between space-y-4 shadow-sm bg-white dark:bg-slate-900 ${
-              isExpired 
-                ? 'border-rose-400 bg-rose-50/40 dark:bg-rose-950/20' 
-                : isNearExpiry 
-                ? 'border-amber-400 bg-amber-50/40 dark:bg-amber-950/20' 
-                : 'border-slate-200 dark:border-slate-800'
+              isExpired ? 'border-rose-400 bg-rose-50/40 dark:bg-rose-950/20' : isNearExpiry ? 'border-amber-400 bg-amber-50/40 dark:bg-amber-950/20' : 'border-slate-200 dark:border-slate-800'
             }`}>
               <div className="space-y-3">
                 <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -489,29 +450,16 @@ export default function CorpoClinico() {
                     <h3 className="font-black text-sm text-slate-900 dark:text-white mt-1.5">{prof.name}</h3>
                     <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400">ID: {meta.registration_id || prof.registration_id || 'MAT-XXXX'}</span>
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
-                    profStatus === 'ativo' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : 'bg-slate-200 text-slate-600'
-                  }`}>
-                    {profStatus}
-                  </span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${profStatus === 'ativo' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' : 'bg-slate-200 text-slate-600'}`}>{profStatus}</span>
                 </div>
                 
                 <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-400">
                   <div className="flex justify-between"><span>Conselho:</span><strong>{prof.document || '—'}</strong></div>
                   <div className="flex justify-between"><span>Especialidade:</span><strong className="text-slate-900 dark:text-white truncate max-w-[140px]">{prof.specialty || meta.specialty || 'Geral'} {meta.rqe ? `(RQE ${meta.rqe})` : ''}</strong></div>
                   
-                  <div className="flex justify-between items-center pt-1">
+                  <div className="flex justify-between items-center pt-1 border-t border-slate-100 dark:border-slate-800 mt-2">
                     <span>Hospitais de Acesso:</span>
-                    <strong className="text-[10px] text-sky-600 dark:text-sky-400 truncate max-w-[140px]" title={profUnitsNames}>
-                      {profUnitsNames}
-                    </strong>
-                  </div>
-
-                  <div className="flex justify-between items-center">
-                    <span>Habilitação Setores:</span>
-                    <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                      {authSectorsCount} de {sectors.length} setor(es)
-                    </span>
+                    <strong className="text-[10px] text-sky-600 dark:text-sky-400 truncate max-w-[140px]" title={profUnitsNames}>{profUnitsNames}</strong>
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -520,16 +468,8 @@ export default function CorpoClinico() {
                       <strong className={`font-mono ${isExpired ? 'text-rose-600 font-black' : isNearExpiry ? 'text-amber-600 dark:text-amber-400 font-black' : 'text-slate-700 dark:text-slate-300'}`}>
                         {expiry ? expiry.split('-').reverse().join('/') : 'Não informada'}
                       </strong>
-                      {isExpired && (
-                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-600 text-white animate-pulse">
-                          VENCIDO
-                        </span>
-                      )}
-                      {isNearExpiry && !isExpired && (
-                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-white animate-pulse">
-                          {diffDays === 0 ? 'VENCE HOJE' : `VENCE EM ${diffDays}D`}
-                        </span>
-                      )}
+                      {isExpired && <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-600 text-white animate-pulse">VENCIDO</span>}
+                      {isNearExpiry && !isExpired && <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-white animate-pulse">{diffDays === 0 ? 'VENCE HOJE' : `VENCE EM ${diffDays}D`}</span>}
                     </div>
                   </div>
                 </div>
@@ -538,8 +478,8 @@ export default function CorpoClinico() {
                   <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
                     <DollarSign className="w-3.5 h-3.5" /> Remuneração
                   </span>
-                  <span className="font-black text-sm text-emerald-600 dark:text-emerald-300 font-mono">
-                    {formatCurrency(remunValue)} <span className="text-[9px] font-bold opacity-70">{remunLabel}</span>
+                  <span className="font-black text-sm text-emerald-600 dark:text-emerald-300 uppercase">
+                    {regimeLabel}
                   </span>
                 </div>
               </div>
@@ -550,19 +490,8 @@ export default function CorpoClinico() {
                 </Button>
 
                 {isManager && (
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={() => handleToggleStatusQuick(prof)}
-                    title={profStatus === 'ativo' ? 'Desativar profissional' : 'Ativar profissional'}
-                    className={`h-9 px-3 text-xs font-bold rounded-xl cursor-pointer gap-1 ${
-                      profStatus === 'ativo' 
-                        ? 'border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30' 
-                        : 'border-slate-300 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <Power className="w-3.5 h-3.5" />
-                    {profStatus === 'ativo' ? 'Desativar' : 'Ativar'}
+                  <Button size="sm" variant="outline" onClick={() => handleToggleStatusQuick(prof)} title={profStatus === 'ativo' ? 'Desativar profissional' : 'Ativar profissional'} className={`h-9 px-3 text-xs font-bold rounded-xl cursor-pointer gap-1 ${profStatus === 'ativo' ? 'border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30' : 'border-slate-300 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                    <Power className="w-3.5 h-3.5" /> {profStatus === 'ativo' ? 'Desativar' : 'Ativar'}
                   </Button>
                 )}
 
@@ -582,7 +511,6 @@ export default function CorpoClinico() {
           <DialogHeader><DialogTitle className="text-base font-black flex items-center gap-2 text-slate-900 dark:text-white"><UserCog className="w-5 h-5 text-sky-600" /> {editingProf ? 'Editar Perfil Profissional & Acesso' : 'Cadastrar Novo Profissional'}</DialogTitle></DialogHeader>
 
           <form onSubmit={handleSaveProfessional} className="space-y-5 py-2 text-xs">
-            
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -624,40 +552,92 @@ export default function CorpoClinico() {
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 font-black text-xs uppercase text-slate-700 dark:text-slate-300">
-                  <Building2 className="w-4 h-4 text-sky-600" /> Matriz de Habilitação por Setor Hospitalar
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <div>
+                <Label className="font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-sky-600" /> Hospitais Liberados (Múltiplas Unidades)
+                </Label>
+                <p className="text-[11px] text-slate-500 mt-1">Selecione em quais unidades este profissional pode atuar. A matriz de valores aparecerá para cada unidade selecionada.</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                {units.map(u => (
+                  <label key={u.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                    formData.allowed_unit_ids.includes(String(u.id)) ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/30' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 hover:border-sky-300'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={formData.allowed_unit_ids.includes(String(u.id))}
+                      onChange={(e) => {
+                        const id = String(u.id);
+                        if (e.target.checked) setFormData({ ...formData, allowed_unit_ids: [...formData.allowed_unit_ids, id] });
+                        else setFormData({ ...formData, allowed_unit_ids: formData.allowed_unit_ids.filter(i => i !== id) });
+                      }}
+                      className="w-4 h-4 text-sky-600 rounded cursor-pointer"
+                    />
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{u.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-4">
+              <div className="flex items-center gap-2 font-black text-xs uppercase text-emerald-700 dark:text-emerald-400 border-b border-slate-200 dark:border-slate-800 pb-2">
+                <DollarSign className="w-4 h-4" /> Regime Contratual & Matriz de Valores
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold">Regime Contratual</Label>
+                  <Select value={formData.remuneration_type} onValueChange={v => setFormData({...formData, remuneration_type: v})}>
+                    <SelectTrigger className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue /></SelectTrigger>
+                    <SelectContent className="z-[99999]">
+                      <SelectItem value="plantao">Por Plantão (Tabela Dinâmica por Unidade)</SelectItem>
+                      <SelectItem value="mensal">Fixo Mensal</SelectItem>
+                      <SelectItem value="produtividade">Produtividade / Comissão</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <span className="text-[10px] text-slate-400 font-mono">
-                  {formData.authorized_sectors.length} de {sectors.length} liberados
-                </span>
+
+                {formData.remuneration_type === 'mensal' && (
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-bold">Salário Fixo Mensal (R$)</Label>
+                    <Input type="number" step="0.01" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                  </div>
+                )}
+                
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold">Retenção PJ/Coop (%) - Opcional</Label>
+                  <Input type="number" step="0.1" value={formData.coop_tax_rate} onChange={e => setFormData({...formData, coop_tax_rate: e.target.value})} placeholder="Ex: 5" className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                </div>
               </div>
-              <p className="text-[11px] text-slate-500 leading-tight">
-                Selecione em quais setores o profissional possui autorização e competência para atuar nas escalas:
-              </p>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                {(sectors || []).map(sec => {
-                  const isAuth = formData.authorized_sectors.includes(String(sec.id));
-                  return (
-                    <div 
-                      key={sec.id}
-                      onClick={() => handleToggleSectorAuth(String(sec.id))}
-                      className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                        isAuth 
-                          ? 'bg-sky-50 dark:bg-sky-950/30 border-sky-300 dark:border-sky-800 text-sky-900 dark:text-sky-200 font-bold' 
-                          : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-400'
-                      }`}
-                    >
-                      <span className="text-xs truncate">{sec.name}</span>
-                      <div className={`w-5 h-5 rounded-lg flex items-center justify-center border ${isAuth ? 'bg-sky-600 border-sky-600 text-white' : 'border-slate-300'}`}>
-                        {isAuth && <Check className="w-3.5 h-3.5" />}
+
+              {formData.remuneration_type === 'plantao' && (
+                <div className="space-y-3 pt-2">
+                  <Label className="text-[11px] font-bold uppercase text-slate-500">Tabela de Preços por Hospital Permitido</Label>
+                  {formData.allowed_unit_ids.map(uid => {
+                    const uName = units.find(x => String(x.id) === String(uid))?.name || 'Unidade';
+                    return (
+                      <div key={uid} className="p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2 shadow-sm">
+                        <Label className="text-xs font-black text-sky-600 dark:text-sky-400 flex items-center gap-1.5"><Hospital className="w-3.5 h-3.5"/> {uName}</Label>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div>
+                            <Label className="text-[10px] text-slate-500">Plantão Diurno (R$)</Label>
+                            <Input type="number" step="0.01" placeholder="Ex: 1200" value={formData.unit_rates[uid]?.diurno || ''} onChange={e => handleUnitRateChange(uid, 'diurno', e.target.value)} className="h-8 text-xs border-slate-200 dark:border-slate-800" />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] text-slate-500">Plantão Noturno (R$)</Label>
+                            <Input type="number" step="0.01" placeholder="Ex: 1400" value={formData.unit_rates[uid]?.noturno || ''} onChange={e => handleUnitRateChange(uid, 'noturno', e.target.value)} className="h-8 text-xs border-slate-200 dark:border-slate-800" />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] text-slate-500">Fim de Semana (R$)</Label>
+                            <Input type="number" step="0.01" placeholder="Ex: 1800" value={formData.unit_rates[uid]?.fds || ''} onChange={e => handleUnitRateChange(uid, 'fds', e.target.value)} className="h-8 text-xs border-slate-200 dark:border-slate-800" />
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="space-y-3 pt-2">
@@ -761,71 +741,12 @@ export default function CorpoClinico() {
               </Button>
             </div>
 
-            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
-              <div>
-                <Label className="font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-sky-600" /> Hospitais Liberados (Múltiplas Unidades)
-                </Label>
-                <p className="text-[11px] text-slate-500 mt-1">Selecione em quais unidades este profissional pode ser escalado e ter acesso pelo aplicativo.</p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                {units.map(u => (
-                  <label key={u.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                    formData.allowed_unit_ids.includes(String(u.id)) 
-                      ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/30' 
-                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 hover:border-sky-300'
-                  }`}>
-                    <input
-                      type="checkbox"
-                      checked={formData.allowed_unit_ids.includes(String(u.id))}
-                      onChange={(e) => {
-                        const id = String(u.id);
-                        if (e.target.checked) {
-                          setFormData({ ...formData, allowed_unit_ids: [...formData.allowed_unit_ids, id] });
-                        } else {
-                          setFormData({ ...formData, allowed_unit_ids: formData.allowed_unit_ids.filter(i => i !== id) });
-                        }
-                      }}
-                      className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer"
-                    />
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{u.name}</span>
-                  </label>
-                ))}
-              </div>
-              {formData.allowed_unit_ids.length === 0 && (
-                <p className="text-[10px] font-bold text-rose-500 animate-pulse">⚠️ Selecione pelo menos uma unidade.</p>
-              )}
-            </div>
-
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-3">
-              <div className="flex items-center gap-2 font-black text-xs uppercase text-emerald-700 dark:text-emerald-400">
-                <DollarSign className="w-4 h-4" /> Faturamento, PIX & Conta Bancária
+              <div className="flex items-center gap-2 font-black text-xs uppercase text-emerald-700 dark:text-emerald-400 border-b border-slate-200 dark:border-slate-800 pb-2">
+                <DollarSign className="w-4 h-4" /> Dados para Recebimento / PIX
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-bold">Regime Contratual</Label>
-                  <Select value={formData.remuneration_type} onValueChange={v => setFormData({...formData, remuneration_type: v})}>
-                    <SelectTrigger className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue /></SelectTrigger>
-                    <SelectContent className="z-[99999]">
-                      <SelectItem value="hora">Horista (R$ / Hora)</SelectItem>
-                      <SelectItem value="diaria">Plantonista (R$ / Diária)</SelectItem>
-                      <SelectItem value="mensal">Fixo Mensal</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                {formData.remuneration_type === 'hora' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Valor da Hora (R$)</Label><Input type="number" step="0.01" value={formData.hourly_rate} onChange={e => setFormData({...formData, hourly_rate: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
-                {formData.remuneration_type === 'diaria' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Valor do Plantão (R$)</Label><Input type="number" step="0.01" value={formData.daily_rate} onChange={e => setFormData({...formData, daily_rate: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
-                {formData.remuneration_type === 'mensal' && (<div className="space-y-1"><Label className="text-[11px] font-bold">Salário (R$)</Label><Input type="number" step="0.01" value={formData.monthly_salary} onChange={e => setFormData({...formData, monthly_salary: e.target.value})} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" /></div>)}
-
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-bold">Retenção PJ/Coop (%)</Label>
-                  <Input type="number" step="0.1" value={formData.coop_tax_rate} onChange={e => setFormData({...formData, coop_tax_rate: e.target.value})} placeholder="Ex: 5" className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold">Tipo Chave PIX</Label>
                   <Select value={formData.pix_type} onValueChange={v => setFormData({...formData, pix_type: v})}>
@@ -905,21 +826,10 @@ export default function CorpoClinico() {
                 )}
               </div>
               <div className="space-y-1.5">
-                <Input 
-                  value={newCatData.label} 
-                  onChange={e => setNewCatData({...newCatData, label: e.target.value})} 
-                  placeholder="Nome da Profissão (Ex: Fonoaudiólogo)" 
-                  className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl text-xs" 
-                  required 
-                />
+                <Input value={newCatData.label} onChange={e => setNewCatData({...newCatData, label: e.target.value})} placeholder="Nome da Profissão (Ex: Fonoaudiólogo)" className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl text-xs" required />
               </div>
               <div className="flex gap-2">
-                <Input 
-                  value={newCatData.council} 
-                  onChange={e => setNewCatData({...newCatData, council: e.target.value})} 
-                  placeholder="Conselho (Ex: CREFONO)" 
-                  className="h-10 flex-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl text-xs" 
-                />
+                <Input value={newCatData.council} onChange={e => setNewCatData({...newCatData, council: e.target.value})} placeholder="Conselho (Ex: CREFONO)" className="h-10 flex-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl text-xs" />
                 <Button type="submit" className="h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl cursor-pointer shrink-0">
                   {editingCatId ? <Save className="w-4 h-4 mr-1" /> : <Plus className="w-4 h-4 mr-1" />} {editingCatId ? 'Salvar' : 'Adicionar'}
                 </Button>
