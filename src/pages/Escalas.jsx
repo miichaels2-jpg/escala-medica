@@ -32,6 +32,16 @@ function formatDateBR(dateStr) {
   return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character]);
+}
+
 function timeToMinutes(timeStr, isEnd = false) {
   if (!timeStr) return isEnd ? 19 * 60 : 7 * 60;
   const [h, m] = String(timeStr).split(':').map(Number);
@@ -256,6 +266,7 @@ export default function Escalas() {
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState('mensal'); 
+  const [monthlyView, setMonthlyView] = useState('lista');
   const [filterTurno, setFilterTurno] = useState('todos'); 
   const [startDateFilter, setStartDateFilter] = useState('');
 
@@ -638,14 +649,14 @@ export default function Escalas() {
     }
 
     const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
-    const logoLetter = hospitalName[0] || 'H';
+    const logoLetter = escapeHtml(hospitalName[0] || 'H');
     const dataVigencia = liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
     const dataEmissao = liveNow.toLocaleDateString('pt-BR') + ' às ' + liveNow.toLocaleTimeString('pt-BR');
 
     // LOGOS CONFIGURÁVEIS (Empresa Matriz e Unidade Local)
-    const companyLogoHtml = company?.logo_url ? `<img src="${company.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` : `<div class="logo-badge">${logoLetter}</div>`;
+    const companyLogoHtml = company?.logo_url ? `<img src="${escapeHtml(company.logo_url)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` : `<div class="logo-badge">${logoLetter}</div>`;
     const currentUnitObj = units?.find(u => String(u.id) === String(selectedUnitId));
-    const unitLogoHtml = currentUnitObj?.logo_url ? `<img src="${currentUnitObj.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` : '';
+    const unitLogoHtml = currentUnitObj?.logo_url ? `<img src="${escapeHtml(currentUnitObj.logo_url)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` : '';
 
     const activeShiftsOnly = tvData.tableDayShifts.filter(shift => !isVacant(shift));
 
@@ -656,11 +667,11 @@ export default function Escalas() {
           const sector = sectorMap[String(shift.sector_id)];
           const realSpecialty = extractSpecialty(shift, prof);
           const bg = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
-          const profNome = `Dr(a). ${formatFullName(prof?.name || shift.professional_name)}`;
-          const conselho = prof?.document || '—';
+          const profNome = `Dr(a). ${escapeHtml(prof?.name || shift.professional_name)}`;
+          const conselho = escapeHtml(prof?.document || '—');
 
           const [sYear, sMonth, sDay] = (shift.date || '').split('-');
-          const formattedDate = sDay && sMonth ? `${sDay}/${sMonth}/${sYear}` : shift.date;
+          const formattedDate = escapeHtml(sDay && sMonth ? `${sDay}/${sMonth}/${sYear}` : shift.date);
 
           const life = computeShiftHospitalLifecycle(shift, liveNow);
 
@@ -672,12 +683,12 @@ export default function Escalas() {
 
           return `
             <tr style="background-color: ${bg};">
-              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold; text-transform: uppercase;">${sector?.name || 'Setor'}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold; text-transform: uppercase;">${escapeHtml(sector?.name || 'Setor')}</td>
               <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; font-weight: bold; text-align: center; white-space: nowrap;">
-                ${formattedDate}<br><span style="color: #334155; font-size: 10px;">${shift.start_time} às ${shift.end_time}</span>
+                ${formattedDate}<br><span style="color: #334155; font-size: 10px;">${escapeHtml(shift.start_time)} às ${escapeHtml(shift.end_time)}</span>
               </td>
               <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold;">${profNome}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px;">${realSpecialty}</td>
+              <td style="border: 1px solid #111; padding: 7px 10px;">${escapeHtml(realSpecialty)}</td>
               <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; text-align: center;">${conselho}</td>
               <td style="border: 1px solid #111; padding: 7px 10px; text-align: center;">${statusHtml}</td>
             </tr>
@@ -689,19 +700,25 @@ export default function Escalas() {
       <html lang="pt-BR">
       <head>
         <meta charset="utf-8">
-        <title>Escala Oficial - ${hospitalName}</title>
+        <title>Escala Oficial - ${escapeHtml(hospitalName)}</title>
         <style>
           @page { size: A4 landscape; margin: 8mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; background: #fff !important; color: #000 !important; padding: 15px; font-size: 11px; }
-          .header-box { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 15px; }
+          html, body { width: 100%; }
+          body { font-family: Arial, sans-serif; background: #fff !important; color: #000 !important; padding: 0; font-size: 10px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+          .header-box { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 2px solid #000; padding-bottom: 9px; margin-bottom: 12px; break-inside: avoid; }
           .logo-badge { width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px; }
           .header-info h1 { font-size: 19px; font-weight: 900; text-transform: uppercase; margin-bottom: 2px;}
-          table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 30px; }
-          th { background-color: #e5e7eb; border: 1px solid #000; padding: 8px 10px; text-align: left; font-size: 9.5px; font-weight: 900; text-transform: uppercase; }
-          .signatures-area { display: flex; justify-content: space-around; margin-top: 35px; }
-          .sig-box { text-align: center; width: 320px; }
-          .sig-line { border-bottom: 1px solid #000; margin-bottom: 6px; }
+          table { width: 100%; table-layout: fixed; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 16px; }
+          thead { display: table-header-group; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
+          th { background-color: #e5e7eb; border: 1px solid #000; padding: 6px 7px; text-align: left; font-size: 9px; font-weight: 900; text-transform: uppercase; }
+          td { overflow-wrap: anywhere; }
+          .signatures-area { display: flex; justify-content: space-around; gap: 24px; margin-top: 24px; break-inside: avoid; page-break-inside: avoid; }
+          .sig-box { text-align: center; width: 42%; }
+          .sig-line { height: 28px; border-bottom: 1px solid #000; margin-bottom: 6px; }
+          @media screen { body { padding: 18px; } }
+          @media print { body { padding: 0; } }
         </style>
       </head>
       <body>
@@ -710,7 +727,7 @@ export default function Escalas() {
             ${companyLogoHtml}
             ${unitLogoHtml}
             <div class="header-info" style="${unitLogoHtml ? 'margin-left: 15px;' : ''}">
-              <h1>${currentUnitObj ? currentUnitObj.name : hospitalName}</h1>
+            <h1>${escapeHtml(currentUnitObj ? currentUnitObj.name : hospitalName)}</h1>
               <p>ESCALA OFICIAL DE PLANTÃO • MURAL HOSPITALAR</p>
               <div style="margin-top: 4px;">Vigência do Relatório: <b>${dataVigencia}</b></div>
             </div>
@@ -723,9 +740,9 @@ export default function Escalas() {
         <table>
           <thead>
             <tr>
-              <th style="width: 20%;">Seção / Setor</th>
-              <th style="width: 18%; text-align: center;">Data & Horário</th>
-              <th style="width: 26%;">Profissional Escalado</th>
+              <th style="width: 17%;">Seção / Setor</th>
+              <th style="width: 17%; text-align: center;">Data & Horário</th>
+              <th style="width: 24%;">Profissional Escalado</th>
               <th style="width: 18%;">Especialidade / Atuação</th>
               <th style="width: 10%; text-align: center;">Conselho</th>
               <th style="width: 14%; text-align: center;">Situação / Status</th>
@@ -737,7 +754,7 @@ export default function Escalas() {
           <div class="sig-box"><div class="sig-line"></div><div style="font-weight: 900; text-transform: uppercase;">Diretoria Clínica / RT Médica</div></div>
           <div class="sig-box"><div class="sig-line"></div><div style="font-weight: 900; text-transform: uppercase;">Gerência de Enfermagem / RT Assistencial</div></div>
         </div>
-        <script>window.onload = function() { window.print(); };</script>
+        <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 250); });</script>
       </body>
       </html>
     `;
@@ -746,6 +763,119 @@ export default function Escalas() {
     printWindow.document.write(htmlContent);
     printWindow.document.close();
   };
+
+  const handlePrintMonthlySchedule = () => {
+    const printWindow = window.open('', '_blank', 'width=1200,height=850');
+    if (!printWindow) {
+      alert('Permita pop-ups para abrir a impressão da escala mensal.');
+      return;
+    }
+
+    const unit = units?.find(item => String(item.id) === String(selectedUnitId));
+    const title = `Escala médica • ${MONTH_NAMES[currentMonth]} ${currentYear}`;
+    const sectorName = selectedSectorObj?.name || 'Todos os setores';
+    const rows = scheduleVisibleShifts
+      .slice()
+      .sort((a, b) =>
+        String(a.date).localeCompare(String(b.date)) ||
+        String(a.start_time).localeCompare(String(b.start_time)) ||
+        String(sectorMap[String(a.sector_id)]?.name || '').localeCompare(String(sectorMap[String(b.sector_id)]?.name || ''))
+      )
+      .map(shift => {
+        const professional = professionalMap[String(shift.professional_id)];
+        const professionalName = isVacant(shift)
+          ? (isShiftPast(shift, liveNow) ? 'VAGA DESCOBERTA / FALTA' : 'VAGA ABERTA')
+          : (professional?.name || getShiftName(shift) || 'Profissional');
+        const specialty = extractSpecialty(shift, professional);
+        const lifecycle = computeShiftHospitalLifecycle(shift, liveNow);
+        const status = isVacant(shift)
+          ? (isShiftPast(shift, liveNow) ? 'FALTA / DESCOBERTO' : 'VAGA ABERTA')
+          : lifecycle.statusText;
+        const statusClass = isVacant(shift)
+          ? (isShiftPast(shift, liveNow) ? 'vacant overdue' : 'vacant')
+          : (lifecycle.isLive ? 'live' : lifecycle.isConcluded ? 'concluded' : 'scheduled');
+
+        return `<tr class="${statusClass}">
+          <td>${escapeHtml(formatDateBR(shift.date))}</td>
+          <td class="time">${escapeHtml(shift.start_time)}–${escapeHtml(shift.end_time)}</td>
+          <td class="professional">${escapeHtml(professionalName)}</td>
+          <td>${escapeHtml(specialty)}</td>
+          <td>${escapeHtml(sectorMap[String(shift.sector_id)]?.name || 'Setor')}</td>
+          <td><span class="status">${escapeHtml(status)}</span></td>
+        </tr>`;
+      }).join('');
+
+    const emptyState = `<tr><td colspan="6" class="empty">Nenhum plantão corresponde aos filtros atuais.</td></tr>`;
+    const companyLogo = company?.logo_url
+      ? `<img src="${escapeHtml(company.logo_url)}" alt="" class="logo" />`
+      : `<div class="logo-fallback">${escapeHtml((company?.name || 'E').slice(0, 1))}</div>`;
+    const issueDate = liveNow.toLocaleDateString('pt-BR');
+
+    const htmlContent = `<!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8" />
+        <title>${escapeHtml(title)}</title>
+        <style>
+          @page { size: A4 landscape; margin: 10mm; }
+          * { box-sizing: border-box; }
+          body { margin: 0; color: #172033; font: 10px Arial, sans-serif; }
+          .page { width: 100%; }
+          header { display: flex; align-items: center; gap: 12px; padding-bottom: 10px; border-bottom: 2px solid #0f172a; margin-bottom: 12px; }
+          .logo, .logo-fallback { width: 42px; height: 42px; object-fit: contain; flex: 0 0 42px; }
+          .logo-fallback { display: grid; place-items: center; border: 2px solid #0f172a; border-radius: 8px; font-size: 20px; font-weight: 800; }
+          .heading { flex: 1; min-width: 0; }
+          h1 { margin: 0 0 3px; font-size: 17px; text-transform: uppercase; }
+          .subtitle { color: #475569; font-size: 10px; }
+          .meta { text-align: right; color: #475569; font-size: 9px; line-height: 1.5; }
+          .filters { margin: 0 0 9px; color: #334155; font-size: 9px; }
+          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+          thead { display: table-header-group; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
+          th { padding: 7px 8px; background: #e2e8f0; border: 1px solid #64748b; text-align: left; font-size: 8px; text-transform: uppercase; }
+          td { padding: 6px 8px; border: 1px solid #cbd5e1; overflow-wrap: anywhere; vertical-align: middle; }
+          tbody tr:nth-child(even) { background: #f8fafc; }
+          .time { white-space: nowrap; font-family: monospace; font-weight: 700; }
+          .professional { font-size: 11px; font-weight: 700; }
+          .status { display: inline-block; padding: 3px 6px; border-radius: 10px; background: #e2e8f0; font-size: 7px; font-weight: 800; }
+          .live .status { color: #075985; background: #e0f2fe; }
+          .concluded .status { color: #166534; background: #dcfce7; }
+          .vacant .status { color: #92400e; background: #fef3c7; }
+          .overdue .status { color: #991b1b; background: #fee2e2; }
+          .empty { padding: 24px; text-align: center; color: #64748b; }
+          footer { margin-top: 10px; padding-top: 7px; border-top: 1px solid #cbd5e1; color: #64748b; font-size: 8px; }
+          @media screen { body { padding: 18px; } }
+        </style>
+      </head>
+      <body>
+        <div class="page">
+          <header>
+            ${companyLogo}
+            <div class="heading">
+              <h1>${escapeHtml(unit?.name || company?.name || 'Escala médica')}</h1>
+              <div class="subtitle">${escapeHtml(title)}</div>
+            </div>
+            <div class="meta">${escapeHtml(sectorName)}<br />Emitida em ${escapeHtml(issueDate)}</div>
+          </header>
+          <p class="filters">Plantões: ${scheduleVisibleShifts.length} • Filtros de período, turno, setor, especialidade e profissional aplicados conforme a tela.</p>
+          <table>
+            <colgroup>
+              <col style="width: 12%" /><col style="width: 14%" /><col style="width: 27%" />
+              <col style="width: 19%" /><col style="width: 16%" /><col style="width: 12%" />
+            </colgroup>
+            <thead><tr><th>Data</th><th>Horário</th><th>Profissional</th><th>Especialidade</th><th>Setor</th><th>Situação</th></tr></thead>
+            <tbody>${rows || emptyState}</tbody>
+          </table>
+          <footer>Documento de apoio para conferência da escala. Plantões descobertos estão destacados para revisão da coordenação.</footer>
+        </div>
+        <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 250); });</script>
+      </body>
+      </html>`;
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
 
   const isDatePublishedForCurrentSector = (dateStr) => {
     if (selectedSectorId === 'todos') {
@@ -1201,6 +1331,7 @@ export default function Escalas() {
     const searchTerm = normalize(scheduleProfessionalSearch);
     if (!searchTerm) return scheduleFilteredShifts;
     return scheduleFilteredShifts.filter(shift => {
+      if (isVacant(shift)) return true;
       const professionalName = professionalMap[String(shift.professional_id)]?.name || getShiftName(shift);
       return normalize(professionalName).includes(searchTerm);
     });
@@ -1470,6 +1601,73 @@ export default function Escalas() {
       await syncGlobalData(); 
     } catch (err) { alert(err.message); }
   };
+
+  const renderShiftCard = (shift, dateStr) => {
+    const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+    const status = getStatusBadge(shift);
+    const realSpec = extractSpecialty(shift, prof);
+    const validName = prof?.name || shift.professional_name;
+    const isOpen = isVacant(shift);
+
+    return (
+      <div
+        key={shift.id}
+        onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+        onDrop={e => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!isOpen) {
+            alert('Este horário já está preenchido. Solte o profissional em uma vaga aberta.');
+            setDraggingProfId(null);
+            return;
+          }
+          handleDropOnSlot(e, dateStr, shift.start_time, shift.end_time, realSpec, shift.sector_id);
+        }}
+        onClick={e => {
+          e.stopPropagation();
+          if (!isManager) return;
+          setEditingShiftId(shift.id);
+          setFormData({
+            date: shift.date,
+            sector_id: shift.sector_id,
+            target_specialty: realSpec,
+            start_time: shift.start_time,
+            end_time: shift.end_time,
+            shift_type: shift.shift_type || 'diurno',
+            action_type: isOpen ? 'mural' : 'alocar',
+            professional_id: shift.professional_id || '',
+            notes: shift.notes || '',
+            retroactive_justification: extractRetroactiveJustification(shift.notes)
+          });
+          setModalOpen(true);
+        }}
+        className={`rounded-xl border border-l-4 shadow-sm cursor-pointer transition-all hover:brightness-95 ${monthlyView === 'lista' ? 'p-3 min-h-[78px]' : 'p-2 min-w-0'} ${status.wrapper} ${draggingProfId && isOpen ? 'ring-2 ring-sky-500 ring-offset-1' : ''}`}
+        title={isOpen ? 'Arraste um profissional para alocar neste horário' : 'Horário já preenchido'}
+      >
+        <div className={`flex items-center justify-between gap-2 font-mono mb-1 ${monthlyView === 'lista' ? 'text-[11px]' : 'text-[9px]'}`}>
+          <span className="font-black text-slate-700 dark:text-slate-200">{shift.start_time}–{shift.end_time}</span>
+          <span className={`font-black uppercase tracking-tight flex items-center gap-1 ${status.text}`}>{status.icon} {status.label}</span>
+        </div>
+        <div className="flex items-start gap-2">
+          <div className={`mt-0.5 shrink-0 rounded-full flex items-center justify-center font-black ${isOpen ? 'w-7 h-7 bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300' : 'w-8 h-8 bg-white/80 dark:bg-slate-950/60 text-sky-700 dark:text-sky-300'} ${monthlyView === 'lista' ? 'text-[10px]' : 'text-[9px]'}`}>
+            {isOpen ? <AlertTriangle className="w-3.5 h-3.5" /> : getInitials(validName)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className={`font-extrabold leading-snug break-words text-slate-900 dark:text-white ${monthlyView === 'lista' ? 'text-sm' : 'text-[11px]'}`}>
+              {isOpen ? status.label : (monthlyView === 'lista' ? validName : formatFullName(validName))}
+            </div>
+            <div className={`mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-semibold text-slate-600 dark:text-slate-300 ${monthlyView === 'lista' ? 'text-[11px]' : 'text-[9px]'}`}>
+              <span className="break-words">{realSpec}</span>
+              {!selectedSectorObj && <span className="text-slate-500">{sectorMap[String(shift.sector_id)]?.name}</span>}
+              {!isOpen && professionalMap[String(shift.professional_id)]?.document && (
+                <span className="font-mono text-slate-500">{professionalMap[String(shift.professional_id)].document}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // =========================================================================
   // 1. MODO TV CCO EM TELA CHEIA ISOLADA
@@ -1942,6 +2140,34 @@ export default function Escalas() {
                 <X className="w-3.5 h-3.5 mr-1" /> Limpar
               </Button>
             )}
+            <div className="flex items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-950 p-1 shrink-0">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setMonthlyView('lista')}
+                aria-pressed={monthlyView === 'lista'}
+                className={`h-7 px-2.5 text-[10px] font-black rounded-lg ${monthlyView === 'lista' ? 'bg-white dark:bg-slate-800 shadow-sm text-sky-700 dark:text-sky-300' : 'text-slate-500'}`}
+              >
+                Lista legível
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setMonthlyView('calendario')}
+                aria-pressed={monthlyView === 'calendario'}
+                className={`h-7 px-2.5 text-[10px] font-black rounded-lg ${monthlyView === 'calendario' ? 'bg-white dark:bg-slate-800 shadow-sm text-sky-700 dark:text-sky-300' : 'text-slate-500'}`}
+              >
+                Calendário
+              </Button>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handlePrintMonthlySchedule}
+              className="h-9 px-3 text-xs font-bold rounded-xl shrink-0"
+            >
+              <Printer className="w-3.5 h-3.5 mr-1.5" /> Imprimir mês
+            </Button>
           </div>
           {(scheduleProfessionalSearch || scheduleSpecialtyFilter !== 'todas') && (
             <div className="mt-2 text-[10px] font-semibold text-sky-700 dark:text-sky-300" role="status" aria-live="polite">
@@ -2000,10 +2226,10 @@ export default function Escalas() {
             </aside>
           )}
 
-          <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+{monthlyView === 'calendario' && <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
             <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-center py-2.5">
               {WEEKDAYS.map(day => (<div key={day.short} className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400"><span className={day.weekend ? 'text-indigo-600 font-black' : ''}>{day.short}</span></div>))}
-            </div>
+</div>
             
             <div className="grid grid-cols-7 divide-x divide-y divide-slate-200 dark:divide-slate-800">
               {Array.from({ length: (daysInMonth[0]?.getDay() || 0) }).map((_, idx) => (<div key={`empty-${idx}`} className="min-h-[190px] bg-slate-50/60 dark:bg-slate-950/40"></div>))}
@@ -2024,48 +2250,6 @@ export default function Escalas() {
                 const hasOverdueVacancy = dayVacancyGroups.some(group =>
                   group.shifts.some(shift => isVacant(shift) && isShiftPast(shift, liveNow))
                 );
-
-                const renderCard = (shift) => {
-                  const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-                  const status = getStatusBadge(shift);
-                  const realSpec = extractSpecialty(shift, prof);
-                  const validName = prof?.name || shift.professional_name;
-				const isOpen = isVacant(shift);
-
-				return (
-					<div
-						key={shift.id}
-						onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-						onDrop={(e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							if (!isOpen) {
-								alert('Este horário já está preenchido. Solte o profissional em uma vaga aberta.');
-								setDraggingProfId(null);
-								return;
-							}
-							handleDropOnSlot(e, dateStr, shift.start_time, shift.end_time, realSpec, shift.sector_id);
-						}}
-						onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date, sector_id: shift.sector_id, target_specialty: realSpec, start_time: shift.start_time, end_time: shift.end_time, shift_type: shift.shift_type || 'diurno', action_type: (shift.status === 'vago' || !validName) ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '', retroactive_justification: extractRetroactiveJustification(shift.notes) }); setModalOpen(true); } }}
-						className={`p-1.5 rounded-xl border border-l-4 shadow-sm cursor-pointer transition-all hover:brightness-95 ${status.wrapper} ${draggingProfId && isOpen ? 'ring-2 ring-sky-500 ring-offset-1' : ''}`}
-						title={isOpen ? 'Arraste um profissional para alocar neste horário' : 'Horário já preenchido'}
-					>
-                      <div className="flex justify-between font-mono text-[9px] mb-0.5 opacity-80">
-                        <span>{shift.start_time}-{shift.end_time}</span>
-                        <span className={`font-black uppercase tracking-tight flex items-center gap-1 ${status.text}`}>{status.icon} {status.label}</span>
-                      </div>
-                      <div className="font-black truncate leading-tight text-slate-900 dark:text-white">
-                        {status.label.includes('FALTA') || status.label.includes('VAGA') || status.label.includes('ABERTA') ? `⚠️ ${status.label}` : formatFullName(validName)}
-                      </div>
-                      <div className="text-[9px] font-semibold opacity-70 truncate flex items-center justify-between">
-                        <span>{realSpec}</span>
-                        {!selectedSectorObj && (
-                          <span className="text-[8px] font-mono text-slate-400 opacity-60 truncate max-w-[60px]">{sectorMap[shift.sector_id]?.name}</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                };
 
                 return (
                   <div key={dateStr} onClick={(e) => handleDayClick(dateStr, e)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnDay(e, dateStr)} className={`min-h-[220px] p-2 transition-all flex flex-col justify-between select-none cursor-pointer ${isSelected ? 'bg-indigo-50 dark:bg-indigo-950/50 ring-2 ring-indigo-500 z-10' : isToday ? 'bg-sky-50/60 dark:bg-sky-950/20' : 'hover:bg-slate-50 dark:hover:bg-slate-850/50'}`}>
@@ -2172,19 +2356,19 @@ export default function Escalas() {
                       {manha.length > 0 && (
                         <div className="space-y-1">
                           <span className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200 block">☀️ Manhã</span>
-                          {manha.map(renderCard)}
+                          {manha.map(shift => renderShiftCard(shift, dateStr))}
         </div>
                       )}
                       {tarde.length > 0 && (
                         <div className="space-y-1">
                           <span className="text-[9px] font-black uppercase text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-200 block">🌇 Tarde</span>
-                          {tarde.map(renderCard)}
+                          {tarde.map(shift => renderShiftCard(shift, dateStr))}
                         </div>
                       )}
                       {noite.length > 0 && (
                         <div className="space-y-1">
                           <span className="text-[9px] font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-200 block">🌙 Noite</span>
-                          {noite.map(renderCard)}
+                          {noite.map(shift => renderShiftCard(shift, dateStr))}
                         </div>
                       )}
                     </div>
@@ -2192,8 +2376,60 @@ export default function Escalas() {
                 );
               })}
             </div>
-          </div>
-        </div>
+          </div>}
+          {monthlyView === 'lista' && (
+            <div className="w-full space-y-3">
+              {daysInMonth
+                .filter(dateObj => (shiftsByDate[getLocalDateString(dateObj)] || []).length > 0)
+                .map(dateObj => {
+                  const dateStr = getLocalDateString(dateObj);
+                  const dayShifts = (shiftsByDate[dateStr] || [])
+                    .slice()
+                    .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
+                  const vacancies = dayShifts.filter(isVacant).length;
+                  const isPublished = isDatePublishedForCurrentSector(dateStr);
+                  const isToday = dateStr === todayLocalStr;
+
+                  return (
+                    <section
+                      key={dateStr}
+                      onClick={e => handleDayClick(dateStr, e)}
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={e => handleDropOnDay(e, dateStr)}
+                      className={`rounded-2xl border shadow-sm p-3 sm:p-4 transition-colors ${selectedDays.includes(dateStr) ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30 ring-2 ring-indigo-500/30' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'} ${isToday ? 'ring-1 ring-sky-300 dark:ring-sky-800' : ''}`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-lg font-black text-slate-900 dark:text-white">
+                            {dateObj.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+                          </span>
+                          {isToday && <span className="text-[9px] font-black uppercase text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-900/50 px-2 py-0.5 rounded-full">Hoje</span>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${vacancies ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300'}`}>
+                            {vacancies} vaga(s) aberta(s)
+                          </span>
+                          <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full ${isPublished ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'}`}>
+                            {isPublished ? 'Publicada' : 'Rascunho'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2">
+                        {dayShifts.map(shift => renderShiftCard(shift, dateStr))}
+                      </div>
+                    </section>
+                  );
+                })}
+              {scheduleVisibleShifts.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-10 text-center">
+                  <Search className="w-7 h-7 mx-auto mb-2 text-slate-400" />
+                  <p className="font-bold text-slate-700 dark:text-slate-200">Nenhum plantão corresponde aos filtros.</p>
+                  <p className="text-xs text-slate-500 mt-1">Tente outro profissional, especialidade, setor ou período.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 </div>
 )}
 
