@@ -98,6 +98,7 @@ export default function Painel() {
   const todayStr = useMemo(() => getLocalDateString(currentTime), [currentTime]);
   const currentYear = currentTime.getFullYear();
   const currentMonth = currentTime.getMonth();
+  const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
 
   const daysToExpiration = useMemo(() => {
     if (!company?.data?.contract_end) return null;
@@ -141,7 +142,6 @@ export default function Painel() {
     return { profById: byId, profByName: byName };
   }, [professionals]);
 
-  // CORREÇÃO: Filtragem EXATA dos plantões da unidade
   const unitShifts = useMemo(() => {
     return (shifts || []).filter(s => String(s.unit_id) === String(unitId) && s.status !== 'cancelado');
   }, [shifts, unitId]);
@@ -167,14 +167,18 @@ export default function Painel() {
   const upcomingList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'upcoming'), [todayShifts]);
   const concludedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'concluded'), [todayShifts]);
 
-  // CORREÇÃO: Pega Vagas abertas do dia, furos e vagas futuras próximas
+  // CORREÇÃO: Pega Vagas abertas ESTRITAMENTE do mês vigente (hoje, amanhã ou furos passados no próprio mês)
   const vacantShifts = useMemo(() => {
     return unitShifts
       .filter((s) => {
         const sDate = (s.date || '').split('T')[0];
-        // Checa se a data é hoje, amanhã ou se o plantão já passou (furo do dia)
+        
+        // Bloqueio do Mês: Ignora os furos de meses anteriores
+        if (!sDate.startsWith(monthPrefix)) return false;
+
         const isTargetDay = sDate <= todayStr || sDate === getLocalDateString(new Date(currentTime.getTime() + 86400000));
         const isVago = !s.professional_id || s.status === 'vago' || (s.professional_name || '').toLowerCase().includes('vaga');
+        
         return isTargetDay && isVago;
       })
       .map(s => ({ 
@@ -182,7 +186,7 @@ export default function Painel() {
         sectorName: toTitleCase(s.sector_name || sectors.find(sec => String(sec.id) === String(s.sector_id))?.name || 'Setor Geral'), 
         formattedDate: fmtDate(s.date) 
       }));
-  }, [unitShifts, todayStr, currentTime, sectors]);
+  }, [unitShifts, todayStr, currentTime, sectors, monthPrefix]);
 
   const todayFinancials = useMemo(() => {
     let executedValue = 0; let plannedValue = 0;
@@ -242,7 +246,6 @@ export default function Painel() {
     return { targetTime: nextStart, incoming, outgoing };
   }, [upcomingList, activeNowList]);
 
-  // CORREÇÃO: Cruzamento real! Desconta os furos (vagas de hoje) do total de plantões programados
   const globalFillRate = useMemo(() => {
     if (todayShifts.length === 0) return 100;
     const vacantTodayCount = vacantShifts.filter(v => v.date === todayStr).length;
@@ -250,7 +253,6 @@ export default function Painel() {
     
     if (vacantTodayCount === 0) return 100;
     
-    // Se tem vaga, tira 100%
     const filled = Math.max(0, totalProgrammedToday - vacantTodayCount);
     return Math.round((filled / totalProgrammedToday) * 100);
   }, [todayShifts, vacantShifts, todayStr]);
@@ -430,7 +432,7 @@ export default function Painel() {
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0 font-bold shadow-md animate-bounce"><Flame className="w-5 h-5" /></div>
               <div>
-                <strong className="text-sm font-black flex items-center gap-2">Alerta Crítico: {vacantShifts.length} vaga(s) com desfalque no momento</strong>
+                <strong className="text-sm font-black flex items-center gap-2">Alerta Crítico: {vacantShifts.length} vaga(s) com desfalque neste mês</strong>
                 <span className="text-xs text-rose-700 dark:text-rose-300">A ocupação geral não atingiu 100%. Clique na vaga abaixo para preencher:</span>
               </div>
             </div>
@@ -447,7 +449,7 @@ export default function Painel() {
         <div className="p-4 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-emerald-600 text-white font-bold"><CheckCircle2 className="w-4 h-4" /></div>
-            <div><strong className="text-xs font-black uppercase tracking-wider block">Escala Hospitalar 100% Homologada</strong><span className="text-[11px] text-emerald-700 dark:text-emerald-400">Todos os postos e setores clínicos da unidade possuem médicos alocados.</span></div>
+            <div><strong className="text-xs font-black uppercase tracking-wider block">Escala Hospitalar 100% Homologada no Mês</strong><span className="text-[11px] text-emerald-700 dark:text-emerald-400">Todos os postos e setores clínicos do período vigente possuem médicos alocados.</span></div>
           </div>
           <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono px-3 py-1 rounded-xl bg-emerald-500/20">ZERO DESFALQUES</span>
         </div>
