@@ -13,11 +13,14 @@ import {
   GripVertical, Printer, Sun, Moon, AlertTriangle, CheckCircle2, 
   Radio, Calendar as CalendarIcon, PanelLeftClose, PanelLeftOpen, 
   Filter, ArrowLeftRight, Minimize2, Target, ShieldAlert,
-  BellRing, Check, History, Copy
+  BellRing, Check, History, Copy, Users, Wand2, RotateCcw
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const WEEKDAYS = [{ short: 'Dom', weekend: true }, { short: 'Seg', weekend: false }, { short: 'Ter', weekend: false }, { short: 'Qua', weekend: false }, { short: 'Qui', weekend: false }, { short: 'Sex', weekend: false }, { short: 'Sáb', weekend: true }];
+
+// Tabela onde ficam as notificações do sino (Mural). Se o nome da sua tabela for outro, altere aqui.
+const NOTIFICATIONS_TABLE = 'notifications';
 
 function getLocalDateString(d = new Date()) {
   const year = d.getFullYear();
@@ -181,13 +184,108 @@ async function autoHealingSaveShift(id, initialPayload) {
   }
 }
 
+// =========================================================================
+// NOTIFICAÇÕES (SINO DO MURAL)
+// Tenta gravar e, se alguma coluna não existir na sua tabela, remove a coluna e tenta de novo.
+// =========================================================================
+async function insertNotificationHealing(initialPayload) {
+  const payload = { ...initialPayload };
+  let lastError = null;
+
+  for (let attempt = 0; attempt < 14; attempt++) {
+    const { error } = await supabase.from(NOTIFICATIONS_TABLE).insert([payload]);
+    if (!error) return { ok: true };
+
+    lastError = error;
+    const msg = String(error.message || '');
+    const missing =
+      msg.match(/Could not find the '([^']+)' column/i) ||
+      msg.match(/column "([^"]+)" of relation/i);
+
+    if (missing && missing[1] && Object.prototype.hasOwnProperty.call(payload, missing[1])) {
+      delete payload[missing[1]];
+      continue;
+    }
+    break;
+  }
+
+  return { ok: false, error: lastError };
+}
+
+// =========================================================================
+// ALOCAÇÃO EM LOTE (rodízio equilibrado sem choque de horário)
+// =========================================================================
+function toAbsInterval(shift) {
+  const [y, m, d] = String(shift.date || '').split('T')[0].split('-').map(Number);
+  const dayMin = Math.floor(Date.UTC(y || 1970, (m || 1) - 1, d || 1) / 60000);
+  const { startMin, endMin } = getShiftInterval(shift.start_time, shift.end_time);
+  return { s: dayMin + startMin, e: dayMin + endMin };
+}
+
+function intervalsOverlap(a, b) {
+  return Math.max(a.s, b.s) < Math.min(a.e, b.e);
+}
+
+function computeBatchPlan({ targets, candidates, allShifts, strict, maxPerProf }) {
+  const busy = {};
+  (allShifts || []).forEach(s => {
+    if (!s || s.status === 'cancelado' || s.status === 'vago' || !s.professional_id) return;
+    const k = String(s.professional_id);
+    if (!busy[k]) busy[k] = [];
+    busy[k].push(toAbsInterval(s));
+  });
+
+  const counts = {};
+  const lastEnd = {};
+  const assignments = [];
+  const unfilled = [];
+
+  const sorted = [...targets].sort((a, b) =>
+    (a.date || '').localeCompare(b.date || '') || (a.start_time || '').localeCompare(b.start_time || '')
+  );
+
+  for (const shift of sorted) {
+    const iv = toAbsInterval(shift);
+    const spec = normalize(extractSpecialty(shift, null));
+
+    const eligible = candidates.filter(p => {
+      const k = String(p.id);
+      if (strict && normalize(p.specialty) !== spec) return false;
+      if (maxPerProf > 0 && (counts[k] || 0) >= maxPerProf) return false;
+      return !(busy[k] || []).some(b => intervalsOverlap(b, iv));
+    });
+
+    if (eligible.length === 0) {
+      unfilled.push(shift);
+      continue;
+    }
+
+    eligible.sort((a, b) => {
+      const ka = String(a.id), kb = String(b.id);
+      return (counts[ka] || 0) - (counts[kb] || 0) || (lastEnd[ka] || 0) - (lastEnd[kb] || 0);
+    });
+
+    const chosen = eligible[0];
+    const ck = String(chosen.id);
+    counts[ck] = (counts[ck] || 0) + 1;
+    lastEnd[ck] = iv.e;
+    if (!busy[ck]) busy[ck] = [];
+    busy[ck].push(iv);
+    assignments.push({ shift, prof: chosen });
+  }
+
+  return { assignments, unfilled };
+}
+
 export default function Escalas() {
   const { shifts = [], sectors = [], professionals = [], selectedUnitId, units = [], company, isManager, syncGlobalData } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState('mensal'); 
   const [filterTurno, setFilterTurno] = useState('todos'); 
-  const [startDateFilter, setStartDateFilter] = useState('');
+
+  // O "A partir de" SEMPRE começa no dia de hoje.
+  const [startDateFilter, setStartDateFilter] = useState(() => getLocalDateString());
 
   const [selectedSectorId, setSelectedSectorId] = useState(() => {
     try { return window.localStorage.getItem('scale_filter_sector_id') || 'todos'; } catch { return 'todos'; }
@@ -312,6 +410,55 @@ export default function Escalas() {
     return set.size;
   }, [publishTargetShifts]);
 
+  // Envia a notificação de "escala publicada" para cada profissional alocado no período
+  const notifyPublishedProfessionals = async (secName) => {
+    const groups = {};
+    publishTargetShifts.forEach(s => {
+      if (!s || !s.professional_id || isVacant(s)) return;
+      const k = String(s.professional_id);
+      if (!groups[k]) groups[k] = [];
+      groups[k].push(s);
+    });
+
+    let okCount = 0;
+    let failCount = 0;
+    let firstError = '';
+
+    for (const profId of Object.keys(groups)) {
+      const prof = professionalMap[profId];
+      const list = groups[profId].sort((a, b) =>
+        (a.date || '').localeCompare(b.date || '') || (a.start_time || '').localeCompare(b.start_time || '')
+      );
+      const first = list[0];
+      const message =
+        `Sua escala de "${secName}" foi publicada (${formatDateBR(publishConfig.start_date)} a ${formatDateBR(publishConfig.end_date)}). ` +
+        `Você tem ${list.length} plantão(ões). Primeiro: ${formatDateBR(first.date)} das ${first.start_time} às ${first.end_time}.`;
+
+      const result = await insertNotificationHealing({
+        company_id: company?.id || first.company_id,
+        unit_id: selectedUnitId || first.unit_id,
+        professional_id: prof?.id || profId,
+        user_id: prof?.user_id || undefined,
+        sector_id: publishConfig.sector_id,
+        title: `Escala publicada • ${secName}`,
+        message,
+        body: message,
+        type: 'escala_publicada',
+        category: 'escala',
+        read: false,
+        is_read: false
+      });
+
+      if (result.ok) okCount++;
+      else {
+        failCount++;
+        if (!firstError) firstError = result.error?.message || 'erro desconhecido';
+      }
+    }
+
+    return { okCount, failCount, firstError };
+  };
+
   const handleExecutePublishSector = async () => {
     if (!publishConfig.sector_id) { alert('Selecione o setor a ser publicado.'); return; }
     if (publishConfig.start_date > publishConfig.end_date) { alert('Data de término inválida.'); return; }
@@ -345,11 +492,18 @@ export default function Escalas() {
         }
       }
 
+      // Notifica cada profissional alocado (sino de alertas do Mural)
+      const notif = await notifyPublishedProfessionals(secName);
+
       setPublishedVersion(v => v + 1);
       setPublishModalOpen(false);
       await syncGlobalData();
 
-      alert(`✓ Escala de "${secName}" oficializada!\n\nVigência: ${formatDateBR(publishConfig.start_date)} até ${formatDateBR(publishConfig.end_date)}\n${publishImpactedProfessionalsCount} profissional(is) notificado(s).`);
+      let finalMsg = `✓ Escala de "${secName}" oficializada!\n\nVigência: ${formatDateBR(publishConfig.start_date)} até ${formatDateBR(publishConfig.end_date)}\n${notif.okCount} profissional(is) notificado(s).`;
+      if (notif.failCount > 0) {
+        finalMsg += `\n\n⚠️ ${notif.failCount} notificação(ões) não puderam ser gravadas.\nMotivo: ${notif.firstError}`;
+      }
+      alert(finalMsg);
     } catch (err) { alert('Erro ao publicar escala: ' + err.message); } finally { setSubmitting(false); }
   };
 
@@ -439,13 +593,21 @@ export default function Escalas() {
     const t = setInterval(() => setLiveNow(new Date()), 1000); 
     return () => clearInterval(t); 
   }, []);
+  const liveMinute = Math.floor(liveNow.getTime() / 60000);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [generatorModalOpen, setGeneratorModalOpen] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState(null);
   
-  // ---> A VARIÁVEL QUE FALTAVA FOI INSERIDA AQUI <---
   const [submitting, setSubmitting] = useState(false);
+
+  // ---> NOVO: pop-up pós-geração e alocação em lote <---
+  const [postGenModal, setPostGenModal] = useState({ open: false, ids: [], count: 0, sectorName: '', startDate: '', endDate: '' });
+  const [batchModal, setBatchModal] = useState({ open: false, targetIds: [] });
+  const [batchSelected, setBatchSelected] = useState([]);
+  const [batchStrict, setBatchStrict] = useState(true);
+  const [batchMax, setBatchMax] = useState('');
+  const [batchSearch, setBatchSearch] = useState('');
 
   const registeredSpecialties = useMemo(() => {
     const set = new Set();
@@ -784,7 +946,9 @@ export default function Escalas() {
       const totalDays = parseInt(generatorConfig.duration_days) || 30;
       const interval = parseInt(generatorConfig.interval_days) || 1;
 
-      // O loop agora respeita o intervalo (de 1 em 1, 5 em 5, 15 em 15...)
+      const rows = [];
+
+      // O loop respeita o intervalo (de 1 em 1, 5 em 5, 15 em 15...)
       for (let dayOffset = 0; dayOffset < totalDays; dayOffset += interval) {
         const curDate = new Date(startDt);
         curDate.setDate(curDate.getDate() + dayOffset);
@@ -795,7 +959,7 @@ export default function Escalas() {
           for (let q = 0; q < qty; q++) {
             const spec = slot.specialty || 'Clínica Médica';
             const sType = slot.shift_type || (slot.start_time >= '18:00' || slot.start_time < '06:00' ? 'noturno' : 'diurno');
-            const saved = await autoHealingSaveShift(null, {
+            rows.push({
               company_id: company?.id || 'cmp_principal',
               unit_id: selectedUnitId || 'unit_h1',
               sector_id: generatorConfig.sector_id,
@@ -808,19 +972,66 @@ export default function Escalas() {
               end_time: slot.end_time,
               status: 'vago'
             });
-            if (saved?.id) try { window.localStorage.setItem(`shift_spec_${saved.id}`, spec); } catch {}
           }
         }
       }
+
+      if (rows.length === 0) throw new Error('Nenhuma vaga para gerar. Verifique a quantidade de vagas de cada turno.');
+
+      // Inserção em blocos (muito mais rápido que 1 por 1)
+      const createdIds = [];
+      for (let i = 0; i < rows.length; i += 100) {
+        const { data, error } = await supabase.from('shifts').insert(rows.slice(i, i + 100)).select();
+        if (error) throw error;
+        (data || []).forEach(r => {
+          if (r?.id) {
+            createdIds.push(r.id);
+            try { window.localStorage.setItem(`shift_spec_${r.id}`, r.target_specialty || ''); } catch {}
+          }
+        });
+      }
+
+      const lastGeneratedDate = rows[rows.length - 1]?.date || generatorConfig.start_date;
+      const secName = sectorMap[String(generatorConfig.sector_id)]?.name || 'Setor';
+
       setGeneratorModalOpen(false); 
       await syncGlobalData(); 
-      alert('Vagas geradas com sucesso!');
+
+      // Leva o usuário direto para onde as vagas foram criadas
+      handleSelectSector(String(generatorConfig.sector_id));
+      setCurrentDate(new Date(startDt.getFullYear(), startDt.getMonth(), 1));
+      if (startDateFilter && generatorConfig.start_date < startDateFilter) setStartDateFilter(generatorConfig.start_date);
+
+      // Pergunta se deseja alocar os profissionais agora
+      setPostGenModal({
+        open: true,
+        ids: createdIds,
+        count: createdIds.length,
+        sectorName: secName,
+        startDate: generatorConfig.start_date,
+        endDate: lastGeneratedDate
+      });
     } catch (err) { alert(err.message); } finally { setSubmitting(false); }
   };
 
-  const handlePrevMonth = () => setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
+  // =========================================================================
+  // NAVEGAÇÃO DE MÊS / HOJE / "A PARTIR DE"
+  // =========================================================================
+  const handlePrevMonth = () => {
+    const next = new Date(currentYear, currentMonth - 1, 1);
+    const lastDayStr = getLocalDateString(new Date(next.getFullYear(), next.getMonth() + 1, 0));
+    // Se o mês anterior está inteiro antes do filtro, libera o mês para não aparecer vazio
+    if (startDateFilter && startDateFilter > lastDayStr) setStartDateFilter(getLocalDateString(next));
+    setCurrentDate(next);
+  };
+
   const handleNextMonth = () => setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
-  const handleToday = () => { setCurrentDate(new Date()); setStartDateFilter(''); };
+
+  // "Hoje" volta para o mês atual E para o filtro "a partir de hoje"
+  const handleToday = () => {
+    setCurrentDate(new Date());
+    setStartDateFilter(getLocalDateString());
+  };
 
   const handleStartDateChange = (e) => {
     const val = e.target.value;
@@ -830,6 +1041,15 @@ export default function Escalas() {
       setCurrentDate(new Date(y, m - 1, d || 1));
     }
   };
+
+  const isViewingCurrentMonth = currentYear === liveNow.getFullYear() && currentMonth === liveNow.getMonth();
+  const isOnToday = isViewingCurrentMonth && startDateFilter === todayLocalStr;
+  const monthOffset = (currentYear - liveNow.getFullYear()) * 12 + (currentMonth - liveNow.getMonth());
+  const monthOffsetLabel = monthOffset === 0
+    ? 'Mês atual'
+    : monthOffset > 0
+      ? `${monthOffset} ${monthOffset === 1 ? 'mês' : 'meses'} à frente`
+      : `${Math.abs(monthOffset)} ${Math.abs(monthOffset) === 1 ? 'mês' : 'meses'} atrás`;
 
   const daysInMonth = useMemo(() => {
     const date = new Date(currentYear, currentMonth, 1);
@@ -908,6 +1128,11 @@ export default function Escalas() {
     return map;
   }, [monthlyShifts]);
 
+  // Vagas futuras a alocar no período exibido
+  const monthlyVacantShifts = useMemo(() => {
+    return monthlyShifts.filter(s => isVacant(s) && !isShiftPast(s, liveNow));
+  }, [monthlyShifts, liveMinute]);
+
   const allActiveProfessionals = useMemo(() => (professionals || []).filter(p => p?.status === 'ativo'), [professionals]);
 
   const filteredTrayProfs = useMemo(() => {
@@ -919,6 +1144,134 @@ export default function Escalas() {
       return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowerCase().includes(term);
     });
   }, [professionals, traySearch, traySpecialtyFilter]);
+
+  // Abre o modal de edição já em modo "alocar" para uma vaga específica
+  const openShiftForAllocation = (v) => {
+    setEditingShiftId(v.id);
+    setFormData({
+      date: v.date,
+      sector_id: String(v.sector_id),
+      target_specialty: extractSpecialty(v, null),
+      start_time: v.start_time,
+      end_time: v.end_time,
+      shift_type: v.shift_type || 'diurno',
+      action_type: 'alocar',
+      professional_id: '',
+      notes: v.notes || '',
+      retroactive_justification: extractRetroactiveJustification(v.notes)
+    });
+    setModalOpen(true);
+  };
+
+  // =========================================================================
+  // ALOCAÇÃO EM LOTE
+  // =========================================================================
+  const batchTargets = useMemo(() => {
+    if (!batchModal.open) return [];
+    const idSet = new Set((batchModal.targetIds || []).map(String));
+    return (shifts || []).filter(s => s && idSet.has(String(s.id)) && s.status !== 'cancelado' && isVacant(s) && !isShiftPast(s, liveNow));
+  }, [batchModal, shifts, liveMinute]);
+
+  const batchNeededSpecs = useMemo(() => {
+    const map = {};
+    batchTargets.forEach(s => {
+      const label = extractSpecialty(s, null);
+      const k = normalize(label);
+      if (!map[k]) map[k] = { label, count: 0 };
+      map[k].count++;
+    });
+    return map;
+  }, [batchTargets]);
+
+  const batchPlan = useMemo(() => {
+    if (!batchModal.open || batchTargets.length === 0) return { assignments: [], unfilled: [] };
+    const sel = new Set(batchSelected);
+    const candidates = (professionals || []).filter(p => p?.status === 'ativo' && sel.has(String(p.id)));
+    return computeBatchPlan({
+      targets: batchTargets,
+      candidates,
+      allShifts: shifts,
+      strict: batchStrict,
+      maxPerProf: parseInt(batchMax) || 0
+    });
+  }, [batchModal.open, batchTargets, batchSelected, batchStrict, batchMax, professionals, shifts]);
+
+  const batchPlanPerProf = useMemo(() => {
+    const map = {};
+    batchPlan.assignments.forEach(({ prof }) => {
+      const k = String(prof.id);
+      if (!map[k]) map[k] = { name: prof.name, count: 0 };
+      map[k].count++;
+    });
+    return Object.values(map).sort((a, b) => b.count - a.count);
+  }, [batchPlan]);
+
+  const batchUnfilledBySpec = useMemo(() => {
+    const map = {};
+    batchPlan.unfilled.forEach(s => {
+      const label = extractSpecialty(s, null);
+      map[label] = (map[label] || 0) + 1;
+    });
+    return Object.entries(map);
+  }, [batchPlan]);
+
+  const batchProfessionalList = useMemo(() => {
+    const term = normalize(batchSearch);
+    return allActiveProfessionals
+      .filter(p => !term || normalize(p.name).includes(term) || normalize(p.specialty).includes(term))
+      .map(p => ({ ...p, _compatible: Boolean(batchNeededSpecs[normalize(p.specialty)]) }))
+      .sort((a, b) => Number(b._compatible) - Number(a._compatible) || String(a.name || '').localeCompare(String(b.name || '')));
+  }, [allActiveProfessionals, batchSearch, batchNeededSpecs]);
+
+  const openBatchModal = (ids) => {
+    const idSet = new Set((ids || []).map(String));
+    const targets = (shifts || []).filter(s => s && idSet.has(String(s.id)));
+    const specs = new Set(targets.map(s => normalize(extractSpecialty(s, null))));
+    setBatchSelected(allActiveProfessionals.filter(p => specs.has(normalize(p.specialty))).map(p => String(p.id)));
+    setBatchStrict(true);
+    setBatchMax('');
+    setBatchSearch('');
+    setBatchModal({ open: true, targetIds: ids || [] });
+  };
+
+  const closeBatchModal = () => setBatchModal({ open: false, targetIds: [] });
+
+  const toggleBatchProf = (id) => {
+    const k = String(id);
+    setBatchSelected(prev => prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]);
+  };
+
+  const handleExecuteBatchAllocation = async () => {
+    const items = batchPlan.assignments;
+    if (items.length === 0) {
+      alert('Nenhuma vaga pôde ser preenchida com a seleção atual. Marque mais profissionais ou desative "Respeitar especialidade".');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      for (let i = 0; i < items.length; i += 8) {
+        await Promise.all(
+          items.slice(i, i + 8).map(({ shift, prof }) =>
+            autoHealingSaveShift(shift.id, {
+              professional_id: prof.id,
+              professional_name: prof.name,
+              status: 'confirmado'
+            })
+          )
+        );
+      }
+
+      const leftover = batchPlan.unfilled.length;
+      closeBatchModal();
+      await syncGlobalData();
+      alert(`✅ ${items.length} vaga(s) preenchida(s) e salvas na escala.${leftover > 0 ? `\n⚠️ ${leftover} vaga(s) continuam abertas (sem profissional elegível).` : ''}`);
+    } catch (err) {
+      alert('Erro ao alocar em lote: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleDayClick = (dateStr, e) => {
     if (e.ctrlKey || e.metaKey) {
@@ -1232,7 +1585,7 @@ export default function Escalas() {
               return (
                 <div 
                   key={v.id} 
-                  onClick={() => { setEditingShiftId(v.id); setFormData({ date: v.date, sector_id: v.sector_id, target_specialty: v.target_specialty, start_time: v.start_time, end_time: v.end_time, shift_type: v.shift_type || 'diurno', action_type: 'alocar', professional_id: '', notes: v.notes || '', retroactive_justification: extractRetroactiveJustification(v.notes) }); setModalOpen(true); }}
+                  onClick={() => openShiftForAllocation(v)}
                   className={`p-2 rounded-xl text-xs font-bold border cursor-pointer transition-all flex flex-col gap-1 shadow-sm hover:scale-[1.02] ${
                     isPast ? 'bg-rose-100 border-rose-400 text-rose-800 dark:bg-rose-950/80 dark:border-rose-500 dark:text-rose-300' : 'bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-950/60 dark:border-amber-500/60 dark:text-amber-300'
                   }`}
@@ -1337,7 +1690,7 @@ export default function Escalas() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {isManager && (
             <>
               <Button onClick={() => setDuplicateModalOpen(true)} variant="outline" className="h-9 text-indigo-600 hover:bg-indigo-50 border-indigo-200 font-black text-xs px-4 rounded-2xl shadow-sm gap-1.5 cursor-pointer">
@@ -1379,10 +1732,31 @@ export default function Escalas() {
       {/* BARRA DE COMANDO COM O STATUS DO SETOR */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-3xl shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:hidden">
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center bg-slate-100 dark:bg-slate-950 rounded-2xl p-1 border border-slate-200 dark:border-slate-800">
-            <button onClick={handlePrevMonth} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl cursor-pointer"><ChevronLeft className="w-4 h-4" /></button>
-            <button onClick={handleToday} className="px-3 py-1 text-xs font-black cursor-pointer">Hoje</button>
-            <button onClick={handleNextMonth} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl cursor-pointer"><ChevronRight className="w-4 h-4" /></button>
+          {/* NAVEGADOR DE MÊS + BOTÃO HOJE INTELIGENTE */}
+          <div className="flex flex-col items-center">
+            <div className="flex items-center bg-slate-100 dark:bg-slate-950 rounded-2xl p-1 border border-slate-200 dark:border-slate-800">
+              <button onClick={handlePrevMonth} title="Mês anterior" className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl cursor-pointer"><ChevronLeft className="w-4 h-4" /></button>
+              <button
+                onClick={handleToday}
+                title={isOnToday ? 'Você está vendo a partir de hoje' : 'Voltar para hoje'}
+                className={`px-3 py-1 text-xs font-black rounded-xl flex items-center gap-1.5 cursor-pointer transition-all ${
+                  isOnToday
+                    ? 'bg-sky-600 text-white shadow-sm'
+                    : 'bg-amber-500/20 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/60 hover:bg-amber-500/30'
+                }`}
+              >
+                {isOnToday ? <CalendarIcon className="w-3.5 h-3.5" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                <span>
+                  {isOnToday
+                    ? `Hoje · ${String(liveNow.getDate()).padStart(2, '0')}/${String(liveNow.getMonth() + 1).padStart(2, '0')}`
+                    : 'Voltar para hoje'}
+                </span>
+              </button>
+              <button onClick={handleNextMonth} title="Próximo mês" className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl cursor-pointer"><ChevronRight className="w-4 h-4" /></button>
+            </div>
+            <span className={`text-[9px] font-bold mt-0.5 ${monthOffset === 0 ? 'text-sky-600 dark:text-sky-400' : 'text-amber-600 dark:text-amber-400'}`}>
+              {monthOffsetLabel}
+            </span>
           </div>
 
           <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-950 px-3.5 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-bold">
@@ -1394,8 +1768,15 @@ export default function Escalas() {
               onChange={handleStartDateChange} 
               className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer"
             />
+            {startDateFilter === todayLocalStr ? (
+              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-sky-600 text-white">Hoje</span>
+            ) : (
+              <button onClick={handleToday} title="Voltar o filtro para hoje" className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:bg-amber-500/30 cursor-pointer flex items-center gap-1">
+                <RotateCcw className="w-3 h-3" /> Hoje
+              </button>
+            )}
             {startDateFilter && (
-              <button onClick={() => setStartDateFilter('')} className="p-0.5 hover:text-rose-500 cursor-pointer">
+              <button onClick={() => setStartDateFilter('')} title="Mostrar o mês inteiro" className="p-0.5 hover:text-rose-500 cursor-pointer">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
@@ -1410,9 +1791,16 @@ export default function Escalas() {
                 </span>
               )}
             </h2>
-            <span className={`text-xs font-bold ${isCurrentSectorPublished ? 'text-emerald-600' : 'text-amber-500'}`}>
-              {isCurrentSectorPublished ? '✓ Escala Publicada (Oficializada)' : '⚠️ Modo Rascunho (Não Publicada)'}
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-xs font-bold ${isCurrentSectorPublished ? 'text-emerald-600' : 'text-amber-500'}`}>
+                {isCurrentSectorPublished ? '✓ Escala Publicada (Oficializada)' : '⚠️ Modo Rascunho (Não Publicada)'}
+              </span>
+              {monthlyVacantShifts.length > 0 && (
+                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500 text-white flex items-center gap-1">
+                  <Flame className="w-3 h-3" /> {monthlyVacantShifts.length} {monthlyVacantShifts.length === 1 ? 'vaga' : 'vagas'} para alocar
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1438,6 +1826,17 @@ export default function Escalas() {
                 </Button>
               )}
             </div>
+          )}
+
+          {/* ALOCAR PROFISSIONAIS EM LOTE NAS VAGAS ABERTAS */}
+          {isManager && monthlyVacantShifts.length > 0 && (
+            <Button
+              onClick={() => openBatchModal(monthlyVacantShifts.map(s => s.id))}
+              title="Preencher automaticamente as vagas abertas deste período"
+              className="h-9 px-4 text-xs font-black rounded-2xl gap-1.5 shadow-md bg-amber-500 hover:bg-amber-400 text-white cursor-pointer"
+            >
+              <Users className="w-4 h-4" /> Alocar em Lote ({monthlyVacantShifts.length})
+            </Button>
           )}
 
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -1530,6 +1929,28 @@ export default function Escalas() {
                 const tarde = dayShifts.filter(s => { const h = parseInt((s.start_time || '07:00').split(':')[0]); return h >= 13 && h < 18; });
                 const noite = dayShifts.filter(s => { const h = parseInt((s.start_time || '07:00').split(':')[0]); return h >= 18 || h < 6; });
 
+                // ---> RESUMO DE VAGAS DO DIA: onde preciso alocar e em qual horário <---
+                const slotGroupsMap = {};
+                dayShifts.forEach(s => {
+                  const key = `${s.sector_id}|${s.start_time}|${s.end_time}`;
+                  if (!slotGroupsMap[key]) {
+                    slotGroupsMap[key] = { key, start: s.start_time, end: s.end_time, sectorId: s.sector_id, total: 0, filled: 0, vacant: [], specs: [] };
+                  }
+                  const g = slotGroupsMap[key];
+                  g.total++;
+                  if (isVacant(s)) {
+                    g.vacant.push(s);
+                    const sp = extractSpecialty(s, null);
+                    if (!g.specs.includes(sp)) g.specs.push(sp);
+                  } else {
+                    g.filled++;
+                  }
+                });
+                const missingGroups = Object.values(slotGroupsMap)
+                  .filter(g => g.vacant.length > 0)
+                  .sort((a, b) => String(a.start).localeCompare(String(b.start)));
+                const totalVacantDay = missingGroups.reduce((acc, g) => acc + g.vacant.length, 0);
+
                 const renderCard = (shift) => {
                   const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
                   const status = getStatusBadge(shift);
@@ -1563,16 +1984,57 @@ export default function Escalas() {
                         <span className="text-[9px] uppercase font-bold opacity-70">{WEEKDAYS[dateObj.getDay()].short}</span>
                       </div>
 
-                      {isDatePublished ? (
-                        <span title="Escala oficializada e publicada para esta data" className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-600 text-white flex items-center gap-0.5">
-                          <Check className="w-2.5 h-2.5" /> Publicado
-                        </span>
-                      ) : (
-                        <span title="Escala em modo rascunho" className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">
-                          Rascunho
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {totalVacantDay > 0 && (
+                          <span title={`${totalVacantDay} vaga(s) para alocar neste dia`} className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-500 text-white flex items-center gap-0.5">
+                            <Flame className="w-2.5 h-2.5" /> {totalVacantDay}
+                          </span>
+                        )}
+                        {isDatePublished ? (
+                          <span title="Escala oficializada e publicada para esta data" className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-600 text-white flex items-center gap-0.5">
+                            <Check className="w-2.5 h-2.5" /> Publicado
+                          </span>
+                        ) : (
+                          <span title="Escala em modo rascunho" className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300">
+                            Rascunho
+                          </span>
+                        )}
+                      </div>
                     </div>
+
+                    {/* PAINEL DE VAGAS A ALOCAR NO DIA (horário + quantidade) */}
+                    {missingGroups.length > 0 && (
+                      <div className="mb-1.5 space-y-1">
+                        <span className="text-[8px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 block">Vagas para alocar</span>
+                        {missingGroups.map(g => {
+                          const pastGroup = isShiftPast(g.vacant[0], liveNow);
+                          return (
+                            <button
+                              key={g.key}
+                              type="button"
+                              title={`${g.vacant.length} vaga(s) abertas das ${g.start} às ${g.end} • ${g.specs.join(', ')}${g.filled > 0 ? ` • ${g.filled}/${g.total} já alocados` : ''}`}
+                              onClick={(e) => { e.stopPropagation(); if (isManager) openShiftForAllocation(g.vacant[0]); }}
+                              className={`w-full text-left px-1.5 py-1 rounded-lg border text-[9px] font-black cursor-pointer hover:brightness-95 transition-all ${
+                                pastGroup
+                                  ? 'border-rose-400/70 bg-rose-100 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300'
+                                  : 'border-amber-400/70 bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-mono">{g.start}–{g.end}</span>
+                                <span className="uppercase">
+                                  {g.vacant.length} {g.vacant.length === 1 ? 'vaga' : 'vagas'}
+                                  {g.filled > 0 ? ` · ${g.filled}/${g.total}` : ''}
+                                </span>
+                              </div>
+                              <div className="font-semibold opacity-80 truncate">
+                                {g.specs.join(', ')}{!selectedSectorObj ? ` · ${sectorMap[String(g.sectorId)]?.name || ''}` : ''}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
                     <div className="space-y-2 flex-1 overflow-y-auto max-h-[240px] pr-0.5 text-[11px]">
                       {manha.length > 0 && (
@@ -1918,14 +2380,14 @@ export default function Escalas() {
             <div className="p-4 bg-sky-950/30 border border-sky-900/50 rounded-2xl flex items-start gap-3">
               <CheckCircle2 className="w-5 h-5 text-sky-500 shrink-0 mt-0.5" />
               <p className="text-xs text-sky-200 leading-relaxed">
-                As vagas serão injetadas a cada <b>{parseInt(generatorConfig.interval_days) || 1} dia(s)</b>, totalizando <b>{(generatorConfig.slots.reduce((acc, slot) => acc + (parseInt(slot.quantity) || 0), 0)) * Math.floor((parseInt(generatorConfig.duration_days) || 0) / (parseInt(generatorConfig.interval_days) || 1))}</b> plantões no período selecionado.
+                As vagas serão injetadas a cada <b>{parseInt(generatorConfig.interval_days) || 1} dia(s)</b>, totalizando <b>{(generatorConfig.slots.reduce((acc, slot) => acc + (parseInt(slot.quantity) || 0), 0)) * Math.ceil((parseInt(generatorConfig.duration_days) || 0) / (parseInt(generatorConfig.interval_days) || 1))}</b> plantões no período selecionado.
               </p>
             </div>
 
             <DialogFooter className="pt-2">
               <Button type="button" variant="outline" onClick={() => setGeneratorModalOpen(false)} className="h-11 border-slate-700 text-slate-300 rounded-xl cursor-pointer">Cancelar</Button>
               <Button type="submit" disabled={submitting} className="h-11 bg-indigo-600 hover:bg-indigo-500 text-white font-black px-8 rounded-xl shadow-lg shadow-indigo-500/20 cursor-pointer">
-                Gerar Escala em Massa
+                {submitting ? 'Gerando...' : 'Gerar Escala em Massa'}
               </Button>
             </DialogFooter>
           </form>
@@ -1977,6 +2439,14 @@ export default function Escalas() {
               <Button type="button" onClick={() => handleApplyQuickRange('month')} variant="outline" className="flex-1 h-8 text-[10px] font-bold border-slate-700 text-slate-300 cursor-pointer">Mês Inteiro</Button>
             </div>
 
+            {/* Resumo de quem será notificado */}
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-2">
+              <BellRing className="w-4 h-4 text-emerald-400 shrink-0" />
+              <p className="text-[11px] text-emerald-200 leading-tight">
+                <b>{publishImpactedProfessionalsCount}</b> profissional(is) alocado(s) neste período receberão a notificação no sino do Mural.
+              </p>
+            </div>
+
             {existingPublishedOverlaps.length > 0 && (
               <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
                 <p className="text-[10px] font-bold text-amber-500 flex items-center gap-1.5 mb-1"><History className="w-3.5 h-3.5" /> Sobrescrita Detectada</p>
@@ -1988,7 +2458,7 @@ export default function Escalas() {
           <DialogFooter className="pt-4 border-t border-slate-800">
             <Button type="button" variant="outline" onClick={() => setPublishModalOpen(false)} className="h-11 border-slate-700 text-slate-300 rounded-xl cursor-pointer">Cancelar</Button>
             <Button type="button" onClick={handleExecutePublishSector} disabled={submitting || !publishConfig.sector_id} className="h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-black px-6 rounded-xl shadow-lg shadow-emerald-500/20 cursor-pointer">
-              Oficializar Escala
+              {submitting ? 'Publicando...' : 'Oficializar Escala'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2041,6 +2511,212 @@ export default function Escalas() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* 9. POP-UP PÓS-GERAÇÃO: DESEJA ALOCAR OS PROFISSIONAIS AGORA?              */}
+      {/* ========================================================================= */}
+      <Dialog open={postGenModal.open} onOpenChange={(o) => { if (!o) setPostGenModal(prev => ({ ...prev, open: false })); }}>
+        <DialogContent className="w-[95vw] sm:max-w-md bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] rounded-3xl p-6">
+          <DialogHeader className="border-b border-slate-800 pb-4">
+            <DialogTitle className="text-lg font-black flex items-center gap-2 text-emerald-400">
+              <CheckCircle2 className="w-5 h-5" /> Escala gerada com sucesso
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-1">
+              <div className="text-2xl font-black text-white">{postGenModal.count} <span className="text-sm font-bold text-slate-400">vagas criadas</span></div>
+              <div className="text-xs text-slate-400">
+                Setor <b className="text-sky-400">{postGenModal.sectorName}</b> • {formatDateBR(postGenModal.startDate)} a {formatDateBR(postGenModal.endDate)}
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Deseja colocar os profissionais nesta escala agora? O sistema distribui de forma equilibrada, respeita a especialidade e evita choque de horários. Depois é só conferir e ajustar na grade.
+            </p>
+          </div>
+
+          <DialogFooter className="pt-4 border-t border-slate-800 flex flex-col-reverse sm:flex-row gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPostGenModal(prev => ({ ...prev, open: false }))}
+              className="h-11 border-slate-700 text-slate-300 rounded-xl cursor-pointer"
+            >
+              Alocar depois
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                const ids = postGenModal.ids;
+                setPostGenModal(prev => ({ ...prev, open: false }));
+                openBatchModal(ids);
+              }}
+              className="h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-black px-6 rounded-xl shadow-lg shadow-emerald-500/20 cursor-pointer gap-2"
+            >
+              <Users className="w-4 h-4" /> Sim, alocar profissionais
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* 10. MODAL DE ALOCAÇÃO EM LOTE (PREENCHE A ESCALA INTEIRA)                 */}
+      {/* ========================================================================= */}
+      <Dialog open={batchModal.open} onOpenChange={(o) => { if (!o) closeBatchModal(); }}>
+        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] rounded-3xl p-6">
+          <DialogHeader className="border-b border-slate-800 pb-4">
+            <DialogTitle className="text-lg font-black flex items-center gap-2 text-amber-400">
+              <Wand2 className="w-5 h-5" /> Alocar Profissionais na Escala
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Resumo das vagas */}
+            <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="text-sm font-black text-white">
+                  {batchTargets.length} {batchTargets.length === 1 ? 'vaga aberta' : 'vagas abertas'} para preencher
+                </div>
+                <div className="text-[10px] font-bold text-slate-400">Vagas já encerradas não entram no lote.</div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.values(batchNeededSpecs).map(sp => (
+                  <span key={sp.label} className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                    {sp.label}: {sp.count}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Regras */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="flex items-start gap-2.5 p-3 bg-slate-900 border border-slate-800 rounded-2xl cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={batchStrict}
+                  onChange={e => setBatchStrict(e.target.checked)}
+                  className="mt-0.5 accent-sky-500 cursor-pointer"
+                />
+                <span>
+                  <span className="block text-xs font-black text-white">Respeitar especialidade da vaga</span>
+                  <span className="block text-[10px] text-slate-400 leading-tight">Só aloca quem tem a mesma especialidade exigida no plantão.</span>
+                </span>
+              </label>
+
+              <div className="p-3 bg-slate-900 border border-slate-800 rounded-2xl space-y-1">
+                <Label className="text-xs font-black text-white">Máx. de plantões por profissional</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="Sem limite"
+                  value={batchMax}
+                  onChange={e => setBatchMax(e.target.value)}
+                  className="h-8 text-xs bg-slate-950 border-slate-700 text-white rounded-lg"
+                />
+              </div>
+            </div>
+
+            {/* Lista de profissionais */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <Label className="text-xs font-black uppercase text-slate-400">
+                  Profissionais que entram no rodízio ({batchSelected.length})
+                </Label>
+                <div className="flex items-center gap-1.5">
+                  <Button type="button" variant="outline" onClick={() => setBatchSelected(batchProfessionalList.filter(p => p._compatible).map(p => String(p.id)))} className="h-7 text-[10px] font-bold border-slate-700 text-slate-300 rounded-lg px-2 cursor-pointer">Compatíveis</Button>
+                  <Button type="button" variant="outline" onClick={() => setBatchSelected(allActiveProfessionals.map(p => String(p.id)))} className="h-7 text-[10px] font-bold border-slate-700 text-slate-300 rounded-lg px-2 cursor-pointer">Todos</Button>
+                  <Button type="button" variant="outline" onClick={() => setBatchSelected([])} className="h-7 text-[10px] font-bold border-slate-700 text-slate-300 rounded-lg px-2 cursor-pointer">Limpar</Button>
+                </div>
+              </div>
+
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <Input
+                  placeholder="Buscar profissional ou especialidade..."
+                  value={batchSearch}
+                  onChange={e => setBatchSearch(e.target.value)}
+                  className="pl-8 h-9 text-xs bg-slate-900 border-slate-700 text-white rounded-xl"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                {batchProfessionalList.length === 0 ? (
+                  <div className="col-span-full py-6 text-center text-xs text-slate-500">Nenhum profissional ativo encontrado.</div>
+                ) : (
+                  batchProfessionalList.map(p => {
+                    const checked = batchSelected.includes(String(p.id));
+                    return (
+                      <label
+                        key={p.id}
+                        className={`flex items-center gap-2.5 p-2 rounded-xl border cursor-pointer transition-all ${checked ? 'bg-sky-500/10 border-sky-500/50' : 'bg-slate-900 border-slate-800 hover:border-slate-600'}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleBatchProf(p.id)}
+                          className="accent-sky-500 cursor-pointer"
+                        />
+                        <div className="w-7 h-7 rounded-full bg-slate-800 flex items-center justify-center font-mono font-black text-[10px] text-sky-400 shrink-0">{getInitials(p.name)}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-black text-white truncate">{formatFullName(p.name)}</div>
+                          <div className="text-[10px] text-slate-400 truncate">{p.specialty || 'Clínica Geral'}</div>
+                        </div>
+                        {p._compatible && (
+                          <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 shrink-0">Compatível</span>
+                        )}
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Prévia do resultado */}
+            <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-2.5">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className={`w-4 h-4 shrink-0 ${batchPlan.assignments.length > 0 ? 'text-emerald-400' : 'text-slate-500'}`} />
+                <span className="text-xs font-black text-white">
+                  {batchPlan.assignments.length} de {batchTargets.length} vagas serão preenchidas
+                </span>
+              </div>
+
+              {batchPlanPerProf.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {batchPlanPerProf.map(p => (
+                    <span key={p.name} className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200">
+                      {formatFullName(p.name)} × {p.count}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {batchPlan.unfilled.length > 0 && (
+                <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-1">
+                  <p className="text-[11px] font-black text-amber-400 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" /> {batchPlan.unfilled.length} vaga(s) ficarão abertas (sem profissional elegível)
+                  </p>
+                  <p className="text-[10px] text-amber-200/80 leading-tight">
+                    {batchUnfilledBySpec.map(([label, qty]) => `${label}: ${qty}`).join(' • ')}. Marque mais profissionais, aumente o limite ou desative "Respeitar especialidade".
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="pt-4 border-t border-slate-800 flex flex-col-reverse sm:flex-row gap-2">
+            <Button type="button" variant="outline" onClick={closeBatchModal} className="h-11 border-slate-700 text-slate-300 rounded-xl cursor-pointer">Cancelar</Button>
+            <Button
+              type="button"
+              onClick={handleExecuteBatchAllocation}
+              disabled={submitting || batchPlan.assignments.length === 0}
+              className="h-11 bg-amber-500 hover:bg-amber-400 text-white font-black px-6 rounded-xl shadow-lg shadow-amber-500/20 cursor-pointer gap-2"
+            >
+              <Wand2 className="w-4 h-4" /> {submitting ? 'Salvando...' : `Alocar e salvar (${batchPlan.assignments.length})`}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       
