@@ -1933,9 +1933,26 @@ export default function Escalas() {
                   const status = getStatusBadge(shift);
                   const realSpec = extractSpecialty(shift, prof);
                   const validName = prof?.name || shift.professional_name;
+				const isOpen = isVacant(shift);
 
-                  return (
-                    <div key={shift.id} onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date, sector_id: shift.sector_id, target_specialty: realSpec, start_time: shift.start_time, end_time: shift.end_time, shift_type: shift.shift_type || 'diurno', action_type: (shift.status === 'vago' || !validName) ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '', retroactive_justification: extractRetroactiveJustification(shift.notes) }); setModalOpen(true); } }} className={`p-1.5 rounded-xl border border-l-4 shadow-sm cursor-pointer transition-all hover:brightness-95 ${status.wrapper}`}>
+				return (
+					<div
+						key={shift.id}
+						onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+						onDrop={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							if (!isOpen) {
+								alert('Este horário já está preenchido. Solte o profissional em uma vaga aberta.');
+								setDraggingProfId(null);
+								return;
+							}
+							handleDropOnSlot(e, dateStr, shift.start_time, shift.end_time, realSpec, shift.sector_id);
+						}}
+						onClick={(e) => { e.stopPropagation(); if (isManager) { setEditingShiftId(shift.id); setFormData({ date: shift.date, sector_id: shift.sector_id, target_specialty: realSpec, start_time: shift.start_time, end_time: shift.end_time, shift_type: shift.shift_type || 'diurno', action_type: (shift.status === 'vago' || !validName) ? 'mural' : 'alocar', professional_id: shift.professional_id || '', notes: shift.notes || '', retroactive_justification: extractRetroactiveJustification(shift.notes) }); setModalOpen(true); } }}
+						className={`p-1.5 rounded-xl border border-l-4 shadow-sm cursor-pointer transition-all hover:brightness-95 ${status.wrapper} ${draggingProfId && isOpen ? 'ring-2 ring-sky-500 ring-offset-1' : ''}`}
+						title={isOpen ? 'Arraste um profissional para alocar neste horário' : 'Horário já preenchido'}
+					>
                       <div className="flex justify-between font-mono text-[9px] mb-0.5 opacity-80">
                         <span>{shift.start_time}-{shift.end_time}</span>
                         <span className={`font-black uppercase tracking-tight flex items-center gap-1 ${status.text}`}>{status.icon} {status.label}</span>
