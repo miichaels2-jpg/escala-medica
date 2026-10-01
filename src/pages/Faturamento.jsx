@@ -1,21 +1,35 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
-  DollarSign, Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer, PlusCircle, CheckCircle2, Download
+  DollarSign, Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer, Download, AlertTriangle
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
   if (val === null || val === undefined || val === '') return fb;
-  const n = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
+  if (typeof val === 'number') return Number.isFinite(val) ? val : fb;
+  let normalized = String(val).replace(/[R$\s]/g, '');
+  if (normalized.includes(',') && normalized.includes('.')) {
+    normalized = normalized.lastIndexOf(',') > normalized.lastIndexOf('.')
+      ? normalized.replace(/\./g, '').replace(',', '.')
+      : normalized.replace(/,/g, '');
+  } else {
+    normalized = normalized.replace(',', '.');
+  }
+  if (!normalized) return fb;
+  const n = Number(normalized);
   return Number.isFinite(n) ? n : fb;
 }
 
 function formatCurrency(val) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(safeNumber(val));
+}
+
+function roundCurrency(val) {
+  return Math.round((safeNumber(val) + Number.EPSILON) * 100) / 100;
 }
 
 const MONTH_NAMES = [
@@ -30,24 +44,74 @@ function getLocalDateString(d = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function normalizeText(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+function getShiftSchedule(shift) {
+  const dateParts = String(shift?.date || '').split('T')[0].split('-').map(Number);
+  if (dateParts.length !== 3 || dateParts.some(part => !Number.isFinite(part))) return null;
+  const [year, month, day] = dateParts;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  const parseTime = (value, fallback) => {
+    const match = String(value || fallback).match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours > 23 || minutes > 59) return null;
+    return { hours, minutes };
+  };
+
+  const startTime = parseTime(shift.start_time, '07:00');
+  const endTime = parseTime(shift.end_time, '19:00');
+  if (!startTime || !endTime) return null;
+
+  const start = new Date(year, month - 1, day, startTime.hours, startTime.minutes);
+  const end = new Date(year, month - 1, day, endTime.hours, endTime.minutes);
+  if (start.getFullYear() !== year || start.getMonth() !== month - 1 || start.getDate() !== day) return null;
+  if (end <= start) end.setDate(end.getDate() + 1);
+
+  return { start, end, duration: (end.getTime() - start.getTime()) / 3_600_000 };
+}
+
+function isBillableShift(shift) {
+  const status = normalizeText(shift?.status);
+  const professionalName = normalizeText(shift?.professional_name || shift?.professional?.name || shift?.professionalName);
+  if (!shift || status === 'cancelado' || status === 'vago' || status === 'vaga' || shift.is_open === true) return false;
+  if (!shift.professional_id) return false;
+  return !['vaga', 'aberto', 'descoberto', 'sem profissional', 'plantao sem profissional']
+    .some(marker => professionalName.includes(marker));
+}
+
 export default function Faturamento() {
   const { shifts = [], professionals = [], sectors = [], company, selectedUnitId, units = [] } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
+  const [now, setNow] = useState(() => new Date());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProfModal, setSelectedProfModal] = useState(null);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const [pagamentosStatus, setPagamentosStatus] = useState(() => {
     try { 
       const stored = window.localStorage.getItem('scale_faturamento_pagos');
-      return stored ? JSON.parse(stored) : {}; 
-    } catch { return {}; }
+      const parsed = stored ? JSON.parse(stored) : {};
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (error) {
+      console.warn('Não foi possível carregar os status de pagamento locais:', error);
+      return {};
+    }
   });
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
-  const todayStr = getLocalDateString(new Date());
+  const todayStr = getLocalDateString(now);
 
   const currentUnitObj = units.find(u => String(u.id) === String(selectedUnitId));
   const currentUnitName = currentUnitObj?.name || company?.name || 'Hospital Principal';
@@ -60,38 +124,48 @@ export default function Faturamento() {
 
   function getProfMeta(prof) {
     if (!prof) return {};
+    const serverMeta = [
+      prof.data,
+      prof.metadata
+    ].filter(source => source && typeof source === 'object' && !Array.isArray(source));
+    let localMeta = {};
     try {
       const stored = window.localStorage.getItem(`prof_meta_${prof.id}`);
-      if (stored) return JSON.parse(stored);
-    } catch {}
-    if (prof.data && typeof prof.data === 'object') return prof.data;
-    return {};
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) localMeta = parsed;
+      }
+    } catch (error) {
+      console.warn(`Não foi possível carregar os dados locais do profissional ${prof.id}:`, error);
+    }
+    return Object.assign({}, localMeta, ...serverMeta);
   }
 
   const handleTogglePago = (profId) => {
     setPagamentosStatus(prev => {
       const key = `${profId}_${monthPrefix}`;
       const nextState = { ...prev, [key]: !prev[key] };
-      try { window.localStorage.setItem('scale_faturamento_pagos', JSON.stringify(nextState)); } catch {}
+      try {
+        window.localStorage.setItem('scale_faturamento_pagos', JSON.stringify(nextState));
+      } catch (error) {
+        console.warn('Não foi possível salvar o status de pagamento neste navegador:', error);
+      }
       return nextState;
     });
   };
 
-  // MOTOR FINANCEIRO RECONSTRUÍDO: Lendo matriz de preços dinâmicos por dia/turno
   const reportData = useMemo(() => {
     const profsSummary = {};
 
     (professionals || []).forEach(p => {
       if (!p) return;
       const meta = getProfMeta(p);
-      const st = String(p.status || meta.status || 'ativo').toLowerCase();
-      if (st === 'inativo' || st === 'recusado') return;
 
-      const remunType = meta.remuneration_type || p.remuneration_type || 'plantao'; // Padroniza para plantão dinâmico
-      const unitRates = meta.unit_rates || {}; // Nova matriz de preços { [unit_id]: {diurno, noturno, fds} }
+      const remunType = meta.remuneration_type || p.remuneration_type || 'plantao';
+      const unitRates = meta.unit_rates || {};
       
       const salaryBase = safeNumber(meta.monthly_salary !== undefined ? meta.monthly_salary : p.monthly_salary, 0);
-      const taxRate = p.coop_tax_rate ?? meta.coop_tax_rate ?? 0;
+      const taxRate = meta.coop_tax_rate ?? p.coop_tax_rate ?? 0;
       const matricula = meta.registration_id || p.registration_id || 'MAT-XXXX';
       const chavePix = (meta.pix_key || p.pix_key || '').trim();
       const pixTipo = meta.pix_type || p.pix_type || 'CPF';
@@ -99,6 +173,7 @@ export default function Faturamento() {
 
       profsSummary[String(p.id)] = {
         prof: p,
+        profStatus: normalizeText(p.status || meta.status || 'ativo'),
         matricula,
         chavePix,
         pixTipo,
@@ -110,54 +185,53 @@ export default function Faturamento() {
         plantõesRealizados: 0,
         horasRealizadas: 0,
         valorApuradoPlantões: 0, // Novo acumulador
+        plantõesSemTarifa: 0,
         plantõesFuturos: 0,
         plantõesList: []
       };
     });
 
     (shifts || []).forEach(shift => {
+      if (!shift) return;
       if (String(shift.unit_id) !== String(selectedUnitId)) return;
-      if (!shift || !shift.date || !shift.date.startsWith(monthPrefix)) return;
-      if (!shift.professional_id || shift.status === 'vago') return;
+      const shiftDate = String(shift.date || '').split('T')[0];
+      if (!shiftDate.startsWith(monthPrefix) || !isBillableShift(shift)) return;
 
       const pId = String(shift.professional_id);
       if (profsSummary[pId]) {
-        const startParts = (shift.start_time || '07:00').split(':');
-        const endParts = (shift.end_time || '19:00').split(':');
-        const startH = parseInt(startParts[0], 10) || 7;
-        const startM = parseInt(startParts[1], 10) || 0;
-        const endH = parseInt(endParts[0], 10) || 19;
-        const endM = parseInt(endParts[1], 10) || 0;
-
-        let duration = endH - startH + (endM - startM) / 60;
-        if (duration <= 0) duration += 24;
-
-        const isRealizado = shift.date <= todayStr;
+        const schedule = getShiftSchedule(shift);
+        if (!schedule) return;
+        const status = normalizeText(shift.status);
+        const isRealizado = ['realizado', 'concluido', 'concluida'].includes(status) || schedule.end <= now;
         const profRef = profsSummary[pId];
 
-        // Lógica de precificação do plantão
         let valorDoPlantaoAtual = 0;
-        if (profRef.remunType === 'plantao' && profRef.unitRates[shift.unit_id]) {
-          const rates = profRef.unitRates[shift.unit_id];
-          const d = new Date(shift.date + 'T12:00:00');
+        let tarifaPendente = false;
+        if (profRef.remunType === 'plantao') {
+          const rates = profRef.unitRates[String(shift.unit_id)] || {};
+          const d = new Date(`${shiftDate}T12:00:00`);
           const isFds = d.getDay() === 0 || d.getDay() === 6;
-          const isNight = shift.shift_type === 'noturno' || shift.start_time >= '18:00' || shift.start_time < '06:00';
-          
-          valorDoPlantaoAtual = isFds ? safeNumber(rates.fds) : (isNight ? safeNumber(rates.noturno) : safeNumber(rates.diurno));
+          const startTime = shift.start_time || '07:00';
+          const isNight = normalizeText(shift.shift_type) === 'noturno' || startTime >= '18:00' || startTime < '06:00';
+          const rate = isFds ? rates.fds : (isNight ? rates.noturno : rates.diurno);
+          tarifaPendente = rate === undefined || rate === null || rate === '';
+          valorDoPlantaoAtual = tarifaPendente ? 0 : safeNumber(rate);
         }
 
         if (isRealizado) {
           profRef.plantõesRealizados += 1;
-          profRef.horasRealizadas += Math.round(duration * 10) / 10;
+          profRef.horasRealizadas += Math.round(schedule.duration * 10) / 10;
           profRef.valorApuradoPlantões += valorDoPlantaoAtual;
+          if (tarifaPendente && profRef.remunType === 'plantao') profRef.plantõesSemTarifa += 1;
         } else {
           profRef.plantõesFuturos += 1;
         }
 
         profRef.plantõesList.push({
           ...shift,
-          duration: Math.round(duration * 10) / 10,
+          duration: Math.round(schedule.duration * 10) / 10,
           valorAplicado: valorDoPlantaoAtual,
+          tarifaPendente,
           isRealizado
         });
       }
@@ -179,8 +253,9 @@ export default function Faturamento() {
         }
       }
 
-      const valorDesconto = (valorBrutoTotal * item.taxRate) / 100;
-      const valorLiquido = valorBrutoTotal - valorDesconto;
+      valorBrutoTotal = roundCurrency(valorBrutoTotal);
+      const valorDesconto = roundCurrency((valorBrutoTotal * item.taxRate) / 100);
+      const valorLiquido = roundCurrency(valorBrutoTotal - valorDesconto);
       const isPago = pagamentosStatus[`${item.prof.id}_${monthPrefix}`] || false;
 
       return {
@@ -190,19 +265,59 @@ export default function Faturamento() {
         valorLiquido,
         isPago
       };
-    }).filter(item => item.plantõesRealizados > 0 || item.plantõesFuturos > 0 || item.remunType === 'mensal'); 
-  }, [professionals, shifts, monthPrefix, todayStr, selectedUnitId, pagamentosStatus]);
+    }).filter(item =>
+      item.plantõesRealizados > 0 ||
+      item.plantõesFuturos > 0 ||
+      (item.remunType === 'mensal' && item.profStatus === 'ativo')
+    );
+  }, [professionals, shifts, monthPrefix, selectedUnitId, pagamentosStatus, todayStr, now]);
 
   const filteredReport = useMemo(() => {
-    const term = searchQuery.toLowerCase().trim();
+    const term = normalizeText(searchQuery);
     return reportData.filter(item => {
       if (!term) return true;
-      const nome = (item.prof.name || '').toLowerCase();
-      const doc = (item.prof.document || '').toLowerCase();
-      const mat = (item.matricula || '').toLowerCase();
+      const nome = normalizeText(item.prof.name);
+      const doc = normalizeText(item.prof.document);
+      const mat = normalizeText(item.matricula);
       return nome.includes(term) || doc.includes(term) || mat.includes(term);
     });
   }, [reportData, searchQuery]);
+
+  const filteredTotals = useMemo(() => filteredReport.reduce((summary, item) => ({
+    bruto: summary.bruto + item.valorBruto,
+    liquido: summary.liquido + item.valorLiquido,
+    plantões: summary.plantões + item.plantõesRealizados,
+    horas: summary.horas + item.horasRealizadas
+  }), { bruto: 0, liquido: 0, plantões: 0, horas: 0 }), [filteredReport]);
+
+  const shiftsWithoutProfessional = useMemo(() => {
+    const professionalIds = new Set((professionals || []).map(prof => String(prof?.id)));
+    return (shifts || []).filter(shift => {
+      const shiftDate = String(shift?.date || '').split('T')[0];
+      return shift &&
+        String(shift.unit_id) === String(selectedUnitId) &&
+        shiftDate.startsWith(monthPrefix) &&
+        isBillableShift(shift) &&
+        !professionalIds.has(String(shift.professional_id));
+    }).length;
+  }, [professionals, shifts, monthPrefix, selectedUnitId]);
+
+  const shiftsWithInvalidSchedule = useMemo(() => (shifts || []).filter(shift => {
+    const shiftDate = String(shift?.date || '').split('T')[0];
+    return shift &&
+      String(shift.unit_id) === String(selectedUnitId) &&
+      shiftDate.startsWith(monthPrefix) &&
+      isBillableShift(shift) &&
+      !getShiftSchedule(shift);
+  }).length, [shifts, monthPrefix, selectedUnitId]);
+
+  const shiftsWithoutRate = reportData.reduce((total, item) => total + item.plantõesSemTarifa, 0);
+  const paymentSummary = useMemo(() => reportData.reduce((summary, item) => {
+    const bucket = item.isPago ? 'paid' : 'pending';
+    summary[bucket].count += 1;
+    summary[bucket].net += item.valorLiquido;
+    return summary;
+  }, { paid: { count: 0, net: 0 }, pending: { count: 0, net: 0 } }), [reportData]);
 
   const totals = useMemo(() => {
     let bruto = 0, liquido = 0, plantões = 0, horas = 0;
@@ -277,6 +392,7 @@ export default function Faturamento() {
             <td colspan="5" style="font-weight: bold; padding: 10px 0;">Competência Mês: ${competencia}</td>
             <td colspan="6" style="text-align: right; padding: 10px 0;">Emissão do Relatório: ${emissao}</td>
           </tr>
+          <tr><td colspan="11" style="padding-bottom: 8px;">Busca: ${searchQuery.trim() || 'Todos os profissionais'}</td></tr>
           <tr><td colspan="11"></td></tr>
           <tr>
             <th>Profissional</th>
@@ -294,12 +410,12 @@ export default function Faturamento() {
           ${rowsHtml}
           <tr><td colspan="11"></td></tr>
           <tr>
-            <td colspan="4" style="font-weight: bold; text-align: right; padding: 8px;">TOTAIS GERAIS DA UNIDADE:</td>
-            <td class="num" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${totals.plantões}</td>
-            <td class="time" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${formatHourForExcel(totals.horas)}</td>
-            <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${totals.bruto.toFixed(2).replace('.', ',')}</td>
-            <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc; color: #ef4444;">${(totals.bruto - totals.liquido).toFixed(2).replace('.', ',')}</td>
-            <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc; color: #059669; font-size: 14px;">${totals.liquido.toFixed(2).replace('.', ',')}</td>
+            <td colspan="4" style="font-weight: bold; text-align: right; padding: 8px;">TOTAIS DOS PROFISSIONAIS LISTADOS:</td>
+            <td class="num" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${filteredTotals.plantões}</td>
+            <td class="time" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${formatHourForExcel(filteredTotals.horas)}</td>
+            <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${filteredTotals.bruto.toFixed(2).replace('.', ',')}</td>
+            <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc; color: #ef4444;">${(filteredTotals.bruto - filteredTotals.liquido).toFixed(2).replace('.', ',')}</td>
+            <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc; color: #059669; font-size: 14px;">${filteredTotals.liquido.toFixed(2).replace('.', ',')}</td>
             <td colspan="2"></td>
           </tr>
         </table>
@@ -405,9 +521,9 @@ export default function Faturamento() {
         </table>
 
         <div class="totals">
-          <span>Plantões Cumpridos: ${totals.plantões}</span>
-          <span>Total Bruto: ${formatCurrency(totals.bruto)}</span>
-          <span style="color: #000;">TOTAL LÍQUIDO A REPASSAR: ${formatCurrency(totals.liquido)}</span>
+          <span>Plantões Cumpridos: ${filteredTotals.plantões}</span>
+          <span>Total Bruto: ${formatCurrency(filteredTotals.bruto)}</span>
+          <span style="color: #000;">TOTAL LÍQUIDO DOS PROFISSIONAIS LISTADOS: ${formatCurrency(filteredTotals.liquido)}</span>
         </div>
 
         <script>window.onload = function() { window.print(); };</script>
@@ -453,7 +569,7 @@ export default function Faturamento() {
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
               <h1>${hospitalName}</h1>
-              <p>RECIBO DE HONORÁRIOS & REPASSE MÉDICO</p>
+              <p>{item.isPago ? 'RECIBO DE HONORÁRIOS & REPASSE MÉDICO' : 'DEMONSTRATIVO DE HONORÁRIOS A PAGAR'}</p>
               <p style="font-size: 9.5px; margin-top: 2px;">Competência: <b>${competencia}</b></p>
             </div>
             <div style="text-align: right;">
@@ -483,7 +599,10 @@ export default function Faturamento() {
         </div>
 
         <p class="termo">
-          Declaro ter recebido da instituição ${hospitalName} a quantia líquida discriminada acima, correspondente à quitação integral dos serviços profissionais prestados no período de ${competencia}, dando plena e geral quitação.
+          ${item.isPago
+            ? `Declaro ter recebido da instituição ${hospitalName} a quantia líquida discriminada acima, correspondente à quitação integral dos serviços profissionais prestados no período de ${competencia}, dando plena e geral quitação.`
+            : `Demonstrativo dos valores apurados pelos serviços profissionais prestados no período de ${competencia}. Este documento não comprova pagamento ou quitação.`
+          }
         </p>
 
         <div class="signatures">
@@ -504,7 +623,7 @@ export default function Faturamento() {
       <html lang="pt-BR">
       <head>
         <meta charset="utf-8">
-        <title>Recibo Oficial 2 Vias - ${item.prof.name}</title>
+        <title>${item.isPago ? 'Recibo Oficial' : 'Demonstrativo de Honorários'} - ${item.prof.name}</title>
         <style>
           @page { size: A4 portrait; margin: 8mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -620,9 +739,9 @@ export default function Faturamento() {
       {/* CARDS EXECUTIVOS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[10px] font-black uppercase text-slate-400">Total Bruto Realizado</span>
+          <span className="text-[10px] font-black uppercase text-slate-400">Total Bruto Apurado</span>
           <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">{formatCurrency(totals.bruto)}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">{totals.plantões} plantões apurados</span>
+          <span className="text-[10px] text-slate-500 font-semibold">{totals.plantões} plantões concluídos · inclui fixo mensal</span>
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -632,15 +751,58 @@ export default function Faturamento() {
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400">Tempo de Atendimento</span>
+          <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400">Horas de plantões concluídos</span>
           <div className="text-2xl font-black text-sky-600 dark:text-sky-400 mt-1">{totals.horas.toFixed(1).replace('.', ',')}h</div>
           <span className="text-[10px] text-slate-500 font-semibold">Horas assistenciais efetivadas</span>
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400">Equipe Ativa no Mês</span>
+          <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400">Profissionais na competência</span>
           <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">{reportData.length}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">Profissionais com produção vinculada</span>
+          <span className="text-[10px] text-slate-500 font-semibold">Com plantões ou regime mensal</span>
+        </Card>
+      </div>
+
+      {(shiftsWithoutRate > 0 || shiftsWithoutProfessional > 0 || shiftsWithInvalidSchedule > 0) && (
+        <Card className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-950/20">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="space-y-1">
+              <h3 className="text-sm font-black text-amber-900 dark:text-amber-300">Verifique os dados antes de fechar o repasse</h3>
+              {shiftsWithoutRate > 0 && (
+                <p className="text-xs text-amber-800 dark:text-amber-200">
+                  {shiftsWithoutRate} plantão(ões) realizado(s) sem tarifa cadastrada na unidade. Esses valores aparecem como R$ 0,00 e deixam o total bruto incompleto.
+                </p>
+              )}
+              {shiftsWithoutProfessional > 0 && (
+                <p className="text-xs text-amber-800 dark:text-amber-200">
+                  {shiftsWithoutProfessional} plantão(ões) da competência apontam para um profissional que não foi localizado no Corpo Clínico e não entraram na conciliação.
+                </p>
+              )}
+              {shiftsWithInvalidSchedule > 0 && (
+                <p className="text-xs text-amber-800 dark:text-amber-200">
+                  {shiftsWithInvalidSchedule} plantão(ões) têm data ou horário inválido e foram excluídos da apuração de horas.
+                </p>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Card className="flex items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-500/20 dark:bg-emerald-950/20">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Marcado como pago</p>
+            <p className="mt-1 text-xs text-emerald-800/80 dark:text-emerald-300/80">{paymentSummary.paid.count} profissional(is)</p>
+          </div>
+          <strong className="text-lg font-black text-emerald-700 dark:text-emerald-300">{formatCurrency(paymentSummary.paid.net)}</strong>
+        </Card>
+        <Card className="flex items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/20 dark:bg-amber-950/20">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wide text-amber-700 dark:text-amber-400">Pendente de pagamento</p>
+            <p className="mt-1 text-xs text-amber-800/80 dark:text-amber-300/80">{paymentSummary.pending.count} profissional(is)</p>
+          </div>
+          <strong className="text-lg font-black text-amber-700 dark:text-amber-300">{formatCurrency(paymentSummary.pending.net)}</strong>
         </Card>
       </div>
 
@@ -649,7 +811,7 @@ export default function Faturamento() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
             <h3 className="text-base font-black text-slate-900 dark:text-white">Espelho de Conciliação Financeira</h3>
-            <p className="text-xs text-slate-500">Apuração restrita e isolada para o <b>{currentUnitName}</b>.</p>
+            <p className="text-xs text-slate-500">Apuração restrita para <b>{currentUnitName}</b>. O status de pagamento é salvo neste navegador.</p>
           </div>
 
           <div className="relative w-full sm:w-72">
@@ -703,7 +865,10 @@ export default function Faturamento() {
                     <tr key={item.prof.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
                       <td className="py-3 px-4">
                         <div className="font-black text-slate-900 dark:text-white">{item.prof.name}</div>
-                        <div className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-bold">{item.matricula} • {item.prof.document || 'CRM'}</div>
+                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono font-bold">
+                          <span className="text-indigo-600 dark:text-indigo-400">{item.matricula} • {item.prof.document || 'CRM'}</span>
+                          {item.profStatus && item.profStatus !== 'ativo' && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-sans text-[9px] uppercase text-slate-500 dark:bg-slate-800">{item.profStatus} · com registro</span>}
+                        </div>
                       </td>
 
                       <td className="py-3 px-4">
@@ -745,10 +910,10 @@ export default function Faturamento() {
                             size="sm" 
                             variant="outline" 
                             onClick={() => handlePrintIndividualReceipt(item)}
-                            title="Imprimir Recibo em 2 Vias"
+                            title={item.isPago ? 'Imprimir recibo em 2 vias' : 'Imprimir demonstrativo; não comprova pagamento'}
                             className="h-8 text-xs font-bold gap-1 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-white cursor-pointer"
                           >
-                            <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Recibo
+                            <Receipt className="w-3.5 h-3.5 text-emerald-600" /> {item.isPago ? 'Recibo' : 'Demonstrativo'}
                           </Button>
 
                           <Button 
@@ -837,7 +1002,9 @@ export default function Faturamento() {
                         
                         <div className="flex items-center gap-3 justify-between sm:justify-end">
                           {selectedProfModal.remunType === 'plantao' && p.isRealizado && (
-                            <span className="text-[10px] font-bold text-slate-500">Apurado: {formatCurrency(p.valorAplicado)}</span>
+                            <span className={`text-[10px] font-bold ${p.tarifaPendente ? 'text-amber-600' : 'text-slate-500'}`}>
+                              {p.tarifaPendente ? 'Tarifa não cadastrada' : `Apurado: ${formatCurrency(p.valorAplicado)}`}
+                            </span>
                           )}
                           <span className="font-mono font-bold text-sky-600 bg-sky-50 dark:bg-sky-950/30 px-2 py-1 rounded-lg">
                             {p.duration}h
@@ -855,7 +1022,7 @@ export default function Faturamento() {
                   onClick={() => handlePrintIndividualReceipt(selectedProfModal)}
                   className="h-9 text-xs font-black gap-1.5 cursor-pointer"
                 >
-                  <Receipt className="w-3.5 h-3.5 text-emerald-600" /> Imprimir Recibo
+                  <Receipt className="w-3.5 h-3.5 text-emerald-600" /> {selectedProfModal.isPago ? 'Imprimir recibo' : 'Imprimir demonstrativo'}
                 </Button>
                 
                 <Button onClick={() => handleSendStatementWhatsApp(selectedProfModal)} className="h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-5 gap-2 cursor-pointer">
