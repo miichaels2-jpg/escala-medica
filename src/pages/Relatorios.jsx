@@ -14,7 +14,15 @@ import {
 
 function safeNumber(value, fallback = 0) {
   if (value === null || value === undefined || value === '') return fallback;
-  const number = typeof value === 'number' ? value : parseFloat(String(value).replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.'));
+  const normalized = typeof value === 'number'
+    ? value
+    : (() => {
+        const text = String(value).replace(/[R$\s]/g, '').trim();
+        if (text.includes(',')) return Number(text.replace(/\./g, '').replace(',', '.'));
+        if (/^-?\d{1,3}(?:\.\d{3})+$/.test(text)) return Number(text.replace(/\./g, ''));
+        return Number(text);
+      })();
+  const number = normalized;
   return Number.isFinite(number) ? number : fallback;
 }
 
@@ -132,6 +140,70 @@ function getProfessionalCost(professional, hours, shift) {
     return String(primaryUnitId) === String(unitId) ? legacySalary / 20 : 0;
   }
   return legacySalary / 20;
+}
+
+function getProfessionalRemuneration(professional, unitId) {
+  if (!professional) return 'Não cadastrado';
+  const meta = getProfessionalMeta(professional);
+  const type = normalize(meta.remuneration_type || meta.remunerationType || meta.payment_type || 'mensal');
+  const unitKey = String(unitId ?? '');
+  const monthlySalaries = meta.unit_monthly_salaries || {};
+  const unitMonthlySalary = monthlySalaries[unitKey];
+  const hasUnitMonthlySalary = Object.prototype.hasOwnProperty.call(monthlySalaries, unitKey) &&
+    unitMonthlySalary !== '' && unitMonthlySalary !== null && unitMonthlySalary !== undefined;
+  const primaryUnitId = professional.unit_id || meta.allowed_unit_ids?.[0] || professional.unit_ids?.[0];
+  const legacyMonthlySalary = meta.monthly_salary ?? meta.monthlySalary ?? meta.salary ?? meta.salario;
+  const allowedUnitIds = Array.isArray(meta.allowed_unit_ids)
+    ? meta.allowed_unit_ids
+    : Array.isArray(professional.unit_ids) ? professional.unit_ids : (professional.unit_id ? [professional.unit_id] : []);
+
+  if (allowedUnitIds.length > 0 && !allowedUnitIds.some(allowedUnitId => String(allowedUnitId) === unitKey)) {
+    return 'Não vinculada à unidade';
+  }
+
+  if (['mensal', 'monthly', 'salario mensal'].includes(type)) {
+    if (hasUnitMonthlySalary) return `${formatCurrency(unitMonthlySalary)} / mês`;
+    const hasLegacySalary = legacyMonthlySalary !== '' && legacyMonthlySalary !== null && legacyMonthlySalary !== undefined;
+    const canUseLegacySalary = !Object.keys(monthlySalaries).length || String(primaryUnitId) === unitKey;
+    return hasLegacySalary && canUseLegacySalary
+      ? `${formatCurrency(legacyMonthlySalary)} / mês`
+      : 'Sem valor mensal nesta unidade';
+  }
+
+  if (['hora', 'hourly'].includes(type)) {
+    const hourlyRate = meta.hourly_rate ?? meta.hourlyRate ?? meta.valor_hora;
+    return hourlyRate !== '' && hourlyRate !== null && hourlyRate !== undefined
+      ? `${formatCurrency(hourlyRate)} / hora`
+      : 'Sem valor por hora';
+  }
+
+  const unitRates = meta.unit_rates?.[unitKey] || {};
+  if (['plantao', 'shift'].includes(type) && ['diurno', 'noturno', 'fds'].some(rateType =>
+    unitRates[rateType] !== '' && unitRates[rateType] !== null && unitRates[rateType] !== undefined
+  )) {
+    return ['diurno', 'noturno', 'fds']
+      .filter(rateType => unitRates[rateType] !== '' && unitRates[rateType] !== null && unitRates[rateType] !== undefined)
+      .map(rateType => `${{ diurno: 'Dia', noturno: 'Noite', fds: 'FDS' }[rateType]} ${formatCurrency(unitRates[rateType])}`)
+      .join(' · ');
+  }
+
+  const dailyRate = meta.daily_rate ?? meta.dailyRate ?? meta.valor_plantao;
+  if (['diaria', 'daily', 'plantao', 'shift'].includes(type) && dailyRate !== '' && dailyRate !== null && dailyRate !== undefined) {
+    return `${formatCurrency(dailyRate)} / plantão`;
+  }
+
+  return 'Não cadastrado';
+}
+
+function getReportShiftCost(shift, professional) {
+  const calculatedCost = getProfessionalCost(professional, getShiftHours(shift), shift);
+  const meta = getProfessionalMeta(professional);
+  const remunerationType = normalize(meta.remuneration_type || meta.remunerationType || meta.payment_type || '');
+
+  if (['mensal', 'monthly', 'salario mensal'].includes(remunerationType)) return calculatedCost;
+
+  const savedCost = shift.total_cost ?? shift.cost ?? shift.valor_total;
+  return safeNumber(savedCost, 0) || calculatedCost;
 }
 
 function getLocalDateInputValue(date) {
@@ -371,7 +443,7 @@ export default function Relatorios() {
       const hours = getShiftHours(shift);
       totalHours += hours;
       const professional = getProf(shift);
-      const cost = safeNumber(shift.total_cost ?? shift.cost ?? shift.valor_total, 0) || getProfessionalCost(professional, hours, shift);
+      const cost = getReportShiftCost(shift, professional);
 
       if (isVacant(shift)) {
         vacantCost += cost;
@@ -407,7 +479,7 @@ export default function Relatorios() {
       item.hours += getShiftHours(shift);
       if (isVacant(shift)) item.vacant += 1;
       else item.filled += 1;
-      item.cost += getProfessionalCost(getProf(shift), getShiftHours(shift), shift);
+      item.cost += getReportShiftCost(shift, getProf(shift));
     });
     return Object.values(map).filter(item => item.total > 0).sort((a, b) => b.total - a.total);
   }, [sectors, filteredShifts, getProf]);
@@ -472,7 +544,7 @@ export default function Relatorios() {
       item.hours += h;
       const sName = getSectorName(shift, sectors);
       if (sName) item.sectors.add(titleCase(sName));
-      item.cost += getProfessionalCost(getProf(shift), h, shift);
+      item.cost += getReportShiftCost(shift, getProf(shift));
     });
 
     return Object.values(map).map(item => ({ 
@@ -584,7 +656,7 @@ export default function Relatorios() {
           else { profName = 'VAGA EM ABERTO'; statusTexto = 'Vago'; rowClass = 'class="vago"'; }
         }
 
-        const cost = getProfessionalCost(getProf(s), getShiftHours(s), s);
+        const cost = getReportShiftCost(s, getProf(s));
         html += `
           <tr ${rowClass}>
             <td>${formatDate(s.date)}</td>
@@ -656,7 +728,7 @@ export default function Relatorios() {
 
     if (mode === 'all' || activeTab === 'base_profissionais') {
       html += `
-          <tr><td colspan="10" class="section-title">BASE DE PROFISSIONAIS (CORPO CLÍNICO)</td></tr>
+          <tr><td colspan="11" class="section-title">BASE DE PROFISSIONAIS (CORPO CLÍNICO)</td></tr>
           <tr>
             <th>Nome Completo</th>
             <th>Especialidade</th>
@@ -666,6 +738,7 @@ export default function Relatorios() {
             <th>Telefone</th>
             <th>E-mail</th>
             <th>Tipo Remuneração</th>
+            <th>Remuneração (${hospitalName})</th>
             <th>Banco</th>
             <th>Chave PIX</th>
           </tr>
@@ -684,12 +757,13 @@ export default function Relatorios() {
             <td>${p.phone || p.telefone || 'Não inf.'}</td>
             <td>${p.email || 'Não inf.'}</td>
             <td>${titleCase(p.remuneration_type || p.payment_type || 'Mensal')}</td>
+            <td>${getProfessionalRemuneration(p, selectedUnitId)}</td>
             <td>${p.bank_name || p.banco || 'Não inf.'}</td>
             <td>${p.pix_key || p.chave_pix || p.pix || 'Não inf.'}</td>
           </tr>
         `;
       });
-      html += `<tr><td colspan="10" style="border:none; height:20px;"></td></tr>`;
+      html += `<tr><td colspan="11" style="border:none; height:20px;"></td></tr>`;
     }
 
     if (mode === 'all' || activeTab === 'aniversariantes') {
@@ -1056,6 +1130,7 @@ export default function Relatorios() {
             <tr>
               <th>Nome Completo</th>
               <th>Especialidade</th>
+              <th>Remuneração (${hospitalName})</th>
               <th>Documento (CRM)</th>
               <th>Vencimento Doc.</th>
               <th class="text-center">Status</th>
@@ -1070,6 +1145,7 @@ export default function Relatorios() {
           <tr>
             <td class="font-bold">${titleCase(p.name)}</td>
             <td>${p.specialty}</td>
+            <td>${getProfessionalRemuneration(p, selectedUnitId)}</td>
             <td>${p.document || '—'}</td>
             <td class="${isExpired ? 'furo' : ''}">${formatDate(expiryDate)}</td>
             <td class="text-center">${(p.status || 'Ativo').toUpperCase()}</td>
@@ -1605,6 +1681,7 @@ export default function Relatorios() {
                       <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
                         <th className="py-3 px-3">Nome Completo</th>
                         <th className="py-3 px-3">Especialidade</th>
+                        <th className="py-3 px-3">Remuneração · {hospitalName}</th>
                         <th className="py-3 px-3">Documento (CRM)</th>
                         <th className="py-3 px-3">Vencimento Doc.</th>
                         <th className="py-3 px-3 text-center">Status</th>
@@ -1618,6 +1695,7 @@ export default function Relatorios() {
                           <tr key={p.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
                             <td className="py-3 px-3 font-bold text-slate-900 dark:text-white">{titleCase(p.name)}</td>
                             <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{p.specialty}</td>
+                            <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">{getProfessionalRemuneration(p, selectedUnitId)}</td>
                             <td className="py-3 px-3 text-slate-700 dark:text-slate-300 font-mono">{p.document || '—'}</td>
                             <td className={`py-3 px-3 font-mono ${isExpired ? 'text-rose-600 dark:text-rose-500 font-bold' : 'text-slate-500 dark:text-slate-400'}`}>
                               {formatDate(expiryDate)}
@@ -1631,7 +1709,7 @@ export default function Relatorios() {
                         );
                       })}
                       {filteredProfessionals.length === 0 && (
-                        <tr><td colSpan="5" className="py-8 text-center text-slate-500">Nenhum profissional encontrado com os filtros atuais.</td></tr>
+                        <tr><td colSpan="6" className="py-8 text-center text-slate-500">Nenhum profissional encontrado com os filtros atuais.</td></tr>
                       )}
                     </tbody>
                   </table>
