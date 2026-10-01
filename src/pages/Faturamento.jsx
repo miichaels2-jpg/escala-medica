@@ -217,7 +217,7 @@ export default function Faturamento() {
         valorLiquido,
         isPago
       };
-    }).filter(item => item.plantõesRealizados > 0 || item.plantõesFuturos > 0); // Oculta profissionais zerados no mês
+    }).filter(item => item.plantõesRealizados > 0 || item.plantõesFuturos > 0); 
   }, [professionals, shifts, monthPrefix, todayStr, selectedUnitId, pagamentosStatus]);
 
   const filteredReport = useMemo(() => {
@@ -244,61 +244,102 @@ export default function Faturamento() {
   }, [reportData]);
 
   // =========================================================================
-  // EXPORTAÇÃO PARA EXCEL (CSV) - PERFEITAMENTE FORMATADO
+  // EXPORTAÇÃO PARA EXCEL (Gerador Nativo .xls com Formatação Perfeita)
   // =========================================================================
   const handleExportExcel = () => {
     if (filteredReport.length === 0) return alert('Não há dados para exportar neste mês.');
-    
-    const headers = [
-      'Profissional', 
-      'Matrícula', 
-      'Especialidade', 
-      'Regime Contratual',
-      'Plantões Cumpridos', 
-      'Plantões Extras', 
-      'Horas Totais', 
-      'Salário Base (R$)', 
-      'Valor Bruto Realizado (R$)', 
-      'Descontos/Taxa (R$)', 
-      'Valor Líquido a Pagar (R$)', 
-      'Dados Bancários/PIX', 
-      'Status do Pagamento'
-    ];
-    
-    const rows = filteredReport.map(item => {
+
+    const hospitalName = currentUnitName;
+    const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
+    const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR');
+
+    // Montamos as linhas da tabela
+    const rowsHtml = filteredReport.map(item => {
       const formaPagamento = item.chavePix ? `PIX (${item.pixTipo}): ${item.chavePix}` : (item.banco ? `Banco: ${item.banco}` : 'Pendente de Cadastro');
       const regime = item.remunType === 'hora' ? 'Horista' : item.remunType === 'diaria' ? 'Plantonista (Diária)' : 'Fixo Mensal';
-      
-      // Funções para garantir que o Excel BR (que usa vírgula para decimal) entenda os números
-      const formatNumberForExcel = (num) => `"${safeNumber(num).toFixed(2).replace('.', ',')}"`;
-      const formatHourForExcel = (num) => `"${safeNumber(num).toFixed(1).replace('.', ',')}"`;
-      const cleanString = (str) => `"${(str || '').replace(/"/g, '""')}"`;
 
-      return [
-        cleanString(item.prof.name),
-        cleanString(item.matricula),
-        cleanString(item.prof.specialty || 'Geral'),
-        cleanString(regime),
-        item.plantõesRealizados,
-        item.plantõesExtrasQtd,
-        formatHourForExcel(item.horasRealizadas),
-        formatNumberForExcel(item.salarioBaseContratual),
-        formatNumberForExcel(item.valorBruto),
-        formatNumberForExcel(item.valorDesconto),
-        formatNumberForExcel(item.valorLiquido),
-        cleanString(formaPagamento),
-        item.isPago ? '"PAGO"' : '"Pendente"'
-      ].join(';');
-    });
-    
-    // Adiciona o BOM (\uFEFF) para garantir que acentos (UTF-8) abram perfeitamente no Excel
-    const csvContent = "\uFEFF" + headers.join(';') + "\n" + rows.join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      return `
+        <tr>
+          <td style="border: 1px solid #cbd5e1;">${item.prof.name}</td>
+          <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${item.matricula}</td>
+          <td style="border: 1px solid #cbd5e1;">${item.prof.specialty || 'Geral'}</td>
+          <td style="border: 1px solid #cbd5e1;">${regime}</td>
+          <td style="border: 1px solid #cbd5e1; text-align: center;">${item.plantõesRealizados}</td>
+          <td style="border: 1px solid #cbd5e1; text-align: center;">${item.plantõesExtrasQtd}</td>
+          <td style="border: 1px solid #cbd5e1; text-align: center; mso-number-format:'0\\.0';">${item.horasRealizadas.toFixed(1).replace('.', ',')}</td>
+          <td style="border: 1px solid #cbd5e1; text-align: right; mso-number-format:'\\#\\,\\#\\#0\\.00';">${item.salarioBaseContratual.toFixed(2).replace('.', ',')}</td>
+          <td style="border: 1px solid #cbd5e1; text-align: right; mso-number-format:'\\#\\,\\#\\#0\\.00';">${item.valorBruto.toFixed(2).replace('.', ',')}</td>
+          <td style="border: 1px solid #cbd5e1; text-align: right; mso-number-format:'\\#\\,\\#\\#0\\.00'; color: #ef4444;">${item.valorDesconto.toFixed(2).replace('.', ',')}</td>
+          <td style="border: 1px solid #cbd5e1; text-align: right; mso-number-format:'\\#\\,\\#\\#0\\.00'; font-weight: bold; color: #059669;">${item.valorLiquido.toFixed(2).replace('.', ',')}</td>
+          <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${formaPagamento}</td>
+          <td style="border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: ${item.isPago ? '#059669' : '#f59e0b'};">${item.isPago ? 'PAGO' : 'Pendente'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    // Estrutura HTML que o Excel reconhece com CSS nativo
+    const htmlTemplate = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
+          th { background-color: #f1f5f9; border: 1px solid #cbd5e1; font-weight: bold; text-align: center; padding: 8px; }
+          td { padding: 6px; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tr>
+            <td colspan="13" style="font-size: 20px; font-weight: bold; text-align: center; background-color: #0f172a; color: #ffffff; padding: 10px;">${hospitalName}</td>
+          </tr>
+          <tr>
+            <td colspan="13" style="font-size: 14px; font-weight: bold; text-align: center; background-color: #1e293b; color: #94a3b8; padding: 5px;">RELATÓRIO OFICIAL DE FATURAMENTO E REPASSE</td>
+          </tr>
+          <tr>
+            <td colspan="6" style="font-weight: bold; padding: 10px 0;">Competência: ${competencia}</td>
+            <td colspan="7" style="text-align: right; padding: 10px 0;">Emissão: ${emissao}</td>
+          </tr>
+          <tr><td colspan="13"></td></tr>
+          <tr>
+            <th>Profissional</th>
+            <th>Matrícula</th>
+            <th>Especialidade</th>
+            <th>Regime Contratual</th>
+            <th>Plantões Cumpridos</th>
+            <th>Plantões Extras</th>
+            <th>Horas Totais</th>
+            <th>Salário Base (R$)</th>
+            <th>Valor Bruto (R$)</th>
+            <th>Descontos/Taxa (R$)</th>
+            <th>Valor Líquido (R$)</th>
+            <th>Dados p/ Pagamento</th>
+            <th>Status do Repasse</th>
+          </tr>
+          ${rowsHtml}
+          <tr><td colspan="13"></td></tr>
+          <tr>
+            <td colspan="4" style="font-weight: bold; text-align: right; padding: 8px;">TOTAIS GERAIS DA UNIDADE:</td>
+            <td style="font-weight: bold; text-align: center; border: 1px solid #000; background-color: #f8fafc;">${totals.plantões}</td>
+            <td style="font-weight: bold; text-align: center; border: 1px solid #000; background-color: #f8fafc;">${totals.extras}</td>
+            <td style="font-weight: bold; text-align: center; border: 1px solid #000; background-color: #f8fafc; mso-number-format:'0\\.0';">${totals.horas.toFixed(1).replace('.', ',')}</td>
+            <td style="border: 1px solid #000; background-color: #f8fafc;"></td>
+            <td style="font-weight: bold; text-align: right; border: 1px solid #000; background-color: #f8fafc; mso-number-format:'\\#\\,\\#\\#0\\.00';">${totals.bruto.toFixed(2).replace('.', ',')}</td>
+            <td style="border: 1px solid #000; background-color: #f8fafc;"></td>
+            <td style="font-weight: bold; text-align: right; border: 1px solid #000; background-color: #f8fafc; color: #059669; font-size: 14px; mso-number-format:'\\#\\,\\#\\#0\\.00';">${totals.liquido.toFixed(2).replace('.', ',')}</td>
+            <td colspan="2"></td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    // Novo motor via Blob (evita travamentos)
+    const blob = new Blob([htmlTemplate], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `Fechamento_Honorarios_${currentUnitName.replace(/[^a-zA-Z0-9]/g, '_')}_${monthPrefix}.csv`);
+    link.setAttribute("download", `Fechamento_Honorarios_${currentUnitName.replace(/[^a-zA-Z0-9]/g, '_')}_${monthPrefix}.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -590,9 +631,9 @@ export default function Faturamento() {
           <Button 
             onClick={handleExportExcel}
             className="h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all"
-            title="Baixar Relatório em Excel/CSV"
+            title="Baixar Relatório em Excel (Abre formatado no Excel)"
           >
-            <Download className="w-4 h-4" /> Exportar Excel
+            <Download className="w-4 h-4" /> Exportar Planilha (.xls)
           </Button>
 
           <Button 
@@ -831,7 +872,7 @@ export default function Faturamento() {
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-slate-900 dark:text-white">
-                              {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                              {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }) }
                             </span>
                             <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase ${p.isRealizado ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
                               {p.isRealizado ? 'Realizado' : 'A Realizar'}
