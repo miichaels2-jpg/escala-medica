@@ -67,14 +67,14 @@ function isVacant(shift) {
 
 function isShiftPast(shift) {
   if (!shift || !shift.date) return false;
-  try {
-    const dateStr = shift.date.split('T')[0];
-    const endStr = shift.end_time || '23:59';
-    const shiftEnd = new Date(`${dateStr}T${endStr}:00`);
-    return shiftEnd < new Date();
-  } catch (e) {
-    return false;
-  }
+  const dateStr = String(shift.date).split('T')[0];
+  const startTime = shift.start_time || '00:00';
+  const endTime = shift.end_time || '23:59';
+  const shiftStart = new Date(`${dateStr}T${startTime}:00`);
+  const shiftEnd = new Date(`${dateStr}T${endTime}:00`);
+  if (Number.isNaN(shiftStart.getTime()) || Number.isNaN(shiftEnd.getTime())) return false;
+  if (shiftEnd <= shiftStart) shiftEnd.setDate(shiftEnd.getDate() + 1);
+  return shiftEnd < new Date();
 }
 
 function getShiftHours(shift) {
@@ -100,10 +100,20 @@ function getProfessionalMeta(professional) {
   return Object.assign({}, ...sources.filter(source => source && typeof source === 'object' && !Array.isArray(source)));
 }
 
-function getProfessionalCost(professional, hours) {
+function getProfessionalCost(professional, hours, shift) {
   if (!professional) return 0;
   const meta = getProfessionalMeta(professional);
   const type = normalize(meta.remuneration_type || meta.remunerationType || meta.payment_type || 'mensal');
+
+  if (type === 'plantao' && shift) {
+    const rates = meta.unit_rates?.[String(shift.unit_id)] || {};
+    const shiftDate = new Date(`${String(shift.date || '').split('T')[0]}T12:00:00`);
+    const isWeekend = shiftDate.getDay() === 0 || shiftDate.getDay() === 6;
+    const startTime = String(shift.start_time || '07:00');
+    const isNight = normalize(shift.shift_type) === 'noturno' || startTime >= '18:00' || startTime < '06:00';
+    const rate = isWeekend ? rates.fds : (isNight ? rates.noturno : rates.diurno);
+    if (rate !== undefined && rate !== null && rate !== '') return safeNumber(rate, 0);
+  }
 
   if (type === 'hora' || type === 'hourly') {
     return hours * safeNumber(meta.hourly_rate ?? meta.hourlyRate ?? meta.valor_hora, 0);
@@ -114,14 +124,32 @@ function getProfessionalCost(professional, hours) {
   return safeNumber(meta.monthly_salary ?? meta.monthlySalary ?? meta.salary ?? meta.salario, 0) / 20;
 }
 
+function getLocalDateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+const REPORT_TITLES = {
+  executivo: 'Resumo executivo',
+  escalas: 'Extrato de plantões',
+  trocas: 'Trocas e repasses',
+  base_setores: 'Estrutura de setores',
+  base_profissionais: 'Corpo clínico',
+  aniversariantes: 'Aniversariantes',
+  profissionais: 'Produtividade profissional',
+  financeiro: 'Análise financeira'
+};
+
 export default function Relatorios() {
   const { shifts = [], sectors = [], professionals = [], company, units = [], selectedUnitId } = useAppData();
 
   const [activeTab, setActiveTab] = useState('executivo');
   
   const today = new Date();
-  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+  const firstDay = getLocalDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1));
+  const lastDay = getLocalDateInputValue(new Date(today.getFullYear(), today.getMonth() + 1, 0));
 
   const currentYear = today.getFullYear();
 
@@ -141,6 +169,10 @@ export default function Relatorios() {
   });
 
   const handleApplyFilters = () => {
+    if (dateStart && dateEnd && dateStart > dateEnd) {
+      alert('A data inicial precisa ser anterior ou igual à data final.');
+      return;
+    }
     setAppliedFilters({
       start: dateStart,
       end: dateEnd,
@@ -302,7 +334,7 @@ export default function Relatorios() {
       const hours = getShiftHours(shift);
       totalHours += hours;
       const professional = getProf(shift);
-      const cost = safeNumber(shift.total_cost ?? shift.cost ?? shift.valor_total, 0) || getProfessionalCost(professional, hours);
+      const cost = safeNumber(shift.total_cost ?? shift.cost ?? shift.valor_total, 0) || getProfessionalCost(professional, hours, shift);
 
       if (isVacant(shift)) {
         vacantCost += cost;
@@ -338,7 +370,7 @@ export default function Relatorios() {
       item.hours += getShiftHours(shift);
       if (isVacant(shift)) item.vacant += 1;
       else item.filled += 1;
-      item.cost += getProfessionalCost(getProf(shift), getShiftHours(shift));
+      item.cost += getProfessionalCost(getProf(shift), getShiftHours(shift), shift);
     });
     return Object.values(map).filter(item => item.total > 0).sort((a, b) => b.total - a.total);
   }, [sectors, filteredShifts, getProf]);
@@ -403,7 +435,7 @@ export default function Relatorios() {
       item.hours += h;
       const sName = getSectorName(shift, sectors);
       if (sName) item.sectors.add(titleCase(sName));
-      item.cost += getProfessionalCost(getProf(shift), h);
+      item.cost += getProfessionalCost(getProf(shift), h, shift);
     });
 
     return Object.values(map).map(item => ({ 
@@ -437,6 +469,17 @@ export default function Relatorios() {
   const periodLabel = `${formatDate(appliedFilters.start)} até ${formatDate(appliedFilters.end)}`;
   const currentUnitObj = (units || []).find(u => String(u.id) === String(selectedUnitId));
   const hospitalName = currentUnitObj?.name || company?.name || 'Hospital Principal';
+  const appliedSectorName = appliedFilters.sector === 'todos'
+    ? 'Todos os setores'
+    : sectors.find(sector => String(sector.id) === String(appliedFilters.sector))?.name || 'Setor selecionado';
+  const appliedStatusName = appliedFilters.profStatus === 'todos'
+    ? ''
+    : `Profissionais ${appliedFilters.profStatus === 'ativo' ? 'ativos' : 'inativos'}`;
+  const filterSummary = [
+    appliedSectorName,
+    appliedStatusName,
+    appliedFilters.search ? `Busca: ${appliedFilters.search}` : ''
+  ].filter(Boolean).join(' · ');
 
   // ==========================================
   // EXPORTAÇÃO EXCEL NATIVA
@@ -470,8 +513,8 @@ export default function Relatorios() {
         <table>
           <tr>
             <td colspan="7" class="header-main">
-              <div class="h1">${hospitalName} - Relatório de Gestão Hospitalar</div>
-              <div class="h2">Período Filtrado: ${periodLabel}</div>
+              <div class="h1">${hospitalName} - ${REPORT_TITLES[activeTab] || 'Relatório de Gestão'}</div>
+              <div class="h2">Período: ${periodLabel} · ${filterSummary} · Gerado em ${new Date().toLocaleDateString('pt-BR')}</div>
             </td>
           </tr>
           <tr><td colspan="7" style="border:none;"></td></tr>
@@ -502,7 +545,7 @@ export default function Relatorios() {
           else { profName = 'VAGA EM ABERTO'; statusTexto = 'Vago'; rowClass = 'class="vago"'; }
         }
 
-        const cost = getProfessionalCost(getProf(s), getShiftHours(s));
+        const cost = getProfessionalCost(getProf(s), getShiftHours(s), s);
         html += `
           <tr ${rowClass}>
             <td>${formatDate(s.date)}</td>
@@ -666,7 +709,7 @@ export default function Relatorios() {
       html += `
           <tr><td colspan="4" class="section-title">RELATÓRIO FINANCEIRO OPERACIONAL</td></tr>
           <tr>
-            <th colspan="2">Total Previsão Global</th>
+            <th colspan="2">Previsão das escalas ocupadas</th>
             <th colspan="2" style="background-color: #047857;">Realizado Concluído</th>
           </tr>
           <tr>
@@ -750,7 +793,7 @@ export default function Relatorios() {
       <html lang="pt-BR">
       <head>
         <meta charset="utf-8">
-        <title>Dossiê Oficial - ${hospitalName}</title>
+        <title>${REPORT_TITLES[activeTab] || 'Relatório'} - ${hospitalName}</title>
         <style>
           @page { size: A4 portrait; margin: 15mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -795,12 +838,13 @@ export default function Relatorios() {
             ${unitLogoHtml}
             <div style="${unitLogoHtml ? 'margin-left: 15px;' : ''}">
               <div class="h-title">${hospitalName}</div>
-              <div class="h-subtitle">Dossiê Executivo Oficial - ScaleMedic</div>
+              <div class="h-subtitle">${REPORT_TITLES[activeTab] || 'Relatório gerencial'} · ScaleMedic</div>
             </div>
           </div>
           <div class="h-info">
             <div style="margin-bottom: 4px;"><b>Período Analisado:</b> ${periodLabel}</div>
             <div><b>Emissão:</b> ${docEmissao}</div>
+            <div style="margin-top: 4px;"><b>Filtros:</b> ${filterSummary}</div>
           </div>
         </div>
     `;
@@ -820,7 +864,7 @@ export default function Relatorios() {
             <div class="card-sub" style="color:#475569;">Meta: > 98%</div>
           </div>
           <div class="grid-card">
-            <div class="card-title">Custo Projetado Est.</div>
+            <div class="card-title">Custo das escalas ocupadas</div>
             <div class="card-value">${formatCurrency(financialSummary.totalCost)}</div>
             <div class="card-sub" style="color:#475569;">${financialSummary.hours}h Assistenciais</div>
           </div>
@@ -1104,8 +1148,8 @@ export default function Relatorios() {
 
     printHtml += `
         <div class="footer">
-          Documento processado eletronicamente através do sistema Meditech Hospital Admin.<br/>
-          Informações confidenciais - Uso exclusivo da Diretoria Médica e Operacional.
+          Documento processado eletronicamente pelo ScaleMedic.<br/>
+          Informações confidenciais · Uso autorizado pela unidade.
         </div>
       </body>
       </html>
@@ -1125,10 +1169,10 @@ export default function Relatorios() {
     <div className="min-h-screen bg-slate-50 dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans transition-colors duration-300">
       
       {/* TOPO EXECUTIVO */}
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 md:p-8 shadow-xl flex flex-col xl:flex-row xl:items-center justify-between gap-6 transition-colors duration-300">
+      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 md:p-6 shadow-sm flex flex-col xl:flex-row xl:items-center justify-between gap-5 transition-colors duration-300">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-sky-600 dark:text-cyan-400">
-            <Activity className="w-4 h-4 text-sky-600 dark:text-cyan-400 animate-pulse" /> {hospitalName} • Intelligence CCO
+            <Activity className="w-4 h-4 text-sky-600 dark:text-cyan-400" /> {hospitalName} · RELATÓRIOS GERENCIAIS
           </div>
           <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
             Central de Relatórios & BI Hospitalar
@@ -1138,23 +1182,13 @@ export default function Relatorios() {
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
-          <div className="flex gap-2 w-full sm:w-auto">
-            <Button onClick={() => triggerExcelExport('current')} variant="outline" disabled={!hasSearched} className="flex-1 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-white font-bold text-[11px] px-4 rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer shadow-sm disabled:opacity-50 transition-colors">
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Excel (Aba)
-            </Button>
-            <Button onClick={() => triggerExcelExport('all')} variant="outline" disabled={!hasSearched} className="flex-1 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-white font-bold text-[11px] px-4 rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer shadow-sm disabled:opacity-50 transition-colors">
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Excel (Tudo)
-            </Button>
-          </div>
-          <div className="flex gap-2 w-full sm:w-auto">
-            <Button onClick={() => triggerPrint('current')} disabled={!hasSearched} className="flex-1 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-700 dark:hover:bg-cyan-600 text-white font-bold text-[11px] px-4 rounded-xl shadow-md gap-2 cursor-pointer disabled:opacity-50 border border-sky-500 dark:border-cyan-500/50 transition-colors">
-              <PrinterIcon className="w-4 h-4" /> PDF (Aba)
-            </Button>
-            <Button onClick={() => triggerPrint('all')} disabled={!hasSearched} className="flex-1 bg-sky-700 hover:bg-sky-800 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-[11px] px-4 rounded-xl shadow-md gap-2 cursor-pointer transition-all disabled:opacity-50 border border-sky-600 dark:border-cyan-500">
-              <PrinterIcon className="w-4 h-4" /> Dossiê (Tudo)
-            </Button>
-          </div>
+        <div className="flex flex-col sm:flex-row items-stretch gap-2 shrink-0">
+          <Button onClick={() => triggerExcelExport('current')} variant="outline" disabled={!hasSearched} className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-white font-bold text-xs px-4 rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer shadow-sm disabled:opacity-50 transition-colors">
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Exportar aba para Excel
+          </Button>
+          <Button onClick={() => triggerPrint('current')} disabled={!hasSearched} className="bg-sky-600 hover:bg-sky-700 dark:bg-cyan-700 dark:hover:bg-cyan-600 text-white font-bold text-xs px-4 rounded-xl shadow-md gap-2 cursor-pointer disabled:opacity-50 border border-sky-500 dark:border-cyan-500/50 transition-colors">
+            <PrinterIcon className="w-4 h-4" /> Imprimir / Salvar PDF
+          </Button>
         </div>
       </div>
 
@@ -1162,7 +1196,7 @@ export default function Relatorios() {
       <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-md space-y-4 transition-colors">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-3">
           <span className="text-xs font-black uppercase tracking-wider text-sky-600 dark:text-cyan-400 flex items-center gap-2">
-            <Filter className="w-4 h-4 text-sky-600 dark:text-cyan-400" /> Parâmetros Analíticos Livres
+            <Filter className="w-4 h-4 text-sky-600 dark:text-cyan-400" /> Filtros do relatório
           </span>
         </div>
 
@@ -1192,7 +1226,7 @@ export default function Relatorios() {
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Status do Médico</Label>
+            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Status profissional</Label>
             <Select value={profStatusFilter} onValueChange={setProfStatusFilter}>
               <SelectTrigger className="h-11 text-xs font-bold bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
                 <SelectValue />
@@ -1205,12 +1239,12 @@ export default function Relatorios() {
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Busca Específica</Label>
-            <Input placeholder="Médico ou setor..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:border-sky-500 dark:focus:border-cyan-500 transition-colors" />
+            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Busca</Label>
+            <Input placeholder="Profissional ou setor..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:border-sky-500 dark:focus:border-cyan-500 transition-colors" />
           </div>
           <div>
             <Button onClick={handleApplyFilters} className="w-full h-11 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs rounded-xl shadow-lg gap-2 cursor-pointer transition-colors border-none dark:border-solid dark:border-cyan-500/50">
-              <Check className="w-4 h-4" /> Extrair Dados
+              <Check className="w-4 h-4" /> Aplicar filtros
             </Button>
           </div>
         </div>
@@ -1223,12 +1257,12 @@ export default function Relatorios() {
             <Filter className="w-10 h-10 animate-pulse" />
           </div>
           <h3 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">Pronto para Análise</h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">Defina o período desejado e os parâmetros de busca acima e clique em <b>Extrair Dados</b>.</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">Escolha o período e os filtros desejados. Os dados serão preparados após selecionar <b>Aplicar filtros</b>.</p>
         </Card>
       ) : (
         <>
           {/* ABAS DE NAVEGAÇÃO DA TELA */}
-          <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide">
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
             {[
               { id: 'executivo', label: 'Dashboard Executivo', icon: BarChart3 },
               { id: 'escalas', label: 'Extrato de Plantões', icon: CalendarDays },
@@ -1245,7 +1279,7 @@ export default function Relatorios() {
                 <button 
                   key={tab.id} 
                   onClick={() => setActiveTab(tab.id)} 
-                  className={`px-6 py-4 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center gap-2.5 shrink-0 border ${
+                  className={`px-3.5 py-2.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 border ${
                     isActive 
                       ? 'bg-sky-600 dark:bg-cyan-600 text-white border-sky-600 dark:border-cyan-500 shadow-md shadow-sky-600/20 dark:shadow-cyan-900/50' 
                       : 'bg-white dark:bg-[#1e293b] border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -1261,6 +1295,23 @@ export default function Relatorios() {
                 </button>
               );
             })}
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] px-4 py-3">
+            <div>
+              <h2 className="text-sm font-black text-slate-900 dark:text-white">{REPORT_TITLES[activeTab] || 'Relatório'}</h2>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{periodLabel} · {filterSummary}</p>
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {activeTab === 'escalas' ? `${filteredShifts.length} plantões` :
+                activeTab === 'trocas' ? `${swapsList.length} repasses` :
+                activeTab === 'base_setores' ? `${enrichedSectors.length} setores` :
+                activeTab === 'base_profissionais' ? `${filteredProfessionals.length} profissionais` :
+                activeTab === 'aniversariantes' ? `${birthDaysList.length} aniversariantes` :
+                activeTab === 'profissionais' ? `${professionalMetrics.length} profissionais` :
+                activeTab === 'financeiro' ? `${formatCurrency(financialSummary.totalCost)} em custos previstos` :
+                `${totalShiftsCount} plantões analisados`}
+            </span>
           </div>
 
           <div className="space-y-6">
@@ -1282,7 +1333,7 @@ export default function Relatorios() {
                     <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-bold">Meta Hospitalar: &gt; 98%</div>
                   </Card>
                   <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg relative overflow-hidden group transition-colors">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Custo Total Global</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Custo das escalas ocupadas</p>
                     <p className="mt-2 text-3xl font-black text-amber-600 dark:text-amber-400 font-mono tracking-tight">{formatCurrency(financialSummary.totalCost)}</p>
                     <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-bold">{formatNumber(financialSummary.hours)} Horas Calculadas</div>
                   </Card>
@@ -1618,7 +1669,7 @@ export default function Relatorios() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
                   <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-inner">
-                    <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Total Previsão Global</span>
+                    <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Previsão das escalas ocupadas</span>
                     <div className="text-2xl font-black font-mono text-slate-900 dark:text-white mt-2">{formatCurrency(financialSummary.totalCost)}</div>
                   </div>
                   <div className="p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 shadow-sm dark:shadow-inner">
