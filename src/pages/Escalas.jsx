@@ -262,13 +262,16 @@ async function autoHealingSaveShift(id, initialPayload) {
 }
 
 export default function Escalas() {
-  const { shifts = [], sectors = [], professionals = [], selectedUnitId, units = [], company, isManager, syncGlobalData } = useAppData();
+  const { shifts = [], sectors = [], professionals = [], selectedUnitId, units = [], company, isManager, syncGlobalData, unassignedShifts = [] } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState('mensal'); 
   const [monthlyView, setMonthlyView] = useState('lista');
   const [filterTurno, setFilterTurno] = useState('todos'); 
   const [startDateFilter, setStartDateFilter] = useState('');
+const [legacyAssignmentOpen, setLegacyAssignmentOpen] = useState(false);
+const [legacyUnitDrafts, setLegacyUnitDrafts] = useState({});
+const [legacyAssignmentSaving, setLegacyAssignmentSaving] = useState(false);
 
 const openTvMode = async () => {
   setActiveTab('tv');
@@ -1631,6 +1634,34 @@ const closeTvMode = async () => {
     } catch (err) { alert(err.message); }
   };
 
+const handleAssignLegacyShiftUnit = async (shift) => {
+  const unitId = legacyUnitDrafts[String(shift.id)];
+  if (!isManager || !unitId || !units.some(unit => String(unit.id) === String(unitId))) {
+    alert('Selecione uma unidade válida antes de vincular o plantão.');
+    return;
+  }
+  if (!confirm(`Vincular o plantão de ${formatDateBR(shift.date)} no setor ${sectorMap[String(shift.sector_id)]?.name || 'Setor'} à unidade ${units.find(unit => String(unit.id) === String(unitId))?.name}?`)) return;
+
+  setLegacyAssignmentSaving(true);
+  try {
+    await autoHealingSaveShift(shift.id, {
+      unit_id: String(unitId),
+      company_id: shift.company_id || company?.id || 'cmp_principal'
+    });
+    await syncGlobalData();
+    setLegacyUnitDrafts(prev => {
+      const next = { ...prev };
+      delete next[String(shift.id)];
+      return next;
+    });
+  } catch (error) {
+    console.error('Não foi possível vincular o plantão legado a uma unidade:', error);
+    alert(`O plantão não foi alterado. Verifique sua conexão e tente novamente. ${error?.message || ''}`);
+  } finally {
+    setLegacyAssignmentSaving(false);
+  }
+};
+
   const renderShiftCard = (shift, dateStr) => {
     const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
     const status = getStatusBadge(shift);
@@ -1842,6 +1873,29 @@ const closeTvMode = async () => {
   return (
     <div className="relative p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
+      {isManager && unassignedShifts.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-sm dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between print:hidden">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p className="text-sm font-black">{unassignedShifts.length} plantão(ões) antigo(s) precisam de unidade</p>
+              <p className="mt-1 text-xs">Eles foram retirados das visões financeiras para não serem contados em unidades erradas. Confira cada registro antes de vinculá-lo.</p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            onClick={() => {
+              setLegacyUnitDrafts({});
+              setLegacyAssignmentOpen(true);
+            }}
+            variant="outline"
+            className="h-9 shrink-0 border-amber-400 bg-white text-xs font-black text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-slate-900 dark:text-amber-200"
+          >
+            Conferir e vincular unidades
+          </Button>
+        </div>
+      )}
+
       {/* BOTÃO LATERAL FIXADO */}
       <button
         onClick={toggleMainSidebar}
@@ -2796,6 +2850,53 @@ const closeTvMode = async () => {
       {/*       {/* ========================================================================= */}
       {/* 6A. PÓS-GERAÇÃO: CONFIRMAÇÃO PARA ALOCAÇÃO DOS PROFISSIONAIS            */}
       {/* ========================================================================= */}
+      <Dialog open={legacyAssignmentOpen} onOpenChange={setLegacyAssignmentOpen}>
+        <DialogContent className="w-[96vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-5">
+          <DialogHeader className="border-b border-slate-800 pb-4">
+            <DialogTitle className="text-lg font-black flex items-center gap-2 text-amber-400">
+              <AlertTriangle className="h-5 w-5" /> Conferir plantões sem unidade
+            </DialogTitle>
+            <p className="pt-2 text-xs leading-relaxed text-slate-400">
+              Escolha a unidade correta para cada registro. Nenhum valor é atribuído automaticamente quando a unidade não pode ser determinada com segurança.
+            </p>
+          </DialogHeader>
+          <div className="space-y-3 py-3">
+            {unassignedShifts.map(shift => (
+              <div key={shift.id} className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(180px,240px)_auto] sm:items-center">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-black text-white">{sectorMap[String(shift.sector_id)]?.name || 'Setor não identificado'} · {formatDateBR(shift.date)}</p>
+                  <p className="mt-1 truncate text-[11px] text-slate-400">{shift.start_time || '07:00'}–{shift.end_time || '19:00'} · {professionalMap[String(shift.professional_id)]?.name || shift.professional_name || 'Sem profissional identificado'}</p>
+                </div>
+                <Select
+                  value={legacyUnitDrafts[String(shift.id)] || ''}
+                  onValueChange={value => setLegacyUnitDrafts(prev => ({ ...prev, [String(shift.id)]: value }))}
+                >
+                  <SelectTrigger className="h-9 border-slate-700 bg-slate-950 text-xs text-white">
+                    <SelectValue placeholder="Escolha a unidade correta" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[99999] border-slate-800 bg-slate-900 text-white">
+                    {units.map(unit => <SelectItem key={unit.id} value={String(unit.id)}>{unit.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  disabled={!legacyUnitDrafts[String(shift.id)] || legacyAssignmentSaving}
+                  onClick={() => handleAssignLegacyShiftUnit(shift)}
+                  className="h-9 bg-amber-600 px-3 text-xs font-black text-white hover:bg-amber-500 disabled:opacity-50"
+                >
+                  Vincular
+                </Button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="border-t border-slate-800 pt-3">
+            <Button type="button" variant="outline" onClick={() => setLegacyAssignmentOpen(false)} className="border-slate-700 text-slate-300">
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={allocationPromptOpen} onOpenChange={setAllocationPromptOpen}>
         <DialogContent className="w-[95vw] sm:max-w-lg bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-6">
           <DialogHeader className="border-b border-slate-800 pb-4">

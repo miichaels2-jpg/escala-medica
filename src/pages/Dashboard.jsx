@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
+import { getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
@@ -64,9 +65,7 @@ function toTitleCase(str) {
 }
 
 function safeNumber(val, fb = 0) {
-  if (val === null || val === undefined || val === '') return fb;
-  const n = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
-  return Number.isFinite(n) ? n : fb;
+  return safeFinancialNumber(val, fb);
 }
 
 function computeShiftLiveStatus(shift, liveNowDate) {
@@ -226,37 +225,24 @@ export default function Painel() {
   }, [monthlyShifts, sectors]);
 
   const todayFinancials = useMemo(() => {
-    let executedValue = 0; let plannedValue = 0;
+    let executedValue = 0; let plannedValue = 0; let shiftsMissingRate = 0; let shiftsAwaitingProduction = 0;
     todayShifts.forEach((s) => {
       const prof = profById[s.professional_id] || profByName[normalizeStr(s.professional_name)];
-      let shiftCost = 0;
-      if (prof) {
-        const remType = prof.remuneration_type || 'mensal'; 
-        const salary = safeNumber(prof.monthly_salary, 1672); 
-        const daily = safeNumber(prof.daily_rate, 0); 
-        const hourly = safeNumber(prof.hourly_rate, 0);
-
-        if (remType === 'hora') { 
-          const hours = Number(s.duration_hours) || 12; 
-          shiftCost = hours * (hourly > 0 ? hourly : (salary / 220)); 
-        } 
-        else if (remType === 'diaria') { 
-          shiftCost = daily > 0 ? daily : (salary / 20); 
-        } 
-        else { 
-          shiftCost = salary / 20; 
-        }
-      } else { 
-        if (s.professional_name && !s.professional_name.toLowerCase().includes('vaga')) { 
-          shiftCost = 1672 / 20; 
-        } 
+      if (isVacantShift(s)) return;
+      if (!prof) {
+        shiftsMissingRate += 1;
+        return;
       }
+      const estimate = getShiftCostEstimate(prof, s);
+      const shiftCost = estimate.amount;
+      if (estimate.missingRate) shiftsMissingRate += 1;
+      if (estimate.requiresProduction) shiftsAwaitingProduction += 1;
       plannedValue += shiftCost;
       if (s.lifecycle.state === 'active' || s.lifecycle.state === 'concluded') {
         executedValue += shiftCost;
       }
     });
-    return { executedValue, plannedValue, totalToday: plannedValue };
+    return { executedValue, plannedValue, totalToday: plannedValue, shiftsMissingRate, shiftsAwaitingProduction };
   }, [todayShifts, profById, profByName]);
 
   const sectorsCoverage = useMemo(() => {
@@ -401,6 +387,8 @@ export default function Painel() {
                 <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Custo Operacional</span>
                 <div className="text-xl sm:text-2xl lg:text-3xl font-black font-mono text-white">R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                 <div className="text-[9px] sm:text-[11px] text-slate-400 flex justify-between"><span>Previsão 24h:</span><b className="font-mono text-white">R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
+                {todayFinancials.shiftsMissingRate > 0 && <div className="text-[9px] font-bold text-amber-300">{todayFinancials.shiftsMissingRate} plantão(ões) sem tarifa</div>}
+                {todayFinancials.shiftsAwaitingProduction > 0 && <div className="text-[9px] font-bold text-amber-300">{todayFinancials.shiftsAwaitingProduction} aguardando apuração</div>}
               </div>
             </div>
           </div>
@@ -517,6 +505,8 @@ export default function Painel() {
           <div className="flex items-center justify-between"><span className="text-xs font-black uppercase tracking-wider text-slate-500">Custo Operacional Hoje</span><span className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400"><DollarSign className="w-4 h-4" /></span></div>
           <div className="text-3xl font-black text-slate-900 dark:text-white mt-3 font-mono">R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           <p className="text-[11px] text-slate-500 mt-1 font-medium">Previsão 24h: <b>R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p>
+          {todayFinancials.shiftsMissingRate > 0 && <p className="mt-1 text-[10px] font-bold text-amber-600 dark:text-amber-400">{todayFinancials.shiftsMissingRate} plantão(ões) sem tarifa ou cadastro financeiro</p>}
+          {todayFinancials.shiftsAwaitingProduction > 0 && <p className="mt-1 text-[10px] font-bold text-amber-600 dark:text-amber-400">{todayFinancials.shiftsAwaitingProduction} plantão(ões) aguardam lançamento da produção</p>}
         </Card>
       </div>
 

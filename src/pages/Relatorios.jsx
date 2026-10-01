@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useAppData } from '@/lib/useAppData';
+import { getProfessionalFinancialMeta, getShiftCostEstimate, getShiftDurationHours, safeFinancialNumber } from '@/lib/financialCalculations';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,17 +14,7 @@ import {
 } from 'lucide-react';
 
 function safeNumber(value, fallback = 0) {
-  if (value === null || value === undefined || value === '') return fallback;
-  const normalized = typeof value === 'number'
-    ? value
-    : (() => {
-        const text = String(value).replace(/[R$\s]/g, '').trim();
-        if (text.includes(',')) return Number(text.replace(/\./g, '').replace(',', '.'));
-        if (/^-?\d{1,3}(?:\.\d{3})+$/.test(text)) return Number(text.replace(/\./g, ''));
-        return Number(text);
-      })();
-  const number = normalized;
-  return Number.isFinite(number) ? number : fallback;
+  return safeFinancialNumber(value, fallback);
 }
 
 function formatCurrency(value) {
@@ -85,61 +76,15 @@ function isShiftPast(shift) {
 }
 
 function getShiftHours(shift) {
-  const explicit = safeNumber(shift.duration_hours ?? shift.hours ?? shift.total_hours, 0);
-  if (explicit > 0) return explicit;
-
-  if (shift.start_time && shift.end_time) {
-    const [startH, startM] = String(shift.start_time).split(':').map(Number);
-    const [endH, endM] = String(shift.end_time).split(':').map(Number);
-    if (Number.isFinite(startH) && Number.isFinite(startM) && Number.isFinite(endH) && Number.isFinite(endM)) {
-      let start = startH * 60 + startM;
-      let end = endH * 60 + endM;
-      if (end <= start) end += 24 * 60;
-      return (end - start) / 60;
-    }
-  }
-  return 12;
+  return getShiftDurationHours(shift);
 }
 
 function getProfessionalMeta(professional) {
-  if (!professional) return {};
-  const sources = [professional, professional.data, professional.metadata];
-  return Object.assign({}, ...sources.filter(source => source && typeof source === 'object' && !Array.isArray(source)));
+  return getProfessionalFinancialMeta(professional);
 }
 
 function getProfessionalCost(professional, hours, shift) {
-  if (!professional) return 0;
-  const meta = getProfessionalMeta(professional);
-  const type = normalize(meta.remuneration_type || meta.remunerationType || meta.payment_type || 'mensal');
-
-  if (type === 'plantao' && shift) {
-    const rates = meta.unit_rates?.[String(shift.unit_id)] || {};
-    const shiftDate = new Date(`${String(shift.date || '').split('T')[0]}T12:00:00`);
-    const isWeekend = shiftDate.getDay() === 0 || shiftDate.getDay() === 6;
-    const startTime = String(shift.start_time || '07:00');
-    const isNight = normalize(shift.shift_type) === 'noturno' || startTime >= '18:00' || startTime < '06:00';
-    const rate = isWeekend ? rates.fds : (isNight ? rates.noturno : rates.diurno);
-    if (rate !== undefined && rate !== null && rate !== '') return safeNumber(rate, 0);
-  }
-
-  if (type === 'hora' || type === 'hourly') {
-    return hours * safeNumber(meta.hourly_rate ?? meta.hourlyRate ?? meta.valor_hora, 0);
-  }
-  if (type === 'diaria' || type === 'daily' || type === 'plantao') {
-    return safeNumber(meta.daily_rate ?? meta.dailyRate ?? meta.valor_plantao, 0);
-  }
-  const unitMonthlySalaries = meta.unit_monthly_salaries || {};
-  const unitId = shift?.unit_id;
-  const unitSalary = unitMonthlySalaries[String(unitId)];
-  const hasUnitSalary = Object.prototype.hasOwnProperty.call(unitMonthlySalaries, String(unitId)) &&
-    unitSalary !== '' && unitSalary !== null && unitSalary !== undefined;
-  const legacySalary = safeNumber(meta.monthly_salary ?? meta.monthlySalary ?? meta.salary ?? meta.salario, 0);
-  if (hasUnitSalary) return safeNumber(unitSalary, 0) / 20;
-  if (Object.keys(unitMonthlySalaries).length > 0) {
-    const primaryUnitId = professional?.unit_id || meta.allowed_unit_ids?.[0] || professional?.unit_ids?.[0];
-    return String(primaryUnitId) === String(unitId) ? legacySalary / 20 : 0;
-  }
-  return legacySalary / 20;
+  return getShiftCostEstimate(professional, { ...shift, duration_hours: hours }).amount;
 }
 
 function getProfessionalRemuneration(professional, unitId) {
@@ -196,14 +141,7 @@ function getProfessionalRemuneration(professional, unitId) {
 }
 
 function getReportShiftCost(shift, professional) {
-  const calculatedCost = getProfessionalCost(professional, getShiftHours(shift), shift);
-  const meta = getProfessionalMeta(professional);
-  const remunerationType = normalize(meta.remuneration_type || meta.remunerationType || meta.payment_type || '');
-
-  if (['mensal', 'monthly', 'salario mensal'].includes(remunerationType)) return calculatedCost;
-
-  const savedCost = shift.total_cost ?? shift.cost ?? shift.valor_total;
-  return safeNumber(savedCost, 0) || calculatedCost;
+  return getProfessionalCost(professional, getShiftHours(shift), shift);
 }
 
 function getLocalDateInputValue(date) {
@@ -438,12 +376,15 @@ export default function Relatorios() {
   const coverageRate = totalShiftsCount > 0 ? Math.round((filledShiftsCount / totalShiftsCount) * 100) : 100;
 
   const financialSummary = useMemo(() => {
-    let totalCost = 0, executedCost = 0, pendingCost = 0, vacantCost = 0, totalHours = 0;
+    let totalCost = 0, executedCost = 0, pendingCost = 0, vacantCost = 0, totalHours = 0, shiftsMissingRate = 0, shiftsAwaitingProduction = 0;
     filteredShifts.forEach(shift => {
       const hours = getShiftHours(shift);
       totalHours += hours;
       const professional = getProf(shift);
-      const cost = getReportShiftCost(shift, professional);
+      const estimate = getShiftCostEstimate(professional, { ...shift, duration_hours: hours });
+      const cost = estimate.amount;
+      if (!isVacant(shift) && (!professional || estimate.missingRate)) shiftsMissingRate += 1;
+      if (!isVacant(shift) && estimate.requiresProduction) shiftsAwaitingProduction += 1;
 
       if (isVacant(shift)) {
         vacantCost += cost;
@@ -457,7 +398,7 @@ export default function Relatorios() {
         }
       }
     });
-    return { totalCost, executedCost, pendingCost, vacantCost, hours: totalHours };
+    return { totalCost, executedCost, pendingCost, vacantCost, hours: totalHours, shiftsMissingRate, shiftsAwaitingProduction };
   }, [filteredShifts, getProf]);
 
   const sectorMetrics = useMemo(() => {
@@ -821,6 +762,8 @@ export default function Relatorios() {
     if (mode === 'all' || activeTab === 'financeiro') {
       html += `
           <tr><td colspan="4" class="section-title">RELATÓRIO FINANCEIRO OPERACIONAL</td></tr>
+          <tr><td colspan="4" style="font-size:10px; color:#475569;">Estimativa operacional: salários mensais rateados por 20 dias úteis; folha contratual integral exibida em Faturamento.</td></tr>
+          ${financialSummary.shiftsMissingRate > 0 || financialSummary.shiftsAwaitingProduction > 0 ? `<tr><td colspan="4" style="font-weight:bold; color:#92400e;">Atenção: ${financialSummary.shiftsMissingRate} plantão(ões) sem tarifa ou profissional identificado; ${financialSummary.shiftsAwaitingProduction} plantão(ões) por produtividade aguardam lançamento. Valores pendentes não integram os totais.</td></tr>` : ''}
           <tr>
             <th colspan="2">Previsão das escalas ocupadas</th>
             <th colspan="2" style="background-color: #047857;">Realizado Concluído</th>
@@ -1218,6 +1161,8 @@ export default function Relatorios() {
     if (mode === 'all' || activeTab === 'financeiro') {
       printHtml += `
         <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Relatório Financeiro Operacional</div>
+        <p style="font-size:9px; color:#475569; margin-bottom:10px;">Estimativa operacional: salários mensais rateados por 20 dias úteis; folha contratual integral exibida em Faturamento.</p>
+        ${financialSummary.shiftsMissingRate > 0 || financialSummary.shiftsAwaitingProduction > 0 ? `<p style="font-size:9px; font-weight:bold; color:#92400e; margin-bottom:10px;">Atenção: ${financialSummary.shiftsMissingRate} plantão(ões) sem tarifa ou profissional identificado; ${financialSummary.shiftsAwaitingProduction} plantão(ões) por produtividade aguardam lançamento. Valores pendentes não integram os totais.</p>` : ''}
         
         <div class="grid-4 break-inside-avoid" style="margin-bottom: 30px;">
           <div class="grid-card">
@@ -1805,6 +1750,21 @@ export default function Relatorios() {
                     <DollarSign className="w-5 h-5" /> Inteligência Financeira e Orçamento
                   </h3>
                 </div>
+                <p className="mt-3 text-[11px] text-slate-500 dark:text-slate-400">
+                  Estimativa operacional: salários mensais são rateados por 20 dias úteis; a folha contratual integral é apresentada em Faturamento.
+                </p>
+                {financialSummary.shiftsMissingRate > 0 && (
+                  <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{financialSummary.shiftsMissingRate} plantão(ões) ocupado(s) sem valor configurado. Esses registros não entram nos totais até que a remuneração seja cadastrada.</span>
+                  </div>
+                )}
+                {financialSummary.shiftsAwaitingProduction > 0 && (
+                  <div className="mt-4 flex items-start gap-2 rounded-xl border border-indigo-300 bg-indigo-50 p-3 text-xs font-semibold text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{financialSummary.shiftsAwaitingProduction} plantão(ões) por produtividade dependem do lançamento da produção e não entram nos valores monetários.</span>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
                   <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-inner">
                     <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Previsão das escalas ocupadas</span>

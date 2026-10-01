@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppData } from '@/lib/useAppData';
+import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, normalizeFinancialText, safeFinancialNumber } from '@/lib/financialCalculations';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
@@ -11,9 +12,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 
 function safeNumber(val, fb = 0) {
-  if (val === null || val === undefined || val === '') return fb;
-  const n = typeof val === 'number' ? val : parseFloat(String(val).replace(',', '.'));
-  return Number.isFinite(n) ? n : fb;
+  return safeFinancialNumber(val, fb);
 }
 
 function formatCurrency(val) {
@@ -86,11 +85,12 @@ const MONTH_NAMES = [
 ];
 
 export default function MinhaEscala() {
-  const { user, company, units, professionals = [], sectors = [], selectedUnitId, loading: appLoading, syncGlobalData } = useAppData();
+  const { user, company, units, allCompanyProfessionals = [], sectors = [], selectedUnitId, loading: appLoading, syncGlobalData } = useAppData();
   const navigate = useNavigate();
 
   const [shifts, setShifts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [shiftsLoadError, setShiftsLoadError] = useState('');
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [now, setNow] = useState(() => new Date());
   const [showPastShifts, setShowPastShifts] = useState(false);
@@ -111,26 +111,18 @@ export default function MinhaEscala() {
   const currentMonth = currentDate.getMonth();
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
   const currentProfessional = useMemo(() => {
-    return (professionals || []).find(p => 
+    return allCompanyProfessionals.find(p =>
       String(p.id) === String(myProfId) || 
       (p.name && user?.full_name && p.name.toLowerCase().trim() === user.full_name.toLowerCase().trim())
     ) || null;
-  }, [professionals, myProfId, user]);
+  }, [allCompanyProfessionals, myProfId, user]);
 
   const profMeta = useMemo(() => {
-    if (!currentProfessional) return {};
-    let localMeta = {};
-    try {
-      const stored = window.localStorage.getItem(`prof_meta_${currentProfessional.id}`);
-      const parsed = stored ? JSON.parse(stored) : null;
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) localMeta = parsed;
-    } catch (error) {
-      console.warn(`Não foi possível carregar os dados locais do profissional ${currentProfessional.id}:`, error);
-    }
-    const serverMeta = [currentProfessional.data, currentProfessional.metadata]
-      .filter(source => source && typeof source === 'object' && !Array.isArray(source));
-    return Object.assign({}, localMeta, ...serverMeta);
+    return getProfessionalFinancialMeta(currentProfessional);
   }, [currentProfessional]);
+  const normalizedRemunerationType = normalizeFinancialText(profMeta.remuneration_type || currentProfessional?.remuneration_type || 'plantao');
+  const isMonthlyRemuneration = ['mensal', 'monthly', 'salario mensal'].includes(normalizedRemunerationType);
+  const isProductivityRemuneration = ['produtividade', 'production'].includes(normalizedRemunerationType);
 
   const sectorMap = useMemo(() => {
     const m = {};
@@ -141,7 +133,8 @@ export default function MinhaEscala() {
   const loadMyShifts = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: allShifts } = await supabase.from('shifts').select('*').eq('company_id', companyId);
+      const { data: allShifts, error } = await supabase.from('shifts').select('*').eq('company_id', companyId);
+      if (error) throw error;
       
       const myShifts = (allShifts || []).filter(s => {
         if (!s || s.status === 'cancelado') return false;
@@ -155,8 +148,10 @@ export default function MinhaEscala() {
       });
 
       setShifts(myShifts);
+      setShiftsLoadError('');
     } catch (e) {
       console.error('Erro ao carregar minha escala:', e);
+      setShiftsLoadError(e?.message || 'Não foi possível carregar seus plantões.');
     } finally {
       setLoading(false);
     }
@@ -190,18 +185,16 @@ export default function MinhaEscala() {
   };
 
   const getShiftValue = useCallback((shift) => {
-    const remunType = profMeta.remuneration_type || 'plantao';
-    if (remunType === 'mensal') return { type: 'mensal', value: 0 };
-    if (remunType === 'produtividade') return { type: 'produtividade', value: 0 };
-    
-    const rates = profMeta.unit_rates?.[shift.unit_id] || {};
-    const d = new Date((shift.date || '').split('T')[0] + 'T12:00:00');
-    const isFds = d.getDay() === 0 || d.getDay() === 6; 
-    const isNight = shift.shift_type === 'noturno' || shift.start_time >= '18:00' || shift.start_time < '06:00';
-    
-    const val = isFds ? rates.fds : (isNight ? rates.noturno : rates.diurno);
-    return { type: 'valor', value: Number(val || 0) };
-  }, [profMeta]);
+    const remunerationType = profMeta.remuneration_type || currentProfessional?.remuneration_type || 'plantao';
+    if (isMonthlyRemuneration) return { type: 'mensal', value: 0 };
+    if (isProductivityRemuneration) return { type: 'produtividade', value: 0 };
+
+    const estimate = getShiftCostEstimate({
+      ...currentProfessional,
+      remuneration_type: remunerationType
+    }, shift);
+    return { type: 'valor', value: estimate.amount, missingRate: estimate.missingRate };
+  }, [profMeta, currentProfessional, isMonthlyRemuneration, isProductivityRemuneration]);
 
   // AÇÃO DE PONTO: VALIDA TEMPO (15m MÁX) E ESPAÇO (GEOFENCE 100m)
   const handleCheckAction = async (shift, actionType) => {
@@ -365,9 +358,9 @@ export default function MinhaEscala() {
   }), [monthShifts]);
 
   const monthMetrics = useMemo(() => {
-    let cumpridos = 0; let futuros = 0; let horas = 0; let valorBruto = 0;
+    let cumpridos = 0; let futuros = 0; let horas = 0; let valorBruto = 0; let monthlySalaryMissing = false;
     
-    if (profMeta.remuneration_type === 'mensal') {
+    if (isMonthlyRemuneration) {
       const monthlyByUnit = profMeta.unit_monthly_salaries || {};
       const allowedUnits = Array.isArray(profMeta.allowed_unit_ids)
         ? profMeta.allowed_unit_ids
@@ -375,15 +368,17 @@ export default function MinhaEscala() {
           ? currentProfessional.unit_ids
           : currentProfessional?.unit_id ? [currentProfessional.unit_id] : [];
       if (Object.keys(monthlyByUnit).length > 0) {
-        const salaryUnitIds = allowedUnits.length > 0 ? allowedUnits : Object.keys(monthlyByUnit);
-        valorBruto = salaryUnitIds.reduce((total, unitId) => {
-          const unitSalary = monthlyByUnit[String(unitId)];
-          return unitSalary === '' || unitSalary === null || unitSalary === undefined
-            ? total
-            : total + safeNumber(unitSalary);
+        monthlySalaryMissing = allowedUnits.length === 0;
+        valorBruto = allowedUnits.reduce((total, unitId) => {
+          const salary = getMonthlySalaryForUnit(currentProfessional, unitId);
+          if (salary.missing) monthlySalaryMissing = true;
+          return salary.missing ? total : total + salary.value;
         }, 0);
       } else {
-        valorBruto = safeNumber(profMeta.monthly_salary);
+        const primaryUnitId = currentProfessional?.unit_id || allowedUnits[0];
+        const salary = getMonthlySalaryForUnit(currentProfessional, primaryUnitId);
+        valorBruto = salary.missing ? 0 : salary.value;
+        monthlySalaryMissing = salary.missing;
       }
     }
 
@@ -396,8 +391,8 @@ export default function MinhaEscala() {
       else { futuros += 1; }
     });
     
-    return { cumpridos, futuros, horas: Math.round(horas * 10) / 10, valorBruto, totalMes: monthShifts.length };
-  }, [monthShifts, profMeta, currentProfessional]);
+    return { cumpridos, futuros, horas: Math.round(horas * 10) / 10, valorBruto, totalMes: monthShifts.length, monthlySalaryMissing };
+  }, [monthShifts, profMeta, currentProfessional, isMonthlyRemuneration]);
 
   const handlePassShiftToMural = async (shift) => {
     const requesterName = currentProfessional?.name || user?.full_name || 'Profissional';
@@ -521,7 +516,7 @@ export default function MinhaEscala() {
         <div class="summary">
           <span>Plantões Cumpridos: ${monthMetrics.cumpridos} de ${monthMetrics.totalMes}</span>
           <span>Horas Efetivadas: ${monthMetrics.horas}h</span>
-          <span>Produção Apurada: ${profMeta.remuneration_type === 'produtividade' ? 'A Calcular' : formatCurrency(monthMetrics.valorBruto)}</span>
+          <span>${isMonthlyRemuneration ? 'Folha contratual mensal' : 'Repasse apurado'}: ${isProductivityRemuneration ? 'A Calcular' : formatCurrency(monthMetrics.valorBruto)}</span>
         </div>
 
         <div style="margin-top: 50px; display: flex; justify-content: space-around; text-align: center; font-size: 10px;">
@@ -685,13 +680,20 @@ export default function MinhaEscala() {
 
         <Card className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-400">Repasse Apurado</span>
+            <span className="text-xs font-black uppercase tracking-wider text-slate-400">{isMonthlyRemuneration ? 'Folha contratual mensal' : 'Repasse apurado'}</span>
             <DollarSign className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-3 font-mono">
-            {profMeta.remuneration_type === 'produtividade' ? 'COMISSÃO' : formatCurrency(monthMetrics.valorBruto)}
+            {isProductivityRemuneration ? 'COMISSÃO' : formatCurrency(monthMetrics.valorBruto)}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1 font-semibold">Base de cálculo até hoje</p>
+          <p className="text-[11px] text-slate-500 mt-1 font-semibold">
+            {isMonthlyRemuneration ? 'Total mensal das unidades vinculadas' : 'Valores de plantões realizados até hoje'}
+          </p>
+          {isMonthlyRemuneration && monthMetrics.monthlySalaryMissing && (
+            <p className="mt-1 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+              Salário mensal ausente em uma ou mais unidades vinculadas; confira o cadastro do profissional.
+            </p>
+          )}
         </Card>
 
         <Card className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
@@ -732,6 +734,15 @@ export default function MinhaEscala() {
             </button>
           </div>
         </div>
+
+        {shiftsLoadError && (
+          <div role="alert" className="mb-4 flex flex-col gap-3 rounded-2xl border border-rose-300 bg-rose-50 p-4 text-xs font-bold text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200 sm:flex-row sm:items-center sm:justify-between">
+            <span>Falha ao carregar sua escala: {shiftsLoadError}</span>
+            <Button type="button" onClick={loadMyShifts} variant="outline" className="h-8 border-rose-300 text-rose-800 dark:border-rose-500/40 dark:text-rose-200">
+              Tentar novamente
+            </Button>
+          </div>
+        )}
 
         {loading ? (
           <div className="py-16 text-center text-slate-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />Carregando...</div>

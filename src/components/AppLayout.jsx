@@ -53,7 +53,9 @@ export default function AppLayout({ children }) {
     isBilling, 
     userAppRole,
     shifts,
-    currentProfessional
+    currentProfessional,
+    dataWarnings = [],
+    syncGlobalData
   } = useAppData();
 
   const navigate = useNavigate();
@@ -396,6 +398,25 @@ export default function AppLayout({ children }) {
             </button>
           </div>
         </header>
+
+        {dataWarnings.length > 0 && (
+          <div role="status" className="mx-4 mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-950 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200 print:hidden">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>
+                  <p className="font-black">Atenção: dados incompletos ou pendentes de conferência</p>
+                  <ul className="mt-1 list-disc space-y-1 pl-4">
+                    {dataWarnings.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}
+                  </ul>
+                </div>
+              </div>
+              <Button type="button" variant="outline" onClick={syncGlobalData} className="h-8 shrink-0 border-amber-400 bg-white px-3 text-[11px] font-bold text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-slate-900 dark:text-amber-200 dark:hover:bg-slate-800">
+                Recarregar dados
+              </Button>
+            </div>
+          </div>
+        )}
 
         {mobileMenuOpen && (
           <div className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 space-y-2 z-50 shadow-2xl print:hidden">

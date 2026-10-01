@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useAppData } from '@/lib/useAppData';
+import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,19 +10,7 @@ import {
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
-  if (val === null || val === undefined || val === '') return fb;
-  if (typeof val === 'number') return Number.isFinite(val) ? val : fb;
-  let normalized = String(val).replace(/[R$\s]/g, '');
-  if (normalized.includes(',') && normalized.includes('.')) {
-    normalized = normalized.lastIndexOf(',') > normalized.lastIndexOf('.')
-      ? normalized.replace(/\./g, '').replace(',', '.')
-      : normalized.replace(/,/g, '');
-  } else {
-    normalized = normalized.replace(',', '.');
-  }
-  if (!normalized) return fb;
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : fb;
+  return safeFinancialNumber(val, fb);
 }
 
 function formatCurrency(val) {
@@ -85,18 +74,7 @@ function isBillableShift(shift) {
 }
 
 function getProfessionalMeta(professional) {
-  if (!professional) return {};
-  let localMeta = {};
-  try {
-    const stored = window.localStorage.getItem(`prof_meta_${professional.id}`);
-    const parsed = stored ? JSON.parse(stored) : null;
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) localMeta = parsed;
-  } catch (error) {
-    console.warn(`Não foi possível carregar os dados locais do profissional ${professional.id}:`, error);
-  }
-  const serverMeta = [professional.data, professional.metadata]
-    .filter(source => source && typeof source === 'object' && !Array.isArray(source));
-  return Object.assign({}, localMeta, ...serverMeta);
+  return getProfessionalFinancialMeta(professional);
 }
 
 function getPaymentStatusKey(unitId, professionalId, monthPrefix) {
@@ -177,6 +155,11 @@ export default function Faturamento() {
   }, [professionals, pagamentosStatus]);
 
   const handleTogglePago = (profId) => {
+    const item = reportData.find(summary => String(summary.prof.id) === String(profId));
+    if (item?.awaitingProduction && !item.isPago) {
+      alert('Não é possível marcar como pago enquanto houver plantões por produtividade sem apuração registrada.');
+      return;
+    }
     setPagamentosStatus(prev => {
       const key = getPaymentStatusKey(selectedUnitId, profId, monthPrefix);
       const nextState = { ...prev, [key]: !prev[key] };
@@ -196,21 +179,14 @@ export default function Faturamento() {
       if (!p) return;
       const meta = getProfessionalMeta(p);
 
-      const remunType = meta.remuneration_type || p.remuneration_type || 'plantao';
+      const remunType = normalizeText(meta.remuneration_type || p.remuneration_type || 'plantao');
       const unitRates = meta.unit_rates || {};
-      const unitMonthlySalaries = meta.unit_monthly_salaries || {};
-      
       const legacySalary = safeNumber(meta.monthly_salary !== undefined ? meta.monthly_salary : p.monthly_salary, 0);
       const primaryUnitId = p.unit_id || meta.allowed_unit_ids?.[0] || p.unit_ids?.[0];
-      const hasUnitSalaryEntry = Object.prototype.hasOwnProperty.call(unitMonthlySalaries, String(selectedUnitId));
-      const unitSalaryValue = unitMonthlySalaries[String(selectedUnitId)];
-      const hasUnitSalary = hasUnitSalaryEntry && unitSalaryValue !== '' && unitSalaryValue !== null && unitSalaryValue !== undefined;
+      const monthlySalary = getMonthlySalaryForUnit(p, selectedUnitId);
+      const isMonthly = ['mensal', 'monthly', 'salario mensal'].includes(remunType);
       const isPrimaryUnit = String(primaryUnitId) === String(selectedUnitId);
-      const salaryBase = remunType === 'mensal'
-        ? hasUnitSalary
-          ? safeNumber(unitSalaryValue, 0)
-          : !hasUnitSalaryEntry && isPrimaryUnit ? legacySalary : 0
-        : legacySalary;
+      const salaryBase = isMonthly ? monthlySalary.value : legacySalary;
       const assignedUnitIds = Array.isArray(meta.allowed_unit_ids)
         ? meta.allowed_unit_ids
         : Array.isArray(p.unit_ids) ? p.unit_ids : (p.unit_id ? [p.unit_id] : []);
@@ -231,15 +207,14 @@ export default function Faturamento() {
         banco,
         remunType,
         salarioBaseContratual: salaryBase,
-        monthlySalaryMissing: remunType === 'mensal' && (
-          !hasUnitSalary && (!isPrimaryUnit || hasUnitSalaryEntry)
-        ),
+        monthlySalaryMissing: isMonthly && monthlySalary.missing,
         unitRates,
         taxRate: safeNumber(taxRate),
         plantõesRealizados: 0,
         horasRealizadas: 0,
         valorApuradoPlantões: 0, // Novo acumulador
         plantõesSemTarifa: 0,
+        plantõesAguardandoProducao: 0,
         plantõesFuturos: 0,
         plantõesList: []
       };
@@ -261,22 +236,25 @@ export default function Faturamento() {
 
         let valorDoPlantaoAtual = 0;
         let tarifaPendente = false;
-        if (profRef.remunType === 'plantao') {
-          const rates = profRef.unitRates[String(shift.unit_id)] || {};
-          const d = new Date(`${shiftDate}T12:00:00`);
-          const isFds = d.getDay() === 0 || d.getDay() === 6;
-          const startTime = shift.start_time || '07:00';
-          const isNight = normalizeText(shift.shift_type) === 'noturno' || startTime >= '18:00' || startTime < '06:00';
-          const rate = isFds ? rates.fds : (isNight ? rates.noturno : rates.diurno);
-          tarifaPendente = rate === undefined || rate === null || rate === '';
-          valorDoPlantaoAtual = tarifaPendente ? 0 : safeNumber(rate);
-        }
+        const remunerationEstimate = getShiftCostEstimate({
+          ...profRef.prof,
+          remuneration_type: profRef.remunType
+        }, {
+          ...shift,
+          duration_hours: schedule.duration
+        });
 
         if (isRealizado) {
           profRef.plantõesRealizados += 1;
           profRef.horasRealizadas += Math.round(schedule.duration * 10) / 10;
-          profRef.valorApuradoPlantões += valorDoPlantaoAtual;
-          if (tarifaPendente && profRef.remunType === 'plantao') profRef.plantõesSemTarifa += 1;
+          if (remunerationEstimate.requiresProduction) {
+            profRef.plantõesAguardandoProducao += 1;
+          } else if (!['mensal', 'monthly', 'salario mensal'].includes(profRef.remunType)) {
+            valorDoPlantaoAtual = remunerationEstimate.amount;
+            tarifaPendente = remunerationEstimate.missingRate;
+            profRef.valorApuradoPlantões += valorDoPlantaoAtual;
+            if (tarifaPendente) profRef.plantõesSemTarifa += 1;
+          }
         } else {
           profRef.plantõesFuturos += 1;
         }
@@ -286,6 +264,7 @@ export default function Faturamento() {
           duration: Math.round(schedule.duration * 10) / 10,
           valorAplicado: valorDoPlantaoAtual,
           tarifaPendente,
+          aguardandoProducao: isRealizado && remunerationEstimate.requiresProduction,
           isRealizado
         });
       }
@@ -297,9 +276,9 @@ export default function Faturamento() {
       if (monthPrefix > todayStr.substring(0, 7)) {
         valorBrutoTotal = 0;
       } else {
-        if (item.remunType === 'mensal') {
+        if (['mensal', 'monthly', 'salario mensal'].includes(item.remunType)) {
           valorBrutoTotal = item.salarioBaseContratual;
-        } else if (item.remunType === 'produtividade') {
+        } else if (['produtividade', 'production'].includes(item.remunType)) {
           valorBrutoTotal = 0; // Calculado externamente ou via lançamento avulso
         } else {
           // 'plantao': O bruto é a soma exata do que foi apurado no laço acima
@@ -317,12 +296,13 @@ export default function Faturamento() {
         valorBruto: valorBrutoTotal,
         valorDesconto,
         valorLiquido,
-        isPago
+        isPago,
+        awaitingProduction: item.plantõesAguardandoProducao > 0
       };
     }).filter(item =>
       item.plantõesRealizados > 0 ||
       item.plantõesFuturos > 0 ||
-      (item.remunType === 'mensal' && item.profStatus === 'ativo' && item.isAssignedToCurrentUnit)
+      (['mensal', 'monthly', 'salario mensal'].includes(item.remunType) && item.profStatus === 'ativo' && item.isAssignedToCurrentUnit)
     );
   }, [professionals, shifts, monthPrefix, selectedUnitId, pagamentosStatus, todayStr, now]);
 
@@ -366,13 +346,18 @@ export default function Faturamento() {
   }).length, [shifts, monthPrefix, selectedUnitId]);
 
   const shiftsWithoutRate = reportData.reduce((total, item) => total + item.plantõesSemTarifa, 0);
+  const shiftsAwaitingProduction = reportData.reduce((total, item) => total + item.plantõesAguardandoProducao, 0);
   const professionalsWithoutMonthlySalary = reportData.filter(item => item.monthlySalaryMissing).length;
   const paymentSummary = useMemo(() => reportData.reduce((summary, item) => {
+    if (item.awaitingProduction) {
+      summary.awaiting.count += 1;
+      return summary;
+    }
     const bucket = item.isPago ? 'paid' : 'pending';
     summary[bucket].count += 1;
     summary[bucket].net += item.valorLiquido;
     return summary;
-  }, { paid: { count: 0, net: 0 }, pending: { count: 0, net: 0 } }), [reportData]);
+  }, { paid: { count: 0, net: 0 }, pending: { count: 0, net: 0 }, awaiting: { count: 0 } }), [reportData]);
 
   const totals = useMemo(() => {
     let bruto = 0, liquido = 0, plantões = 0, horas = 0;
@@ -413,11 +398,11 @@ export default function Faturamento() {
           <td style="border: 1px solid #cbd5e1;">${regime}</td>
           <td class="num" style="border: 1px solid #cbd5e1;">${item.plantõesRealizados}</td>
           <td class="time" style="border: 1px solid #cbd5e1;">${formatHourForExcel(item.horasRealizadas)}</td>
-          <td class="money" style="border: 1px solid #cbd5e1;">${item.valorBruto.toFixed(2).replace('.', ',')}</td>
+          <td class="money" style="border: 1px solid #cbd5e1;">${item.awaitingProduction ? 'A APURAR' : item.valorBruto.toFixed(2).replace('.', ',')}</td>
           <td class="money" style="border: 1px solid #cbd5e1; color: #ef4444;">${item.valorDesconto.toFixed(2).replace('.', ',')}</td>
-          <td class="money" style="border: 1px solid #cbd5e1; font-weight: bold; color: #059669;">${item.valorLiquido.toFixed(2).replace('.', ',')}</td>
+          <td class="money" style="border: 1px solid #cbd5e1; font-weight: bold; color: #059669;">${item.awaitingProduction ? 'A APURAR' : item.valorLiquido.toFixed(2).replace('.', ',')}</td>
           <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${formaPagamento}</td>
-          <td style="border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: ${item.isPago ? '#059669' : '#f59e0b'};">${item.isPago ? 'PAGO' : 'Pendente'}</td>
+          <td style="border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: ${item.awaitingProduction ? '#b45309' : item.isPago ? '#059669' : '#f59e0b'};">${item.awaitingProduction ? 'Apuração pendente' : item.isPago ? 'PAGO' : 'Pendente'}</td>
         </tr>
       `;
     }).join('');
@@ -473,6 +458,7 @@ export default function Faturamento() {
             <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc; color: #059669; font-size: 14px;">${filteredTotals.liquido.toFixed(2).replace('.', ',')}</td>
             <td colspan="2"></td>
           </tr>
+          ${shiftsAwaitingProduction > 0 ? `<tr><td colspan="11" style="padding: 8px; color: #92400e; font-weight: bold;">Atenção: ${shiftsAwaitingProduction} plantão(ões) por produtividade aguardam lançamento. Os valores em aberto não integram os totais.</td></tr>` : ''}
         </table>
       </body>
       </html>
@@ -505,7 +491,9 @@ export default function Faturamento() {
 
     const rowsHtml = filteredReport.map((item, idx) => {
       const formaPagto = item.chavePix ? `PIX: ${item.chavePix}` : (item.banco ? `Banco: ${item.banco}` : 'Pendente');
-      const statusPago = item.isPago ? `<span style="color: #166534; font-weight: bold;">[ PAGO ]</span>` : `<span style="color: #64748b;">Pendente</span>`;
+      const statusPago = item.awaitingProduction
+        ? `<span style="color: #b45309; font-weight: bold;">Apuração pendente</span>`
+        : item.isPago ? `<span style="color: #166534; font-weight: bold;">[ PAGO ]</span>` : `<span style="color: #64748b;">Pendente</span>`;
       const regime = item.remunType === 'mensal' ? 'Fixo Mensal' : item.remunType === 'produtividade' ? 'Produtividade' : 'Por Plantão';
 
       return `
@@ -516,8 +504,8 @@ export default function Faturamento() {
           <td style="border: 1px solid #111; padding: 6px 8px; font-size: 9px;">${regime}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.plantõesRealizados}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-size: 9px;">${formaPagto}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${formatCurrency(item.valorBruto)}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-align: right; font-weight: bold;">${formatCurrency(item.valorLiquido)}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${item.awaitingProduction ? 'A apurar (produção pendente)' : formatCurrency(item.valorBruto)}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: right; font-weight: bold;">${item.awaitingProduction ? 'A apurar (produção pendente)' : formatCurrency(item.valorLiquido)}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${statusPago}</td>
         </tr>
       `;
@@ -580,6 +568,7 @@ export default function Faturamento() {
           <span>Total Bruto: ${formatCurrency(filteredTotals.bruto)}</span>
           <span style="color: #000;">TOTAL LÍQUIDO DOS PROFISSIONAIS LISTADOS: ${formatCurrency(filteredTotals.liquido)}</span>
         </div>
+        ${shiftsAwaitingProduction > 0 ? `<p style="margin-top: 8px; color: #92400e; font-weight: bold;">Atenção: ${shiftsAwaitingProduction} plantão(ões) por produtividade aguardam lançamento. Os valores em aberto não integram os totais.</p>` : ''}
 
         <script>window.onload = function() { window.print(); };</script>
       </body>
@@ -616,6 +605,7 @@ export default function Faturamento() {
       dadosPagamentoHtml = `<div class="grid"><span style="color: #b91c1c; font-weight: bold;">Forma de Pagamento:</span> <span style="color: #b91c1c;">Pendente de cadastro</span></div>`;
     }
 
+    const isActuallyPaid = item.isPago && !item.awaitingProduction;
     const regimeLabel = item.remunType === 'mensal' ? 'Fixo Mensal' : item.remunType === 'produtividade' ? 'Comissionamento/Produtividade' : 'Plantão Dinâmico';
 
     const templateVia = (tituloVia) => `
@@ -624,7 +614,7 @@ export default function Faturamento() {
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
               <h1>${hospitalName}</h1>
-              <p>{item.isPago ? 'RECIBO DE HONORÁRIOS & REPASSE MÉDICO' : 'DEMONSTRATIVO DE HONORÁRIOS A PAGAR'}</p>
+              <p>${item.awaitingProduction ? 'APURAÇÃO PENDENTE — NÃO COMPROVA PAGAMENTO' : isActuallyPaid ? 'RECIBO DE HONORÁRIOS & REPASSE MÉDICO' : 'DEMONSTRATIVO DE HONORÁRIOS A PAGAR'}</p>
               <p style="font-size: 9.5px; margin-top: 2px;">Competência: <b>${competencia}</b></p>
             </div>
             <div style="text-align: right;">
@@ -643,9 +633,9 @@ export default function Faturamento() {
 
         <div class="val-box">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span>Valor Bruto: <b>${formatCurrency(item.valorBruto)}</b></span>
+            <span>Valor Bruto: <b>${item.awaitingProduction ? 'A apurar (produção pendente)' : formatCurrency(item.valorBruto)}</b></span>
             <span>Retenção/Taxa: <b>- ${formatCurrency(item.valorDesconto)}</b></span>
-            <span style="color: #000; font-size: 13px;">LÍQUIDO A RECEBER: <b>${formatCurrency(item.valorLiquido)}</b></span>
+            <span style="color: #000; font-size: 13px;">LÍQUIDO A RECEBER: <b>${item.awaitingProduction ? 'A apurar (produção pendente)' : formatCurrency(item.valorLiquido)}</b></span>
           </div>
         </div>
 
@@ -654,7 +644,7 @@ export default function Faturamento() {
         </div>
 
         <p class="termo">
-          ${item.isPago
+          ${isActuallyPaid
             ? `Declaro ter recebido da instituição ${hospitalName} a quantia líquida discriminada acima, correspondente à quitação integral dos serviços profissionais prestados no período de ${competencia}, dando plena e geral quitação.`
             : `Demonstrativo dos valores apurados pelos serviços profissionais prestados no período de ${competencia}. Este documento não comprova pagamento ou quitação.`
           }
@@ -678,7 +668,7 @@ export default function Faturamento() {
       <html lang="pt-BR">
       <head>
         <meta charset="utf-8">
-        <title>${item.isPago ? 'Recibo Oficial' : 'Demonstrativo de Honorários'} - ${item.prof.name}</title>
+        <title>${isActuallyPaid ? 'Recibo Oficial' : 'Demonstrativo de Honorários'} - ${item.prof.name}</title>
         <style>
           @page { size: A4 portrait; margin: 8mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -735,9 +725,9 @@ export default function Faturamento() {
       `• Regime: ${regimeLabel}`,
       `• Plantões Cumpridos: ${item.plantõesRealizados} plantões (${item.horasRealizadas}h totais)\n`,
       `💰 *Valores Apurados:*`,
-      `• Valor Bruto Apurado: ${formatCurrency(item.valorBruto)}`,
+      `• Valor Bruto Apurado: ${item.awaitingProduction ? 'A apurar (produção pendente)' : formatCurrency(item.valorBruto)}`,
       `• Retenções/Impostos: ${formatCurrency(item.valorDesconto)}`,
-      `• *VALOR LÍQUIDO A RECEBER:* ${formatCurrency(item.valorLiquido)}\n`,
+      `• *VALOR LÍQUIDO A RECEBER:* ${item.awaitingProduction ? 'A apurar (produção pendente)' : formatCurrency(item.valorLiquido)}\n`,
       `💳 *Forma de Repasse:*`,
       `${dadosPgto}\n`,
       `_Por favor, confira seu demonstrativo. Havendo divergência, contate a coordenação médica._`
@@ -818,7 +808,7 @@ export default function Faturamento() {
         </Card>
       </div>
 
-      {(shiftsWithoutRate > 0 || shiftsWithoutProfessional > 0 || shiftsWithInvalidSchedule > 0 || professionalsWithoutMonthlySalary > 0) && (
+      {(shiftsWithoutRate > 0 || shiftsAwaitingProduction > 0 || shiftsWithoutProfessional > 0 || shiftsWithInvalidSchedule > 0 || professionalsWithoutMonthlySalary > 0) && (
         <Card className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-950/20">
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -827,6 +817,11 @@ export default function Faturamento() {
               {shiftsWithoutRate > 0 && (
                 <p className="text-xs text-amber-800 dark:text-amber-200">
                   {shiftsWithoutRate} plantão(ões) realizado(s) sem tarifa cadastrada na unidade. Esses valores aparecem como R$ 0,00 e deixam o total bruto incompleto.
+                </p>
+              )}
+              {shiftsAwaitingProduction > 0 && (
+                <p className="text-xs text-amber-800 dark:text-amber-200">
+                  {shiftsAwaitingProduction} plantão(ões) por produtividade aguardam lançamento da produção; ficam fora dos valores apurados e não podem ser marcados como pagos até a apuração.
                 </p>
               )}
               {professionalsWithoutMonthlySalary > 0 && (
@@ -849,7 +844,7 @@ export default function Faturamento() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Card className="flex items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-500/20 dark:bg-emerald-950/20">
           <div>
             <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Marcado como pago</p>
@@ -864,7 +859,17 @@ export default function Faturamento() {
           </div>
           <strong className="text-lg font-black text-amber-700 dark:text-amber-300">{formatCurrency(paymentSummary.pending.net)}</strong>
         </Card>
+        <Card className="flex items-center justify-between gap-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-500/20 dark:bg-indigo-950/20">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wide text-indigo-700 dark:text-indigo-400">Aguardando apuração</p>
+            <p className="mt-1 text-xs text-indigo-800/80 dark:text-indigo-300/80">{paymentSummary.awaiting.count} profissional(is)</p>
+          </div>
+          <strong className="text-sm font-black text-indigo-700 dark:text-indigo-300">Produção</strong>
+        </Card>
       </div>
+      <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
+        O status de pagamento é salvo neste navegador e ainda não sincroniza entre usuários ou dispositivos.
+      </p>
 
       {/* TABELA DE CONCILIAÇÃO FINANCEIRA COM STATUS DE PAGAMENTO */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 space-y-4">
@@ -938,6 +943,9 @@ export default function Faturamento() {
                       <td className="py-3 px-4 text-center">
                         <span className="font-bold text-slate-900 dark:text-white">{item.plantõesRealizados} plantões</span>
                         <div className="text-[10px] font-mono text-slate-400">{item.horasRealizadas.toFixed(1).replace('.', ',')}h totais</div>
+                        {item.plantõesAguardandoProducao > 0 && (
+                          <div className="mt-1 text-[9px] font-bold text-indigo-600 dark:text-indigo-400">{item.plantõesAguardandoProducao} aguardando apuração</div>
+                        )}
                       </td>
 
                       <td className="py-3 px-4 font-mono">
@@ -946,7 +954,7 @@ export default function Faturamento() {
 
                       <td className="py-3 px-4 text-right">
                         <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">
-                          {formatCurrency(item.valorLiquido)}
+                          {item.awaitingProduction ? 'A apurar' : formatCurrency(item.valorLiquido)}
                         </span>
                         {item.taxRate > 0 && <div className="text-[9px] text-rose-500">-{item.taxRate}% retenção</div>}
                       </td>
@@ -954,13 +962,15 @@ export default function Faturamento() {
                       <td className="py-3 px-4 text-center">
                         <button 
                           onClick={() => handleTogglePago(item.prof.id)}
-                          className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all border ${
+                          disabled={item.awaitingProduction && !item.isPago}
+                          title={item.awaitingProduction ? item.isPago ? 'O pagamento já marcado deve ser revisado após a apuração.' : 'Aguarde o lançamento da produção para conciliar o pagamento.' : undefined}
+                          className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all border disabled:cursor-not-allowed disabled:opacity-60 ${
                             item.isPago 
                               ? 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800' 
                               : 'bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 hover:bg-slate-200'
                           }`}
                         >
-                          {item.isPago ? '✓ Pago' : 'Pendente'}
+                          {item.awaitingProduction ? item.isPago ? 'Pago · revisar' : 'Apuração pendente' : item.isPago ? '✓ Pago' : 'Pendente'}
                         </button>
                       </td>
 
@@ -970,10 +980,10 @@ export default function Faturamento() {
                             size="sm" 
                             variant="outline" 
                             onClick={() => handlePrintIndividualReceipt(item)}
-                            title={item.isPago ? 'Imprimir recibo em 2 vias' : 'Imprimir demonstrativo; não comprova pagamento'}
+                            title={item.awaitingProduction ? 'Imprimir demonstrativo; apuração pendente e sem comprovação de pagamento' : item.isPago ? 'Imprimir recibo em 2 vias' : 'Imprimir demonstrativo; não comprova pagamento'}
                             className="h-8 text-xs font-bold gap-1 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-white cursor-pointer"
                           >
-                            <Receipt className="w-3.5 h-3.5 text-emerald-600" /> {item.isPago ? 'Recibo' : 'Demonstrativo'}
+                            <Receipt className="w-3.5 h-3.5 text-emerald-600" /> {item.isPago && !item.awaitingProduction ? 'Recibo' : 'Demonstrativo'}
                           </Button>
 
                           <Button 
@@ -1063,8 +1073,11 @@ export default function Faturamento() {
                         <div className="flex items-center gap-3 justify-between sm:justify-end">
                           {selectedProfModal.remunType === 'plantao' && p.isRealizado && (
                             <span className={`text-[10px] font-bold ${p.tarifaPendente ? 'text-amber-600' : 'text-slate-500'}`}>
-                              {p.tarifaPendente ? 'Tarifa não cadastrada' : `Apurado: ${formatCurrency(p.valorAplicado)}`}
+                              {p.tarifaPendente ? 'Tarifa não cadastrada' : p.aguardandoProducao ? 'Aguardando lançamento da produção' : `Apurado: ${formatCurrency(p.valorAplicado)}`}
                             </span>
+                          )}
+                          {['produtividade', 'production'].includes(selectedProfModal.remunType) && p.isRealizado && (
+                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">Aguardando lançamento da produção</span>
                           )}
                           <span className="font-mono font-bold text-sky-600 bg-sky-50 dark:bg-sky-950/30 px-2 py-1 rounded-lg">
                             {p.duration}h
