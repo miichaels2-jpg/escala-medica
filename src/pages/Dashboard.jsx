@@ -34,7 +34,22 @@ function fmtDateLong(d = new Date()) {
 }
 
 function normalizeStr(str) {
-  return (str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  return String(str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+function getShiftProfessionalName(shift) {
+  return shift?.professional_name || shift?.professional?.name || shift?.professionalName || '';
+}
+
+function isVacantShift(shift) {
+  const status = normalizeStr(shift?.status);
+  const name = normalizeStr(getShiftProfessionalName(shift));
+
+  if (status === 'vago' || status === 'vaga') return true;
+  if (!name) return !shift?.professional_id;
+
+  return ['vaga', 'aberto', 'descoberto', 'sem profissional', 'plantao sem profissional']
+    .some(marker => name.includes(marker));
 }
 
 function toTitleCase(str) {
@@ -163,9 +178,9 @@ export default function Painel() {
       });
   }, [unitShifts, todayStr, currentTime]);
 
-  const activeNowList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'active'), [todayShifts]);
-  const upcomingList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'upcoming'), [todayShifts]);
-  const concludedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'concluded'), [todayShifts]);
+  const activeNowList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'active' && !isVacantShift(s)), [todayShifts]);
+  const upcomingList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'upcoming' && !isVacantShift(s)), [todayShifts]);
+  const concludedList = useMemo(() => todayShifts.filter((s) => s.lifecycle.state === 'concluded' && !isVacantShift(s)), [todayShifts]);
 
   // CORREÇÃO MÁXIMA: Puxa TODAS as vagas em aberto do mês inteiro (hoje, amanhã, sábados futuros, ou furos do passado no mesmo mês)
   const vacantShifts = useMemo(() => {
@@ -176,9 +191,7 @@ export default function Painel() {
         // Bloqueio do Mês: Apenas do mês vigente!
         if (!sDate.startsWith(monthPrefix)) return false;
 
-        const isVago = !s.professional_id || s.status === 'vago' || (s.professional_name || '').toLowerCase().includes('vaga');
-        
-        return isVago;
+        return isVacantShift(s);
       })
       .map(s => ({ 
         ...s, 
@@ -231,9 +244,10 @@ export default function Painel() {
       const secId = s.sector_id || 'sem_setor';
       if (!map[secId]) map[secId] = { id: secId, name: toTitleCase(s.sector_name || 'Setor Geral'), specialty: 'Geral', total: 0, active: 0, upcoming: 0, vacant: 0 };
       map[secId].total += 1;
-      if (s.lifecycle.state === 'active') map[secId].active += 1;
-      if (s.lifecycle.state === 'upcoming') map[secId].upcoming += 1;
-      if (!s.professional_id || s.status === 'vago' || (s.professional_name || '').toLowerCase().includes('vaga')) map[secId].vacant += 1;
+      const isVacant = isVacantShift(s);
+      if (!isVacant && s.lifecycle.state === 'active') map[secId].active += 1;
+      if (!isVacant && s.lifecycle.state === 'upcoming') map[secId].upcoming += 1;
+      if (isVacant) map[secId].vacant += 1;
     });
     return Object.values(map);
   }, [sectors, todayShifts]);
@@ -359,8 +373,8 @@ export default function Painel() {
                   <div className="flex-1 lg:overflow-y-auto pr-1">
                     {nextHandover ? (
                       <div className="space-y-2.5">
-                        <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30"><span className="text-[9px] sm:text-[10px] uppercase font-bold text-emerald-400 block mb-1">Equipe que Assume ({nextHandover.incoming.length})</span>{nextHandover.incoming.slice(0, 4).map((s) => (<div key={s.id} className="text-[10px] sm:text-xs flex items-center justify-between py-0.5"><span className="font-bold text-white truncate pr-2">{toTitleCase(s.professional_name) || 'Vaga Aberta'}</span><span className="text-[9px] sm:text-[10px] text-slate-400 shrink-0">{toTitleCase(s.sector_name)}</span></div>))}</div>
-                        <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800"><span className="text-[9px] sm:text-[10px] uppercase font-bold text-slate-400 block mb-1">Equipe que Entrega ({nextHandover.outgoing.length})</span>{nextHandover.outgoing.length === 0 ? <span className="text-[10px] sm:text-xs text-slate-500 italic">Nenhum encerrando às {nextHandover.targetTime}.</span> : nextHandover.outgoing.slice(0, 4).map((s) => (<div key={s.id} className="text-[10px] sm:text-xs flex items-center justify-between py-0.5"><span className="font-medium text-slate-300 truncate pr-2">{toTitleCase(s.professional_name)}</span><span className="text-[9px] sm:text-[10px] text-slate-500 shrink-0">{toTitleCase(s.sector_name)}</span></div>))}</div>
+                        <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30"><span className="text-[9px] sm:text-[10px] uppercase font-bold text-emerald-400 block mb-1">Equipe que Assume ({nextHandover.incoming.length})</span>{nextHandover.incoming.slice(0, 4).map((s) => (<div key={s.id} className="text-[10px] sm:text-xs flex items-center justify-between py-0.5"><span className="font-bold text-white truncate pr-2">{toTitleCase(profById[s.professional_id]?.name || getShiftProfessionalName(s))}</span><span className="text-[9px] sm:text-[10px] text-slate-400 shrink-0">{toTitleCase(s.sector_name)}</span></div>))}</div>
+                        <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800"><span className="text-[9px] sm:text-[10px] uppercase font-bold text-slate-400 block mb-1">Equipe que Entrega ({nextHandover.outgoing.length})</span>{nextHandover.outgoing.length === 0 ? <span className="text-[10px] sm:text-xs text-slate-500 italic">Nenhum encerrando às {nextHandover.targetTime}.</span> : nextHandover.outgoing.slice(0, 4).map((s) => (<div key={s.id} className="text-[10px] sm:text-xs flex items-center justify-between py-0.5"><span className="font-medium text-slate-300 truncate pr-2">{toTitleCase(profById[s.professional_id]?.name || getShiftProfessionalName(s))}</span><span className="text-[9px] sm:text-[10px] text-slate-500 shrink-0">{toTitleCase(s.sector_name)}</span></div>))}</div>
                       </div>
                     ) : <div className="py-10 text-center text-[10px] sm:text-xs text-slate-500">Nenhuma troca prevista.</div>}
                   </div>
@@ -635,7 +649,7 @@ export default function Painel() {
               const state = shift.lifecycle.state;
               const isActive = state === 'active';
               const isFinished = state === 'concluded';
-              const isVago = !shift.professional_id || shift.status === 'vago' || (shift.professional_name || '').toLowerCase().includes('vaga');
+              const isVago = isVacantShift(shift);
 
               return (
                 <div
