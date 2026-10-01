@@ -654,10 +654,12 @@ export default function Escalas() {
 
     const currentUnitObj = units?.find(u => String(u.id) === String(selectedUnitId));
     const unitName = currentUnitObj?.name || hospitalName;
-    const logoUrl = currentUnitObj?.logo_url || company?.logo_url;
-    const logoHtml = logoUrl
-      ? `<img src="${escapeHtml(logoUrl)}" alt="" class="print-logo" />`
-      : `<div class="logo-fallback">${escapeHtml(unitName[0] || 'H')}</div>`;
+    const companyLogoHtml = company?.logo_url
+      ? `<img src="${escapeHtml(company.logo_url)}" alt="" class="print-logo company-logo" />`
+      : `<div class="logo-fallback">${escapeHtml((hospitalName[0] || 'H').toUpperCase())}</div>`;
+    const unitLogoHtml = currentUnitObj?.logo_url
+      ? `<img src="${escapeHtml(currentUnitObj.logo_url)}" alt="" class="print-logo unit-logo" />`
+      : '';
 
     const activeShiftsOnly = tvData.tableDayShifts.filter(shift => !isVacant(shift));
 
@@ -703,38 +705,38 @@ export default function Escalas() {
         <meta charset="utf-8">
         <title>Escala Oficial - ${escapeHtml(unitName)}</title>
         <style>
-          @page { size: A4 landscape; margin: 10mm; }
+          @page { size: A4 landscape; margin: 8mm; }
           * { box-sizing: border-box; }
           html, body { width: 100%; }
-          body { margin: 0; font-family: Arial, sans-serif; background: #fff !important; color: #172033 !important; padding: 0; font-size: 10px; line-height: 1.35; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-          .header-box { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; border-bottom: 3px solid #0f766e; padding: 0 0 10px; margin: 0 0 10px; break-inside: avoid; page-break-inside: avoid; }
-          .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-          .logos { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-          .print-logo, .logo-fallback { display: block; width: 46px; height: 46px; object-fit: contain; }
-          .logo-fallback { display: grid; place-items: center; border: 2px solid #0f766e; border-radius: 10px; color: #0f766e; font-size: 22px; font-weight: 900; }
+          body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #fff !important; color: #000 !important; padding: 0; font-size: 10px; line-height: 1.3; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+          .header-box { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 2px solid #0f172a; padding: 0 0 10px; margin: 0 0 12px; break-inside: avoid; page-break-inside: avoid; }
+          .brand { display: flex; align-items: center; min-width: 0; }
+          .logos { display: flex; align-items: center; flex: 0 0 auto; }
+          .print-logo { display: block; max-width: 100px; max-height: 38px; object-fit: contain; }
+          .company-logo { margin-right: 10px; }
+          .unit-logo { margin-left: 10px; padding-left: 10px; border-left: 1px solid #cbd5e1; }
+          .logo-fallback { display: flex; width: 38px; height: 38px; align-items: center; justify-content: center; border: 1.5px solid #0f172a; border-radius: 6px; margin-right: 10px; font-size: 20px; font-weight: 900; }
           .header-info { min-width: 0; }
-          .header-info h1 { margin: 0 0 2px; color: #0f172a; font-size: 18px; font-weight: 900; line-height: 1.2; text-transform: uppercase; }
-          .header-info p { margin: 0; color: #0f766e; font-size: 9px; font-weight: 800; letter-spacing: .08em; }
-          .header-info .validity { margin-top: 4px; color: #475569; font-size: 9px; line-height: 1.3; }
-          .document-meta { text-align: right; color: #475569; font-size: 8px; line-height: 1.4; }
-          .document-label { display: inline-block; margin-bottom: 4px; padding: 3px 7px; border: 1px solid #0f766e; border-radius: 4px; color: #0f766e; font-weight: 900; }
-          table { width: 100%; table-layout: fixed; border-collapse: collapse; border: 1px solid #94a3b8; margin: 0 0 12px; }
+          .header-info h1 { margin: 0 0 2px; color: #0f172a; font-size: 17px; font-weight: 900; line-height: 1.2; text-transform: uppercase; }
+          .header-info p { margin: 0; color: #334155; font-size: 9px; font-weight: 700; }
+          .header-info .validity { margin-top: 3px; color: #475569; font-size: 9px; }
+          .document-meta { flex: 0 0 auto; text-align: right; color: #334155; font-size: 9px; line-height: 1.5; }
+          .document-label { display: inline-block; margin-bottom: 3px; padding: 2px 6px; border: 1px solid #64748b; font-size: 8px; font-weight: 900; }
+          table { width: 100%; table-layout: fixed; border-collapse: collapse; border: 1px solid #64748b; margin: 0 0 12px; }
           thead { display: table-header-group; }
           tr { break-inside: avoid; page-break-inside: avoid; }
-          th { background-color: #e6f4f1; border: 1px solid #94a3b8; padding: 7px 8px; color: #0f172a; text-align: left; font-size: 8px; font-weight: 900; text-transform: uppercase; }
-          td { overflow-wrap: anywhere; border: 1px solid #cbd5e1 !important; padding: 6px 8px !important; line-height: 1.3; }
-          .signatures-area { display: flex; justify-content: space-around; gap: 24px; margin-top: 22px; break-inside: avoid; page-break-inside: avoid; }
+          th { background-color: #e2e8f0; border: 1px solid #64748b; padding: 6px 7px; color: #0f172a; text-align: left; font-size: 8px; font-weight: 900; text-transform: uppercase; }
+          td { overflow-wrap: anywhere; border: 1px solid #94a3b8 !important; padding: 6px 7px !important; line-height: 1.3; }
+          .signatures-area { display: flex; justify-content: space-around; gap: 24px; margin-top: 18px; break-inside: avoid; page-break-inside: avoid; }
           .sig-box { text-align: center; width: 42%; }
-          .sig-line { height: 28px; border-bottom: 1px solid #64748b; margin-bottom: 6px; }
-          @media screen { body { padding: 22px; background: #f1f5f9 !important; } .page { max-width: 1120px; margin: 0 auto; padding: 18px; background: #fff; box-shadow: 0 8px 30px #0f172a1a; } }
-          @media print { body { padding: 0; } .page { width: 100%; } }
+          .sig-line { height: 26px; border-bottom: 1px solid #64748b; margin-bottom: 5px; }
+          @media screen { body { padding: 15px; } }
         </style>
       </head>
       <body>
-        <div class="page">
         <div class="header-box">
           <div class="brand">
-            <div class="logos">${logoHtml}</div>
+            <div class="logos">${companyLogoHtml}${unitLogoHtml}</div>
             <div class="header-info">
               <h1>${escapeHtml(unitName)}</h1>
               <p>ESCALA OFICIAL DE PLANTÃO • MURAL HOSPITALAR</p>
@@ -762,7 +764,6 @@ export default function Escalas() {
         <div class="signatures-area">
           <div class="sig-box"><div class="sig-line"></div><div style="font-weight: 900; text-transform: uppercase;">Diretoria Clínica / RT Médica</div></div>
           <div class="sig-box"><div class="sig-line"></div><div style="font-weight: 900; text-transform: uppercase;">Gerência de Enfermagem / RT Assistencial</div></div>
-        </div>
         </div>
         <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 250); });</script>
       </body>
