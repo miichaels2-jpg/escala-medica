@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,10 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   BarChart3, Users, DollarSign, Building2,
-  CalendarDays, ShieldAlert, CheckCircle2,
-  Activity, Clock, Printer as PrinterIcon,
+  CalendarDays, Activity, Printer as PrinterIcon,
   AlertTriangle, Stethoscope, FileSpreadsheet,
-  Filter, Check, Target, ShieldCheck, Contact2, Gift, ArrowLeftRight
+  Filter, Check, Contact2, Gift, ArrowLeftRight
 } from 'lucide-react';
 
 function safeNumber(value, fallback = 0) {
@@ -141,6 +140,17 @@ const REPORT_TITLES = {
   profissionais: 'Produtividade profissional',
   financeiro: 'Análise financeira'
 };
+
+const REPORT_NAVIGATION = [
+  { id: 'executivo', label: 'Resumo executivo', description: 'Indicadores e cobertura', icon: BarChart3 },
+  { id: 'escalas', label: 'Plantões', description: 'Escalas e ocupação', icon: CalendarDays },
+  { id: 'trocas', label: 'Trocas e repasses', description: 'Histórico de alterações', icon: ArrowLeftRight },
+  { id: 'base_setores', label: 'Setores', description: 'Estrutura e custos', icon: Building2 },
+  { id: 'base_profissionais', label: 'Corpo clínico', description: 'Cadastro e situação', icon: Contact2 },
+  { id: 'aniversariantes', label: 'Aniversariantes', description: 'Datas comemorativas', icon: Gift },
+  { id: 'profissionais', label: 'Produtividade', description: 'Atuação profissional', icon: Users },
+  { id: 'financeiro', label: 'Financeiro', description: 'Custos e orçamento', icon: DollarSign }
+];
 
 export default function Relatorios() {
   const { shifts = [], sectors = [], professionals = [], company, units = [], selectedUnitId } = useAppData();
@@ -283,7 +293,6 @@ export default function Relatorios() {
     if (!hasSearched || !appliedFilters.start || !appliedFilters.end) return [];
     
     const startObj = new Date(appliedFilters.start + 'T12:00:00');
-    const endObj = new Date(appliedFilters.end + 'T12:00:00');
     const filterMonthStart = startObj.getMonth() + 1;
     const targetMonthStr = String(filterMonthStart).padStart(2, '0');
 
@@ -1192,6 +1201,50 @@ export default function Relatorios() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[250px_minmax(0,1fr)] lg:items-start">
+        <aside className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-3 shadow-sm">
+          <div className="hidden px-3 pb-3 pt-2 lg:block">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Navegação</p>
+            <h2 className="mt-1 text-sm font-black text-slate-900 dark:text-white">Escolha um relatório</h2>
+          </div>
+          <nav aria-label="Relatórios disponíveis" className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+            {REPORT_NAVIGATION.map(({ id, label, description, icon: Icon }) => {
+              const isActive = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-current={isActive ? 'page' : undefined}
+                  onClick={() => setActiveTab(id)}
+                  className={`flex min-w-[190px] items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors lg:min-w-0 ${
+                    isActive
+                      ? 'border-sky-200 bg-sky-50 text-sky-800 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-300'
+                      : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:bg-slate-800/70'
+                  }`}
+                >
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                    isActive
+                      ? 'bg-sky-600 text-white dark:bg-cyan-600'
+                      : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                  }`}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-black">{label}</span>
+                    <span className={`mt-0.5 block truncate text-[10px] ${
+                      isActive ? 'text-sky-700/80 dark:text-cyan-200/70' : 'text-slate-400 dark:text-slate-500'
+                    }`}>{description}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+          <p className="hidden border-t border-slate-100 px-3 pt-3 text-[10px] text-slate-400 dark:border-slate-800 lg:block">
+            Um relatório por vez · {REPORT_NAVIGATION.findIndex(report => report.id === activeTab) + 1} de {REPORT_NAVIGATION.length}
+          </p>
+        </aside>
+
+        <main className="min-w-0 space-y-5">
       {/* PAINEL DE FILTROS PERSONALIZÁVEL */}
       <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-md space-y-4 transition-colors">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-3">
@@ -1200,7 +1253,7 @@ export default function Relatorios() {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-3 items-end">
           <div className="space-y-1.5">
             <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Data Inicial</Label>
             <Input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 dark:[color-scheme:dark] transition-colors" />
@@ -1252,51 +1305,18 @@ export default function Relatorios() {
 
       {/* ESTADO INICIAL */}
       {!hasSearched ? (
-        <Card className="p-16 md:p-24 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-[#1e293b]/50 text-center space-y-4 shadow-sm transition-colors">
-          <div className="w-20 h-20 rounded-full bg-sky-50 dark:bg-cyan-500/10 text-sky-500 dark:text-cyan-400 flex items-center justify-center mx-auto border border-sky-100 dark:border-cyan-500/20">
-            <Filter className="w-10 h-10 animate-pulse" />
+        <Card className="p-10 md:p-16 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-[#1e293b]/50 text-center space-y-4 shadow-sm transition-colors">
+          <div className="w-16 h-16 rounded-2xl bg-sky-50 dark:bg-cyan-500/10 text-sky-500 dark:text-cyan-400 flex items-center justify-center mx-auto border border-sky-100 dark:border-cyan-500/20">
+            <Filter className="w-8 h-8" />
           </div>
-          <h3 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">Pronto para Análise</h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">Escolha o período e os filtros desejados. Os dados serão preparados após selecionar <b>Aplicar filtros</b>.</p>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-600 dark:text-cyan-400">{REPORT_TITLES[activeTab]}</p>
+            <h3 className="mt-2 text-xl font-black text-slate-900 dark:text-white tracking-tight">Relatório pronto para configurar</h3>
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">Defina o período e os filtros desta consulta. O relatório selecionado será exibido e poderá ser exportado ou impresso individualmente.</p>
         </Card>
       ) : (
-        <>
-          {/* ABAS DE NAVEGAÇÃO DA TELA */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            {[
-              { id: 'executivo', label: 'Dashboard Executivo', icon: BarChart3 },
-              { id: 'escalas', label: 'Extrato de Plantões', icon: CalendarDays },
-              { id: 'trocas', label: 'Trocas e Repasses', icon: ArrowLeftRight },
-              { id: 'base_setores', label: 'Estrutura de Setores', icon: Building2 },
-              { id: 'base_profissionais', label: 'Base de Profissionais', icon: Contact2 },
-              { id: 'aniversariantes', label: 'Aniversariantes do Mês', icon: Gift }, 
-              { id: 'profissionais', label: 'Produtividade Médica', icon: Users },
-              { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
-            ].map(tab => {
-              const isActive = activeTab === tab.id;
-              const Icon = tab.icon;
-              return (
-                <button 
-                  key={tab.id} 
-                  onClick={() => setActiveTab(tab.id)} 
-                  className={`px-3.5 py-2.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 border ${
-                    isActive 
-                      ? 'bg-sky-600 dark:bg-cyan-600 text-white border-sky-600 dark:border-cyan-500 shadow-md shadow-sky-600/20 dark:shadow-cyan-900/50' 
-                      : 'bg-white dark:bg-[#1e293b] border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" /> {tab.label}
-                  {tab.id === 'aniversariantes' && birthDaysList.length > 0 && (
-                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold">{birthDaysList.length}</span>
-                  )}
-                  {tab.id === 'trocas' && swapsList.length > 0 && (
-                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[9px] font-bold">{swapsList.length}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
+        <div className="space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] px-4 py-3">
             <div>
               <h2 className="text-sm font-black text-slate-900 dark:text-white">{REPORT_TITLES[activeTab] || 'Relatório'}</h2>
@@ -1711,8 +1731,10 @@ export default function Relatorios() {
               </Card>
             )}
           </div>
-        </>
+        </div>
       )}
+        </main>
+      </div>
     </div>
   );
 }
