@@ -10,7 +10,7 @@ import {
   CalendarDays, ShieldAlert, CheckCircle2,
   Activity, Clock, Printer as PrinterIcon,
   AlertTriangle, Stethoscope, FileSpreadsheet,
-  Filter, Check, Target, ShieldCheck, Contact2
+  Filter, Check, Target, ShieldCheck, Contact2, Gift
 } from 'lucide-react';
 
 function safeNumber(value, fallback = 0) {
@@ -223,6 +223,46 @@ export default function Relatorios() {
       };
     }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }, [professionals, appliedFilters, hasSearched]);
+
+  // ==========================================
+  // FILTRO INTELIGENTE DE ANIVERSARIANTES
+  // ==========================================
+  const birthDaysList = useMemo(() => {
+    if (!hasSearched || !appliedFilters.start || !appliedFilters.end) return [];
+    
+    const startObj = new Date(appliedFilters.start + 'T12:00:00');
+    const endObj = new Date(appliedFilters.end + 'T12:00:00');
+    const filterMonthStart = startObj.getMonth() + 1; // 1 a 12
+    const filterMonthEnd = endObj.getMonth() + 1;
+    
+    // Suportar seleção de meses, se o usuário selecionou apenas um mês (ex: 01/09 a 30/09)
+    // Se o filtro for muito abrangente, pegamos do mês de início
+    const targetMonthStr = String(filterMonthStart).padStart(2, '0');
+
+    return filteredProfessionals.filter(p => {
+      const bDate = p.birth_date || p.birthDate || p.data_nascimento;
+      if (!bDate) return false;
+      
+      const parts = bDate.split('-');
+      if (parts.length !== 3) return false;
+      const bMonth = parts[1];
+      
+      // Checa se o mês do aniversário cai dentro do filtro selecionado
+      return bMonth === targetMonthStr;
+    }).map(p => {
+      const parts = (p.birth_date || p.birthDate || p.data_nascimento).split('-');
+      const day = parseInt(parts[2], 10);
+      const bYear = parseInt(parts[0], 10);
+      const currentAge = currentYear - bYear;
+      
+      return {
+        ...p,
+        birthDayNum: day,
+        birthDateFormatted: `${parts[2]}/${parts[1]}`,
+        ageTurns: currentAge
+      };
+    }).sort((a, b) => a.birthDayNum - b.birthDayNum); // Ordena cronologicamente pelos dias do mês
+  }, [filteredProfessionals, appliedFilters, currentYear, hasSearched]);
 
   const { totalShiftsCount, filledShiftsCount, vacantShiftsCount, vacantShiftItems } = useMemo(() => {
     let filled = 0;
@@ -526,6 +566,31 @@ export default function Relatorios() {
       html += `<tr><td colspan="10" style="border:none; height:20px;"></td></tr>`;
     }
 
+    // EXCEL DA ABA ANIVERSARIANTES
+    if (mode === 'all' || activeTab === 'aniversariantes') {
+      html += `
+          <tr><td colspan="4" class="section-title">ANIVERSARIANTES DO MÊS (${birthDaysList.length})</td></tr>
+          <tr>
+            <th>Dia do Aniversário</th>
+            <th>Nome do Profissional</th>
+            <th>Idade que Completa</th>
+            <th>Setor Principal / Especialidade</th>
+          </tr>
+      `;
+      birthDaysList.forEach((p, i) => {
+        const rowClass = i % 2 === 0 ? '' : 'class="row-alt"';
+        html += `
+          <tr ${rowClass}>
+            <td style="font-weight:bold; text-align:center;">Dia ${p.birthDateFormatted}</td>
+            <td style="font-weight:bold;">${titleCase(p.name)}</td>
+            <td style="text-align:center;">${p.ageTurns} anos</td>
+            <td>${p.specialty || 'Geral'}</td>
+          </tr>
+        `;
+      });
+      html += `<tr><td colspan="4" style="border:none; height:20px;"></td></tr>`;
+    }
+
     if (mode === 'all' || activeTab === 'profissionais') {
       html += `
           <tr><td colspan="6" class="section-title">MATRIZ DE PRODUTIVIDADE MÉDICA (No Período)</td></tr>
@@ -599,7 +664,8 @@ export default function Relatorios() {
       </html>
     `;
 
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    // Novo motor Blob super resistente
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -837,6 +903,38 @@ export default function Relatorios() {
       printHtml += `</tbody></table>`;
     }
 
+    // IMPRESSÃO PDF ABA ANIVERSARIANTES
+    if (mode === 'all' || activeTab === 'aniversariantes') {
+      printHtml += `
+        <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Aniversariantes do Mês (${birthDaysList.length})</div>
+        <table>
+          <thead>
+            <tr>
+              <th class="text-center" style="width: 15%">Dia do Aniversário</th>
+              <th style="width: 45%">Nome do Profissional</th>
+              <th class="text-center" style="width: 15%">Idade</th>
+              <th style="width: 25%">Setor / Especialidade</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      if (birthDaysList.length === 0) {
+        printHtml += `<tr><td colspan="4" class="text-center" style="color: #64748b; padding: 20px;">Nenhum aniversariante encontrado neste período.</td></tr>`;
+      } else {
+        birthDaysList.forEach(p => {
+          printHtml += `
+            <tr>
+              <td class="text-center font-bold" style="font-size: 14px;">Dia ${p.birthDateFormatted}</td>
+              <td class="font-bold" style="font-size: 14px;">${titleCase(p.name)}</td>
+              <td class="text-center">${p.ageTurns} anos</td>
+              <td>${p.specialty || 'Geral'}</td>
+            </tr>
+          `;
+        });
+      }
+      printHtml += `</tbody></table>`;
+    }
+
     if (mode === 'all' || activeTab === 'profissionais') {
       printHtml += `
         <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Matriz de Produtividade Médica</div>
@@ -925,7 +1023,6 @@ export default function Relatorios() {
     printWindow.document.write(printHtml);
     printWindow.document.close();
 
-    // Aguarda o HTML ser renderizado pelo navegador antes de chamar o print
     setTimeout(() => {
       printWindow.focus();
       printWindow.print();
@@ -1045,6 +1142,7 @@ export default function Relatorios() {
               { id: 'escalas', label: 'Extrato de Plantões', icon: CalendarDays },
               { id: 'base_setores', label: 'Estrutura de Setores', icon: Building2 },
               { id: 'base_profissionais', label: 'Base de Profissionais', icon: Contact2 },
+              { id: 'aniversariantes', label: 'Aniversariantes do Mês', icon: Gift }, // NOVA ABA AQUI
               { id: 'profissionais', label: 'Produtividade Médica', icon: Users },
               { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
             ].map(tab => {
@@ -1061,6 +1159,9 @@ export default function Relatorios() {
                   }`}
                 >
                   <Icon className="w-4 h-4" /> {tab.label}
+                  {tab.id === 'aniversariantes' && birthDaysList.length > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold">{birthDaysList.length}</span>
+                  )}
                 </button>
               );
             })}
@@ -1168,7 +1269,7 @@ export default function Relatorios() {
 
                         if (isVago) {
                           if (isPast) {
-                            profNameRender = <span className="text-rose-600 dark:text-rose-500">⚠️ FALTA / NÃO OCUPADO</span>;
+                            profNameRender = <span className="text-rose-600 dark:text-rose-500">⚠️️ FALTA / NÃO OCUPADO</span>;
                             badgeClass = 'bg-rose-100 dark:bg-rose-500/20 text-rose-800 dark:text-rose-500 border-rose-200 dark:border-rose-500/50';
                             badgeText = 'Furo de Escala';
                           } else {
@@ -1255,7 +1356,7 @@ export default function Relatorios() {
                         <th className="py-3 px-3">Especialidade</th>
                         <th className="py-3 px-3">Documento (CRM)</th>
                         <th className="py-3 px-3">Vencimento Doc.</th>
-                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-3 text-center">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
@@ -1270,7 +1371,7 @@ export default function Relatorios() {
                             <td className={`py-3 px-3 font-mono ${isExpired ? 'text-rose-600 dark:text-rose-500 font-bold' : 'text-slate-500 dark:text-slate-400'}`}>
                               {formatDate(expiryDate)}
                             </td>
-                            <td className="py-3 px-3">
+                            <td className="py-3 px-3 text-center">
                               <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${normalize(p.status) === 'inativo' ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-400' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>
                                 {p.status || 'Ativo'}
                               </span>
@@ -1280,6 +1381,46 @@ export default function Relatorios() {
                       })}
                       {filteredProfessionals.length === 0 && (
                         <tr><td colSpan="5" className="py-8 text-center text-slate-500">Nenhum profissional encontrado com os filtros atuais.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+
+            {/* NOVA ABA: ANIVERSARIANTES */}
+            {activeTab === 'aniversariantes' && (
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
+                  <h3 className="font-black text-sm uppercase tracking-widest text-rose-500 flex items-center gap-2">
+                    <Gift className="w-5 h-5" /> Aniversariantes do Mês ({birthDaysList.length})
+                  </h3>
+                </div>
+                <div className="overflow-x-auto mt-4">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                        <th className="py-3 px-3 text-center w-24">Dia</th>
+                        <th className="py-3 px-3">Profissional</th>
+                        <th className="py-3 px-3 text-center">Idade</th>
+                        <th className="py-3 px-3">Setor / Especialidade</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
+                      {birthDaysList.map((p, idx) => (
+                        <tr key={p.id || idx} className="hover:bg-rose-50/50 dark:hover:bg-rose-950/20 transition-colors">
+                          <td className="py-3 px-3 text-center">
+                            <span className="bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 font-black px-3 py-1 rounded-xl text-lg">
+                              {p.birthDayNum}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-bold text-slate-900 dark:text-white text-sm">{titleCase(p.name)}</td>
+                          <td className="py-3 px-3 text-center font-mono font-bold text-slate-500">{p.ageTurns} anos</td>
+                          <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{p.specialty}</td>
+                        </tr>
+                      ))}
+                      {birthDaysList.length === 0 && (
+                        <tr><td colSpan="4" className="py-8 text-center text-slate-500">Nenhum aniversariante encontrado neste período.</td></tr>
                       )}
                     </tbody>
                   </table>
