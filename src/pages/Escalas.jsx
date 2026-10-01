@@ -649,14 +649,15 @@ export default function Escalas() {
     }
 
     const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
-    const logoLetter = escapeHtml(hospitalName[0] || 'H');
     const dataVigencia = liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
     const dataEmissao = liveNow.toLocaleDateString('pt-BR') + ' às ' + liveNow.toLocaleTimeString('pt-BR');
 
-    // LOGOS CONFIGURÁVEIS (Empresa Matriz e Unidade Local)
-    const companyLogoHtml = company?.logo_url ? `<img src="${escapeHtml(company.logo_url)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` : `<div class="logo-badge">${logoLetter}</div>`;
     const currentUnitObj = units?.find(u => String(u.id) === String(selectedUnitId));
-    const unitLogoHtml = currentUnitObj?.logo_url ? `<img src="${escapeHtml(currentUnitObj.logo_url)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` : '';
+    const unitName = currentUnitObj?.name || hospitalName;
+    const logoUrl = currentUnitObj?.logo_url || company?.logo_url;
+    const logoHtml = logoUrl
+      ? `<img src="${escapeHtml(logoUrl)}" alt="" class="print-logo" />`
+      : `<div class="logo-fallback">${escapeHtml(unitName[0] || 'H')}</div>`;
 
     const activeShiftsOnly = tvData.tableDayShifts.filter(shift => !isVacant(shift));
 
@@ -700,41 +701,49 @@ export default function Escalas() {
       <html lang="pt-BR">
       <head>
         <meta charset="utf-8">
-        <title>Escala Oficial - ${escapeHtml(hospitalName)}</title>
+        <title>Escala Oficial - ${escapeHtml(unitName)}</title>
         <style>
-          @page { size: A4 landscape; margin: 8mm; }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
+          @page { size: A4 landscape; margin: 10mm; }
+          * { box-sizing: border-box; }
           html, body { width: 100%; }
-          body { font-family: Arial, sans-serif; background: #fff !important; color: #000 !important; padding: 0; font-size: 10px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-          .header-box { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 2px solid #000; padding-bottom: 9px; margin-bottom: 12px; break-inside: avoid; }
-          .logo-badge { width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px; }
-          .header-info h1 { font-size: 19px; font-weight: 900; text-transform: uppercase; margin-bottom: 2px;}
-          table { width: 100%; table-layout: fixed; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 16px; }
+          body { margin: 0; font-family: Arial, sans-serif; background: #fff !important; color: #172033 !important; padding: 0; font-size: 10px; line-height: 1.35; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+          .header-box { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; border-bottom: 3px solid #0f766e; padding: 0 0 10px; margin: 0 0 10px; break-inside: avoid; page-break-inside: avoid; }
+          .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+          .logos { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+          .print-logo, .logo-fallback { display: block; width: 46px; height: 46px; object-fit: contain; }
+          .logo-fallback { display: grid; place-items: center; border: 2px solid #0f766e; border-radius: 10px; color: #0f766e; font-size: 22px; font-weight: 900; }
+          .header-info { min-width: 0; }
+          .header-info h1 { margin: 0 0 2px; color: #0f172a; font-size: 18px; font-weight: 900; line-height: 1.2; text-transform: uppercase; }
+          .header-info p { margin: 0; color: #0f766e; font-size: 9px; font-weight: 800; letter-spacing: .08em; }
+          .header-info .validity { margin-top: 4px; color: #475569; font-size: 9px; line-height: 1.3; }
+          .document-meta { text-align: right; color: #475569; font-size: 8px; line-height: 1.4; }
+          .document-label { display: inline-block; margin-bottom: 4px; padding: 3px 7px; border: 1px solid #0f766e; border-radius: 4px; color: #0f766e; font-weight: 900; }
+          table { width: 100%; table-layout: fixed; border-collapse: collapse; border: 1px solid #94a3b8; margin: 0 0 12px; }
           thead { display: table-header-group; }
           tr { break-inside: avoid; page-break-inside: avoid; }
-          th { background-color: #e5e7eb; border: 1px solid #000; padding: 6px 7px; text-align: left; font-size: 9px; font-weight: 900; text-transform: uppercase; }
-          td { overflow-wrap: anywhere; }
-          .signatures-area { display: flex; justify-content: space-around; gap: 24px; margin-top: 24px; break-inside: avoid; page-break-inside: avoid; }
+          th { background-color: #e6f4f1; border: 1px solid #94a3b8; padding: 7px 8px; color: #0f172a; text-align: left; font-size: 8px; font-weight: 900; text-transform: uppercase; }
+          td { overflow-wrap: anywhere; border: 1px solid #cbd5e1 !important; padding: 6px 8px !important; line-height: 1.3; }
+          .signatures-area { display: flex; justify-content: space-around; gap: 24px; margin-top: 22px; break-inside: avoid; page-break-inside: avoid; }
           .sig-box { text-align: center; width: 42%; }
-          .sig-line { height: 28px; border-bottom: 1px solid #000; margin-bottom: 6px; }
-          @media screen { body { padding: 18px; } }
-          @media print { body { padding: 0; } }
+          .sig-line { height: 28px; border-bottom: 1px solid #64748b; margin-bottom: 6px; }
+          @media screen { body { padding: 22px; background: #f1f5f9 !important; } .page { max-width: 1120px; margin: 0 auto; padding: 18px; background: #fff; box-shadow: 0 8px 30px #0f172a1a; } }
+          @media print { body { padding: 0; } .page { width: 100%; } }
         </style>
       </head>
       <body>
+        <div class="page">
         <div class="header-box">
-          <div style="display: flex; align-items: center;">
-            ${companyLogoHtml}
-            ${unitLogoHtml}
-            <div class="header-info" style="${unitLogoHtml ? 'margin-left: 15px;' : ''}">
-            <h1>${escapeHtml(currentUnitObj ? currentUnitObj.name : hospitalName)}</h1>
+          <div class="brand">
+            <div class="logos">${logoHtml}</div>
+            <div class="header-info">
+              <h1>${escapeHtml(unitName)}</h1>
               <p>ESCALA OFICIAL DE PLANTÃO • MURAL HOSPITALAR</p>
-              <div style="margin-top: 4px;">Vigência do Relatório: <b>${dataVigencia}</b></div>
+              <div class="validity">Vigência: <b>${dataVigencia}</b></div>
             </div>
           </div>
-          <div style="text-align: right; font-size: 9.5px;">
-            <div style="border: 1px solid #000; padding: 3px 8px; font-weight: 900; display: inline-block;">DOCUMENTO OFICIAL AUDITÁVEL</div>
-            <div style="margin-top: 4px;">Emissão: ${dataEmissao}</div>
+          <div class="document-meta">
+            <div class="document-label">ESCALA OFICIAL</div>
+            <div>Emitida em ${escapeHtml(dataEmissao)}</div>
           </div>
         </div>
         <table>
@@ -753,6 +762,7 @@ export default function Escalas() {
         <div class="signatures-area">
           <div class="sig-box"><div class="sig-line"></div><div style="font-weight: 900; text-transform: uppercase;">Diretoria Clínica / RT Médica</div></div>
           <div class="sig-box"><div class="sig-line"></div><div style="font-weight: 900; text-transform: uppercase;">Gerência de Enfermagem / RT Assistencial</div></div>
+        </div>
         </div>
         <script>window.addEventListener('load', function() { setTimeout(function() { window.print(); }, 250); });</script>
       </body>
