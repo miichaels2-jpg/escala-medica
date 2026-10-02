@@ -185,12 +185,12 @@ export default function Faturamento() {
   const productivityProfessionalsById = useMemo(() => {
     const map = new Map();
     professionals.forEach(professional => {
-      if (professional?.id && (isProductivityPoolUnit || isProductivityProfessional(professional))) {
+      if (professional?.id && isProductivityProfessional(professional)) {
         map.set(String(professional.id), professional);
       }
     });
     return map;
-  }, [professionals, isProductivityPoolUnit]);
+  }, [professionals]);
 
   const productionEntryRows = useMemo(() => {
     if (!isProductivityPoolUnit || String(selectedUnitId) !== productivityRuleUnitId) return [];
@@ -228,6 +228,7 @@ export default function Faturamento() {
         !String(shift.date || '').startsWith(monthPrefix) || !isBillableShift(shift)) return;
       const professionalId = String(shift.professional_id);
       const professional = productivityProfessionalsById.get(professionalId);
+      if (!professional) return;
       const schedule = getShiftSchedule(shift);
       if (!schedule) return;
       const status = normalizeText(shift.status);
@@ -572,7 +573,7 @@ export default function Faturamento() {
       if (!p) return;
       const meta = getProfessionalMeta(p);
 
-      const remunType = isProductivityPoolUnit
+      const remunType = isProductivityPoolUnit && isProductivityProfessional(p)
         ? 'produtividade'
         : normalizeText(meta.remuneration_type || p.remuneration_type || 'plantao');
       const unitRates = meta.unit_rates || {};
@@ -607,6 +608,7 @@ export default function Faturamento() {
         taxRate: safeNumber(taxRate),
         plantõesRealizados: 0,
         horasRealizadas: 0,
+        atendimentosApurados: 0,
         valorApuradoPlantões: 0, // Novo acumulador
         plantõesSemTarifa: 0,
         plantõesAguardandoProducao: 0,
@@ -616,6 +618,7 @@ export default function Faturamento() {
     });
 
     const productivityPayoutDisplayed = new Set();
+    const productivityAttendanceDisplayed = new Set();
     const productivityDaysAwaitingInput = new Set();
     (shifts || []).forEach(shift => {
       if (!shift) return;
@@ -659,6 +662,14 @@ export default function Faturamento() {
               profRef.valorApuradoPlantões += dailyAmount;
               productivityPayoutDisplayed.add(dailyKey);
             }
+            if (!dayIsIncomplete && !productivityAttendanceDisplayed.has(dailyKey)) {
+              profRef.atendimentosApurados += getStoredProductivityAttendance(
+                profRef.prof,
+                selectedUnitId,
+                shiftDate
+              ) || 0;
+              productivityAttendanceDisplayed.add(dailyKey);
+            }
           } else if (!['mensal', 'monthly', 'salario mensal'].includes(profRef.remunType)) {
             valorDoPlantaoAtual = remunerationEstimate.amount;
             tarifaPendente = remunerationEstimate.missingRate;
@@ -700,7 +711,6 @@ export default function Faturamento() {
         }
       }
 
-      if (item.plantõesAguardandoProducao > 0) valorBrutoTotal = 0;
       valorBrutoTotal = roundCurrency(valorBrutoTotal);
       const valorDesconto = roundCurrency((valorBrutoTotal * item.taxRate) / 100);
       const valorLiquido = roundCurrency(valorBrutoTotal - valorDesconto);
@@ -736,8 +746,9 @@ export default function Faturamento() {
     bruto: summary.bruto + item.valorBruto,
     liquido: summary.liquido + item.valorLiquido,
     plantões: summary.plantões + item.plantõesRealizados,
+    atendimentos: summary.atendimentos + item.atendimentosApurados,
     horas: summary.horas + item.horasRealizadas
-  }), { bruto: 0, liquido: 0, plantões: 0, horas: 0 }), [filteredReport]);
+  }), { bruto: 0, liquido: 0, plantões: 0, atendimentos: 0, horas: 0 }), [filteredReport]);
 
   const shiftsWithoutProfessional = useMemo(() => {
     const professionalIds = new Set((professionals || []).map(prof => String(prof?.id)));
@@ -812,12 +823,13 @@ export default function Faturamento() {
           <td style="border: 1px solid #cbd5e1;">${item.prof.specialty || 'Geral'}</td>
           <td style="border: 1px solid #cbd5e1;">${regime}</td>
           <td class="num" style="border: 1px solid #cbd5e1;">${item.plantõesRealizados}</td>
+          <td class="num" style="border: 1px solid #cbd5e1;">${item.remunType === 'produtividade' ? item.atendimentosApurados : ''}</td>
           <td class="time" style="border: 1px solid #cbd5e1;">${formatHourForExcel(item.horasRealizadas)}</td>
-          <td class="money" style="border: 1px solid #cbd5e1;">${item.awaitingProduction ? 'A APURAR' : item.valorBruto.toFixed(2).replace('.', ',')}</td>
+          <td class="money" style="border: 1px solid #cbd5e1;">${item.valorBruto.toFixed(2).replace('.', ',')}</td>
           <td class="money" style="border: 1px solid #cbd5e1; color: #ef4444;">${item.valorDesconto.toFixed(2).replace('.', ',')}</td>
-          <td class="money" style="border: 1px solid #cbd5e1; font-weight: bold; color: #059669;">${item.awaitingProduction ? 'A APURAR' : item.valorLiquido.toFixed(2).replace('.', ',')}</td>
+          <td class="money" style="border: 1px solid #cbd5e1; font-weight: bold; color: #059669;">${item.valorLiquido.toFixed(2).replace('.', ',')}</td>
           <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${formaPagamento}</td>
-          <td style="border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: ${item.awaitingProduction ? '#b45309' : item.isPago ? '#059669' : '#f59e0b'};">${item.awaitingProduction ? 'Apuração pendente' : item.isPago ? 'PAGO' : 'Pendente'}</td>
+          <td style="border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: ${item.awaitingProduction ? '#b45309' : item.isPago ? '#059669' : '#f59e0b'};">${item.awaitingProduction ? 'Apuração pendente · saldo parcial' : item.isPago ? 'PAGO' : 'Pendente'}</td>
         </tr>
       `;
     }).join('');
@@ -838,23 +850,24 @@ export default function Faturamento() {
       <body>
         <table>
           <tr>
-            <td colspan="11" style="font-size: 20px; font-weight: bold; text-align: center; background-color: #0f172a; color: #ffffff; padding: 12px;">${hospitalName}</td>
+            <td colspan="12" style="font-size: 20px; font-weight: bold; text-align: center; background-color: #0f172a; color: #ffffff; padding: 12px;">${hospitalName}</td>
           </tr>
           <tr>
-            <td colspan="11" style="font-size: 14px; font-weight: bold; text-align: center; background-color: #1e293b; color: #94a3b8; padding: 6px;">RELATÓRIO OFICIAL DE FATURAMENTO E REPASSE</td>
+            <td colspan="12" style="font-size: 14px; font-weight: bold; text-align: center; background-color: #1e293b; color: #94a3b8; padding: 6px;">RELATÓRIO OFICIAL DE FATURAMENTO E REPASSE</td>
           </tr>
           <tr>
             <td colspan="5" style="font-weight: bold; padding: 10px 0;">Competência Mês: ${competencia}</td>
-            <td colspan="6" style="text-align: right; padding: 10px 0;">Emissão do Relatório: ${emissao}</td>
+            <td colspan="7" style="text-align: right; padding: 10px 0;">Emissão do Relatório: ${emissao}</td>
           </tr>
-          <tr><td colspan="11" style="padding-bottom: 8px;">Busca: ${searchQuery.trim() || 'Todos os profissionais'}</td></tr>
-          <tr><td colspan="11"></td></tr>
+          <tr><td colspan="12" style="padding-bottom: 8px;">Busca: ${searchQuery.trim() || 'Todos os profissionais'}</td></tr>
+          <tr><td colspan="12"></td></tr>
           <tr>
             <th>Profissional</th>
             <th>Matrícula</th>
             <th>Especialidade</th>
             <th>Regime Contratual</th>
             <th>Plantões Cumpridos</th>
+            <th>Atendimentos Apurados</th>
             <th>Horas Totais</th>
             <th>Valor Bruto (R$)</th>
             <th>Descontos/Taxa (R$)</th>
@@ -863,17 +876,18 @@ export default function Faturamento() {
             <th>Status do Repasse</th>
           </tr>
           ${rowsHtml}
-          <tr><td colspan="11"></td></tr>
+          <tr><td colspan="12"></td></tr>
           <tr>
             <td colspan="4" style="font-weight: bold; text-align: right; padding: 8px;">TOTAIS DOS PROFISSIONAIS LISTADOS:</td>
             <td class="num" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${filteredTotals.plantões}</td>
+            <td class="num" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${filteredTotals.atendimentos}</td>
             <td class="time" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${formatHourForExcel(filteredTotals.horas)}</td>
             <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${filteredTotals.bruto.toFixed(2).replace('.', ',')}</td>
             <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc; color: #ef4444;">${(filteredTotals.bruto - filteredTotals.liquido).toFixed(2).replace('.', ',')}</td>
             <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc; color: #059669; font-size: 14px;">${filteredTotals.liquido.toFixed(2).replace('.', ',')}</td>
             <td colspan="2"></td>
           </tr>
-          ${shiftsAwaitingProduction > 0 ? `<tr><td colspan="11" style="padding: 8px; color: #92400e; font-weight: bold;">Atenção: ${shiftsAwaitingProduction} plantão(ões) por produtividade aguardam lançamento. Os valores em aberto não integram os totais.</td></tr>` : ''}
+          ${shiftsAwaitingProduction > 0 ? `<tr><td colspan="12" style="padding: 8px; color: #92400e; font-weight: bold;">Atenção: ${shiftsAwaitingProduction} dia(s) por produtividade aguardam lançamento completo. Os saldos parciais incluem somente diárias já fechadas.</td></tr>` : ''}
         </table>
       </body>
       </html>
@@ -918,9 +932,10 @@ export default function Faturamento() {
           <td style="border: 1px solid #111; padding: 6px 8px;">${item.prof.specialty || 'Geral'}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; font-size: 9px;">${regime}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.plantõesRealizados}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.remunType === 'produtividade' ? item.atendimentosApurados : ''}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-size: 9px;">${formaPagto}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${item.awaitingProduction ? 'A apurar (produção pendente)' : formatCurrency(item.valorBruto)}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-align: right; font-weight: bold;">${item.awaitingProduction ? 'A apurar (produção pendente)' : formatCurrency(item.valorLiquido)}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${formatCurrency(item.valorBruto)}${item.awaitingProduction ? ' (PARCIAL)' : ''}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; text-align: right; font-weight: bold;">${formatCurrency(item.valorLiquido)}${item.awaitingProduction ? ' (PARCIAL)' : ''}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${statusPago}</td>
         </tr>
       `;
@@ -968,7 +983,8 @@ export default function Faturamento() {
               <th>Matrícula</th>
               <th>Especialidade</th>
               <th>Regime</th>
-              <th style="text-align: center;">Plantões Efetivados</th>
+              <th style="text-align: center;">Plantões</th>
+              <th style="text-align: center;">Atendimentos Apurados</th>
               <th>Dados p/ Pagamento</th>
               <th style="text-align: right;">Bruto Apurado</th>
               <th style="text-align: right;">Líquido a Pagar</th>
@@ -983,7 +999,7 @@ export default function Faturamento() {
           <span>Total Bruto: ${formatCurrency(filteredTotals.bruto)}</span>
           <span style="color: #000;">TOTAL LÍQUIDO DOS PROFISSIONAIS LISTADOS: ${formatCurrency(filteredTotals.liquido)}</span>
         </div>
-        ${shiftsAwaitingProduction > 0 ? `<p style="margin-top: 8px; color: #92400e; font-weight: bold;">Atenção: ${shiftsAwaitingProduction} plantão(ões) por produtividade aguardam lançamento. Os valores em aberto não integram os totais.</p>` : ''}
+        ${shiftsAwaitingProduction > 0 ? `<p style="margin-top: 8px; color: #92400e; font-weight: bold;">Atenção: ${shiftsAwaitingProduction} dia(s) por produtividade aguardam lançamento completo. O valor exibido para esses profissionais é parcial e inclui somente os dias já fechados.</p>` : ''}
 
         <script>window.onload = function() { window.print(); };</script>
       </body>
@@ -1044,13 +1060,15 @@ export default function Faturamento() {
           <div class="grid"><span>Documento / Especialidade:</span> <span>${item.prof.document || 'CRM'} • ${item.prof.specialty || 'Geral'}</span></div>
           <div class="grid"><span>Regime de Contratação:</span> <span>${regimeLabel}</span></div>
           <div class="grid"><span>Plantões Cumpridos no Período:</span> <span>${item.plantõesRealizados} plantões (${item.horasRealizadas}h computadas)</span></div>
+          ${item.remunType === 'produtividade' ? `<div class="grid"><span>Atendimentos apurados em dias completos:</span> <span>${item.atendimentosApurados}</span></div>` : ''}
+          ${item.awaitingProduction ? `<div class="grid"><span>Dias pendentes:</span> <span>${item.plantõesAguardandoProducao} — valores desses dias ainda não incluídos</span></div>` : ''}
         </div>
 
         <div class="val-box">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span>Valor Bruto: <b>${item.awaitingProduction ? 'A apurar (produção pendente)' : formatCurrency(item.valorBruto)}</b></span>
+            <span>${item.awaitingProduction ? 'Saldo bruto parcial' : 'Valor Bruto'}: <b>${formatCurrency(item.valorBruto)}</b></span>
             <span>Retenção/Taxa: <b>- ${formatCurrency(item.valorDesconto)}</b></span>
-            <span style="color: #000; font-size: 13px;">LÍQUIDO A RECEBER: <b>${item.awaitingProduction ? 'A apurar (produção pendente)' : formatCurrency(item.valorLiquido)}</b></span>
+            <span style="color: #000; font-size: 13px;">${item.awaitingProduction ? 'SALDO LÍQUIDO PARCIAL' : 'LÍQUIDO A RECEBER'}: <b>${formatCurrency(item.valorLiquido)}</b></span>
           </div>
         </div>
 
@@ -1138,11 +1156,14 @@ export default function Faturamento() {
       `Profissional: *${item.prof.name}* (ID: ${item.matricula})\n`,
       `📊 *Demonstrativo de Produção:*`,
       `• Regime: ${regimeLabel}`,
-      `• Plantões Cumpridos: ${item.plantõesRealizados} plantões (${item.horasRealizadas}h totais)\n`,
+      `• Plantões Cumpridos: ${item.plantõesRealizados} plantões (${item.horasRealizadas}h totais)`,
+      ...(item.remunType === 'produtividade' ? [`• Atendimentos apurados em dias completos: ${item.atendimentosApurados}`] : []),
+      ...(item.awaitingProduction ? [`• Dias pendentes: ${item.plantõesAguardandoProducao} (não incluídos no saldo)`] : []),
+      '\n',
       `💰 *Valores Apurados:*`,
-      `• Valor Bruto Apurado: ${item.awaitingProduction ? 'A apurar (produção pendente)' : formatCurrency(item.valorBruto)}`,
+      `• ${item.awaitingProduction ? 'Saldo bruto parcial' : 'Valor Bruto Apurado'}: ${formatCurrency(item.valorBruto)}`,
       `• Retenções/Impostos: ${formatCurrency(item.valorDesconto)}`,
-      `• *VALOR LÍQUIDO A RECEBER:* ${item.awaitingProduction ? 'A apurar (produção pendente)' : formatCurrency(item.valorLiquido)}\n`,
+      `• *${item.awaitingProduction ? 'SALDO LÍQUIDO PARCIAL' : 'VALOR LÍQUIDO A RECEBER'}:* ${formatCurrency(item.valorLiquido)}\n`,
       `💳 *Forma de Repasse:*`,
       `${dadosPgto}\n`,
       `_Por favor, confira seu demonstrativo. Havendo divergência, contate a coordenação médica._`
@@ -1229,7 +1250,7 @@ export default function Faturamento() {
             <div>
               <h2 className="text-sm font-black text-indigo-950 dark:text-indigo-200">Produtividade diária por unidade</h2>
               <p className="mt-1 text-xs text-indigo-900/80 dark:text-indigo-200/80">
-                Uma única unidade pode usar o rateio diário de R$ 150. O valor unitário é R$ 150 dividido pelo total de atendimentos do dia; cada profissional recebe atendimentos × valor unitário.
+                Uma única unidade pode usar o rateio diário de R$ 150. Só entram profissionais cadastrados com regime de produtividade. O valor unitário é o pool dividido pelos atendimentos do dia; cada profissional recebe sua parte proporcional.
               </p>
             </div>
             {isProductivityPoolUnit && isManager && (
@@ -1259,7 +1280,7 @@ export default function Faturamento() {
           {productivityRuleUnitId && (
             <div className="rounded-xl border border-indigo-200 bg-white/80 p-3 text-xs text-indigo-950 dark:border-indigo-500/20 dark:bg-slate-900/80 dark:text-indigo-100">
               Unidade configurada: <strong>{units.find(unit => String(unit.id) === productivityRuleUnitId)?.name || 'Unidade não encontrada'}</strong> · Limite diário compartilhado: <strong>{formatCurrency(safeNumber(productivityRule.daily_amount, 150))}</strong>.
-              {isProductivityPoolUnit && <span> O total só é liberado após o registro da produção de todos os profissionais com plantão naquela data.</span>}
+              {isProductivityPoolUnit && <span> Cada dia é apurado separadamente; só os profissionais cadastrados como produtividade entram no rateio. Dias completos já entram no saldo acumulado, mesmo que outro dia ainda esteja pendente.</span>}
             </div>
           )}
         </Card>
@@ -1403,6 +1424,11 @@ export default function Faturamento() {
                       <td className="py-3 px-4 text-center">
                         <span className="font-bold text-slate-900 dark:text-white">{item.plantõesRealizados} plantões</span>
                         <div className="text-[10px] font-mono text-slate-400">{item.horasRealizadas.toFixed(1).replace('.', ',')}h totais</div>
+                        {item.remunType === 'produtividade' && (
+                          <div className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">
+                            {item.atendimentosApurados} atendimento(s) em dias fechados
+                          </div>
+                        )}
                         {item.plantõesAguardandoProducao > 0 && (
                           <div className="mt-1 text-[9px] font-bold text-indigo-600 dark:text-indigo-400">{item.plantõesAguardandoProducao} dia(s) pendente(s)</div>
                         )}
@@ -1414,8 +1440,13 @@ export default function Faturamento() {
 
                       <td className="py-3 px-4 text-right">
                         <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">
-                          {item.awaitingProduction ? 'A apurar' : formatCurrency(item.valorLiquido)}
+                          {formatCurrency(item.valorLiquido)}
                         </span>
+                        {item.awaitingProduction && (
+                          <div className="text-[9px] font-semibold text-amber-600 dark:text-amber-400">
+                            Saldo parcial · {item.plantõesAguardandoProducao} dia(s) pendente(s)
+                          </div>
+                        )}
                         {item.taxRate > 0 && <div className="text-[9px] text-rose-500">-{item.taxRate}% retenção</div>}
                       </td>
 
@@ -1484,7 +1515,7 @@ export default function Faturamento() {
               Lançamento diário de atendimentos
             </DialogTitle>
             <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-              Informe a quantidade de cada profissional escalado. A apuração só será liberada quando todos tiverem um número informado, inclusive zero.
+              Informe a quantidade de cada profissional escalado e cadastrado como produtividade. O rateio diário só fecha quando todos os elegíveis tiverem um número informado, inclusive zero.
             </p>
           </DialogHeader>
           <label className="space-y-1 text-[10px] font-black uppercase tracking-wide text-slate-500">
@@ -1565,7 +1596,7 @@ export default function Faturamento() {
 
           {selectedProfModal && (
             <div className="space-y-4 py-2 text-xs">
-              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase font-bold">Matrícula ID</span>
                   <strong className="font-mono text-sm text-indigo-600 dark:text-indigo-400">{selectedProfModal.matricula}</strong>
@@ -1580,6 +1611,12 @@ export default function Faturamento() {
                   <span className="text-[10px] text-slate-400 block uppercase font-bold">Plantões Realizados</span>
                   <strong className="text-sm">{selectedProfModal.plantõesRealizados} plantões</strong>
                 </div>
+                {selectedProfModal.remunType === 'produtividade' && (
+                  <div>
+                    <span className="text-[10px] text-slate-400 block uppercase font-bold">Atendimentos Apurados</span>
+                    <strong className="text-sm">{selectedProfModal.atendimentosApurados}</strong>
+                  </div>
+                )}
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase font-bold">Líquido Apurado</span>
                   <strong className="text-sm text-emerald-600 dark:text-emerald-400">{formatCurrency(selectedProfModal.valorLiquido)}</strong>

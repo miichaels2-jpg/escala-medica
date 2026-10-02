@@ -44,6 +44,20 @@ test('withholds a daily pool until every scheduled provider has an attendance co
   assert.deepEqual(allocations.dailyTotals.get('2026-09-01'), { totalAttendances: null, poolAmount: null });
 });
 
+test('keeps completed daily earnings available while another date is still incomplete', () => {
+  const allocations = calculateProductivityPoolAllocations([
+    { id: 'complete:p1', date: '2026-09-01', professional_id: 'p1', attendance_count: 30 },
+    { id: 'complete:p2', date: '2026-09-01', professional_id: 'p2', attendance_count: 70 },
+    { id: 'pending:p1', date: '2026-09-02', professional_id: 'p1', attendance_count: 20 },
+    { id: 'pending:p2', date: '2026-09-02', professional_id: 'p2', attendance_count: null }
+  ]);
+
+  assert.equal(allocations.allocationsByDateAndProfessional.get('2026-09-01:p1'), 45);
+  assert.equal(allocations.allocationsByDateAndProfessional.get('2026-09-01:p2'), 105);
+  assert.equal(allocations.allocationsByDateAndProfessional.has('2026-09-02:p1'), false);
+  assert.equal(allocations.incompleteDates.has('2026-09-02'), true);
+});
+
 test('withholds a daily pool when a stored attendance count is invalid', () => {
   const allocations = calculateProductivityPoolAllocations([
     { id: 'd1:p1', date: '2026-09-01', professional_id: 'p1', attendance_count: 20 },
