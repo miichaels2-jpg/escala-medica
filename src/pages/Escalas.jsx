@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppData } from '@/lib/useAppData';
+import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,14 +88,7 @@ function getShiftName(shift) {
 }
 
 function isVacant(shift) {
-  const name = normalize(getShiftName(shift));
-  const hasProfId = Boolean(shift.professional_id);
-  const hasName = Boolean(name);
-
-  if (normalize(shift.status) === 'vago') return true;
-  if (name.includes('vaga') || name.includes('descoberto') || name.includes('aberto') || name === 'plantao sem profissional') return true;
-  if (!hasProfId && !hasName) return true;
-  return false;
+  return isShiftVacant(shift);
 }
 
 function computeShiftHospitalLifecycle(shift, liveNowDate) {
@@ -102,16 +96,11 @@ function computeShiftHospitalLifecycle(shift, liveNowDate) {
     return { isLive: false, isConcluded: false, isProgrammed: true, isHandover: false, statusText: 'PROGRAMADO', detail: '' };
   }
 
-  const [sYear, sMonth, sDay] = String(shift.date).split('-').map(Number);
-  const [startH, startM] = String(shift.start_time || '07:00').split(':').map(Number);
-  const [endH, endM] = String(shift.end_time || '19:00').split(':').map(Number);
-
-  const startExact = new Date(sYear, sMonth - 1, sDay, startH || 0, startM || 0, 0);
-  let endExact = new Date(sYear, sMonth - 1, sDay, endH || 0, endM || 0, 0);
-
-  if (endExact.getTime() <= startExact.getTime()) {
-    endExact.setDate(endExact.getDate() + 1);
+  const range = getShiftDateTimeRange(shift);
+  if (!range) {
+    return { isLive: false, isConcluded: false, isProgrammed: true, isHandover: false, statusText: 'PROGRAMADO', detail: '' };
   }
+  const { start: startExact, end: endExact } = range;
 
   const nowMs = liveNowDate.getTime();
   const startMs = startExact.getTime();
@@ -645,7 +634,7 @@ const closeTvMode = async () => {
       if (selectedSectorId !== 'todos' && String(shift.sector_id) !== String(selectedSectorId)) return;
 
       const lifecycle = computeShiftHospitalLifecycle(shift, liveNow);
-      const sDate = (shift.date || '').split('T')[0];
+      const sDate = String(shift.date || '').slice(0, 10);
 
       if (sDate === todayLocalStr || lifecycle.isLive) {
         tableDayShifts.push(shift);

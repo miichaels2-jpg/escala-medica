@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
+import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
@@ -43,14 +44,7 @@ function getShiftProfessionalName(shift) {
 }
 
 function isVacantShift(shift) {
-  const status = normalizeStr(shift?.status);
-  const name = normalizeStr(getShiftProfessionalName(shift));
-
-  if (status === 'vago' || status === 'vaga') return true;
-  if (!name) return !shift?.professional_id;
-
-  return ['vaga', 'aberto', 'descoberto', 'sem profissional', 'plantao sem profissional']
-    .some(marker => name.includes(marker));
+  return isShiftVacant(shift);
 }
 
 function toTitleCase(str) {
@@ -71,14 +65,9 @@ function safeNumber(val, fb = 0) {
 function computeShiftLiveStatus(shift, liveNowDate) {
   if (!shift || !shift.date) return { isLive: false, isConcluded: false, isProgrammed: true, detail: '' };
 
-  const [sYear, sMonth, sDay] = String(shift.date).split('-').map(Number);
-  const [startH, startM] = String(shift.start_time || '07:00').split(':').map(Number);
-  const [endH, endM] = String(shift.end_time || '19:00').split(':').map(Number);
-
-  const startDate = new Date(sYear, sMonth - 1, sDay, startH || 0, startM || 0, 0);
-  let endDate = new Date(sYear, sMonth - 1, sDay, endH || 0, endM || 0, 0);
-
-  if (endDate.getTime() <= startDate.getTime()) endDate.setDate(endDate.getDate() + 1);
+  const range = getShiftDateTimeRange(shift);
+  if (!range) return { isLive: false, isConcluded: false, isProgrammed: true, detail: '' };
+  const { start: startDate, end: endDate } = range;
 
   const nowMs = liveNowDate.getTime();
   const startMs = startDate.getTime();
