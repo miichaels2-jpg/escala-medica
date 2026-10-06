@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { 
   CalendarDays, Users, Clock, Minimize2, AlertTriangle, CheckCircle2,
   ArrowRightLeft, Activity, DollarSign, Building2, ShieldAlert,
-  Radio, TrendingUp, Flame, ChevronRight, X, Send
+  Radio, TrendingUp, Flame, ChevronRight, ChevronDown, ChevronUp, X, Send
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -88,6 +88,7 @@ export default function Painel() {
 
   const [tvMode, setTvMode] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [showAllVacantShifts, setShowAllVacantShifts] = useState(false);
 
   const unitId = selectedUnitId || user?.data?.selected_unit_id || company?.selected_unit_id || 'unit_h1';
   const currentUnit = units.find(u => String(u.id) === String(unitId));
@@ -212,6 +213,7 @@ export default function Painel() {
       }))
       .sort((a, b) => (a.date || '').localeCompare(b.date || '')); // Ordena cronologicamente
   }, [monthlyShifts, sectors]);
+  const visibleVacantShifts = showAllVacantShifts ? vacantShifts : vacantShifts.slice(0, 6);
 
   const todayFinancials = useMemo(() => {
     let executedValue = 0; let plannedValue = 0; let shiftsMissingRate = 0; let shiftsAwaitingProduction = 0;
@@ -447,9 +449,25 @@ export default function Painel() {
                 <span className="text-xs text-rose-700 dark:text-rose-300">A ocupação geral não atingiu 100%. Clique na vaga abaixo para preencher:</span>
               </div>
             </div>
+            {vacantShifts.length > 6 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-expanded={showAllVacantShifts}
+                onClick={() => setShowAllVacantShifts(value => !value)}
+                className="h-8 shrink-0 self-start text-xs font-bold text-rose-700 hover:bg-rose-500/10 hover:text-rose-900 dark:text-rose-300 dark:hover:bg-rose-500/20 dark:hover:text-rose-100 sm:self-auto"
+              >
+                {showAllVacantShifts ? (
+                  <span className="flex items-center gap-1">Mostrar menos <ChevronUp className="h-3.5 w-3.5" /></span>
+                ) : (
+                  <span className="flex items-center gap-1">Ver mais {vacantShifts.length - 6} vagas <ChevronDown className="h-3.5 w-3.5" /></span>
+                )}
+              </Button>
+            )}
           </div>
           <div className="flex flex-wrap gap-2 pt-2 border-t border-rose-200 dark:border-rose-900/50">
-            {vacantShifts.map((vs) => (
+            {visibleVacantShifts.map((vs) => (
               <button key={vs.id} onClick={() => handleResolveAlert(vs)} className="cursor-pointer px-3.5 py-2 rounded-xl bg-white dark:bg-rose-950/70 border border-rose-300 dark:border-rose-800 text-xs font-black text-rose-700 dark:text-rose-300 flex items-center gap-2 hover:bg-rose-50 dark:hover:bg-rose-900 transition-all hover:scale-105 shadow-sm">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /><span><b>{vs.sectorName}</b> • {vs.start_time} às {vs.end_time} ({vs.formattedDate})</span><ArrowRightLeft className="w-3 h-3 opacity-60 ml-1" />
               </button>
