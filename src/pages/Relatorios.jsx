@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { getProfessionalFinancialMeta, getShiftCostEstimate, getShiftDurationHours, safeFinancialNumber } from '@/lib/financialCalculations';
+import { calculateProductivityPoolAllocations, isProductivityDayComplete } from '@/lib/productivityCalculations';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +20,15 @@ function safeNumber(value, fallback = 0) {
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(safeNumber(value));
+}
+
+function formatUnitRate(value) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6
+  }).format(safeNumber(value));
 }
 
 function formatNumber(value) {
@@ -81,6 +91,22 @@ function getShiftHours(shift) {
 
 function getProfessionalMeta(professional) {
   return getProfessionalFinancialMeta(professional);
+}
+
+function getStoredProductivityAttendance(professional, unitId, date) {
+  const stored = getProfessionalMeta(professional)
+    .daily_productivity_attendance?.[String(unitId)]?.[String(date)];
+  const rawCount = typeof stored === 'object' && stored !== null ? stored.count : stored;
+  if (rawCount === null || rawCount === undefined || rawCount === '') return null;
+  const count = Number(rawCount);
+  return Number.isSafeInteger(count) && count >= 0 ? count : null;
+}
+
+function getProductivityDayStatus(day) {
+  if (day.complete) return day.totalAttendance > 0 ? 'Fechado' : 'Fechado · sem atendimentos';
+  if (day.missingCount > 0) return `${day.missingCount} contagem(ns) pendente(s)`;
+  if (day.unfinishedShift) return 'Plantão em andamento';
+  return 'Total de atendimentos inválido';
 }
 
 function getProfessionalCost(professional, hours, shift) {
@@ -159,6 +185,8 @@ const REPORT_TITLES = {
   base_profissionais: 'Corpo clínico',
   aniversariantes: 'Aniversariantes',
   profissionais: 'Produtividade profissional',
+  produtividade_diaria: 'Apuração diária de produtividade',
+  produtividade_profissional: 'Extrato de produtividade por profissional',
   financeiro: 'Análise financeira'
 };
 
@@ -170,6 +198,8 @@ const REPORT_NAVIGATION = [
   { id: 'base_profissionais', label: 'Corpo clínico', description: 'Cadastro e situação', icon: Contact2 },
   { id: 'aniversariantes', label: 'Aniversariantes', description: 'Datas comemorativas', icon: Gift },
   { id: 'profissionais', label: 'Produtividade', description: 'Atuação profissional', icon: Users },
+  { id: 'produtividade_diaria', label: 'Apuração diária', description: 'Atendimentos e rateio', icon: Activity },
+  { id: 'produtividade_profissional', label: 'Extrato individual', description: 'Atendimentos e saldo', icon: Stethoscope },
   { id: 'financeiro', label: 'Financeiro', description: 'Custos e orçamento', icon: DollarSign }
 ];
 
@@ -189,6 +219,7 @@ export default function Relatorios() {
   const [selectedSector, setSelectedSector] = useState('todos');
   const [profStatusFilter, setProfStatusFilter] = useState('todos');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedProductivityProfessionalId, setSelectedProductivityProfessionalId] = useState('');
 
   const [hasSearched, setHasSearched] = useState(false);
   const [appliedFilters, setAppliedFilters] = useState({
@@ -279,6 +310,166 @@ export default function Relatorios() {
       return timeA.localeCompare(timeB);
     });
   }, [shifts, sectors, appliedFilters, hasSearched]);
+
+  const productivityReport = useMemo(() => {
+    const rule = company?.data?.productivity_pool_rule;
+    const ruleUnitId = rule?.unit_id ? String(rule.unit_id) : '';
+    const configuredPool = safeNumber(rule?.daily_amount, 150);
+    const dailyPool = Math.round(configuredPool * 100) / 100;
+    if (!hasSearched || !ruleUnitId || ruleUnitId !== String(selectedUnitId)) {
+      return { configured: Boolean(ruleUnitId), available: false, ruleUnitId, dailyPool, days: [], rows: [], professionalTotals: [], totals: { attendance: 0, pool: 0, shifts: 0, professionals: 0, pendingDays: 0 } };
+    }
+    if (configuredPool < 0 || !Number.isSafeInteger(Math.round(configuredPool * 100))) {
+      return { configured: true, available: false, error: 'O valor diário configurado não é um valor monetário válido.', ruleUnitId, dailyPool, days: [], rows: [], professionalTotals: [], totals: { attendance: 0, pool: 0, shifts: 0, professionals: 0, pendingDays: 0 } };
+    }
+
+    const now = new Date();
+    const eligibleProfessionals = new Map();
+    professionals.forEach(professional => {
+      if (!professional?.id) return;
+      const meta = getProfessionalMeta(professional);
+      const remunerationType = normalize(meta.remuneration_type || meta.remunerationType || meta.payment_type);
+      if (remunerationType !== 'produtividade' && remunerationType !== 'production') return;
+      eligibleProfessionals.set(String(professional.id), { ...professional, ...meta });
+    });
+
+    const byDate = new Map();
+    shifts.forEach(shift => {
+      const shiftStatus = normalize(shift?.status);
+      if (!shift || String(shift.unit_id) !== ruleUnitId ||
+        shiftStatus.includes('cancel') || ['vago', 'vaga'].includes(shiftStatus)) return;
+      const date = String(shift.date || '').slice(0, 10);
+      if (!date || (appliedFilters.start && date < appliedFilters.start) || (appliedFilters.end && date > appliedFilters.end)) return;
+      const professionalId = String(shift.professional_id || '');
+      const professional = eligibleProfessionals.get(professionalId);
+      if (!professional || shift.is_open === true) return;
+      const name = normalize(getShiftName(shift) || professional.name);
+      if (['vaga', 'aberto', 'descoberto', 'sem profissional', 'plantao sem profissional'].some(marker => name.includes(marker))) return;
+      const sector = sectors.find(item => String(item.id) === String(shift.sector_id));
+      const sectorName = sector?.name || shift.sector_name || 'Setor não informado';
+      const dayRows = byDate.get(date) || new Map();
+      const row = dayRows.get(professionalId) || {
+        date,
+        professional,
+        professionalId,
+        attendanceCount: getStoredProductivityAttendance(professional, ruleUnitId, date),
+        shifts: 0,
+        sectorIds: new Set(),
+        sectorNames: new Set(),
+        allShiftsCompleted: true
+      };
+      row.shifts += 1;
+      row.sectorIds.add(String(shift.sector_id || ''));
+      row.sectorNames.add(sectorName);
+      const start = `${date}T${String(shift.start_time || '07:00').slice(0, 5)}:00`;
+      const end = `${date}T${String(shift.end_time || '19:00').slice(0, 5)}:00`;
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+      if (endDate <= startDate) endDate.setDate(endDate.getDate() + 1);
+      const status = normalize(shift.status);
+      if (!['realizado', 'concluido', 'concluida'].includes(status) && (Number.isNaN(endDate.getTime()) || endDate > now)) {
+        row.allShiftsCompleted = false;
+      }
+      dayRows.set(professionalId, row);
+      byDate.set(date, dayRows);
+    });
+
+    const dailyGroups = [...byDate.entries()].sort(([dateA], [dateB]) => dateA.localeCompare(dateB)).map(([date, dayRows]) => {
+      const items = [...dayRows.values()];
+      const missingCount = items.filter(item => item.attendanceCount === null).length;
+      const unfinishedShift = items.some(item => !item.allShiftsCompleted);
+      const attendanceTotal = items.reduce((sum, item) => sum + (item.attendanceCount ?? 0), 0);
+      const complete = isProductivityDayComplete(items.map(item => ({
+        attendance_count: item.attendanceCount,
+        shift_completed: item.allShiftsCompleted
+      })));
+      return {
+        date,
+        complete,
+        missingCount,
+        unfinishedShift,
+        items,
+        totalAttendance: complete ? attendanceTotal : null,
+        invalidTotal: missingCount === 0 && !Number.isSafeInteger(attendanceTotal),
+        poolAmount: complete ? dailyPool : null
+      };
+    });
+
+    const allocationRows = dailyGroups.flatMap(day => day.items.map(item => ({
+      id: `${day.date}:${item.professionalId}`,
+      date: day.date,
+      professional_id: item.professionalId,
+      attendance_count: day.complete ? item.attendanceCount : null
+    })));
+    const allocations = calculateProductivityPoolAllocations(allocationRows, dailyPool);
+    const rows = dailyGroups.flatMap(day => day.items.map(item => {
+      const matchesSector = appliedFilters.sector === 'todos' || item.sectorIds.has(String(appliedFilters.sector));
+      const status = normalize(item.professional.status || item.professional.data?.status || 'ativo');
+      const matchesStatus = appliedFilters.profStatus === 'todos' || status === appliedFilters.profStatus;
+      const term = normalize(appliedFilters.search);
+      const matchesSearch = !term || normalize(item.professional.name).includes(term) ||
+        normalize(item.professional.specialty).includes(term) ||
+        [...item.sectorNames].some(sectorName => normalize(sectorName).includes(term));
+      if (!matchesSector || !matchesStatus || !matchesSearch) return null;
+      const key = `${day.date}:${item.professionalId}`;
+      const rate = day.complete && day.totalAttendance > 0 ? dailyPool / day.totalAttendance : null;
+      return {
+        date: day.date,
+        professional: item.professional,
+        sectors: [...item.sectorNames].join(', '),
+        shifts: item.shifts,
+        attendance: item.attendanceCount,
+        unitRate: rate,
+        amount: day.complete ? allocations.allocationsByDateAndProfessional.get(key) || 0 : null,
+        complete: day.complete,
+        pendingReason: !day.complete
+          ? day.missingCount > 0
+            ? `${day.missingCount} contagem(ns) pendente(s)`
+            : day.unfinishedShift
+              ? 'Plantão ainda em andamento'
+              : 'Total de atendimentos inválido'
+          : day.totalAttendance === 0 ? 'Sem atendimentos no dia' : ''
+      };
+    }).filter(Boolean));
+
+    const professionalTotalsById = new Map();
+    rows.forEach(row => {
+      const key = String(row.professional.id);
+      const summary = professionalTotalsById.get(key) || {
+        professional: row.professional,
+        shifts: 0,
+        attendance: 0,
+        amount: 0,
+        pendingDays: 0,
+        dates: new Set()
+      };
+      summary.shifts += row.shifts;
+      summary.dates.add(row.date);
+      if (row.complete) {
+        summary.attendance += row.attendance || 0;
+        summary.amount += row.amount || 0;
+      } else {
+        summary.pendingDays += 1;
+      }
+      professionalTotalsById.set(key, summary);
+    });
+    const professionalTotals = [...professionalTotalsById.values()]
+      .map(item => ({ ...item, dates: item.dates.size }))
+      .sort((a, b) => a.professional.name.localeCompare(b.professional.name));
+
+    const totals = dailyGroups.reduce((summary, day) => {
+      summary.shifts += day.items.reduce((sum, item) => sum + item.shifts, 0);
+      if (day.complete) {
+        summary.attendance += day.totalAttendance;
+        summary.pool += day.totalAttendance > 0 ? day.poolAmount : 0;
+      } else {
+        summary.pendingDays += 1;
+      }
+      return summary;
+    }, { attendance: 0, pool: 0, shifts: 0, professionals: eligibleProfessionals.size, pendingDays: 0 });
+
+    return { configured: true, available: true, ruleUnitId, dailyPool, days: dailyGroups, rows, professionalTotals, totals };
+  }, [company, selectedUnitId, professionals, shifts, sectors, appliedFilters, hasSearched]);
 
   const swapsList = useMemo(() => {
     if (!hasSearched) return [];
@@ -532,6 +723,13 @@ export default function Relatorios() {
     appliedStatusName,
     appliedFilters.search ? `Busca: ${appliedFilters.search}` : ''
   ].filter(Boolean).join(' · ');
+  const selectedProductivitySummary = productivityReport.professionalTotals.find(
+    item => String(item.professional.id) === String(selectedProductivityProfessionalId)
+  );
+  const selectedProductivityRows = selectedProductivitySummary
+    ? productivityReport.rows.filter(row => String(row.professional.id) === String(selectedProductivityProfessionalId))
+    : [];
+  const productivityProfessionalReportReady = productivityReport.available && Boolean(selectedProductivitySummary);
 
   // ==========================================
   // EXPORTAÇÃO EXCEL NATIVA
@@ -539,6 +737,10 @@ export default function Relatorios() {
   const triggerExcelExport = (mode) => {
     if (!hasSearched) {
       alert('Atenção: Aplique os filtros antes de exportar a planilha.');
+      return;
+    }
+    if (activeTab === 'produtividade_profissional' && !productivityProfessionalReportReady) {
+      alert('Selecione um profissional com plantões produtivos no período para exportar o extrato.');
       return;
     }
 
@@ -759,6 +961,110 @@ export default function Relatorios() {
       html += `<tr><td colspan="6" style="border:none; height:20px;"></td></tr>`;
     }
 
+    if (mode === 'all' || activeTab === 'produtividade_diaria') {
+      html += `
+        <tr><td colspan="6" class="section-title">APURAÇÃO DIÁRIA DE PRODUTIVIDADE</td></tr>
+        <tr><td colspan="6">${productivityReport.available
+          ? `Unidade da regra: ${hospitalName} · Pool diário configurado: ${formatCurrency(productivityReport.dailyPool)} · Rateio proporcional por atendimentos, fechado somente após conferência de todos os profissionais produtivos escalados e conclusão dos plantões.`
+          : productivityReport.error || `A regra de produtividade não está configurada para a unidade selecionada (${hospitalName}); não há valores apurados neste relatório.`}</td></tr>
+        <tr>
+          <th>Data</th><th>Atendimentos apurados</th><th>Plantões</th><th>Pool diário aplicado (R$)</th><th>Valor por atendimento (R$)</th><th>Status</th>
+        </tr>
+      `;
+      productivityReport.days.forEach(day => {
+        html += `
+          <tr>
+            <td>${formatDate(day.date)}</td>
+            <td>${day.complete ? formatNumber(day.totalAttendance) : 'Pendente'}</td>
+            <td>${day.items.reduce((sum, item) => sum + item.shifts, 0)}</td>
+            <td class="money">${day.complete ? formatCurrency(day.totalAttendance > 0 ? day.poolAmount : 0) : '—'}</td>
+            <td class="money">${day.complete && day.totalAttendance > 0 ? formatCurrency(day.poolAmount / day.totalAttendance) : '—'}</td>
+            <td>${getProductivityDayStatus(day)}</td>
+          </tr>
+        `;
+      });
+      html += `
+        <tr><td colspan="11" class="section-title">RATEIO POR PROFISSIONAL E DIA</td></tr>
+        <tr>
+          <th>Data</th><th>Profissional</th><th>Especialidade</th><th>Setor(es)</th><th>Plantões</th><th>Total atendimentos do dia</th><th>Atendimentos individuais</th><th>Valor por atendimento</th><th>Pool diário</th><th>Valor rateado</th><th>Situação</th>
+        </tr>
+      `;
+      productivityReport.rows.forEach(row => {
+        const daily = productivityReport.days.find(day => day.date === row.date);
+        html += `
+          <tr>
+            <td>${formatDate(row.date)}</td>
+            <td>${titleCase(row.professional.name)}</td>
+            <td>${row.professional.specialty || '—'}</td>
+            <td>${row.sectors}</td>
+            <td>${row.shifts}</td>
+            <td>${row.complete ? formatNumber(daily?.totalAttendance) : 'Pendente'}</td>
+            <td>${row.attendance ?? 'não lançado'}</td>
+            <td class="money">${row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
+            <td class="money">${row.complete ? formatCurrency(daily?.totalAttendance > 0 ? productivityReport.dailyPool : 0) : '—'}</td>
+            <td class="money">${row.complete ? formatCurrency(row.amount) : '—'}</td>
+            <td>${row.complete ? 'Rateado' : `Pendente · ${row.pendingReason}`}</td>
+          </tr>
+        `;
+      });
+      html += `
+        <tr><td colspan="7" class="section-title">ACUMULADO POR PROFISSIONAL NO PERÍODO</td></tr>
+        <tr><th>Profissional</th><th>Especialidade</th><th>Plantões</th><th>Atendimentos fechados</th><th>Valor acumulado</th><th>Dias pendentes</th><th>Situação</th></tr>
+      `;
+      productivityReport.professionalTotals.forEach(item => {
+        html += `<tr><td>${titleCase(item.professional.name)}</td><td>${item.professional.specialty || '—'}</td><td>${item.shifts}</td><td>${item.attendance}</td><td class="money">${formatCurrency(item.amount)}</td><td>${item.pendingDays}</td><td>${item.pendingDays ? 'Saldo parcial' : 'Completo'}</td></tr>`;
+      });
+      html += `
+        <tr><td colspan="6" class="section-title">CONSOLIDADO DO PERÍODO (UNIDADE)</td></tr>
+        <tr>
+          <td>Atendimentos em dias fechados: ${productivityReport.available ? formatNumber(productivityReport.totals.attendance) : '—'}</td>
+          <td>Plantões produtivos: ${productivityReport.available ? productivityReport.totals.shifts : '—'}</td>
+          <td>Pool rateado: ${productivityReport.available ? formatCurrency(productivityReport.totals.pool) : '—'}</td>
+          <td>Dias pendentes: ${productivityReport.available ? productivityReport.totals.pendingDays : '—'}</td>
+          <td colspan="2">Pool diário configurado: ${productivityReport.available ? formatCurrency(productivityReport.dailyPool) : '—'}</td>
+        </tr>
+        <tr><td colspan="6" style="border:none; height:20px;"></td></tr>
+      `;
+    }
+
+    if ((mode === 'all' || activeTab === 'produtividade_profissional') && selectedProductivitySummary) {
+      html += `
+        <tr><td colspan="8" class="section-title">EXTRATO INDIVIDUAL DE PRODUTIVIDADE</td></tr>
+        <tr><td colspan="8">Profissional: ${titleCase(selectedProductivitySummary.professional.name)} · Especialidade: ${selectedProductivitySummary.professional.specialty || '—'} · Período: ${periodLabel} · Unidade: ${hospitalName}</td></tr>
+        <tr><td colspan="8">Regra: valor por atendimento = pool diário configurado (${formatCurrency(productivityReport.dailyPool)}) ÷ total de atendimentos da unidade no dia. Valor individual = atendimentos do profissional × valor por atendimento. Dias pendentes não entram no saldo fechado.</td></tr>
+        <tr>
+          <th>Data</th><th>Setor(es)</th><th>Plantões</th><th>Atendimentos do profissional</th><th>Atendimentos totais no dia</th><th>Valor por atendimento</th><th>Valor rateado</th><th>Situação</th>
+        </tr>
+      `;
+      selectedProductivityRows.forEach(row => {
+        const day = productivityReport.days.find(item => item.date === row.date);
+        html += `
+          <tr>
+            <td>${formatDate(row.date)}</td>
+            <td>${row.sectors}</td>
+            <td>${row.shifts}</td>
+            <td>${row.attendance ?? 'Não lançado'}</td>
+            <td>${row.complete ? formatNumber(day?.totalAttendance) : 'Pendente'}</td>
+            <td class="money">${row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
+            <td class="money">${row.complete ? formatCurrency(row.amount) : '—'}</td>
+            <td>${row.complete ? 'Rateado' : `Pendente · ${row.pendingReason}`}</td>
+          </tr>
+        `;
+      });
+      html += `
+        <tr>
+          <td colspan="2"><strong>Total do período fechado</strong></td>
+          <td>${selectedProductivitySummary.shifts}</td>
+          <td>${formatNumber(selectedProductivitySummary.attendance)}</td>
+          <td>—</td>
+          <td>—</td>
+          <td class="money"><strong>${formatCurrency(selectedProductivitySummary.amount)}</strong></td>
+          <td>${selectedProductivitySummary.pendingDays ? `${selectedProductivitySummary.pendingDays} dia(s) pendente(s) · saldo parcial` : 'Completo'}</td>
+        </tr>
+        <tr><td colspan="8" style="border:none; height:20px;"></td></tr>
+      `;
+    }
+
     if (mode === 'all' || activeTab === 'financeiro') {
       html += `
           <tr><td colspan="4" class="section-title">RELATÓRIO FINANCEIRO OPERACIONAL</td></tr>
@@ -825,6 +1131,10 @@ export default function Relatorios() {
       alert('Atenção: Aplique os filtros para renderizar a telemetria antes de imprimir.');
       return;
     }
+    if (activeTab === 'produtividade_profissional' && !productivityProfessionalReportReady) {
+      alert('Selecione um profissional com plantões produtivos no período para imprimir o extrato.');
+      return;
+    }
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -851,7 +1161,7 @@ export default function Relatorios() {
         <meta charset="utf-8">
         <title>${REPORT_TITLES[activeTab] || 'Relatório'} - ${hospitalName}</title>
         <style>
-          @page { size: A4 portrait; margin: 15mm; }
+          @page { size: A4 ${['produtividade_diaria', 'produtividade_profissional'].includes(activeTab) ? 'landscape' : 'portrait'}; margin: 12mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000000 !important; font-size: 11px; padding: 10px; }
           
@@ -1158,6 +1468,128 @@ export default function Relatorios() {
       printHtml += `</tbody></table>`;
     }
 
+    if (mode === 'all' || activeTab === 'produtividade_diaria') {
+      printHtml += `
+        <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Apuração diária de produtividade</div>
+        <p style="font-size:9px; color:#475569; margin-bottom:10px;">
+          ${productivityReport.available
+            ? `Unidade da regra: ${hospitalName} · Pool configurado: ${formatCurrency(productivityReport.dailyPool)} por dia. Cada diária é rateada proporcionalmente aos atendimentos cadastrados para profissionais com remuneração por produtividade. Dias pendentes não compõem o total rateado.`
+            : productivityReport.error || `A regra de produtividade não está configurada para a unidade selecionada (${hospitalName}); não há valores apurados neste relatório.`}
+        </p>
+        <div class="grid-cards">
+          <div class="grid-card"><div class="card-title">Atendimentos em dias fechados</div><div class="card-value">${productivityReport.available ? formatNumber(productivityReport.totals.attendance) : '—'}</div></div>
+          <div class="grid-card"><div class="card-title">Pool rateado no período</div><div class="card-value">${productivityReport.available ? formatCurrency(productivityReport.totals.pool) : '—'}</div></div>
+          <div class="grid-card"><div class="card-title">Plantões produtivos</div><div class="card-value">${productivityReport.available ? productivityReport.totals.shifts : '—'}</div></div>
+          <div class="grid-card"><div class="card-title">Dias pendentes</div><div class="card-value">${productivityReport.available ? productivityReport.totals.pendingDays : '—'}</div></div>
+        </div>
+        <table>
+          <thead><tr><th>Data</th><th class="text-center">Atendimentos</th><th class="text-center">Plantões</th><th class="text-right">Pool aplicado</th><th class="text-right">Valor / atendimento</th><th>Status</th></tr></thead>
+          <tbody>
+            ${productivityReport.days.map(day => `
+              <tr>
+                <td class="font-bold">${formatDate(day.date)}</td>
+                <td class="text-center">${day.complete ? formatNumber(day.totalAttendance) : 'Pendente'}</td>
+                <td class="text-center">${day.items.reduce((sum, item) => sum + item.shifts, 0)}</td>
+                <td class="text-right font-bold">${day.complete ? formatCurrency(day.totalAttendance > 0 ? day.poolAmount : 0) : '—'}</td>
+                <td class="text-right">${day.complete && day.totalAttendance > 0 ? formatCurrency(day.poolAmount / day.totalAttendance) : '—'}</td>
+                <td>${getProductivityDayStatus(day)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="section-title break-inside-avoid">Rateio individual por profissional e dia</div>
+        <table>
+          <thead><tr><th>Data</th><th>Profissional</th><th>Especialidade</th><th>Setor(es)</th><th class="text-center">Plantões</th><th class="text-center">Total do dia</th><th class="text-center">Atendimentos individuais</th><th class="text-right">Valor / atendimento</th><th class="text-right">Pool diário</th><th class="text-right">Valor rateado</th><th>Status</th></tr></thead>
+          <tbody>
+            ${productivityReport.rows.map(row => `
+              <tr>
+                <td class="font-bold">${formatDate(row.date)}</td>
+                <td>${titleCase(row.professional.name)}</td>
+                <td>${row.professional.specialty || '—'}</td>
+                <td>${row.sectors}</td>
+                <td class="text-center">${row.shifts}</td>
+                <td class="text-center">${row.complete ? formatNumber(productivityReport.days.find(day => day.date === row.date)?.totalAttendance) : 'Pendente'}</td>
+                <td class="text-center">${row.attendance ?? 'Não lançado'}</td>
+                <td class="text-right">${row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
+                <td class="text-right">${row.complete ? formatCurrency(productivityReport.days.find(day => day.date === row.date)?.totalAttendance > 0 ? productivityReport.dailyPool : 0) : '—'}</td>
+                <td class="text-right font-bold">${row.complete ? formatCurrency(row.amount) : '—'}</td>
+                <td>${row.complete ? 'Rateado' : row.pendingReason}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="section-title break-inside-avoid">Acumulado por profissional no período</div>
+        <table>
+          <thead><tr><th>Profissional</th><th>Especialidade</th><th class="text-center">Plantões</th><th class="text-center">Atendimentos em dias fechados</th><th class="text-right">Saldo acumulado</th><th class="text-center">Dias pendentes</th><th>Situação</th></tr></thead>
+          <tbody>
+            ${productivityReport.professionalTotals.map(item => `
+              <tr>
+                <td class="font-bold">${titleCase(item.professional.name)}</td>
+                <td>${item.professional.specialty || '—'}</td>
+                <td class="text-center">${item.shifts}</td>
+                <td class="text-center">${formatNumber(item.attendance)}</td>
+                <td class="text-right font-bold">${formatCurrency(item.amount)}</td>
+                <td class="text-center">${item.pendingDays}</td>
+                <td>${item.pendingDays ? 'Saldo parcial' : 'Completo'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    if ((mode === 'all' || activeTab === 'produtividade_profissional') && selectedProductivitySummary) {
+      printHtml += `
+        <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Extrato individual de produtividade</div>
+        <p style="font-size:10px; font-weight:bold; margin-bottom:5px;">
+          Profissional: ${titleCase(selectedProductivitySummary.professional.name)}
+          · Especialidade: ${selectedProductivitySummary.professional.specialty || 'Não informada'}
+          · Unidade: ${hospitalName}
+        </p>
+        <p style="font-size:9px; color:#475569; margin-bottom:12px;">
+          Pool diário configurado: ${formatCurrency(productivityReport.dailyPool)}.
+          Valor por atendimento = pool diário ÷ total de atendimentos da unidade no dia.
+          Valor individual = atendimentos do profissional × valor por atendimento.
+          Dias pendentes não entram no saldo fechado.
+        </p>
+        <div class="grid-4 break-inside-avoid">
+          <div class="grid-card"><div class="card-title">Plantões no período</div><div class="card-value">${formatNumber(selectedProductivitySummary.shifts)}</div></div>
+          <div class="grid-card"><div class="card-title">Atendimentos em dias fechados</div><div class="card-value">${formatNumber(selectedProductivitySummary.attendance)}</div></div>
+          <div class="grid-card"><div class="card-title">Valor acumulado fechado</div><div class="card-value">${formatCurrency(selectedProductivitySummary.amount)}</div></div>
+          <div class="grid-card"><div class="card-title">Dias pendentes</div><div class="card-value">${formatNumber(selectedProductivitySummary.pendingDays)}</div></div>
+        </div>
+        <table>
+          <thead><tr><th>Data</th><th>Setor(es)</th><th class="text-center">Plantões</th><th class="text-center">Atendimentos individuais</th><th class="text-center">Atendimentos totais no dia</th><th class="text-right">Valor / atendimento</th><th class="text-right">Valor rateado</th><th>Situação</th></tr></thead>
+          <tbody>
+            ${selectedProductivityRows.map(row => {
+              const day = productivityReport.days.find(item => item.date === row.date);
+              return `
+                <tr>
+                  <td class="font-bold">${formatDate(row.date)}</td>
+                  <td>${row.sectors}</td>
+                  <td class="text-center">${row.shifts}</td>
+                  <td class="text-center">${row.attendance ?? 'Não lançado'}</td>
+                  <td class="text-center">${row.complete ? formatNumber(day?.totalAttendance) : 'Pendente'}</td>
+                  <td class="text-right">${row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
+                  <td class="text-right font-bold">${row.complete ? formatCurrency(row.amount) : '—'}</td>
+                  <td>${row.complete ? 'Rateado' : `Pendente · ${row.pendingReason}`}</td>
+                </tr>
+              `;
+            }).join('')}
+            <tr>
+              <td colspan="2" class="font-bold">Total fechado no período</td>
+              <td class="text-center font-bold">${selectedProductivitySummary.shifts}</td>
+              <td class="text-center font-bold">${formatNumber(selectedProductivitySummary.attendance)}</td>
+              <td class="text-center">—</td>
+              <td class="text-right">—</td>
+              <td class="text-right font-bold">${formatCurrency(selectedProductivitySummary.amount)}</td>
+              <td>${selectedProductivitySummary.pendingDays ? `${selectedProductivitySummary.pendingDays} dia(s) pendente(s) · saldo parcial` : 'Completo'}</td>
+            </tr>
+          </tbody>
+        </table>
+      `;
+    }
+
     if (mode === 'all' || activeTab === 'financeiro') {
       printHtml += `
         <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Relatório Financeiro Operacional</div>
@@ -1243,10 +1675,10 @@ export default function Relatorios() {
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch gap-2 shrink-0">
-          <Button onClick={() => triggerExcelExport('current')} variant="outline" disabled={!hasSearched} className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-white font-bold text-xs px-4 rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer shadow-sm disabled:opacity-50 transition-colors">
+          <Button onClick={() => triggerExcelExport('current')} variant="outline" disabled={!hasSearched || (activeTab === 'produtividade_profissional' && !productivityProfessionalReportReady)} className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-white font-bold text-xs px-4 rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer shadow-sm disabled:opacity-50 transition-colors">
             <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Exportar aba para Excel
           </Button>
-          <Button onClick={() => triggerPrint('current')} disabled={!hasSearched} className="bg-sky-600 hover:bg-sky-700 dark:bg-cyan-700 dark:hover:bg-cyan-600 text-white font-bold text-xs px-4 rounded-xl shadow-md gap-2 cursor-pointer disabled:opacity-50 border border-sky-500 dark:border-cyan-500/50 transition-colors">
+          <Button onClick={() => triggerPrint('current')} disabled={!hasSearched || (activeTab === 'produtividade_profissional' && !productivityProfessionalReportReady)} className="bg-sky-600 hover:bg-sky-700 dark:bg-cyan-700 dark:hover:bg-cyan-600 text-white font-bold text-xs px-4 rounded-xl shadow-md gap-2 cursor-pointer disabled:opacity-50 border border-sky-500 dark:border-cyan-500/50 transition-colors">
             <PrinterIcon className="w-4 h-4" /> Imprimir / Salvar PDF
           </Button>
         </div>
@@ -1390,6 +1822,7 @@ export default function Relatorios() {
                 activeTab === 'base_profissionais' ? `${filteredProfessionals.length} profissionais` :
                 activeTab === 'aniversariantes' ? `${birthDaysList.length} aniversariantes` :
                 activeTab === 'profissionais' ? `${professionalMetrics.length} profissionais` :
+                activeTab === 'produtividade_diaria' ? `${productivityReport.totals.pendingDays} dia(s) pendente(s) · ${formatCurrency(productivityReport.totals.pool)} rateados` :
                 activeTab === 'financeiro' ? `${formatCurrency(financialSummary.totalCost)} em custos previstos` :
                 `${totalShiftsCount} plantões analisados`}
             </span>
@@ -1740,6 +2173,288 @@ export default function Relatorios() {
                   </table>
                 </div>
               </Card>
+            )}
+
+            {activeTab === 'produtividade_diaria' && (
+              <div className="space-y-5">
+                {!productivityReport.available ? (
+                  <Card className="rounded-3xl border border-dashed border-amber-300 bg-amber-50 p-8 text-center dark:border-amber-500/30 dark:bg-amber-950/20">
+                    <AlertTriangle className="mx-auto h-8 w-8 text-amber-600 dark:text-amber-400" />
+                    <h3 className="mt-3 text-base font-black text-amber-900 dark:text-amber-200">
+                      {productivityReport.error ? 'Configuração inválida' : 'Regra de produtividade não configurada para esta unidade'}
+                    </h3>
+                    <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">
+                      {productivityReport.error || 'A apuração diária está vinculada a uma única unidade configurada em Faturamento. Nenhum rateio foi estimado para esta consulta.'}
+                    </p>
+                  </Card>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      {[
+                        { label: 'Atendimentos em dias fechados', value: formatNumber(productivityReport.totals.attendance), tone: 'text-sky-600 dark:text-cyan-400' },
+                        { label: 'Pool efetivamente rateado', value: formatCurrency(productivityReport.totals.pool), tone: 'text-emerald-600 dark:text-emerald-400' },
+                        { label: 'Plantões produtivos', value: formatNumber(productivityReport.totals.shifts), tone: 'text-indigo-600 dark:text-indigo-400' },
+                        { label: 'Dias pendentes', value: formatNumber(productivityReport.totals.pendingDays), tone: 'text-amber-600 dark:text-amber-400' }
+                      ].map(metric => (
+                        <Card key={metric.label} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                          <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{metric.label}</p>
+                          <p className={`mt-2 text-xl font-black ${metric.tone}`}>{metric.value}</p>
+                        </Card>
+                      ))}
+                    </div>
+
+                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#1e293b]">
+                      <div className="mb-4 flex flex-col gap-2 border-b border-slate-100 pb-3 dark:border-slate-700/50 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h3 className="text-sm font-black uppercase tracking-wider text-sky-700 dark:text-cyan-400">Fechamento diário da regra</h3>
+                          <p className="mt-1 text-[11px] text-slate-500">Pool configurado: {formatCurrency(productivityReport.dailyPool)} por dia. O rateio usa todos os profissionais produtivos da unidade, independentemente dos filtros de exibição.</p>
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-500">{hospitalName}</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 dark:border-slate-700">
+                            <tr>
+                              <th className="py-3 pr-3">Data</th>
+                              <th className="py-3 px-3 text-right">Atendimentos</th>
+                              <th className="py-3 px-3 text-right">Plantões produtivos</th>
+                              <th className="py-3 px-3 text-right">Pool aplicado</th>
+                              <th className="py-3 px-3 text-right">Valor por atendimento</th>
+                              <th className="py-3 pl-3 text-right">Situação</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {productivityReport.days.map(day => (
+                              <tr key={day.date}>
+                                <td className="py-3 pr-3 font-bold">{formatDate(day.date)}</td>
+                                <td className="py-3 px-3 text-right font-mono">{day.complete ? formatNumber(day.totalAttendance) : 'Pendente'}</td>
+                                <td className="py-3 px-3 text-right font-mono">{day.items.reduce((sum, item) => sum + item.shifts, 0)}</td>
+                                <td className="py-3 px-3 text-right font-mono font-bold">{day.complete ? formatCurrency(day.totalAttendance > 0 ? day.poolAmount : 0) : '—'}</td>
+                                <td className="py-3 px-3 text-right font-mono">{day.complete && day.totalAttendance > 0 ? formatCurrency(day.poolAmount / day.totalAttendance) : '—'}</td>
+                                <td className={`py-3 pl-3 text-right font-bold ${day.complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                  {getProductivityDayStatus(day)}
+                                </td>
+                              </tr>
+                            ))}
+                            {productivityReport.days.length === 0 && <tr><td colSpan="6" className="py-8 text-center text-slate-500">Nenhum plantão produtivo na unidade dentro do período.</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+
+                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#1e293b]">
+                      <div className="mb-4 border-b border-slate-100 pb-3 dark:border-slate-700/50">
+                        <h3 className="text-sm font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-400">Rateio por profissional e dia</h3>
+                        <p className="mt-1 text-[11px] text-slate-500">Valor individual = atendimentos do profissional × pool diário ÷ atendimentos totais do dia. Os valores só são liberados quando todos os registros do dia estão completos e os plantões terminaram.</p>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 dark:border-slate-700">
+                            <tr>
+                              <th className="py-3 pr-3">Data</th>
+                              <th className="py-3 px-3">Profissional</th>
+                              <th className="py-3 px-3">Setor(es)</th>
+                              <th className="py-3 px-3 text-right">Plantões</th>
+                              <th className="py-3 px-3 text-right">Total do dia</th>
+                              <th className="py-3 px-3 text-right">Atendimentos individuais</th>
+                              <th className="py-3 px-3 text-right">Valor / atendimento</th>
+                              <th className="py-3 px-3 text-right">Pool diário</th>
+                              <th className="py-3 px-3 text-right">Valor rateado</th>
+                              <th className="py-3 pl-3 text-right">Situação</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {productivityReport.rows.map((row, index) => (
+                              <tr key={`${row.date}:${row.professional.id}:${index}`}>
+                                <td className="py-3 pr-3 font-bold">{formatDate(row.date)}</td>
+                                <td className="py-3 px-3 font-semibold">{row.professional.name}</td>
+                                <td className="py-3 px-3 text-slate-500">{row.sectors}</td>
+                                <td className="py-3 px-3 text-right font-mono">{row.shifts}</td>
+                                <td className="py-3 px-3 text-right font-mono">{row.complete ? formatNumber(productivityReport.days.find(day => day.date === row.date)?.totalAttendance) : 'Pendente'}</td>
+                                <td className="py-3 px-3 text-right font-mono">{row.attendance ?? '—'}</td>
+                                <td className="py-3 px-3 text-right font-mono">                                {row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
+                                <td className="py-3 px-3 text-right font-mono">{row.complete ? formatCurrency(productivityReport.dailyPool) : '—'}</td>
+                                <td className="py-3 px-3 text-right font-mono font-bold">{row.complete ? formatCurrency(row.amount) : '—'}</td>
+                                <td className={`py-3 pl-3 text-right font-semibold ${row.complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                  {row.complete ? 'Rateado' : row.pendingReason}
+                                </td>
+                              </tr>
+                            ))}
+                            {productivityReport.rows.length === 0 && <tr><td colSpan="10" className="py-8 text-center text-slate-500">Nenhum profissional corresponde aos filtros aplicados.</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+
+                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#1e293b]">
+                      <h3 className="mb-4 border-b border-slate-100 pb-3 text-sm font-black uppercase tracking-wider text-emerald-700 dark:border-slate-700/50 dark:text-emerald-400">Acumulado por profissional no período</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 dark:border-slate-700">
+                            <tr>
+                              <th className="py-3 pr-3">Profissional</th>
+                              <th className="py-3 px-3 text-right">Plantões</th>
+                              <th className="py-3 px-3 text-right">Atendimentos em dias fechados</th>
+                              <th className="py-3 px-3 text-right">Saldo acumulado</th>
+                              <th className="py-3 pl-3 text-right">Dias pendentes</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {productivityReport.professionalTotals.map(item => (
+                              <tr key={item.professional.id}>
+                                <td className="py-3 pr-3 font-bold">{item.professional.name}</td>
+                                <td className="py-3 px-3 text-right font-mono">{item.shifts}</td>
+                                <td className="py-3 px-3 text-right font-mono">{formatNumber(item.attendance)}</td>
+                                <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(item.amount)}</td>
+                                <td className="py-3 pl-3 text-right font-semibold text-amber-600 dark:text-amber-400">{item.pendingDays}</td>
+                              </tr>
+                            ))}
+                            {productivityReport.professionalTotals.length === 0 && <tr><td colSpan="5" className="py-8 text-center text-slate-500">Nenhum profissional corresponde aos filtros aplicados.</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+                  </>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'produtividade_profissional' && (
+              <div className="space-y-5">
+                {!productivityReport.available ? (
+                  <Card className="rounded-3xl border border-dashed border-amber-300 bg-amber-50 p-8 text-center dark:border-amber-500/30 dark:bg-amber-950/20">
+                    <AlertTriangle className="mx-auto h-8 w-8 text-amber-600 dark:text-amber-400" />
+                    <h3 className="mt-3 text-base font-black text-amber-900 dark:text-amber-200">
+                      {productivityReport.error ? 'Configuração inválida' : 'Regra de produtividade não configurada para esta unidade'}
+                    </h3>
+                    <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">
+                      {productivityReport.error || 'O extrato individual usa o pool diário configurado para a unidade selecionada. Nenhum valor será estimado sem essa regra.'}
+                    </p>
+                  </Card>
+                ) : (
+                  <>
+                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#1e293b]">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(240px,0.8fr)] sm:items-end">
+                        <div>
+                          <h3 className="text-sm font-black uppercase tracking-wider text-sky-700 dark:text-cyan-400">Extrato individual de produtividade</h3>
+                          <p className="mt-1 text-[11px] text-slate-500">Escolha o profissional para detalhar atendimentos, plantões e valores do período.</p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Profissional produtivo</Label>
+                          <Select
+                            value={selectedProductivitySummary ? String(selectedProductivityProfessionalId) : ''}
+                            onValueChange={setSelectedProductivityProfessionalId}
+                          >
+                            <SelectTrigger className="h-11 text-xs font-bold bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
+                              <SelectValue placeholder="Selecione um profissional" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white z-[99999] max-h-[300px]">
+                              {productivityReport.professionalTotals.map(item => (
+                                <SelectItem key={item.professional.id} value={String(item.professional.id)}>
+                                  {item.professional.name}{item.professional.specialty ? ` · ${item.professional.specialty}` : ''}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <p className="mt-4 rounded-xl bg-sky-50 p-3 text-[11px] font-medium text-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
+                        Cálculo diário: <strong>{formatCurrency(productivityReport.dailyPool)} ÷ total de atendimentos do dia</strong> = valor por atendimento. O valor do profissional é esse valor multiplicado pelos atendimentos dele. O rateio considera todos os profissionais produtivos escalados na unidade; dias incompletos ficam pendentes e não entram no saldo.
+                      </p>
+                    </Card>
+
+                    {!selectedProductivitySummary ? (
+                      <Card className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-[#1e293b]">
+                        <Users className="mx-auto h-8 w-8 text-slate-400" />
+                        <h3 className="mt-3 text-sm font-black text-slate-700 dark:text-slate-200">
+                          {productivityReport.professionalTotals.length > 0 ? 'Selecione um profissional' : 'Nenhum profissional produtivo encontrado'}
+                        </h3>
+                        <p className="mt-2 text-xs text-slate-500">
+                          {productivityReport.professionalTotals.length > 0
+                            ? 'O extrato detalhado e as opções de impressão ficarão disponíveis após a seleção.'
+                            : 'Não há plantões produtivos para os filtros e período informados.'}
+                        </p>
+                      </Card>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                          {[
+                            { label: 'Plantões no período', value: formatNumber(selectedProductivitySummary.shifts), tone: 'text-indigo-600 dark:text-indigo-400' },
+                            { label: 'Atendimentos em dias fechados', value: formatNumber(selectedProductivitySummary.attendance), tone: 'text-sky-600 dark:text-cyan-400' },
+                            { label: 'Valor acumulado fechado', value: formatCurrency(selectedProductivitySummary.amount), tone: 'text-emerald-600 dark:text-emerald-400' },
+                            { label: 'Dias pendentes', value: formatNumber(selectedProductivitySummary.pendingDays), tone: 'text-amber-600 dark:text-amber-400' }
+                          ].map(metric => (
+                            <Card key={metric.label} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{metric.label}</p>
+                              <p className={`mt-2 text-xl font-black ${metric.tone}`}>{metric.value}</p>
+                            </Card>
+                          ))}
+                        </div>
+
+                        <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#1e293b]">
+                          <div className="mb-4 border-b border-slate-100 pb-3 dark:border-slate-700/50">
+                            <h3 className="text-sm font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                              {selectedProductivitySummary.professional.name}
+                            </h3>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              {selectedProductivitySummary.professional.specialty || 'Especialidade não informada'} · {hospitalName} · {periodLabel}
+                            </p>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full min-w-[850px] text-left text-xs">
+                              <thead className="border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 dark:border-slate-700">
+                                <tr>
+                                  <th className="py-3 pr-3">Data</th>
+                                  <th className="py-3 px-3">Setor(es)</th>
+                                  <th className="py-3 px-3 text-right">Plantões</th>
+                                  <th className="py-3 px-3 text-right">Atendimentos individuais</th>
+                                  <th className="py-3 px-3 text-right">Total de atendimentos no dia</th>
+                                  <th className="py-3 px-3 text-right">Valor / atendimento</th>
+                                  <th className="py-3 px-3 text-right">Valor rateado</th>
+                                  <th className="py-3 pl-3 text-right">Situação</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {selectedProductivityRows.map(row => {
+                                  const day = productivityReport.days.find(item => item.date === row.date);
+                                  return (
+                                    <tr key={`${row.date}:${row.professional.id}`}>
+                                      <td className="py-3 pr-3 font-bold">{formatDate(row.date)}</td>
+                                      <td className="py-3 px-3">{row.sectors}</td>
+                                      <td className="py-3 px-3 text-right font-mono">{row.shifts}</td>
+                                      <td className="py-3 px-3 text-right font-mono">{row.attendance ?? 'Não lançado'}</td>
+                                      <td className="py-3 px-3 text-right font-mono">{row.complete ? formatNumber(day?.totalAttendance) : 'Pendente'}</td>
+                                      <td className="py-3 px-3 text-right font-mono">{row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
+                                      <td className="py-3 px-3 text-right font-mono font-bold">{row.complete ? formatCurrency(row.amount) : '—'}</td>
+                                      <td className={`py-3 pl-3 text-right font-semibold ${row.complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                        {row.complete ? 'Rateado' : row.pendingReason}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                                <tr className="border-t-2 border-slate-200 bg-slate-50 font-black dark:border-slate-700 dark:bg-slate-900/60">
+                                  <td className="py-3 pr-3" colSpan="2">Total fechado no período</td>
+                                  <td className="py-3 px-3 text-right font-mono">{selectedProductivitySummary.shifts}</td>
+                                  <td className="py-3 px-3 text-right font-mono">{formatNumber(selectedProductivitySummary.attendance)}</td>
+                                  <td className="py-3 px-3 text-right">—</td>
+                                  <td className="py-3 px-3 text-right">—</td>
+                                  <td className="py-3 px-3 text-right font-mono text-emerald-700 dark:text-emerald-400">{formatCurrency(selectedProductivitySummary.amount)}</td>
+                                  <td className="py-3 pl-3 text-right">
+                                    {selectedProductivitySummary.pendingDays ? `${selectedProductivitySummary.pendingDays} pendente(s) · saldo parcial` : 'Completo'}
+                                  </td>
+                                </tr>
+                                {selectedProductivityRows.length === 0 && (
+                                  <tr><td colSpan="8" className="py-8 text-center text-slate-500">Nenhum plantão produtivo encontrado para este profissional no período.</td></tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </Card>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
             )}
 
             {/* ABA FINANCEIRO */}

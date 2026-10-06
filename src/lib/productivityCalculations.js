@@ -82,3 +82,15 @@ export function calculateProductivityPoolAllocations(rows, dailyPoolAmount = 150
     incompleteDates
   };
 }
+
+export function isProductivityDayComplete(rows) {
+  if (rows.length === 0) return false;
+  let totalAttendances = 0;
+  for (const row of rows) {
+    const count = row.attendance_count;
+    if (row.shift_completed !== true || !Number.isSafeInteger(count) || count < 0) return false;
+    totalAttendances += count;
+    if (!Number.isSafeInteger(totalAttendances)) return false;
+  }
+  return true;
+}

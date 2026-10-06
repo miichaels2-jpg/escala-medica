@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateProductivityPoolAllocations } from '../src/lib/productivityCalculations.js';
+import { calculateProductivityPoolAllocations, isProductivityDayComplete } from '../src/lib/productivityCalculations.js';
 
 test('splits the daily pool proportionally by provider volume and allocates all cents', () => {
   const attendanceCounts = [35, 57, 63, 26, 42];
@@ -87,4 +87,19 @@ test('does not apportion a daily pool when every count is zero', () => {
 
   assert.equal(allocations.allocationsByProfessional.size, 0);
   assert.deepEqual(allocations.dailyTotals.get('2026-09-01'), { totalAttendances: 0, poolAmount: 0 });
+});
+
+test('closes a productivity day only when every eligible shift ended and has a valid count', () => {
+  assert.equal(isProductivityDayComplete([
+    { attendance_count: 0, shift_completed: true },
+    { attendance_count: 12, shift_completed: true }
+  ]), true);
+  assert.equal(isProductivityDayComplete([
+    { attendance_count: 12, shift_completed: true },
+    { attendance_count: null, shift_completed: true }
+  ]), false);
+  assert.equal(isProductivityDayComplete([
+    { attendance_count: 12, shift_completed: false }
+  ]), false);
+  assert.equal(isProductivityDayComplete([]), false);
 });
