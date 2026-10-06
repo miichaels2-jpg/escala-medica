@@ -142,10 +142,27 @@ export default function Login() {
       if (rpcErr || !userRecord) throw new Error('Usuário não encontrado ou senha incorreta.');
 
       const compId = userRecord.data?.company_id || userRecord.company_id || 'cmp_principal';
-      const { data: compData } = await supabase.from('companies').select('data').eq('id', compId).maybeSingle();
-      
-      const allUnits = compData?.data?.units || [];
-      const allowedIds = userRecord.data?.allowed_unit_ids || [];
+      const { data: compData, error: companyError } = await supabase
+        .from('companies')
+        .select('units,data')
+        .eq('id', compId)
+        .maybeSingle();
+      if (companyError) throw companyError;
+
+      const { data: unitRows, error: unitsError } = await supabase
+        .from('units')
+        .select('*')
+        .eq('company_id', compId)
+        .order('name');
+      if (unitsError && unitsError.code !== 'PGRST205') throw unitsError;
+
+      const embeddedUnits = Array.isArray(compData?.units) && compData.units.length > 0
+        ? compData.units
+        : compData?.data?.units || [];
+      const allUnits = unitRows?.length ? unitRows : embeddedUnits;
+      const allowedIds = Array.isArray(userRecord.data?.allowed_unit_ids)
+        ? userRecord.data.allowed_unit_ids.map(String)
+        : [];
       
       let myUnits = allUnits;
       if (userRecord.role !== 'admin') {
@@ -480,7 +497,14 @@ export default function Login() {
                     <Hospital className={`w-5 h-5 ${selectedUnitForLogin === u.id ? 'text-sky-600' : 'text-slate-400'}`} />
                     <div className="flex flex-col">
                       <span className="text-sm font-bold truncate">{u.name}</span>
-                      <span className={`text-[10px] font-mono ${selectedUnitForLogin === u.id ? 'text-sky-600/80' : 'text-slate-400'}`}>ID: {u.id.substring(0, 12)}</span>
+                      <span
+                        title={String(u.id)}
+                        className={`block max-w-[260px] break-all text-[10px] font-mono ${selectedUnitForLogin === u.id ? 'text-sky-600/80' : 'text-slate-400'}`}
+                      >
+                        {String(u.id).match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+                          ? `ID: ${u.id}`
+                          : `ID legado (migração pendente): ${u.id}`}
+                      </span>
                     </div>
                   </div>
                   {selectedUnitForLogin === u.id && <CheckCircle2 className="w-5 h-5 text-sky-600" />}

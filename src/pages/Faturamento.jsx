@@ -161,6 +161,32 @@ export default function Faturamento() {
     }
   });
 
+  useEffect(() => {
+    const mappings = units.filter(unit => unit.id && unit.legacy_id &&
+      String(unit.id) !== String(unit.legacy_id));
+    if (mappings.length === 0) return;
+
+    const nextState = { ...pagamentosStatus };
+    let changed = false;
+    mappings.forEach(unit => {
+      const oldPrefix = `${unit.legacy_id}_`;
+      Object.keys(nextState).filter(key => key.startsWith(oldPrefix)).forEach(oldKey => {
+        const newKey = `${unit.id}_${oldKey.slice(oldPrefix.length)}`;
+        nextState[newKey] = Boolean(nextState[newKey] || nextState[oldKey]);
+        delete nextState[oldKey];
+        changed = true;
+      });
+    });
+    if (!changed) return;
+
+    try {
+      window.localStorage.setItem('scale_faturamento_pagos', JSON.stringify(nextState));
+      setPagamentosStatus(nextState);
+    } catch (error) {
+      console.warn('Não foi possível atualizar os status locais de pagamento para os UUIDs hospitalares:', error);
+    }
+  }, [units, pagamentosStatus]);
+
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;

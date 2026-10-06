@@ -53,6 +53,10 @@ base44 dashboard open
 
 This repo syncs to Base44 through git, so publish from the dashboard rather than `base44 deploy` — a CLI deploy ships your local tree directly, bypassing the sync, and the deployed state silently diverges from the repo.
 
+## Supabase database migrations
+
+Database migrations are stored in `supabase/migrations`. Apply each migration to the intended Supabase project through its SQL Editor before relying on application features that require the new schema. For example, `20261006190000_units_as_uuid_records.sql` creates UUID-backed hospital unit records and migrates existing unit references. It aborts the transaction if it finds a unit reference that cannot be mapped; resolve that data before retrying.
+
 ## Docs & Support
 
 GitHub integration: [https://docs.base44.com/developers/app-code/local-development/github](https://docs.base44.com/developers/app-code/local-development/github)

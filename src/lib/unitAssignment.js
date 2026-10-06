@@ -9,3 +9,11 @@ export function inferUnassignedShiftUnitId({ units = [], sectorUnitId, professio
   if (units.length === 1) return String(units[0].id);
   return null;
 }
+
+export function resolveUnitId(units = [], preferredId) {
+  const preferred = units.find(unit =>
+    String(unit.id) === String(preferredId) ||
+    (unit.legacy_id && String(unit.legacy_id) === String(preferredId))
+  );
+  return preferred?.id ? String(preferred.id) : String(units[0]?.id || '');
+}

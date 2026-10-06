@@ -20,6 +20,16 @@ function getLocalDateString(d = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function getUnitStorageErrorMessage(error) {
+  if (error?.code === 'PGRST205' || error?.code === '42P01') {
+    return 'Aplique a migração de unidades no Supabase antes de gerenciar hospitais por UUID.';
+  }
+  if (error?.code === '23503') {
+    return 'Não é possível remover o hospital enquanto houver escalas, setores, profissionais ou faturamentos vinculados a ele.';
+  }
+  return error?.message || 'Erro ao salvar unidade.';
+}
+
 export default function Configuracoes() {
   const { user, company, units = [], selectedUnitId, loading, refreshAllData } = useAppData();
   
@@ -132,15 +142,17 @@ export default function Configuracoes() {
     if (!currentUnit) return;
     setSaving(true);
     try {
-      let updatedUnits = activeUnits.map(u => String(u.id) === String(currentUnit.id) ? { ...u, ...unitForm } : u);
-      
-      const { error } = await supabase.from('companies').update({ units: updatedUnits }).eq('id', companyId);
+      const { error } = await supabase
+        .from('units')
+        .update(unitForm)
+        .eq('id', currentUnit.id)
+        .eq('company_id', companyId);
       if (error) throw error;
       
       await refreshAllData();
       alert(`Dados do hospital "${unitForm.name}" atualizados com sucesso!`);
     } catch (err) {
-      alert(err.message || 'Erro ao salvar unidade');
+      alert(getUnitStorageErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -232,35 +244,82 @@ export default function Configuracoes() {
     if (!newUnitForm.name.trim()) return alert('O nome do hospital é obrigatório.');
     setSaving(true);
     try {
-      let updatedUnits = [...activeUnits];
+      let request;
       if (editingUnit?.id) {
-        updatedUnits = updatedUnits.map(u => String(u.id) === String(editingUnit.id) ? { ...u, ...newUnitForm } : u);
+        request = supabase
+          .from('units')
+          .update(newUnitForm)
+          .eq('id', editingUnit.id)
+          .eq('company_id', companyId);
       } else {
-        updatedUnits.push({ id: 'unit_' + Date.now(), ...newUnitForm });
+        request = supabase
+          .from('units')
+          .insert([{ ...newUnitForm, company_id: companyId }]);
       }
-      
-      const { error } = await supabase.from('companies').update({ units: updatedUnits }).eq('id', companyId);
+      const { error } = await request;
       if (error) throw error;
       
       setUnitModalOpen(false);
       await refreshAllData();
       alert('Hospital salvo com sucesso!');
-    } catch (err) { 
-      alert('Erro ao salvar hospital: ' + err.message); 
+    } catch (err) {
+      alert('Erro ao salvar hospital: ' + getUnitStorageErrorMessage(err));
     } finally { 
       setSaving(false); 
     }
   };
 
   const handleDeleteUnit = async (id, name) => {
-    if (!confirm(`Deseja remover o hospital "${name}"? Suas escalas ficarão órfãs.`)) return;
+    if (!confirm(`Deseja remover o hospital "${name}"? A remoção só será permitida se nenhum dado ainda depender desta unidade.`)) return;
     try { 
-      const updatedUnits = activeUnits.filter(u => String(u.id) !== String(id));
-      const { error } = await supabase.from('companies').update({ units: updatedUnits }).eq('id', companyId);
+      const [{ data: users, error: usersError }, { data: linkedProfessionals, error: professionalsError }] = await Promise.all([
+        supabase.from('users').select('id,data'),
+        supabase.from('professionals').select('id,unit_ids,data').eq('company_id', companyId)
+      ]);
+      if (usersError) throw usersError;
+      if (professionalsError) throw professionalsError;
+
+      const hasUserAccess = (users || []).some(appUser => {
+        if (String(appUser.data?.company_id) !== String(companyId)) return false;
+        const allowedIds = Array.isArray(appUser.data?.allowed_unit_ids)
+          ? appUser.data.allowed_unit_ids.map(String)
+          : [];
+        return allowedIds.includes(String(id)) || String(appUser.data?.selected_unit_id) === String(id);
+      });
+      const hasProfessionalAccess = (linkedProfessionals || []).some(professional => {
+        const allowedIds = Array.isArray(professional.data?.allowed_unit_ids)
+          ? professional.data.allowed_unit_ids
+          : Array.isArray(professional.unit_ids) ? professional.unit_ids : [];
+        return allowedIds.map(String).includes(String(id));
+      });
+      if (hasUserAccess || hasProfessionalAccess) {
+        alert('Reatribua primeiro o acesso de usuários e profissionais para outro hospital antes de remover esta unidade.');
+        return;
+      }
+
+      const replacementUnitId = activeUnits.find(unit => String(unit.id) !== String(id))?.id || null;
+      const companySelectedUnitId = company?.selected_unit_id || company?.data?.selected_unit_id;
+      if (String(companySelectedUnitId) === String(id)) {
+        const nextData = { ...(company.data || {}) };
+        if (String(nextData.selected_unit_id) === String(id)) {
+          nextData.selected_unit_id = replacementUnitId;
+        }
+        const { error: companyError } = await supabase
+          .from('companies')
+          .update({ selected_unit_id: replacementUnitId, data: nextData })
+          .eq('id', companyId);
+        if (companyError) throw companyError;
+      }
+
+      const { error } = await supabase
+        .from('units')
+        .delete()
+        .eq('id', id)
+        .eq('company_id', companyId);
       if (error) throw error;
       
       await refreshAllData(); 
-    } catch (err) { alert('Erro ao excluir: ' + err.message); }
+    } catch (err) { alert('Erro ao excluir: ' + getUnitStorageErrorMessage(err)); }
   };
 
   const handleInvite = async (e) => {
@@ -600,6 +659,7 @@ export default function Configuracoes() {
                         </span>
                       </div>
                       <h4 className="text-base font-black text-slate-900 dark:text-white leading-tight">{u.name}</h4>
+                      <div className="break-all text-[10px] font-mono text-slate-500">ID: {u.id}</div>
                       <div className="text-[11px] font-mono font-bold text-sky-600 dark:text-sky-400">CNPJ: {u.cnpj || 'Não informado'}</div>
                       <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                         <MapPin className="w-3.5 h-3.5 shrink-0" />

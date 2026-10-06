@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { inferUnassignedShiftUnitId } from '@/lib/unitAssignment';
+import { inferUnassignedShiftUnitId, resolveUnitId } from '@/lib/unitAssignment';
 
 let globalState = {
   user: null,
@@ -25,13 +25,55 @@ function updateGlobal(patch) {
   listeners.forEach(fn => fn());
 }
 
+function migrateLegacyUnitStorage(activeUnits) {
+  try {
+    const mappings = activeUnits.filter(unit => unit.id && unit.legacy_id &&
+      String(unit.id) !== String(unit.legacy_id));
+    if (mappings.length === 0) return;
+
+    const keys = Object.keys(window.localStorage);
+    mappings.forEach(unit => {
+      const oldPrefix = `scale_published_ranges_${unit.legacy_id}_`;
+      keys.filter(key => key.startsWith(oldPrefix)).forEach(oldKey => {
+        const newKey = `scale_published_ranges_${unit.id}_${oldKey.slice(oldPrefix.length)}`;
+        const oldValue = window.localStorage.getItem(oldKey);
+        const newValue = window.localStorage.getItem(newKey);
+        if (oldValue === null) return;
+        if (newValue === null) {
+          window.localStorage.setItem(newKey, oldValue);
+        } else {
+          try {
+            const oldRanges = JSON.parse(oldValue);
+            const newRanges = JSON.parse(newValue);
+            if (!Array.isArray(oldRanges) || !Array.isArray(newRanges)) {
+              console.warn('As faixas locais de publicação têm formato inesperado; a cópia antiga foi mantida:', oldKey);
+              return;
+            }
+            window.localStorage.setItem(newKey, JSON.stringify([...new Set([...newRanges, ...oldRanges])]));
+          } catch (error) {
+            console.warn('Não foi possível consolidar faixas de publicação locais após migrar o ID da unidade:', error);
+            return;
+          }
+        }
+        window.localStorage.removeItem(oldKey);
+      });
+    });
+  } catch (error) {
+    console.warn('Não foi possível migrar as faixas de publicação locais para os UUIDs hospitalares:', error);
+  }
+}
+
 async function fetchTable(tableName, filterObj = {}, limit = 5000) {
   let query = supabase.from(tableName).select('*');
   for (const key in filterObj) {
     query = query.eq(key, filterObj[key]);
   }
   const { data, error } = await query.limit(limit);
-  if (error) throw new Error(error.message || `Falha ao consultar ${tableName}.`);
+  if (error) {
+    const queryError = new Error(error.message || `Falha ao consultar ${tableName}.`);
+    queryError.code = error.code;
+    throw queryError;
+  }
   return data || [];
 }
 
@@ -89,24 +131,9 @@ async function fetchAllData() {
       name: 'Hospital Principal', 
       data: { units: [{ id: 'unit_h1', name: 'Unidade Matriz' }] } 
     };
-    
-    const activeUnits = Array.isArray(company.units) && company.units.length > 0 
-      ? company.units 
-      : (company.data?.units || [{ id: 'unit_h1', name: 'Unidade Matriz' }]);
-
-    const preferredUnitId = (() => {
-      try {
-        return window.localStorage.getItem('scale_selected_unit') || currentUser?.data?.selected_unit_id;
-      } catch (error) {
-        console.warn('Não foi possível ler a unidade selecionada:', error);
-        return currentUser?.data?.selected_unit_id;
-      }
-    })();
-    const selectedUnitId = activeUnits.some(unit => String(unit.id) === String(preferredUnitId))
-      ? String(preferredUnitId)
-      : String(activeUnits[0]?.id || 'unit_h1');
 
     const tableRequests = [
+      ['units', fetchTable('units', { company_id: compId })],
       ['professionals', fetchTable('professionals', { company_id: compId })],
       ['sectors', fetchTable('sectors', { company_id: compId })],
       ['shifts', fetchTable('shifts', { company_id: compId })],
@@ -117,12 +144,64 @@ async function fetchAllData() {
     const loadedTables = tableResults.map((result, index) => {
       if (result.status === 'fulfilled') return result.value;
       const tableName = tableRequests[index][0];
-      const message = result.reason?.message || String(result.reason || 'Erro desconhecido');
+      const error = result.reason;
+      if (tableName === 'units' && error?.code === 'PGRST205') return [];
+      const message = error?.message || String(error || 'Erro desconhecido');
       dataWarnings.push(`Dados de ${tableName} não carregaram: ${message}`);
-      console.error(`[Supabase] Falha ao carregar ${tableName}:`, result.reason);
+      console.error(`[Supabase] Falha ao carregar ${tableName}:`, error);
       return [];
     });
-    const [rawProfs, secRes, rawShifts, rawSwaps, allUsers] = loadedTables;
+    const [unitRows, rawProfs, secRes, rawShifts, rawSwaps, allUsers] = loadedTables;
+
+    const activeUnits = unitRows.length > 0
+      ? unitRows
+      : Array.isArray(company.units) && company.units.length > 0
+      ? company.units
+      : (company.data?.units || [{ id: 'unit_h1', name: 'Unidade Matriz' }]);
+    migrateLegacyUnitStorage(activeUnits);
+
+    const resolveStoredUnitId = value => {
+      const match = activeUnits.find(unit =>
+        String(unit.id) === String(value) ||
+        (unit.legacy_id && String(unit.legacy_id) === String(value))
+      );
+      return match ? String(match.id) : value;
+    };
+    const originalUserData = currentUser?.data || {};
+    const normalizedUserData = {
+      ...originalUserData,
+      ...(originalUserData.selected_unit_id
+        ? { selected_unit_id: resolveStoredUnitId(originalUserData.selected_unit_id) }
+        : {}),
+      ...(Array.isArray(originalUserData.allowed_unit_ids)
+        ? { allowed_unit_ids: originalUserData.allowed_unit_ids.map(resolveStoredUnitId) }
+        : {})
+    };
+    if (JSON.stringify(normalizedUserData) !== JSON.stringify(originalUserData)) {
+      currentUser = { ...currentUser, data: normalizedUserData };
+      try {
+        window.localStorage.setItem('scale_logged_user', JSON.stringify(currentUser));
+      } catch (error) {
+        console.warn('Não foi possível atualizar os vínculos locais do usuário com os UUIDs hospitalares:', error);
+      }
+    }
+
+    const preferredUnitId = (() => {
+      try {
+        return window.localStorage.getItem('scale_selected_unit') || currentUser?.data?.selected_unit_id;
+      } catch (error) {
+        console.warn('Não foi possível ler a unidade selecionada:', error);
+        return currentUser?.data?.selected_unit_id;
+      }
+    })();
+    const selectedUnitId = resolveUnitId(activeUnits, preferredUnitId) || 'unit_h1';
+    if (selectedUnitId && String(selectedUnitId) !== String(preferredUnitId)) {
+      try {
+        window.localStorage.setItem('scale_selected_unit', selectedUnitId);
+      } catch (error) {
+        console.warn('Não foi possível atualizar o identificador da unidade selecionada:', error);
+      }
+    }
 
     const enrichedProfs = rawProfs.map(prof => {
       let cachedMeta = {};
