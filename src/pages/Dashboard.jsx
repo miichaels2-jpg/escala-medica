@@ -89,6 +89,7 @@ export default function Painel() {
   const [tvMode, setTvMode] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [showAllVacantShifts, setShowAllVacantShifts] = useState(false);
+  const [showDraftSectors, setShowDraftSectors] = useState(false);
 
   const unitId = selectedUnitId || user?.data?.selected_unit_id || company?.selected_unit_id || 'unit_h1';
   const currentUnit = units.find(u => String(u.id) === String(unitId));
@@ -246,7 +247,7 @@ export default function Painel() {
     });
     todayShifts.forEach((s) => {
       const secId = s.sector_id || 'sem_setor';
-      if (!map[secId]) map[secId] = { id: secId, name: toTitleCase(s.sector_name || 'Setor Geral'), specialty: 'Geral', total: 0, active: 0, upcoming: 0, concluded: 0, vacant: 0 };
+      if (!map[secId]) map[secId] = { id: secId, name: toTitleCase(s.sector_name || 'Setor não informado'), specialty: 'Geral', total: 0, active: 0, upcoming: 0, concluded: 0, vacant: 0 };
       map[secId].total += 1;
       const isVacant = isVacantShift(s);
       if (!isVacant && s.lifecycle.state === 'active') map[secId].active += 1;
@@ -313,7 +314,7 @@ export default function Painel() {
           <div className="flex items-center gap-3 sm:gap-4 max-w-[85%] sm:max-w-none">
             <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-2xl shrink-0"><Radio className="w-5 h-5 sm:w-7 sm:h-7 animate-pulse text-white" /></div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[10px] sm:text-xs font-black uppercase tracking-[0.25em] text-sky-400 truncate"><span className="truncate max-w-[150px] sm:max-w-none">{dashboardTitle}</span><span className="hidden sm:inline">•</span><span className="hidden sm:flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /> CCO AO VIVO</span></div>
+              <div className="flex items-center gap-2 text-[10px] sm:text-xs font-black uppercase tracking-[0.25em] text-sky-400 truncate"><span className="truncate max-w-[150px] sm:max-w-none">{dashboardTitle}</span><span className="hidden sm:inline">•</span><span className="hidden sm:flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500" /> CCO AO VIVO</span></div>
               <h1 className="text-lg sm:text-2xl lg:text-4xl font-black tracking-tight text-white mt-0.5 truncate">Centro de Comando</h1>
               <p className="text-[10px] sm:text-xs text-slate-400 font-bold truncate">{fmtDateLong(currentTime)}, {fmtDate(todayStr)} · Telemetria</p>
             </div>
@@ -430,12 +431,14 @@ export default function Painel() {
               <strong className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-300 block">
                 {unsubmittedSectors.length} Setor(es) com Escala Pendente de Publicação em {MONTH_NAMES[currentMonth]}
               </strong>
-              <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                <span className="text-[11px] text-slate-600 dark:text-slate-300">Setores em rascunho:</span>
+              <button type="button" onClick={() => setShowDraftSectors(v => !v)} aria-expanded={showDraftSectors} className="mt-1 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:underline cursor-pointer inline-flex items-center gap-1">
+                {showDraftSectors ? 'Ocultar setores' : 'Ver quais setores'} {showDraftSectors ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+              {showDraftSectors && <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                 {unsubmittedSectors.map(s => (
                   <button key={s.id} onClick={() => handleNavigateToSectorScale(s.id)} className="text-[10px] font-black uppercase px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-800 dark:text-amber-200 hover:bg-amber-500/30 transition-all cursor-pointer border border-amber-500/30">{s.name}</button>
                 ))}
-              </div>
+              </div>}
             </div>
           </div>
           <Button onClick={() => navigate('/escalas')} className="h-9 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs px-4 rounded-xl shadow-md shrink-0 cursor-pointer gap-1.5"><Send className="w-3.5 h-3.5" /> Abrir Escalas</Button>
@@ -446,10 +449,10 @@ export default function Painel() {
         <div className="p-5 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-900 dark:text-rose-200 shadow-lg space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0 font-bold shadow-md animate-bounce"><Flame className="w-5 h-5" /></div>
+              <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0 font-bold shadow-md"><Flame className="w-5 h-5" /></div>
               <div>
-                <strong className="text-sm font-black flex items-center gap-2">Alerta Crítico: {vacantShifts.length} vaga(s) com desfalque neste mês</strong>
-                <span className="text-xs text-rose-700 dark:text-rose-300">A ocupação geral não atingiu 100%. Clique na vaga abaixo para preencher:</span>
+                <strong className="text-sm font-black flex items-center gap-2">{vacantShifts.length} vaga(s) sem profissional neste mês</strong>
+                <span className="text-xs text-rose-700 dark:text-rose-300">Próximas primeiro. Toque em uma vaga para preencher.</span>
               </div>
             </div>
             {vacantShifts.length > 6 && (
@@ -530,12 +533,15 @@ export default function Painel() {
               <p className="text-xs text-slate-500">Plantões descobertos, em andamento, a iniciar ou concluídos hoje ({fmtDate(todayStr)})</p>
             </div>
             <span className="text-xs font-black px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-              {sectorsCoverage.length} Setores Mapeados
+              {sectorsCoverage.filter(sec => sec.total > 0).length} de {sectorsCoverage.length} com plantão hoje
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {sectorsCoverage.map((sec) => {
+            {sectorsCoverage.filter(sec => sec.total > 0).length === 0 && (
+              <p className="sm:col-span-2 text-sm text-slate-500 dark:text-slate-400">Nenhum setor tem plantão hoje.</p>
+            )}
+            {sectorsCoverage.filter(sec => sec.total > 0).map((sec) => {
               const hasShifts = sec.total > 0;
               const percent = hasShifts ? Math.round((sec.active / sec.total) * 100) : 0;
               const hasVacant = sec.vacant > 0;
@@ -597,6 +603,12 @@ export default function Painel() {
               );
             })}
           </div>
+          {sectorsCoverage.some(sec => sec.total === 0) && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-semibold text-slate-600 dark:text-slate-300">Sem plantão hoje:</span>{' '}
+              {sectorsCoverage.filter(sec => sec.total === 0).map(sec => sec.name).join(' · ')}
+            </p>
+          )}
         </Card>
 
         <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4">
@@ -640,10 +652,12 @@ export default function Painel() {
 
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-2">Distribuição da Carga Horária 24h</span>
-            <div className="flex items-end justify-between h-14 gap-1">
+            <div className="flex items-stretch justify-between h-20 gap-1">
               {hourlyCurveData.map((b, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                  <div className="w-full rounded-t-sm bg-gradient-to-t from-sky-600 to-indigo-500" style={{ height: `${Math.max(12, b.height)}%` }} title={`${b.label}: ${b.count} plantões`} />
+                <div key={i} className="flex-1 h-full flex flex-col items-center gap-1">
+                  <div className="w-full flex-1 flex items-end">
+                    <div className="w-full rounded-t-sm bg-sky-600 dark:bg-sky-500" style={{ height: b.count ? `${Math.max(8, b.height)}%` : '2px', opacity: b.count ? 1 : 0.35 }} title={`${b.label}: ${b.count} plantão(ões)`} />
+                  </div>
                   <span className="text-[10px] font-mono text-slate-400">{b.label}</span>
                 </div>
               ))}
@@ -693,7 +707,7 @@ export default function Painel() {
                     {isVago ? <span className="text-rose-600">Vaga em Aberto</span> : toTitleCase(shift.professional_name)}
                   </div>
                   <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
-                    <span className="truncate">{toTitleCase(shift.sector_name) || 'Setor Geral'}</span>
+                    <span className="truncate">{toTitleCase(shift.sector_name || sectors.find(sec => String(sec.id) === String(shift.sector_id))?.name) || 'Setor não informado'}</span>
                     <span className="text-[10px] font-semibold text-slate-400">{shift.lifecycle.detail}</span>
                   </div>
                 </div>

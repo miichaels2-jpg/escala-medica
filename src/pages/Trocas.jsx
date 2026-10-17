@@ -3,6 +3,7 @@ import { useAppData } from '@/lib/useAppData';
 import { supabase } from '@/lib/supabase';
 import { getShiftDateTimeRange } from '@/lib/shiftLiveStatus';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
+import { isVacancyRelevantFor } from '@/components/NotificationCenter';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
@@ -129,6 +130,8 @@ export default function Trocas() {
 
   const [activeTab, setActiveTab] = useState('vagas');
   const [selectedSpecialtyFilter, setSelectedSpecialtyFilter] = useState('todas');
+  // Plantonista vê primeiro só as vagas que pode assumir (setor e especialidade).
+  const [onlyCompatible, setOnlyCompatible] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   const myProf = useMemo(() => {
@@ -236,6 +239,8 @@ export default function Trocas() {
       if (s.professional_id) return false;
       if (s.date && s.date < todayStr) return false;
 
+      if (!isManager && onlyCompatible && !isVacancyRelevantFor(s, myProf)) return false;
+
       if (selectedSpecialtyFilter !== 'todas') {
         const spec = extractSpecialty(s, null);
         if (spec.toLowerCase() !== selectedSpecialtyFilter.toLowerCase()) return false;
@@ -243,7 +248,7 @@ export default function Trocas() {
 
       return true;
     }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-  }, [unitShifts, selectedSpecialtyFilter, todayStr]);
+  }, [unitShifts, selectedSpecialtyFilter, todayStr, isManager, onlyCompatible, myProf]);
 
   const pendingApprovalShifts = useMemo(() => {
     return unitShifts.filter(s => {
@@ -535,8 +540,20 @@ export default function Trocas() {
         </div>
 
         {activeTab === 'vagas' && (
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm space-y-3">
+            {!isManager && (
+              <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800" role="tablist" aria-label="Quais vagas mostrar">
+                <button type="button" role="tab" aria-selected={onlyCompatible} onClick={() => setOnlyCompatible(true)}
+                  className={`h-9 rounded-lg text-xs font-semibold cursor-pointer ${onlyCompatible ? 'bg-white dark:bg-slate-900 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
+                  Compatíveis comigo
+                </button>
+                <button type="button" role="tab" aria-selected={!onlyCompatible} onClick={() => setOnlyCompatible(false)}
+                  className={`h-9 rounded-lg text-xs font-semibold cursor-pointer ${!onlyCompatible ? 'bg-white dark:bg-slate-900 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
+                  Todas as vagas
+                </button>
+              </div>
+            )}
+            {(isManager || !onlyCompatible) && <div className="flex flex-wrap items-center gap-2">
               <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 mr-1 flex items-center gap-1">
                 <Filter className="w-3 h-3" /> Especialidade
               </span>
@@ -559,7 +576,7 @@ export default function Trocas() {
                   {spec}
                 </button>
               ))}
-            </div>
+            </div>}
           </div>
         )}
       </div>
@@ -570,9 +587,9 @@ export default function Trocas() {
           {openShifts.length === 0 ? (
             <Card className="p-16 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-2 rounded-3xl">
               <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
-              <h3 className="font-black text-slate-900 dark:text-white text-base">Nenhuma vaga aberta no momento</h3>
+              <h3 className="font-black text-slate-900 dark:text-white text-base">{!isManager && onlyCompatible ? 'Nenhuma vaga compatível com você agora' : 'Nenhuma vaga aberta no momento'}</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-                Todas as escalas dos setores estão preenchidas e não há repasses pendentes nesta categoria.
+                {!isManager && onlyCompatible ? 'Toque em "Todas as vagas" para ver as demais oportunidades do hospital.' : 'Todas as escalas dos setores estão preenchidas e não há repasses pendentes nesta categoria.'}
               </p>
             </Card>
           ) : (
@@ -587,7 +604,7 @@ export default function Trocas() {
                 return (
                   <Card 
                     key={shift.id} 
-                    className={`p-5 rounded-3xl border-2 transition-all flex flex-col justify-between space-y-4 shadow-sm ${
+                    className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 shadow-sm ${
                       conflictInfo.hasConflict 
                         ? 'border-rose-300 dark:border-rose-900/60 bg-rose-50/30 dark:bg-rose-950/20' 
                         : 'border-amber-300 dark:border-amber-500/40 bg-white dark:bg-slate-900 hover:shadow-md'
@@ -596,44 +613,29 @@ export default function Trocas() {
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
                         <div className="min-w-0">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-300">
-                            Plantão disponível
-                          </span>
-                          <h3 className="font-black text-base text-slate-900 dark:text-white mt-1 break-words">
+                          <h3 className="font-bold text-base text-slate-900 dark:text-white break-words">
                             {sector?.name || 'Setor Hospitalar'}
                           </h3>
+                          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                            {new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
+                          </p>
                         </div>
-                        <div className="shrink-0 text-right">
-                          <span className="block text-sm font-mono font-black text-slate-900 dark:text-white">
-                            {shift.start_time || '07:00'}–{shift.end_time || '19:00'}
+                        <span className="shrink-0 text-sm font-mono font-bold text-slate-900 dark:text-white">
+                          {shift.start_time || '07:00'}–{shift.end_time || '19:00'}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-2.5 py-1 font-semibold text-amber-800 dark:text-amber-200">
+                          <Stethoscope className="w-3.5 h-3.5" /> {realSpecialty}
+                        </span>
+                        {originName && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 px-2.5 py-1 text-sky-800 dark:text-sky-200 min-w-0">
+                            <ArrowRightLeft className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">Cedido por {originName}</span>
                           </span>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Horário</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-                        <Calendar className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
-                        <span>{new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</span>
-                      </div>
-
-                      <div className="flex items-start gap-2 rounded-xl bg-amber-50/80 dark:bg-amber-500/10 border border-amber-200/80 dark:border-amber-500/20 px-3 py-2">
-                        <Stethoscope className="w-4 h-4 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5" />
-                        <div className="min-w-0">
-                          <span className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400">Especialidade necessária</span>
-                          <span className="text-xs font-black text-slate-900 dark:text-white break-words">{realSpecialty}</span>
-                        </div>
-                      </div>
-
-                        {originName ? (
-                          <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-[11px] flex items-center gap-2">
-                            <ArrowRightLeft className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
-                            <span className="truncate">Cedido por: <b className="text-sky-700 dark:text-sky-300">{originName}</b></span>
-                          </div>
-                        ) : (
-                          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-500">
-                            Vaga institucional aberta
-                          </div>
                         )}
+                      </div>
 
                       {conflictInfo.hasConflict && (
                         <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 space-y-1">
