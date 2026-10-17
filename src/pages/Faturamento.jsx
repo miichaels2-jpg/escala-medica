@@ -3,6 +3,7 @@ import { useAppData } from '@/lib/useAppData';
 import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
 import { calculateProductivityPoolAllocations } from '@/lib/productivityCalculations';
 import { supabase } from '@/lib/supabase';
+import { escapeHtml, getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -124,12 +125,8 @@ function getSpreadsheetCellValue(cell) {
   return value;
 }
 
-function getPaymentStatusKey(unitId, professionalId, monthPrefix) {
-  return `${unitId}_${professionalId}_${monthPrefix}`;
-}
-
 export default function Faturamento() {
-  const { shifts = [], professionals = [], sectors = [], company, selectedUnitId, units = [], isManager, syncGlobalData } = useAppData();
+  const { shifts = [], professionals = [], sectors = [], company, user, selectedUnitId, units = [], isManager, syncGlobalData, paymentStatuses, isPaymentMarkedPaid, savePaymentStatus } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [now, setNow] = useState(() => new Date());
@@ -149,43 +146,6 @@ export default function Faturamento() {
     const intervalId = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(intervalId);
   }, []);
-
-  const [pagamentosStatus, setPagamentosStatus] = useState(() => {
-    try { 
-      const stored = window.localStorage.getItem('scale_faturamento_pagos');
-      const parsed = stored ? JSON.parse(stored) : {};
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch (error) {
-      console.warn('Não foi possível carregar os status de pagamento locais:', error);
-      return {};
-    }
-  });
-
-  useEffect(() => {
-    const mappings = units.filter(unit => unit.id && unit.legacy_id &&
-      String(unit.id) !== String(unit.legacy_id));
-    if (mappings.length === 0) return;
-
-    const nextState = { ...pagamentosStatus };
-    let changed = false;
-    mappings.forEach(unit => {
-      const oldPrefix = `${unit.legacy_id}_`;
-      Object.keys(nextState).filter(key => key.startsWith(oldPrefix)).forEach(oldKey => {
-        const newKey = `${unit.id}_${oldKey.slice(oldPrefix.length)}`;
-        nextState[newKey] = Boolean(nextState[newKey] || nextState[oldKey]);
-        delete nextState[oldKey];
-        changed = true;
-      });
-    });
-    if (!changed) return;
-
-    try {
-      window.localStorage.setItem('scale_faturamento_pagos', JSON.stringify(nextState));
-      setPagamentosStatus(nextState);
-    } catch (error) {
-      console.warn('Não foi possível atualizar os status locais de pagamento para os UUIDs hospitalares:', error);
-    }
-  }, [units, pagamentosStatus]);
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
@@ -283,57 +243,29 @@ export default function Faturamento() {
     );
   }, [isProductivityPoolUnit, productivityRuleUnitId, productivityRule?.daily_amount, shifts, monthPrefix, todayStr, now, productivityProfessionalsById]);
 
-  useEffect(() => {
-    if (professionals.length === 0) return;
-    const migratedStatus = { ...pagamentosStatus };
-    let changed = false;
+  const [paymentSavingId, setPaymentSavingId] = useState(null);
 
-    professionals.forEach(professional => {
-      if (!professional?.id) return;
-      const meta = getProfessionalMeta(professional);
-      const primaryUnitId = professional.unit_id || meta.allowed_unit_ids?.[0] || professional.unit_ids?.[0];
-      if (!primaryUnitId) return;
-      const legacyPrefix = `${professional.id}_`;
-      Object.keys(migratedStatus).forEach(legacyKey => {
-        if (!legacyKey.startsWith(legacyPrefix)) return;
-        const month = legacyKey.slice(legacyPrefix.length);
-        if (!/^\d{4}-\d{2}$/.test(month)) return;
-
-        const scopedKey = getPaymentStatusKey(primaryUnitId, professional.id, month);
-        if (!Object.prototype.hasOwnProperty.call(migratedStatus, scopedKey)) {
-          migratedStatus[scopedKey] = migratedStatus[legacyKey];
-        }
-        delete migratedStatus[legacyKey];
-        changed = true;
-      });
-    });
-
-    if (changed) {
-      setPagamentosStatus(migratedStatus);
-      try {
-        window.localStorage.setItem('scale_faturamento_pagos', JSON.stringify(migratedStatus));
-      } catch (error) {
-        console.warn('Não foi possível migrar os status de pagamento para as unidades:', error);
-      }
-    }
-  }, [professionals, pagamentosStatus]);
-
-  const handleTogglePago = (profId) => {
+  // O status "PAGO" fica no banco (payment_statuses): todos os gestores veem o mesmo.
+  const handleTogglePago = async (profId) => {
     const item = reportData.find(summary => String(summary.prof.id) === String(profId));
     if (item?.awaitingProduction && !item.isPago) {
       alert('Não é possível marcar como pago enquanto houver plantões por produtividade sem apuração registrada.');
       return;
     }
-    setPagamentosStatus(prev => {
-      const key = getPaymentStatusKey(selectedUnitId, profId, monthPrefix);
-      const nextState = { ...prev, [key]: !prev[key] };
-      try {
-        window.localStorage.setItem('scale_faturamento_pagos', JSON.stringify(nextState));
-      } catch (error) {
-        console.warn('Não foi possível salvar o status de pagamento neste navegador:', error);
-      }
-      return nextState;
-    });
+    setPaymentSavingId(String(profId));
+    try {
+      await savePaymentStatus({
+        unitId: selectedUnitId,
+        professionalId: profId,
+        month: monthPrefix,
+        paid: !item?.isPago,
+        updatedBy: user?.full_name || user?.email || null
+      });
+    } catch (error) {
+      alert(`O status de pagamento não foi salvo. ${error?.message || 'Verifique a conexão e tente novamente.'}`);
+    } finally {
+      setPaymentSavingId(null);
+    }
   };
 
   const handleSaveProductivityConfiguration = async () => {
@@ -383,6 +315,8 @@ export default function Faturamento() {
       const ExcelJS = await import('exceljs');
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Atendimentos diários');
+      // Usa o mesmo valor diário da regra aplicada no rateio da tela.
+      const dailyPoolAmount = safeNumber(productivityRule?.daily_amount, 150);
       worksheet.columns = [
         { header: 'PROFISSIONAL', key: 'professional', width: 34 },
         { header: 'QTD ATENDIMENTO', key: 'attendance', width: 20 },
@@ -399,7 +333,7 @@ export default function Faturamento() {
           schedule: `${shiftCount} plantão(ões)`,
           date: new Date(`${productionDate}T12:00:00`),
           id: String(professional.id),
-          amount: { formula: `IFERROR(B${rowNumber}*150/SUM(B$2:B$${productionEntryRows.length + 1}),0)` }
+          amount: { formula: `IFERROR(B${rowNumber}*${dailyPoolAmount}/SUM(B$2:B$${productionEntryRows.length + 1}),0)` }
         });
         row.getCell(4).numFmt = 'dd/mm/yyyy';
         row.getCell(6).numFmt = '"R$" #,##0.00';
@@ -740,10 +674,12 @@ export default function Faturamento() {
       valorBrutoTotal = roundCurrency(valorBrutoTotal);
       const valorDesconto = roundCurrency((valorBrutoTotal * item.taxRate) / 100);
       const valorLiquido = roundCurrency(valorBrutoTotal - valorDesconto);
-      const isPago = pagamentosStatus[getPaymentStatusKey(selectedUnitId, item.prof.id, monthPrefix)] || false;
+      const isPago = isPaymentMarkedPaid(selectedUnitId, item.prof.id, monthPrefix);
 
       return {
         ...item,
+        // Evita resíduos de ponto flutuante (ex.: 36.300000000000004h) nos totais e impressos.
+        horasRealizadas: Math.round(item.horasRealizadas * 10) / 10,
         valorBruto: valorBrutoTotal,
         valorDesconto,
         valorLiquido,
@@ -755,7 +691,7 @@ export default function Faturamento() {
       item.plantõesFuturos > 0 ||
       (['mensal', 'monthly', 'salario mensal'].includes(item.remunType) && item.profStatus === 'ativo' && item.isAssignedToCurrentUnit)
     );
-  }, [professionals, shifts, monthPrefix, selectedUnitId, pagamentosStatus, todayStr, now, productivityAllocations, isProductivityPoolUnit]);
+  }, [professionals, shifts, monthPrefix, selectedUnitId, paymentStatuses, todayStr, now, productivityAllocations, isProductivityPoolUnit]);
 
   const filteredReport = useMemo(() => {
     const term = normalizeText(searchQuery);
@@ -844,9 +780,9 @@ export default function Faturamento() {
 
       return `
         <tr>
-          <td style="border: 1px solid #cbd5e1;">${item.prof.name}</td>
-          <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${item.matricula}</td>
-          <td style="border: 1px solid #cbd5e1;">${item.prof.specialty || 'Geral'}</td>
+          <td style="border: 1px solid #cbd5e1;">${escapeHtml(item.prof.name)}</td>
+          <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${escapeHtml(item.matricula)}</td>
+          <td style="border: 1px solid #cbd5e1;">${escapeHtml(item.prof.specialty || 'Geral')}</td>
           <td style="border: 1px solid #cbd5e1;">${regime}</td>
           <td class="num" style="border: 1px solid #cbd5e1;">${item.plantõesRealizados}</td>
           <td class="num" style="border: 1px solid #cbd5e1;">${item.remunType === 'produtividade' ? item.atendimentosApurados : ''}</td>
@@ -854,7 +790,7 @@ export default function Faturamento() {
           <td class="money" style="border: 1px solid #cbd5e1;">${item.valorBruto.toFixed(2).replace('.', ',')}</td>
           <td class="money" style="border: 1px solid #cbd5e1; color: #ef4444;">${item.valorDesconto.toFixed(2).replace('.', ',')}</td>
           <td class="money" style="border: 1px solid #cbd5e1; font-weight: bold; color: #059669;">${item.valorLiquido.toFixed(2).replace('.', ',')}</td>
-          <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${formaPagamento}</td>
+          <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${escapeHtml(formaPagamento)}</td>
           <td style="border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: ${item.awaitingProduction ? '#b45309' : item.isPago ? '#059669' : '#f59e0b'};">${item.awaitingProduction ? 'Apuração pendente · saldo parcial' : item.isPago ? 'PAGO' : 'Pendente'}</td>
         </tr>
       `;
@@ -876,7 +812,7 @@ export default function Faturamento() {
       <body>
         <table>
           <tr>
-            <td colspan="12" style="font-size: 20px; font-weight: bold; text-align: center; background-color: #0f172a; color: #ffffff; padding: 12px;">${hospitalName}</td>
+            <td colspan="12" style="font-size: 20px; font-weight: bold; text-align: center; background-color: #0f172a; color: #ffffff; padding: 12px;">${escapeHtml(hospitalName)}</td>
           </tr>
           <tr>
             <td colspan="12" style="font-size: 14px; font-weight: bold; text-align: center; background-color: #1e293b; color: #94a3b8; padding: 6px;">RELATÓRIO OFICIAL DE FATURAMENTO E REPASSE</td>
@@ -885,7 +821,7 @@ export default function Faturamento() {
             <td colspan="5" style="font-weight: bold; padding: 10px 0;">Competência Mês: ${competencia}</td>
             <td colspan="7" style="text-align: right; padding: 10px 0;">Emissão do Relatório: ${emissao}</td>
           </tr>
-          <tr><td colspan="12" style="padding-bottom: 8px;">Busca: ${searchQuery.trim() || 'Todos os profissionais'}</td></tr>
+          <tr><td colspan="12" style="padding-bottom: 8px;">Busca: ${escapeHtml(searchQuery.trim() || 'Todos os profissionais')}</td></tr>
           <tr><td colspan="12"></td></tr>
           <tr>
             <th>Profissional</th>
@@ -941,8 +877,10 @@ export default function Faturamento() {
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR');
 
-    const companyLogoHtml = company?.logo_url ? `<img src="${company.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` : `<div class="logo-badge">${logoLetter}</div>`;
-    const unitLogoHtml = currentUnitObj?.logo_url ? `<img src="${currentUnitObj.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` : '';
+    const companyLogoUrl = getCompanyLogoUrl(company);
+    const unitLogoUrl = getUnitLogoUrl(currentUnitObj);
+    const companyLogoHtml = companyLogoUrl ? `<img src="${escapeHtml(companyLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` : `<div class="logo-badge">${escapeHtml(logoLetter)}</div>`;
+    const unitLogoHtml = unitLogoUrl ? `<img src="${escapeHtml(unitLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` : '';
 
     const rowsHtml = filteredReport.map((item, idx) => {
       const formaPagto = item.chavePix ? `PIX: ${item.chavePix}` : (item.banco ? `Banco: ${item.banco}` : 'Pendente');
@@ -953,13 +891,13 @@ export default function Faturamento() {
 
       return `
         <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9fafb'};">
-          <td style="border: 1px solid #111; padding: 6px 8px; font-weight: bold;">${item.prof.name}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace;">${item.matricula}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px;">${item.prof.specialty || 'Geral'}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; font-weight: bold;">${escapeHtml(item.prof.name)}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace;">${escapeHtml(item.matricula)}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px;">${escapeHtml(item.prof.specialty || 'Geral')}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; font-size: 9px;">${regime}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.plantõesRealizados}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.remunType === 'produtividade' ? item.atendimentosApurados : ''}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-size: 9px;">${formaPagto}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-size: 9px;">${escapeHtml(formaPagto)}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${formatCurrency(item.valorBruto)}${item.awaitingProduction ? ' (PARCIAL)' : ''}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: right; font-weight: bold;">${formatCurrency(item.valorLiquido)}${item.awaitingProduction ? ' (PARCIAL)' : ''}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${statusPago}</td>
@@ -991,7 +929,7 @@ export default function Faturamento() {
             ${companyLogoHtml}
             ${unitLogoHtml}
             <div class="header-info" style="${unitLogoHtml ? 'margin-left: 15px;' : ''}">
-              <h1>${hospitalName}</h1>
+              <h1>${escapeHtml(hospitalName)}</h1>
               <p>FECHAMENTO DE HONORÁRIOS E REPASSE DE PLANTÕES REALIZADOS</p>
               <div style="margin-top: 4px;">Competência: <b>${competencia}</b></div>
             </div>
@@ -1027,7 +965,7 @@ export default function Faturamento() {
         </div>
         ${shiftsAwaitingProduction > 0 ? `<p style="margin-top: 8px; color: #92400e; font-weight: bold;">Atenção: ${shiftsAwaitingProduction} dia(s) por produtividade aguardam lançamento completo. O valor exibido para esses profissionais é parcial e inclui somente os dias já fechados.</p>` : ''}
 
-        <script>window.onload = function() { window.print(); };</script>
+        ${PRINT_WHEN_IMAGES_READY_SCRIPT}
       </body>
       </html>
     `;
@@ -1051,13 +989,13 @@ export default function Faturamento() {
     let dadosPagamentoHtml = '';
     if (item.chavePix && item.banco) {
       dadosPagamentoHtml = `
-        <div class="grid"><span>Chave PIX (${item.pixTipo}):</span> <span>${item.chavePix}</span></div>
-        <div class="grid"><span>Dados Bancários Físicos:</span> <span>${item.banco}</span></div>
+        <div class="grid"><span>Chave PIX (${escapeHtml(item.pixTipo)}):</span> <span>${escapeHtml(item.chavePix)}</span></div>
+        <div class="grid"><span>Dados Bancários Físicos:</span> <span>${escapeHtml(item.banco)}</span></div>
       `;
     } else if (item.chavePix) {
-      dadosPagamentoHtml = `<div class="grid"><span>Chave PIX (${item.pixTipo}):</span> <span>${item.chavePix}</span></div>`;
+      dadosPagamentoHtml = `<div class="grid"><span>Chave PIX (${escapeHtml(item.pixTipo)}):</span> <span>${escapeHtml(item.chavePix)}</span></div>`;
     } else if (item.banco) {
-      dadosPagamentoHtml = `<div class="grid"><span>Dados Bancários Físicos:</span> <span>${item.banco}</span></div>`;
+      dadosPagamentoHtml = `<div class="grid"><span>Dados Bancários Físicos:</span> <span>${escapeHtml(item.banco)}</span></div>`;
     } else {
       dadosPagamentoHtml = `<div class="grid"><span style="color: #b91c1c; font-weight: bold;">Forma de Pagamento:</span> <span style="color: #b91c1c;">Pendente de cadastro</span></div>`;
     }
@@ -1070,7 +1008,7 @@ export default function Faturamento() {
         <div class="header">
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
-              <h1>${hospitalName}</h1>
+              <h1>${escapeHtml(hospitalName)}</h1>
               <p>${item.awaitingProduction ? 'APURAÇÃO PENDENTE — NÃO COMPROVA PAGAMENTO' : isActuallyPaid ? 'RECIBO DE HONORÁRIOS & REPASSE MÉDICO' : 'DEMONSTRATIVO DE HONORÁRIOS A PAGAR'}</p>
               <p style="font-size: 9.5px; margin-top: 2px;">Competência: <b>${competencia}</b></p>
             </div>
@@ -1082,8 +1020,8 @@ export default function Faturamento() {
         </div>
 
         <div class="section">
-          <div class="grid"><span>Profissional:</span> <span>${item.prof.name} (ID: ${item.matricula})</span></div>
-          <div class="grid"><span>Documento / Especialidade:</span> <span>${item.prof.document || 'CRM'} • ${item.prof.specialty || 'Geral'}</span></div>
+          <div class="grid"><span>Profissional:</span> <span>${escapeHtml(item.prof.name)} (ID: ${escapeHtml(item.matricula)})</span></div>
+          <div class="grid"><span>Documento / Especialidade:</span> <span>${escapeHtml(item.prof.document || 'CRM')} • ${escapeHtml(item.prof.specialty || 'Geral')}</span></div>
           <div class="grid"><span>Regime de Contratação:</span> <span>${regimeLabel}</span></div>
           <div class="grid"><span>Plantões Cumpridos no Período:</span> <span>${item.plantõesRealizados} plantões (${item.horasRealizadas}h computadas)</span></div>
           ${item.remunType === 'produtividade' ? `<div class="grid"><span>Atendimentos apurados em dias completos:</span> <span>${item.atendimentosApurados}</span></div>` : ''}
@@ -1104,7 +1042,7 @@ export default function Faturamento() {
 
         <p class="termo">
           ${isActuallyPaid
-            ? `Declaro ter recebido da instituição ${hospitalName} a quantia líquida discriminada acima, correspondente à quitação integral dos serviços profissionais prestados no período de ${competencia}, dando plena e geral quitação.`
+            ? `Declaro ter recebido da instituição ${escapeHtml(hospitalName)} a quantia líquida discriminada acima, correspondente à quitação integral dos serviços profissionais prestados no período de ${competencia}, dando plena e geral quitação.`
             : `Demonstrativo dos valores apurados pelos serviços profissionais prestados no período de ${competencia}. Este documento não comprova pagamento ou quitação.`
           }
         </p>
@@ -1112,11 +1050,11 @@ export default function Faturamento() {
         <div class="signatures">
           <div class="sig-col">
             <div class="sig-line"></div>
-            <span>${hospitalName}</span>
+            <span>${escapeHtml(hospitalName)}</span>
           </div>
           <div class="sig-col">
             <div class="sig-line"></div>
-            <span>${item.prof.name}</span>
+            <span>${escapeHtml(item.prof.name)}</span>
           </div>
         </div>
       </div>
@@ -1127,7 +1065,7 @@ export default function Faturamento() {
       <html lang="pt-BR">
       <head>
         <meta charset="utf-8">
-        <title>${isActuallyPaid ? 'Recibo Oficial' : 'Demonstrativo de Honorários'} - ${item.prof.name}</title>
+        <title>${isActuallyPaid ? 'Recibo Oficial' : 'Demonstrativo de Honorários'} - ${escapeHtml(item.prof.name)}</title>
         <style>
           @page { size: A4 portrait; margin: 8mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1158,7 +1096,7 @@ export default function Faturamento() {
 
         ${templateVia('2ª VIA - PROFISSIONAL')}
 
-        <script>window.onload = function() { window.print(); };</script>
+        ${PRINT_WHEN_IMAGES_READY_SCRIPT}
       </body>
       </html>
     `;
@@ -1375,7 +1313,7 @@ export default function Faturamento() {
         </Card>
       </div>
       <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-        O status de pagamento é salvo neste navegador e ainda não sincroniza entre usuários ou dispositivos.
+        O status de pagamento fica salvo no sistema e aparece igual para todos os gestores, em qualquer computador ou celular.
       </p>
 
       {/* TABELA DE CONCILIAÇÃO FINANCEIRA COM STATUS DE PAGAMENTO */}
@@ -1383,7 +1321,7 @@ export default function Faturamento() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
             <h3 className="text-base font-black text-slate-900 dark:text-white">Espelho de Conciliação Financeira</h3>
-            <p className="text-xs text-slate-500">Apuração restrita para <b>{currentUnitName}</b>. O status de pagamento é salvo neste navegador.</p>
+            <p className="text-xs text-slate-500">Apuração restrita para <b>{currentUnitName}</b>. O status de pagamento é compartilhado entre os gestores.</p>
           </div>
 
           <div className="relative w-full sm:w-72">
@@ -1420,9 +1358,9 @@ export default function Faturamento() {
               ) : (
                 filteredReport.map(item => {
                   const formaPagto = item.chavePix ? (
-                    <div><span className="text-sky-600 font-bold">{item.chavePix}</span><div className="text-[9px] text-slate-400">PIX ({item.pixTipo})</div></div>
+                    <div><span className="text-sky-600 font-bold">{item.chavePix}</span><div className="text-[10px] text-slate-400">PIX ({item.pixTipo})</div></div>
                   ) : item.banco ? (
-                    <div><span className="text-slate-800 dark:text-slate-200 font-bold">{item.banco}</span><div className="text-[9px] text-slate-400">Dados Bancários</div></div>
+                    <div><span className="text-slate-800 dark:text-slate-200 font-bold">{item.banco}</span><div className="text-[10px] text-slate-400">Dados Bancários</div></div>
                   ) : (
                     <span className="text-[10px] text-rose-500 italic">Pendente de cadastro</span>
                   );
@@ -1439,7 +1377,7 @@ export default function Faturamento() {
                         <div className="font-black text-slate-900 dark:text-white">{item.prof.name}</div>
                         <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono font-bold">
                           <span className="text-indigo-600 dark:text-indigo-400">{item.matricula} • {item.prof.document || 'CRM'}</span>
-                          {item.profStatus && item.profStatus !== 'ativo' && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-sans text-[9px] uppercase text-slate-500 dark:bg-slate-800">{item.profStatus} · com registro</span>}
+                          {item.profStatus && item.profStatus !== 'ativo' && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-sans text-[10px] uppercase text-slate-500 dark:bg-slate-800">{item.profStatus} · com registro</span>}
                         </div>
                       </td>
 
@@ -1456,7 +1394,7 @@ export default function Faturamento() {
                           </div>
                         )}
                         {item.plantõesAguardandoProducao > 0 && (
-                          <div className="mt-1 text-[9px] font-bold text-indigo-600 dark:text-indigo-400">{item.plantõesAguardandoProducao} dia(s) pendente(s)</div>
+                          <div className="mt-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{item.plantõesAguardandoProducao} dia(s) pendente(s)</div>
                         )}
                       </td>
 
@@ -1469,17 +1407,17 @@ export default function Faturamento() {
                           {formatCurrency(item.valorLiquido)}
                         </span>
                         {item.awaitingProduction && (
-                          <div className="text-[9px] font-semibold text-amber-600 dark:text-amber-400">
+                          <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
                             Saldo parcial · {item.plantõesAguardandoProducao} dia(s) pendente(s)
                           </div>
                         )}
-                        {item.taxRate > 0 && <div className="text-[9px] text-rose-500">-{item.taxRate}% retenção</div>}
+                        {item.taxRate > 0 && <div className="text-[10px] text-rose-500">-{item.taxRate}% retenção</div>}
                       </td>
 
                       <td className="py-3 px-4 text-center">
                         <button 
                           onClick={() => handleTogglePago(item.prof.id)}
-                          disabled={item.awaitingProduction && !item.isPago}
+                          disabled={(item.awaitingProduction && !item.isPago) || paymentSavingId === String(item.prof.id)}
                           title={item.awaitingProduction ? item.isPago ? 'O pagamento já marcado deve ser revisado após a apuração.' : 'Aguarde o lançamento da produção para conciliar o pagamento.' : undefined}
                           className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all border disabled:cursor-not-allowed disabled:opacity-60 ${
                             item.isPago 
@@ -1662,7 +1600,7 @@ export default function Faturamento() {
                             <span className="font-bold text-slate-900 dark:text-white">
                               {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
                             </span>
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase ${p.isRealizado ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-black uppercase ${p.isRealizado ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
                               {p.isRealizado ? 'Realizado' : 'A Realizar'}
                             </span>
                           </div>

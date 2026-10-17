@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { inferUnassignedShiftUnitId, resolveUnitId } from '@/lib/unitAssignment';
+import {
+  PAYMENTS_STORAGE_KEY, PUBLISHED_STORAGE_PREFIX, paymentKey, publishedKey, readLegacySharedState, sanitizeRanges
+} from '@/lib/sharedState';
 
 let globalState = {
   user: null,
@@ -15,10 +18,15 @@ let globalState = {
   loading: true,
   dataWarnings: [],
   unassignedShifts: [],
+  publishedRanges: {},
+  paymentStatuses: {},
+  sharedStateRemote: false,
 };
 
 const listeners = new Set();
 let isFetching = false;
+let activeFetch = null;
+let refetchRequested = false;
 
 function updateGlobal(patch) {
   globalState = { ...globalState, ...patch };
@@ -63,8 +71,11 @@ function migrateLegacyUnitStorage(activeUnits) {
   }
 }
 
-async function fetchTable(tableName, filterObj = {}, limit = 5000) {
-  let query = supabase.from(tableName).select('*');
+// Colunas públicas de users: senha/hash nunca são lidos pelo app.
+export const USER_PUBLIC_COLUMNS = 'id,username,email,full_name,role,data,created_date,updated_date';
+
+async function fetchTable(tableName, filterObj = {}, limit = 5000, columns = '*') {
+  let query = supabase.from(tableName).select(columns);
   for (const key in filterObj) {
     query = query.eq(key, filterObj[key]);
   }
@@ -77,9 +88,149 @@ async function fetchTable(tableName, filterObj = {}, limit = 5000) {
   return data || [];
 }
 
-async function fetchAllData() {
-  if (isFetching) return;
+function readSharedStateFromRows(publishedRows, paymentRows, resolveStoredUnitId) {
+  const publishedRanges = {};
+  (publishedRows || []).forEach(row => {
+    const ranges = sanitizeRanges(row.ranges);
+    if (ranges.length) publishedRanges[publishedKey(resolveStoredUnitId(row.unit_id), row.sector_id, row.year, row.month)] = ranges;
+  });
+  const paymentStatuses = {};
+  (paymentRows || []).forEach(row => {
+    if (row.paid) paymentStatuses[paymentKey(resolveStoredUnitId(row.unit_id), row.professional_id, row.month)] = true;
+  });
+  return { publishedRanges, paymentStatuses };
+}
+
+async function buildSharedState({ companyId, units, professionals, resolveStoredUnitId, remote, publishedRows, paymentRows, dataWarnings }) {
+  let legacy = { published: [], payments: [] };
+  try { legacy = readLegacySharedState(window.localStorage, units, professionals); } catch {}
+
+  if (!remote) {
+    // Banco ainda sem as tabelas: segue funcionando com o que está neste navegador.
+    const publishedRanges = {};
+    legacy.published.forEach(item => { publishedRanges[publishedKey(item.unitId, item.sectorId, item.year, item.month)] = item.ranges; });
+    const paymentStatuses = {};
+    legacy.payments.forEach(item => { paymentStatuses[paymentKey(item.unitId, item.professionalId, item.month)] = true; });
+    return { publishedRanges, paymentStatuses };
+  }
+
+  const state = readSharedStateFromRows(publishedRows, paymentRows, resolveStoredUnitId);
+  const uploadedFlag = `scale_shared_state_uploaded_${companyId}`;
+  let alreadyUploaded = false;
+  try { alreadyUploaded = window.localStorage.getItem(uploadedFlag) === 'true'; } catch {}
+  if (alreadyUploaded) return state;
+
+  // Envia uma única vez o que existia só neste navegador e ainda não está no banco.
+  const publishedToUpload = legacy.published
+    .filter(item => !state.publishedRanges[publishedKey(item.unitId, item.sectorId, item.year, item.month)])
+    .map(item => ({
+      company_id: companyId, unit_id: item.unitId, sector_id: String(item.sectorId),
+      year: item.year, month: item.month, ranges: item.ranges, updated_by: 'migracao-navegador'
+    }));
+  const paymentsToUpload = legacy.payments
+    .filter(item => !state.paymentStatuses[paymentKey(item.unitId, item.professionalId, item.month)])
+    .map(item => ({
+      company_id: companyId, unit_id: item.unitId, professional_id: String(item.professionalId),
+      month: item.month, paid: true, paid_at: new Date().toISOString(), paid_by: 'migracao-navegador'
+    }));
+
+  try {
+    if (publishedToUpload.length) {
+      const { error } = await supabase.from('published_schedules')
+        .upsert(publishedToUpload, { onConflict: 'company_id,unit_id,sector_id,year,month', ignoreDuplicates: true });
+      if (error) throw error;
+      publishedToUpload.forEach(row => { state.publishedRanges[publishedKey(row.unit_id, row.sector_id, row.year, row.month)] = row.ranges; });
+    }
+    if (paymentsToUpload.length) {
+      const { error } = await supabase.from('payment_statuses')
+        .upsert(paymentsToUpload, { onConflict: 'company_id,unit_id,professional_id,month', ignoreDuplicates: true });
+      if (error) throw error;
+      paymentsToUpload.forEach(row => { state.paymentStatuses[paymentKey(row.unit_id, row.professional_id, row.month)] = true; });
+    }
+    try { window.localStorage.setItem(uploadedFlag, 'true'); } catch {}
+  } catch (error) {
+    console.error('[Supabase] Falha ao enviar publicações/pagamentos salvos neste navegador:', error);
+    dataWarnings.push(`Publicações ou pagamentos salvos só neste navegador ainda não foram enviados ao banco: ${error.message}`);
+  }
+  return state;
+}
+
+export async function savePublishedRanges({ unitId, sectorId, year, month, ranges, updatedBy }) {
+  const key = publishedKey(unitId, sectorId, year, month);
+  const cleanRanges = sanitizeRanges(ranges);
+  const companyId = String(globalState.company?.id || 'cmp_principal');
+
+  if (globalState.sharedStateRemote) {
+    const scope = { company_id: companyId, unit_id: String(unitId), sector_id: String(sectorId), year: Number(year), month: Number(month) };
+    const request = cleanRanges.length
+      ? supabase.from('published_schedules').upsert(
+          [{ ...scope, ranges: cleanRanges, updated_by: updatedBy || null, updated_date: new Date().toISOString() }],
+          { onConflict: 'company_id,unit_id,sector_id,year,month' }
+        )
+      : supabase.from('published_schedules').delete().match(scope);
+    const { error } = await request;
+    if (error) throw new Error(error.message || 'Não foi possível salvar a publicação da escala.');
+  } else {
+    const storageKey = `${PUBLISHED_STORAGE_PREFIX}${unitId}_${sectorId}_${year}_${month}`;
+    if (cleanRanges.length) window.localStorage.setItem(storageKey, JSON.stringify(cleanRanges));
+    else window.localStorage.removeItem(storageKey);
+  }
+
+  const next = { ...(globalState.publishedRanges || {}) };
+  if (cleanRanges.length) next[key] = cleanRanges; else delete next[key];
+  updateGlobal({ publishedRanges: next });
+}
+
+export async function savePaymentStatus({ unitId, professionalId, month, paid, updatedBy }) {
+  const key = paymentKey(unitId, professionalId, month);
+  const companyId = String(globalState.company?.id || 'cmp_principal');
+
+  if (globalState.sharedStateRemote) {
+    const { error } = await supabase.from('payment_statuses').upsert([{
+      company_id: companyId,
+      unit_id: String(unitId),
+      professional_id: String(professionalId),
+      month,
+      paid: Boolean(paid),
+      paid_at: paid ? new Date().toISOString() : null,
+      paid_by: paid ? (updatedBy || null) : null,
+      updated_date: new Date().toISOString()
+    }], { onConflict: 'company_id,unit_id,professional_id,month' });
+    if (error) throw new Error(error.message || 'Não foi possível salvar o status de pagamento.');
+  } else {
+    const stored = JSON.parse(window.localStorage.getItem(PAYMENTS_STORAGE_KEY) || '{}');
+    stored[`${unitId}_${professionalId}_${month}`] = Boolean(paid);
+    window.localStorage.setItem(PAYMENTS_STORAGE_KEY, JSON.stringify(stored));
+  }
+
+  const next = { ...(globalState.paymentStatuses || {}) };
+  if (paid) next[key] = true; else delete next[key];
+  updateGlobal({ paymentStatuses: next });
+}
+
+// Garante que uma sincronização pedida durante outra em andamento não seja
+// descartada: ela roda logo em seguida e quem aguardou recebe os dados novos.
+function fetchAllData() {
+  if (isFetching) {
+    refetchRequested = true;
+    return activeFetch;
+  }
   isFetching = true;
+  activeFetch = (async () => {
+    try {
+      do {
+        refetchRequested = false;
+        await loadAllData();
+      } while (refetchRequested);
+    } finally {
+      isFetching = false;
+      activeFetch = null;
+    }
+  })();
+  return activeFetch;
+}
+
+async function loadAllData() {
   const dataWarnings = [];
 
   try {
@@ -89,7 +240,7 @@ async function fetchAllData() {
     const session = sessionData?.session;
 
     if (session?.user) {
-      const { data: profile, error: profileError } = await supabase.from('users').select('*').eq('id', session.user.id).single();
+      const { data: profile, error: profileError } = await supabase.from('users').select(USER_PUBLIC_COLUMNS).eq('id', session.user.id).single();
       if (profileError && profileError.code !== 'PGRST116') {
         dataWarnings.push(`Perfil do usuário não carregou: ${profileError.message}`);
         console.error('[Supabase] Falha ao carregar perfil do usuário:', profileError);
@@ -138,20 +289,27 @@ async function fetchAllData() {
       ['sectors', fetchTable('sectors', { company_id: compId })],
       ['shifts', fetchTable('shifts', { company_id: compId })],
       ['shift_swaps', fetchTable('shift_swaps', { company_id: compId })],
-      ['users', fetchTable('users')]
+      ['users', fetchTable('users', {}, 5000, USER_PUBLIC_COLUMNS)],
+      ['published_schedules', fetchTable('published_schedules', { company_id: compId })],
+      ['payment_statuses', fetchTable('payment_statuses', { company_id: compId })]
     ];
     const tableResults = await Promise.allSettled(tableRequests.map(([, request]) => request));
+    let sharedStateRemote = true;
     const loadedTables = tableResults.map((result, index) => {
       if (result.status === 'fulfilled') return result.value;
       const tableName = tableRequests[index][0];
       const error = result.reason;
       if (tableName === 'units' && error?.code === 'PGRST205') return [];
+      if (['published_schedules', 'payment_statuses'].includes(tableName) && error?.code === 'PGRST205') {
+        sharedStateRemote = false;
+        return [];
+      }
       const message = error?.message || String(error || 'Erro desconhecido');
       dataWarnings.push(`Dados de ${tableName} não carregaram: ${message}`);
       console.error(`[Supabase] Falha ao carregar ${tableName}:`, error);
       return [];
     });
-    const [unitRows, rawProfs, secRes, rawShifts, rawSwaps, allUsers] = loadedTables;
+    const [unitRows, rawProfs, secRes, rawShifts, rawSwaps, allUsers, publishedRows, paymentRows] = loadedTables;
 
     const activeUnits = unitRows.length > 0
       ? unitRows
@@ -260,6 +418,17 @@ async function fetchAllData() {
       return inferredUnitId ? { ...swap, unit_id: String(inferredUnitId) } : swap;
     });
 
+    const { publishedRanges, paymentStatuses } = await buildSharedState({
+      companyId: String(company.id || compId),
+      units: activeUnits,
+      professionals: enrichedProfs,
+      resolveStoredUnitId,
+      remote: sharedStateRemote,
+      publishedRows,
+      paymentRows,
+      dataWarnings
+    });
+
     updateGlobal({
       user: currentUser,
       company,
@@ -270,14 +439,15 @@ async function fetchAllData() {
       shifts: normalizedShifts,
       swaps: normalizedSwaps,
       unassignedShifts,
+      publishedRanges,
+      paymentStatuses,
+      sharedStateRemote,
       dataWarnings,
       loading: false
     });
   } catch (err) {
     console.error('Erro ao sincronizar dados:', err);
     updateGlobal({ loading: false, dataWarnings: [`Falha ao sincronizar os dados da plataforma: ${err?.message || err}`] });
-  } finally {
-    isFetching = false;
   }
 }
 
@@ -291,9 +461,7 @@ export function useAppData() {
     return () => listeners.delete(listener);
   }, []);
 
-  const syncGlobalData = useCallback(() => {
-    fetchAllData();
-  }, []);
+  const syncGlobalData = useCallback(() => fetchAllData(), []);
 
   const setSelectedUnitId = useCallback((newId) => {
     const validUnit = globalState.units.some(unit => String(unit.id) === String(newId));
@@ -352,7 +520,7 @@ export function useAppData() {
       specialty: user?.data?.specialty || 'Clínica Geral',
       status: 'ativo'
     };
-  }, [user]);
+  }, [user, globalState.professionals]);
 
   return {
     ...globalState,
@@ -362,6 +530,13 @@ export function useAppData() {
     professionals: unitProfessionals,
     allCompanyProfessionals: globalState.professionals,
     allCompanySectors: globalState.sectors,
+    allCompanyShifts: globalState.shifts,
+    getPublishedRanges: (unitId, sectorId, year, month) =>
+      globalState.publishedRanges?.[publishedKey(unitId, sectorId, year, month)] || [],
+    isPaymentMarkedPaid: (unitId, professionalId, month) =>
+      Boolean(globalState.paymentStatuses?.[paymentKey(unitId, professionalId, month)]),
+    savePublishedRanges,
+    savePaymentStatus,
     professionalMap,
     sectorMap,
     isAdmin,

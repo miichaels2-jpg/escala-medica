@@ -1,7 +1,10 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useAppData } from '@/lib/useAppData';
-import { getProfessionalFinancialMeta, getShiftCostEstimate, getShiftDurationHours, safeFinancialNumber } from '@/lib/financialCalculations';
+import { DEFAULT_REMUNERATION_TYPE, getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, getShiftDurationHours, safeFinancialNumber } from '@/lib/financialCalculations';
 import { calculateProductivityPoolAllocations, isProductivityDayComplete } from '@/lib/productivityCalculations';
+import { isShiftVacant } from '@/lib/shiftLiveStatus';
+import ManagementBI from '@/components/reports/ManagementBI';
+import { escapeHtml, getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +14,7 @@ import {
   BarChart3, Users, DollarSign, Building2,
   CalendarDays, Activity, Printer as PrinterIcon,
   AlertTriangle, Stethoscope, FileSpreadsheet,
-  Filter, Check, Contact2, Gift, ArrowLeftRight, RotateCcw
+  Filter, Check, Contact2, Gift, ArrowLeftRight, RotateCcw, Presentation
 } from 'lucide-react';
 
 function safeNumber(value, fallback = 0) {
@@ -62,15 +65,14 @@ function getSectorName(shift, sectors) {
   return sector?.name || 'Setor Não Informado';
 }
 
+// Mesma regra de vaga usada no Painel e em Escalas: um plantão com
+// profissional atribuído não é vaga só porque o status ficou desatualizado.
 function isVacant(shift) {
-  const name = normalize(getShiftName(shift));
-  const hasProfId = Boolean(shift.professional_id);
-  const hasName = Boolean(name);
+  return isShiftVacant(shift);
+}
 
-  if (normalize(shift.status) === 'vago') return true;
-  if (name.includes('vaga') || name.includes('descoberto') || name.includes('aberto') || name === 'plantao sem profissional') return true;
-  if (!hasProfId && !hasName) return true;
-  return false;
+function roundHours(value) {
+  return Math.round(safeNumber(value) * 10) / 10;
 }
 
 function isShiftPast(shift) {
@@ -109,14 +111,10 @@ function getProductivityDayStatus(day) {
   return 'Total de atendimentos inválido';
 }
 
-function getProfessionalCost(professional, hours, shift) {
-  return getShiftCostEstimate(professional, { ...shift, duration_hours: hours }).amount;
-}
-
 function getProfessionalRemuneration(professional, unitId) {
   if (!professional) return 'Não cadastrado';
   const meta = getProfessionalMeta(professional);
-  const type = normalize(meta.remuneration_type || meta.remunerationType || meta.payment_type || 'mensal');
+  const type = normalize(meta.remuneration_type || meta.remunerationType || meta.payment_type || DEFAULT_REMUNERATION_TYPE);
   const unitKey = String(unitId ?? '');
   const monthlySalaries = meta.unit_monthly_salaries || {};
   const unitMonthlySalary = monthlySalaries[unitKey];
@@ -166,8 +164,43 @@ function getProfessionalRemuneration(professional, unitId) {
   return 'Não cadastrado';
 }
 
-function getReportShiftCost(shift, professional) {
-  return getProfessionalCost(professional, getShiftHours(shift), shift);
+function isMonthlyType(type) {
+  return ['mensal', 'monthly', 'salario mensal'].includes(type);
+}
+
+function isProductivityType(type) {
+  return ['produtividade', 'production'].includes(type);
+}
+
+function getRemunerationType(professional) {
+  const meta = getProfessionalMeta(professional);
+  return normalize(meta.remuneration_type || meta.remunerationType || meta.payment_type || DEFAULT_REMUNERATION_TYPE);
+}
+
+// Dias de um mês (AAAA-MM) que caem dentro do período filtrado.
+function monthDaysInPeriod(month, start, end) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const daysInMonth = new Date(year, monthNumber, 0).getDate();
+  const monthStart = `${month}-01`;
+  const monthEnd = `${month}-${String(daysInMonth).padStart(2, '0')}`;
+  const from = start && start > monthStart ? start : monthStart;
+  const to = end && end < monthEnd ? end : monthEnd;
+  if (from > to) return { days: 0, daysInMonth };
+  const days = Math.round((new Date(`${to}T12:00:00`) - new Date(`${from}T12:00:00`)) / 86_400_000) + 1;
+  return { days, daysInMonth };
+}
+
+function monthsInPeriod(start, end) {
+  if (!start || !end || start > end) return [];
+  const months = [];
+  let [year, month] = start.slice(0, 7).split('-').map(Number);
+  const [endYear, endMonth] = end.slice(0, 7).split('-').map(Number);
+  while (year < endYear || (year === endYear && month <= endMonth)) {
+    months.push(`${year}-${String(month).padStart(2, '0')}`);
+    month += 1;
+    if (month > 12) { month = 1; year += 1; }
+  }
+  return months;
 }
 
 function getLocalDateInputValue(date) {
@@ -178,6 +211,7 @@ function getLocalDateInputValue(date) {
 }
 
 const REPORT_TITLES = {
+  bi: 'Painel BI de gestão',
   executivo: 'Resumo executivo',
   escalas: 'Extrato de plantões',
   trocas: 'Trocas e repasses',
@@ -191,6 +225,7 @@ const REPORT_TITLES = {
 };
 
 const REPORT_NAVIGATION = [
+  { id: 'bi', label: 'Painel BI', description: 'Apresentação para gestão', icon: Presentation },
   { id: 'executivo', label: 'Resumo executivo', description: 'Indicadores e cobertura', icon: BarChart3 },
   { id: 'escalas', label: 'Plantões', description: 'Escalas e ocupação', icon: CalendarDays },
   { id: 'trocas', label: 'Trocas e repasses', description: 'Histórico de alterações', icon: ArrowLeftRight },
@@ -206,7 +241,7 @@ const REPORT_NAVIGATION = [
 export default function Relatorios() {
   const { shifts = [], sectors = [], professionals = [], company, units = [], selectedUnitId } = useAppData();
 
-  const [activeTab, setActiveTab] = useState('executivo');
+  const [activeTab, setActiveTab] = useState('bi');
   
   const today = new Date();
   const firstDay = getLocalDateInputValue(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -221,7 +256,8 @@ export default function Relatorios() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProductivityProfessionalId, setSelectedProductivityProfessionalId] = useState('');
 
-  const [hasSearched, setHasSearched] = useState(false);
+  // O mês atual já vem aplicado: o painel abre com dados, sem clique extra.
+  const [hasSearched, setHasSearched] = useState(true);
   const [appliedFilters, setAppliedFilters] = useState({
     start: firstDay,
     end: lastDay,
@@ -259,7 +295,7 @@ export default function Relatorios() {
     setProfStatusFilter('todos');
     setSearchQuery('');
     setAppliedFilters(initialFilters);
-    setHasSearched(false);
+    setHasSearched(true);
   };
 
   const profMap = useMemo(() => {
@@ -468,7 +504,13 @@ export default function Relatorios() {
       return summary;
     }, { attendance: 0, pool: 0, shifts: 0, professionals: eligibleProfessionals.size, pendingDays: 0 });
 
-    return { configured: true, available: true, ruleUnitId, dailyPool, days: dailyGroups, rows, professionalTotals, totals };
+    const shiftCountByKey = new Map();
+    dailyGroups.forEach(day => day.items.forEach(item => shiftCountByKey.set(`${day.date}:${item.professionalId}`, item.shifts)));
+    const completeDates = new Set(dailyGroups.filter(day => day.complete).map(day => day.date));
+    return {
+      configured: true, available: true, ruleUnitId, dailyPool, days: dailyGroups, rows, professionalTotals, totals,
+      allocationByKey: allocations.allocationsByDateAndProfessional, shiftCountByKey, completeDates
+    };
   }, [company, selectedUnitId, professionals, shifts, sectors, appliedFilters, hasSearched]);
 
   const swapsList = useMemo(() => {
@@ -566,16 +608,89 @@ export default function Relatorios() {
 
   const coverageRate = totalShiftsCount > 0 ? Math.round((filledShiftsCount / totalShiftsCount) * 100) : 100;
 
-  const financialSummary = useMemo(() => {
-    let totalCost = 0, executedCost = 0, pendingCost = 0, vacantCost = 0, totalHours = 0, shiftsMissingRate = 0, shiftsAwaitingProduction = 0;
+  // Custo de cada plantão no período, com a MESMA base do Faturamento:
+  // - mensalista: salário da unidade proporcional aos dias do período, dividido
+  //   entre os plantões dele (o mês inteiro soma exatamente o salário);
+  // - produtividade: valor rateado dos dias já fechados;
+  // - plantão / hora / diária: tarifa cadastrada.
+  const costModel = useMemo(() => {
+    const byShift = new Map();
+    const missingRate = new Set();
+    const pendingProduction = new Set();
+    const monthlyGroups = new Map();
+
     filteredShifts.forEach(shift => {
-      const hours = getShiftHours(shift);
-      totalHours += hours;
+      const id = String(shift.id);
+      byShift.set(id, 0);
+      if (isVacant(shift)) return;
       const professional = getProf(shift);
-      const estimate = getShiftCostEstimate(professional, { ...shift, duration_hours: hours });
-      const cost = estimate.amount;
-      if (!isVacant(shift) && (!professional || estimate.missingRate)) shiftsMissingRate += 1;
-      if (!isVacant(shift) && estimate.requiresProduction) shiftsAwaitingProduction += 1;
+      if (!professional) { missingRate.add(id); return; }
+      const type = getRemunerationType(professional);
+      const date = String(shift.date || '').slice(0, 10);
+
+      if (isMonthlyType(type)) {
+        const key = `${professional.id}|${shift.unit_id}|${date.slice(0, 7)}`;
+        const group = monthlyGroups.get(key) || { professional, unitId: shift.unit_id, month: date.slice(0, 7), ids: [] };
+        group.ids.push(id);
+        monthlyGroups.set(key, group);
+        return;
+      }
+
+      if (isProductivityType(type)) {
+        const key = `${date}:${professional.id}`;
+        if (productivityReport.completeDates?.has(date)) {
+          byShift.set(id, (productivityReport.allocationByKey?.get(key) || 0) / (productivityReport.shiftCountByKey?.get(key) || 1));
+        } else {
+          pendingProduction.add(id);
+        }
+        return;
+      }
+
+      const estimate = getShiftCostEstimate(professional, { ...shift, duration_hours: getShiftHours(shift) });
+      byShift.set(id, estimate.amount);
+      if (estimate.missingRate) missingRate.add(id);
+    });
+
+    monthlyGroups.forEach(group => {
+      const salary = getMonthlySalaryForUnit(group.professional, group.unitId);
+      if (salary.missing) { group.ids.forEach(id => missingRate.add(id)); return; }
+      const { days, daysInMonth } = monthDaysInPeriod(group.month, appliedFilters.start, appliedFilters.end);
+      const perShift = (salary.value * (days / daysInMonth)) / group.ids.length;
+      group.ids.forEach(id => byShift.set(id, perShift));
+    });
+
+    // Mensalistas ativos da unidade sem plantão no período: a folha deles existe
+    // (o Faturamento a inclui), mas não pertence a nenhuma escala.
+    let payrollWithoutShifts = 0;
+    let professionalsWithoutShifts = 0;
+    const months = monthsInPeriod(appliedFilters.start, appliedFilters.end);
+    if (hasSearched && appliedFilters.sector === 'todos') {
+      professionals.forEach(professional => {
+        if (!isMonthlyType(getRemunerationType(professional))) return;
+        if (normalize(professional.status || professional.data?.status || 'ativo') !== 'ativo') return;
+        let counted = false;
+        months.forEach(month => {
+          if (monthlyGroups.has(`${professional.id}|${selectedUnitId}|${month}`)) return;
+          const salary = getMonthlySalaryForUnit(professional, selectedUnitId);
+          if (salary.missing) return;
+          const { days, daysInMonth } = monthDaysInPeriod(month, appliedFilters.start, appliedFilters.end);
+          payrollWithoutShifts += salary.value * (days / daysInMonth);
+          counted = true;
+        });
+        if (counted) professionalsWithoutShifts += 1;
+      });
+    }
+
+    return { byShift, missingRate, pendingProduction, payrollWithoutShifts, professionalsWithoutShifts };
+  }, [filteredShifts, getProf, productivityReport, appliedFilters, hasSearched, professionals, selectedUnitId]);
+
+  const shiftCost = useCallback(shift => costModel.byShift.get(String(shift.id)) || 0, [costModel]);
+
+  const financialSummary = useMemo(() => {
+    let totalCost = 0, executedCost = 0, pendingCost = 0, vacantCost = 0, totalHours = 0;
+    filteredShifts.forEach(shift => {
+      totalHours += getShiftHours(shift);
+      const cost = shiftCost(shift);
 
       if (isVacant(shift)) {
         vacantCost += cost;
@@ -589,8 +704,16 @@ export default function Relatorios() {
         }
       }
     });
-    return { totalCost, executedCost, pendingCost, vacantCost, hours: totalHours, shiftsMissingRate, shiftsAwaitingProduction };
-  }, [filteredShifts, getProf]);
+    return {
+      totalCost, executedCost, pendingCost, vacantCost,
+      hours: roundHours(totalHours),
+      shiftsMissingRate: costModel.missingRate.size,
+      shiftsAwaitingProduction: costModel.pendingProduction.size,
+      payrollWithoutShifts: costModel.payrollWithoutShifts,
+      professionalsWithoutShifts: costModel.professionalsWithoutShifts,
+      comparableTotal: totalCost + costModel.payrollWithoutShifts
+    };
+  }, [filteredShifts, shiftCost, costModel]);
 
   const sectorMetrics = useMemo(() => {
     const map = {};
@@ -611,10 +734,10 @@ export default function Relatorios() {
       item.hours += getShiftHours(shift);
       if (isVacant(shift)) item.vacant += 1;
       else item.filled += 1;
-      item.cost += getReportShiftCost(shift, getProf(shift));
+      item.cost += shiftCost(shift);
     });
-    return Object.values(map).filter(item => item.total > 0).sort((a, b) => b.total - a.total);
-  }, [sectors, filteredShifts, getProf]);
+    return Object.values(map).filter(item => item.total > 0).map(item => ({ ...item, hours: roundHours(item.hours) })).sort((a, b) => b.total - a.total);
+  }, [sectors, filteredShifts, shiftCost]);
 
   const enrichedSectors = useMemo(() => {
     if (!hasSearched) return [];
@@ -639,51 +762,55 @@ export default function Relatorios() {
 
   const professionalMetrics = useMemo(() => {
     const map = {};
+    // Agrupa pelo ID do profissional; o nome só é usado quando o plantão não
+    // tem vínculo. Assim homônimos não se misturam e renomeações não duplicam linhas.
     filteredProfessionals.forEach(p => {
-      const name = normalize(p.name);
-      if (name) {
-        map[name] = { 
-          id: p.id || name, 
-          name: titleCase(p.name), 
-          specialty: p.specialty,
-          shifts: 0, hours: 0, sectors: new Set(), cost: 0 
-        };
-      }
+      if (!p.id && !normalize(p.name)) return;
+      const key = p.id ? `id:${p.id}` : `nome:${normalize(p.name)}`;
+      map[key] = {
+        id: p.id || normalize(p.name),
+        name: titleCase(p.name),
+        specialty: p.specialty,
+        shifts: 0, hours: 0, sectors: new Set(), cost: 0
+      };
     });
 
     filteredShifts.forEach(shift => {
       if (isVacant(shift)) return;
-      let rawName = getShiftName(shift);
+      const prof = getProf(shift);
+      let rawName = prof?.name || getShiftName(shift);
       let normName = normalize(rawName);
       if (!normName) {
         normName = `desconhecido_${shift.id}`;
         rawName = 'Profissional Não Identificado';
       }
+      const professionalId = prof?.id || shift.professional_id;
+      const key = professionalId ? `id:${professionalId}` : `nome:${normName}`;
 
-      if (!map[normName]) {
-        const prof = getProf(shift);
-        map[normName] = { 
-          id: shift.professional_id || normName, 
-          name: titleCase(prof?.name || rawName), 
+      if (!map[key]) {
+        map[key] = {
+          id: professionalId || normName,
+          name: titleCase(rawName),
           specialty: titleCase(prof?.specialty || 'Não Informada'),
-          shifts: 0, hours: 0, sectors: new Set(), cost: 0 
+          shifts: 0, hours: 0, sectors: new Set(), cost: 0
         };
       }
-      
-      const item = map[normName];
+
+      const item = map[key];
       item.shifts += 1;
       const h = getShiftHours(shift);
       item.hours += h;
       const sName = getSectorName(shift, sectors);
       if (sName) item.sectors.add(titleCase(sName));
-      item.cost += getReportShiftCost(shift, getProf(shift));
+      item.cost += shiftCost(shift);
     });
 
-    return Object.values(map).map(item => ({ 
-      ...item, 
+    return Object.values(map).map(item => ({
+      ...item,
+      hours: roundHours(item.hours),
       sectors: item.sectors.size > 0 ? Array.from(item.sectors).join(', ') : '—' 
     })).sort((a, b) => b.shifts - a.shifts);
-  }, [filteredShifts, filteredProfessionals, sectors, getProf]);
+  }, [filteredShifts, filteredProfessionals, sectors, getProf, shiftCost]);
 
   const credentialAudit = useMemo(() => {
     let valid = 0, expired = 0, nearExpiry = 0, missing = 0;
@@ -734,7 +861,9 @@ export default function Relatorios() {
   // ==========================================
   // EXPORTAÇÃO EXCEL NATIVA
   // ==========================================
-  const triggerExcelExport = (mode) => {
+  const triggerExcelExport = (requestedMode) => {
+    // No Painel BI, exportar/imprimir gera o relatório completo do período.
+    const mode = activeTab === 'bi' ? 'all' : requestedMode;
     if (!hasSearched) {
       alert('Atenção: Aplique os filtros antes de exportar a planilha.');
       return;
@@ -799,7 +928,7 @@ export default function Relatorios() {
           else { profName = 'VAGA EM ABERTO'; statusTexto = 'Vago'; rowClass = 'class="vago"'; }
         }
 
-        const cost = getReportShiftCost(s, getProf(s));
+        const cost = shiftCost(s);
         html += `
           <tr ${rowClass}>
             <td>${formatDate(s.date)}</td>
@@ -899,7 +1028,7 @@ export default function Relatorios() {
             <td ${isVencido}>${vencimento}</td>
             <td>${p.phone || p.telefone || 'Não inf.'}</td>
             <td>${p.email || 'Não inf.'}</td>
-            <td>${titleCase(p.remuneration_type || p.payment_type || 'Mensal')}</td>
+            <td>${titleCase(p.remuneration_type || p.payment_type || DEFAULT_REMUNERATION_TYPE)}</td>
             <td>${getProfessionalRemuneration(p, selectedUnitId)}</td>
             <td>${p.bank_name || p.banco || 'Não inf.'}</td>
             <td>${p.pix_key || p.chave_pix || p.pix || 'Não inf.'}</td>
@@ -1068,7 +1197,7 @@ export default function Relatorios() {
     if (mode === 'all' || activeTab === 'financeiro') {
       html += `
           <tr><td colspan="4" class="section-title">RELATÓRIO FINANCEIRO OPERACIONAL</td></tr>
-          <tr><td colspan="4" style="font-size:10px; color:#475569;">Estimativa operacional: salários mensais rateados por 20 dias úteis; folha contratual integral exibida em Faturamento.</td></tr>
+          <tr><td colspan="4" style="font-size:10px; color:#475569;">Mesma base do Faturamento: salário mensal proporcional aos dias do período e dividido entre os plantões do profissional; produtividade pelo rateio dos dias fechados; demais regimes pela tarifa cadastrada.</td></tr>
           ${financialSummary.shiftsMissingRate > 0 || financialSummary.shiftsAwaitingProduction > 0 ? `<tr><td colspan="4" style="font-weight:bold; color:#92400e;">Atenção: ${financialSummary.shiftsMissingRate} plantão(ões) sem tarifa ou profissional identificado; ${financialSummary.shiftsAwaitingProduction} plantão(ões) por produtividade aguardam lançamento. Valores pendentes não integram os totais.</td></tr>` : ''}
           <tr>
             <th colspan="2">Previsão das escalas ocupadas</th>
@@ -1126,7 +1255,8 @@ export default function Relatorios() {
   // ==========================================
   // IMPRESSÃO HTML PURA (Isolada, A4 Branco c/ Quebra) COM LOGOS
   // ==========================================
-  const triggerPrint = (mode) => {
+  const triggerPrint = (requestedMode) => {
+    const mode = activeTab === 'bi' ? 'all' : requestedMode;
     if (!hasSearched) {
       alert('Atenção: Aplique os filtros para renderizar a telemetria antes de imprimir.');
       return;
@@ -1146,12 +1276,14 @@ export default function Relatorios() {
 
     // Lógica para injetar a logo da Rede e da Unidade
     const logoLetter = hospitalName[0] || 'H';
-    const companyLogoHtml = company?.logo_url || company?.data?.logo_url 
-      ? `<img src="${company.logo_url || company.data?.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` 
+    const companyLogoUrl = getCompanyLogoUrl(company);
+    const unitLogoUrl = getUnitLogoUrl(currentUnitObj);
+    const companyLogoHtml = companyLogoUrl
+      ? `<img src="${escapeHtml(companyLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />`
       : `<div style="width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px;">${logoLetter}</div>`;
     
-    const unitLogoHtml = currentUnitObj?.logo_url 
-      ? `<img src="${currentUnitObj.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` 
+    const unitLogoHtml = unitLogoUrl
+      ? `<img src="${escapeHtml(unitLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` 
       : '';
 
     let printHtml = `
@@ -1593,7 +1725,7 @@ export default function Relatorios() {
     if (mode === 'all' || activeTab === 'financeiro') {
       printHtml += `
         <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Relatório Financeiro Operacional</div>
-        <p style="font-size:9px; color:#475569; margin-bottom:10px;">Estimativa operacional: salários mensais rateados por 20 dias úteis; folha contratual integral exibida em Faturamento.</p>
+        <p style="font-size:9px; color:#475569; margin-bottom:10px;">Mesma base do Faturamento: salário mensal proporcional aos dias do período e dividido entre os plantões do profissional; produtividade pelo rateio dos dias fechados; demais regimes pela tarifa cadastrada.</p>
         ${financialSummary.shiftsMissingRate > 0 || financialSummary.shiftsAwaitingProduction > 0 ? `<p style="font-size:9px; font-weight:bold; color:#92400e; margin-bottom:10px;">Atenção: ${financialSummary.shiftsMissingRate} plantão(ões) sem tarifa ou profissional identificado; ${financialSummary.shiftsAwaitingProduction} plantão(ões) por produtividade aguardam lançamento. Valores pendentes não integram os totais.</p>` : ''}
         
         <div class="grid-4 break-inside-avoid" style="margin-bottom: 30px;">
@@ -1643,6 +1775,7 @@ export default function Relatorios() {
           Documento processado eletronicamente pelo ScaleMedic.<br/>
           Informações confidenciais · Uso autorizado pela unidade.
         </div>
+        ${PRINT_WHEN_IMAGES_READY_SCRIPT}
       </body>
       </html>
     `;
@@ -1650,11 +1783,6 @@ export default function Relatorios() {
     printWindow.document.open();
     printWindow.document.write(printHtml);
     printWindow.document.close();
-
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-    }, 400);
   };
 
   return (
@@ -1816,7 +1944,8 @@ export default function Relatorios() {
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{periodLabel} · {filterSummary}</p>
             </div>
             <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {activeTab === 'escalas' ? `${filteredShifts.length} plantões` :
+              {activeTab === 'bi' ? `${filteredShifts.length} plantões no período` :
+                activeTab === 'escalas' ? `${filteredShifts.length} plantões` :
                 activeTab === 'trocas' ? `${swapsList.length} repasses` :
                 activeTab === 'base_setores' ? `${enrichedSectors.length} setores` :
                 activeTab === 'base_profissionais' ? `${filteredProfessionals.length} profissionais` :
@@ -1830,6 +1959,24 @@ export default function Relatorios() {
 
           <div className="space-y-6">
             {/* ABA EXECUTIVO */}
+            {activeTab === 'bi' && (
+              <ManagementBI
+                shifts={filteredShifts}
+                isVacant={isVacant}
+                shiftCost={shiftCost}
+                getShiftHours={getShiftHours}
+                isShiftPast={isShiftPast}
+                financialSummary={financialSummary}
+                coverageRate={coverageRate}
+                sectorMetrics={sectorMetrics}
+                professionalMetrics={professionalMetrics}
+                credentialAudit={credentialAudit}
+                periodLabel={periodLabel}
+                hospitalName={hospitalName}
+                filterSummary={filterSummary}
+              />
+            )}
+
             {activeTab === 'executivo' && (
               <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -2466,7 +2613,7 @@ export default function Relatorios() {
                   </h3>
                 </div>
                 <p className="mt-3 text-[11px] text-slate-500 dark:text-slate-400">
-                  Estimativa operacional: salários mensais são rateados por 20 dias úteis; a folha contratual integral é apresentada em Faturamento.
+                  Mesma base do Faturamento: salário mensal proporcional aos dias do período e dividido entre os plantões do profissional; produtividade pelo rateio dos dias fechados; demais regimes pela tarifa cadastrada.
                 </p>
                 {financialSummary.shiftsMissingRate > 0 && (
                   <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
@@ -2477,7 +2624,7 @@ export default function Relatorios() {
                 {financialSummary.shiftsAwaitingProduction > 0 && (
                   <div className="mt-4 flex items-start gap-2 rounded-xl border border-indigo-300 bg-indigo-50 p-3 text-xs font-semibold text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{financialSummary.shiftsAwaitingProduction} plantão(ões) por produtividade dependem do lançamento da produção e não entram nos valores monetários.</span>
+                    <span>{financialSummary.shiftsAwaitingProduction} plantão(ões) por produtividade estão em dias ainda não fechados (falta lançar atendimentos ou o plantão não terminou) e só entram no valor depois do fechamento.</span>
                   </div>
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
@@ -2498,6 +2645,16 @@ export default function Relatorios() {
                     <div className="text-2xl font-black font-mono text-rose-700 dark:text-rose-400 mt-2">{formatCurrency(financialSummary.vacantCost)}</div>
                   </div>
                 </div>
+                {financialSummary.payrollWithoutShifts > 0 && (
+                  <div className="mt-4 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span className="text-xs text-slate-600 dark:text-slate-300">
+                      Folha mensal de {financialSummary.professionalsWithoutShifts} profissional(is) sem plantão no período: <b className="font-mono text-slate-900 dark:text-white">{formatCurrency(financialSummary.payrollWithoutShifts)}</b>
+                    </span>
+                    <span className="text-xs text-slate-600 dark:text-slate-300">
+                      Total comparável ao Faturamento: <b className="font-mono text-slate-900 dark:text-white">{formatCurrency(financialSummary.comparableTotal)}</b>
+                    </span>
+                  </div>
+                )}
                 <div className="mt-8 border-t border-slate-100 dark:border-slate-700/50 pt-6">
                   <h4 className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 mb-4">Orçamento por Setor Clínico</h4>
                   <div className="overflow-x-auto">

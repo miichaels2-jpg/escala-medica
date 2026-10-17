@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
-import { getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
+import { DEFAULT_REMUNERATION_TYPE, getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -83,7 +83,7 @@ function computeShiftLiveStatus(shift, liveNowDate) {
 }
 
 export default function Painel() {
-  const { user, company, units = [], selectedUnitId, isManager, shifts, sectors, professionals, loading } = useAppData();
+  const { user, company, units = [], selectedUnitId, isManager, shifts, sectors, professionals, loading, publishedRanges, getPublishedRanges } = useAppData();
   const navigate = useNavigate();
 
   const [tvMode, setTvMode] = useState(false);
@@ -100,6 +100,7 @@ export default function Painel() {
   }, []);
 
   const todayStr = useMemo(() => getLocalDateString(currentTime), [currentTime]);
+  const currentMinute = Math.floor(currentTime.getTime() / 60000);
   const currentYear = currentTime.getFullYear();
   const currentMonth = currentTime.getMonth();
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
@@ -111,16 +112,8 @@ export default function Painel() {
   }, [company, currentTime]);
 
   const unsubmittedSectors = useMemo(() => {
-    return (sectors || []).filter(s => {
-      try {
-        const raw = window.localStorage.getItem(`scale_published_ranges_${unitId}_${s.id}_${currentYear}_${currentMonth + 1}`);
-        const ranges = raw ? JSON.parse(raw) : [];
-        return ranges.length === 0;
-      } catch {
-        return true;
-      }
-    });
-  }, [sectors, unitId, currentYear, currentMonth]);
+    return (sectors || []).filter(s => getPublishedRanges(unitId, s.id, currentYear, currentMonth + 1).length === 0);
+  }, [sectors, unitId, currentYear, currentMonth, publishedRanges]);
 
   function getProfMeta(prof) {
     if (!prof) return {};
@@ -148,7 +141,7 @@ export default function Painel() {
         monthlyByUnit[String(unitId)] !== undefined;
       const primaryUnitId = p.unit_id || meta.allowed_unit_ids?.[0] || p.unit_ids?.[0];
       const legacySalary = meta.monthly_salary !== undefined ? meta.monthly_salary : p.monthly_salary;
-      const remunerationType = meta.remuneration_type || p.remuneration_type || 'mensal';
+      const remunerationType = meta.remuneration_type || p.remuneration_type || DEFAULT_REMUNERATION_TYPE;
       const mergedProf = { 
         ...p, 
         monthly_salary: remunerationType !== 'mensal'
@@ -211,13 +204,23 @@ export default function Painel() {
         sectorName: toTitleCase(s.sector_name || sectors.find(sec => String(sec.id) === String(s.sector_id))?.name || 'Setor Geral'), 
         formattedDate: fmtDate(s.date) 
       }))
-      .sort((a, b) => (a.date || '').localeCompare(b.date || '')); // Ordena cronologicamente
-  }, [monthlyShifts, sectors]);
+      // Próximas vagas primeiro (as que ainda dá para preencher); furos já passados ao final.
+      .map(s => ({ ...s, isOverdue: (getShiftDateTimeRange(s)?.end?.getTime() || 0) < currentMinute * 60000 }))
+      .sort((a, b) => (a.isOverdue - b.isOverdue) ||
+        (a.isOverdue
+          ? (b.date || '').localeCompare(a.date || '')
+          : (a.date || '').localeCompare(b.date || '') || String(a.start_time || '').localeCompare(String(b.start_time || ''))));
+  // Reavalia por minuto (não a cada segundo do relógio).
+  }, [monthlyShifts, sectors, currentMinute]);
   const visibleVacantShifts = showAllVacantShifts ? vacantShifts : vacantShifts.slice(0, 6);
 
   const todayFinancials = useMemo(() => {
     let executedValue = 0; let plannedValue = 0; let shiftsMissingRate = 0; let shiftsAwaitingProduction = 0;
     todayShifts.forEach((s) => {
+      // O custo do dia considera só plantões com data de hoje (mesma regra de
+      // Relatórios/Faturamento). O noturno de ontem que ainda está ativo já foi
+      // contabilizado na data dele e não pode ser somado duas vezes.
+      if ((s.date || '').split('T')[0] !== todayStr) return;
       const prof = profById[s.professional_id] || profByName[normalizeStr(s.professional_name)];
       if (isVacantShift(s)) return;
       if (!prof) {
@@ -234,7 +237,7 @@ export default function Painel() {
       }
     });
     return { executedValue, plannedValue, totalToday: plannedValue, shiftsMissingRate, shiftsAwaitingProduction };
-  }, [todayShifts, profById, profByName]);
+  }, [todayShifts, profById, profByName, todayStr]);
 
   const sectorsCoverage = useMemo(() => {
     const map = {};
@@ -312,12 +315,12 @@ export default function Painel() {
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-[10px] sm:text-xs font-black uppercase tracking-[0.25em] text-sky-400 truncate"><span className="truncate max-w-[150px] sm:max-w-none">{dashboardTitle}</span><span className="hidden sm:inline">•</span><span className="hidden sm:flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /> CCO AO VIVO</span></div>
               <h1 className="text-lg sm:text-2xl lg:text-4xl font-black tracking-tight text-white mt-0.5 truncate">Centro de Comando</h1>
-              <p className="text-[9px] sm:text-xs text-slate-400 font-bold truncate">{fmtDateLong(currentTime)}, {fmtDate(todayStr)} · Telemetria</p>
+              <p className="text-[10px] sm:text-xs text-slate-400 font-bold truncate">{fmtDateLong(currentTime)}, {fmtDate(todayStr)} · Telemetria</p>
             </div>
           </div>
           <div className="hidden lg:flex items-center gap-5">
             <div className={`px-4 py-2.5 rounded-2xl border flex items-center gap-3 ${vacantShifts.length > 0 ? 'bg-rose-500/10 border-rose-500/40 text-rose-300' : monthlyShifts.length > 0 ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-amber-500/10 border-amber-500/40 text-amber-300'}`}><div className={`w-3 h-3 rounded-full ${vacantShifts.length > 0 ? 'bg-rose-500 animate-ping' : monthlyShifts.length > 0 ? 'bg-emerald-400' : 'bg-amber-400'}`} /><div><div className="text-xs font-black uppercase tracking-wider">{vacantShifts.length > 0 ? 'Alerta Assistencial' : monthlyShifts.length > 0 ? 'Sem vagas descobertas' : 'Escala não cadastrada'}</div><div className="text-[10px] font-bold opacity-80">{vacantShifts.length > 0 ? `${vacantShifts.length} vaga(s) desocupada(s) no mês` : monthlyShifts.length > 0 ? 'Plantões cadastrados sem vagas em aberto' : 'Nenhum plantão cadastrado neste mês'}</div></div></div>
-            <div className="bg-slate-900 border border-slate-800 px-5 py-2.5 rounded-2xl text-right"><div className="text-2xl lg:text-4xl font-black font-mono tracking-tight text-cyan-400">{currentTime.toLocaleTimeString('pt-BR')}</div><div className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Oficial CCO</div></div>
+            <div className="bg-slate-900 border border-slate-800 px-5 py-2.5 rounded-2xl text-right"><div className="text-2xl lg:text-4xl font-black font-mono tracking-tight text-cyan-400">{currentTime.toLocaleTimeString('pt-BR')}</div><div className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Oficial CCO</div></div>
             <button title="Sair da tela cheia" onClick={closeTvMode} className="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors cursor-pointer"><Minimize2 className="h-5 w-5" /></button>
           </div>
         </div>
@@ -332,11 +335,11 @@ export default function Painel() {
                     return (
                       <div key={sec.id} className={`p-3.5 rounded-2xl border flex flex-col justify-between transition-all ${hasVacant ? 'border-rose-500/80 bg-rose-950/30 shadow-lg' : sec.active > 0 ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800/80 bg-slate-900/40'}`}>
                         <div>
-                          <div className="flex items-center justify-between"><h3 className="font-black text-xs sm:text-sm text-white truncate max-w-[150px]">{sec.name}</h3><span className={`text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-full uppercase whitespace-nowrap ${hasVacant ? 'bg-rose-500 text-white font-black animate-pulse' : sec.active > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>{hasVacant ? `${sec.vacant} descoberto(s)` : sec.active > 0 ? `${sec.active} em andamento` : hasShifts && sec.upcoming > 0 ? `${sec.upcoming} a assumir` : hasShifts ? `${sec.concluded} concluído(s)` : 'Sem plantão'}</span></div>
+                          <div className="flex items-center justify-between"><h3 className="font-black text-xs sm:text-sm text-white truncate max-w-[150px]">{sec.name}</h3><span className={`text-[10px] sm:text-[10px] font-black px-2 py-0.5 rounded-full uppercase whitespace-nowrap ${hasVacant ? 'bg-rose-500 text-white font-black animate-pulse' : sec.active > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>{hasVacant ? `${sec.vacant} descoberto(s)` : sec.active > 0 ? `${sec.active} em andamento` : hasShifts && sec.upcoming > 0 ? `${sec.upcoming} a assumir` : hasShifts ? `${sec.concluded} concluído(s)` : 'Sem plantão'}</span></div>
                           <div className="flex items-center justify-between text-[10px] sm:text-xs text-slate-400 mt-2 font-medium"><span>Em andamento / turnos do dia</span><strong className="text-white font-mono">{sec.active} / {sec.total}</strong></div>
                           <div className="w-full h-2 bg-slate-800 rounded-full mt-2 overflow-hidden"><div className={`h-full transition-all duration-500 ${hasVacant ? 'bg-rose-500' : sec.active > 0 ? 'bg-emerald-400' : 'bg-transparent'}`} style={{ width: `${hasShifts ? Math.min(100, Math.max(6, percent)) : 0}%` }} /></div>
                         </div>
-                        <div className="pt-2">{hasVacant ? <div className="text-[10px] sm:text-[11px] text-rose-400 font-black flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {sec.vacant} desfalque(s)</div> : <div className="text-[9px] sm:text-[10px] text-slate-400 font-semibold">{hasShifts ? `${sec.active} em andamento · ${sec.upcoming} a assumir · ${sec.concluded} concluído(s)` : 'Nenhum plantão hoje'}</div>}</div>
+                        <div className="pt-2">{hasVacant ? <div className="text-[10px] sm:text-[11px] text-rose-400 font-black flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {sec.vacant} desfalque(s)</div> : <div className="text-[10px] sm:text-[10px] text-slate-400 font-semibold">{hasShifts ? `${sec.active} em andamento · ${sec.upcoming} a assumir · ${sec.concluded} concluído(s)` : 'Nenhum plantão hoje'}</div>}</div>
                       </div>
                     );
                   })}
@@ -346,14 +349,14 @@ export default function Painel() {
             </div>
             <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5 shadow-2xl flex flex-col h-auto lg:h-full lg:overflow-hidden">
               <div className="flex flex-col flex-1 h-full lg:overflow-hidden">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0"><span className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" /> Em andamento ({activeNowList.length})</span><span className="text-[9px] font-mono text-slate-400 hidden sm:block">PELO HORÁRIO DA ESCALA</span></div>
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0"><span className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" /> Em andamento ({activeNowList.length})</span><span className="text-[10px] font-mono text-slate-400 hidden sm:block">PELO HORÁRIO DA ESCALA</span></div>
                 <div className="flex-1 space-y-2.5 lg:overflow-y-auto pr-1 pb-1">
                   {activeNowList.length === 0 ? <div className="py-10 text-center text-xs text-slate-500">Nenhum plantão alocado está em andamento agora.</div> : activeNowList.map(s => {
                     const prof = profById[s.professional_id] || profByName[normalizeStr(s.professional_name)]; const profName = toTitleCase(prof?.name || s.professional_name || 'Profissional'); const sectorName = toTitleCase(s.sector_name || sectors.find(sec => String(sec.id) === String(s.sector_id))?.name || 'Setor Geral');
                     return (
                       <div key={s.id} className="p-3.5 rounded-2xl bg-slate-950 border border-emerald-500/40 flex items-center justify-between shadow-md">
-                        <div className="min-w-0 pr-2"><span className="text-[9px] sm:text-[10px] text-emerald-400 font-mono font-black block uppercase tracking-wider truncate">🏥 {sectorName}</span><div className="font-black text-xs sm:text-sm text-white truncate mt-0.5">Dr(a). {profName}</div><span className="text-[9px] sm:text-[10px] text-slate-400 font-mono block mt-0.5">{s.start_time} às {s.end_time}</span></div>
-                        <span className="text-[9px] sm:text-[10px] font-mono font-black text-emerald-300 bg-emerald-500/20 px-2 sm:px-2.5 py-1.5 rounded-xl shrink-0 border border-emerald-500/30 whitespace-nowrap">{s.lifecycle.detail}</span>
+                        <div className="min-w-0 pr-2"><span className="text-[10px] sm:text-[10px] text-emerald-400 font-mono font-black block uppercase tracking-wider truncate">🏥 {sectorName}</span><div className="font-black text-xs sm:text-sm text-white truncate mt-0.5">Dr(a). {profName}</div><span className="text-[10px] sm:text-[10px] text-slate-400 font-mono block mt-0.5">{s.start_time} às {s.end_time}</span></div>
+                        <span className="text-[10px] sm:text-[10px] font-mono font-black text-emerald-300 bg-emerald-500/20 px-2 sm:px-2.5 py-1.5 rounded-xl shrink-0 border border-emerald-500/30 whitespace-nowrap">{s.lifecycle.detail}</span>
                       </div>
                     );
                   })}
@@ -367,8 +370,8 @@ export default function Painel() {
                   <div className="flex-1 lg:overflow-y-auto pr-1">
                     {nextHandover ? (
                       <div className="space-y-2.5">
-                        <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30"><span className="text-[9px] sm:text-[10px] uppercase font-bold text-emerald-400 block mb-1">Equipe que Assume ({nextHandover.incoming.length})</span>{nextHandover.incoming.slice(0, 4).map((s) => (<div key={s.id} className="text-[10px] sm:text-xs flex items-center justify-between py-0.5"><span className="font-bold text-white truncate pr-2">{toTitleCase(profById[s.professional_id]?.name || getShiftProfessionalName(s))}</span><span className="text-[9px] sm:text-[10px] text-slate-400 shrink-0">{toTitleCase(s.sector_name)}</span></div>))}</div>
-                        <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800"><span className="text-[9px] sm:text-[10px] uppercase font-bold text-slate-400 block mb-1">Equipe que Entrega ({nextHandover.outgoing.length})</span>{nextHandover.outgoing.length === 0 ? <span className="text-[10px] sm:text-xs text-slate-500 italic">Nenhum encerrando às {nextHandover.targetTime}.</span> : nextHandover.outgoing.slice(0, 4).map((s) => (<div key={s.id} className="text-[10px] sm:text-xs flex items-center justify-between py-0.5"><span className="font-medium text-slate-300 truncate pr-2">{toTitleCase(profById[s.professional_id]?.name || getShiftProfessionalName(s))}</span><span className="text-[9px] sm:text-[10px] text-slate-500 shrink-0">{toTitleCase(s.sector_name)}</span></div>))}</div>
+                        <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30"><span className="text-[10px] sm:text-[10px] uppercase font-bold text-emerald-400 block mb-1">Equipe que Assume ({nextHandover.incoming.length})</span>{nextHandover.incoming.slice(0, 4).map((s) => (<div key={s.id} className="text-[10px] sm:text-xs flex items-center justify-between py-0.5"><span className="font-bold text-white truncate pr-2">{toTitleCase(profById[s.professional_id]?.name || getShiftProfessionalName(s))}</span><span className="text-[10px] sm:text-[10px] text-slate-400 shrink-0">{toTitleCase(s.sector_name)}</span></div>))}</div>
+                        <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800"><span className="text-[10px] sm:text-[10px] uppercase font-bold text-slate-400 block mb-1">Equipe que Entrega ({nextHandover.outgoing.length})</span>{nextHandover.outgoing.length === 0 ? <span className="text-[10px] sm:text-xs text-slate-500 italic">Nenhum encerrando às {nextHandover.targetTime}.</span> : nextHandover.outgoing.slice(0, 4).map((s) => (<div key={s.id} className="text-[10px] sm:text-xs flex items-center justify-between py-0.5"><span className="font-medium text-slate-300 truncate pr-2">{toTitleCase(profById[s.professional_id]?.name || getShiftProfessionalName(s))}</span><span className="text-[10px] sm:text-[10px] text-slate-500 shrink-0">{toTitleCase(s.sector_name)}</span></div>))}</div>
                       </div>
                     ) : <div className="py-10 text-center text-[10px] sm:text-xs text-slate-500">Nenhuma troca prevista.</div>}
                   </div>
@@ -377,9 +380,9 @@ export default function Painel() {
               <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-4 shadow-2xl space-y-1.5 shrink-0">
                 <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Custo Operacional</span>
                 <div className="text-xl sm:text-2xl lg:text-3xl font-black font-mono text-white">R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                <div className="text-[9px] sm:text-[11px] text-slate-400 flex justify-between"><span>Previsão 24h:</span><b className="font-mono text-white">R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
-                {todayFinancials.shiftsMissingRate > 0 && <div className="text-[9px] font-bold text-amber-300">{todayFinancials.shiftsMissingRate} plantão(ões) sem tarifa</div>}
-                {todayFinancials.shiftsAwaitingProduction > 0 && <div className="text-[9px] font-bold text-amber-300">{todayFinancials.shiftsAwaitingProduction} aguardando apuração</div>}
+                <div className="text-[10px] sm:text-[11px] text-slate-400 flex justify-between"><span>Previsão 24h:</span><b className="font-mono text-white">R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
+                {todayFinancials.shiftsMissingRate > 0 && <div className="text-[10px] font-bold text-amber-300">{todayFinancials.shiftsMissingRate} plantão(ões) sem tarifa</div>}
+                {todayFinancials.shiftsAwaitingProduction > 0 && <div className="text-[10px] font-bold text-amber-300">{todayFinancials.shiftsAwaitingProduction} aguardando apuração</div>}
               </div>
             </div>
           </div>
@@ -389,7 +392,7 @@ export default function Painel() {
   }
 
   return (
-    <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-900/40 min-h-screen text-slate-900 dark:text-slate-100">
+    <div className="p-3 sm:p-4 md:p-8 space-y-4 sm:space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
       
       {isManager && daysToExpiration !== null && daysToExpiration <= 5 && daysToExpiration >= 0 && (
         <div className="bg-rose-600 border border-rose-500 p-4 rounded-3xl text-white shadow-xl flex items-center gap-3 animate-in fade-in">
@@ -641,7 +644,7 @@ export default function Painel() {
               {hourlyCurveData.map((b, i) => (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1">
                   <div className="w-full rounded-t-sm bg-gradient-to-t from-sky-600 to-indigo-500" style={{ height: `${Math.max(12, b.height)}%` }} title={`${b.label}: ${b.count} plantões`} />
-                  <span className="text-[8px] font-mono text-slate-400">{b.label}</span>
+                  <span className="text-[10px] font-mono text-slate-400">{b.label}</span>
                 </div>
               ))}
             </div>
@@ -682,7 +685,7 @@ export default function Painel() {
                 >
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <span className="text-xs font-bold font-mono text-slate-600 dark:text-slate-300">{shift.start_time} às {shift.end_time}</span>
-                    <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase ${isVago ? 'bg-rose-600 text-white animate-pulse' : isActive ? 'bg-emerald-600 text-white animate-pulse' : isFinished ? 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300' : 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'}`}>
+                    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase ${isVago ? 'bg-rose-600 text-white animate-pulse' : isActive ? 'bg-emerald-600 text-white animate-pulse' : isFinished ? 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300' : 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'}`}>
                       {isVago ? '⚠️ Vaga Aberta' : isActive ? '● Ativo no Plantão' : isFinished ? '✓ Concluído' : '⏳ Programado'}
                     </span>
                   </div>

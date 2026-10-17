@@ -1,3 +1,5 @@
+export const DEFAULT_REMUNERATION_TYPE = 'plantao';
+
 export function normalizeFinancialText(value) {
   return String(value || '')
     .normalize('NFD')
@@ -79,8 +81,10 @@ export function getShiftCostEstimate(professional, shift) {
   if (!professional || !shift) return { amount: 0, missingRate: false };
 
   const meta = getProfessionalFinancialMeta(professional);
+  // O cadastro (Corpo Clínico) e o fechamento (Faturamento) tratam o regime
+  // não informado como "plantão"; todas as telas precisam usar o mesmo padrão.
   const remunerationType = normalizeFinancialText(
-    meta.remuneration_type || meta.remunerationType || meta.payment_type || 'mensal'
+    meta.remuneration_type || meta.remunerationType || meta.payment_type || DEFAULT_REMUNERATION_TYPE
   );
 
   if (['mensal', 'monthly', 'salario mensal'].includes(remunerationType)) {
@@ -113,7 +117,7 @@ export function getShiftCostEstimate(professional, shift) {
     const shiftDate = date ? new Date(`${date}T12:00:00`) : null;
     const isWeekend = shiftDate && !Number.isNaN(shiftDate.getTime()) &&
       (shiftDate.getDay() === 0 || shiftDate.getDay() === 6);
-    const startTime = String(shift.start_time || '07:00');
+    const startTime = String(shift.start_time || '07:00').padStart(5, '0');
     const isNight = normalizeFinancialText(shift.shift_type) === 'noturno' ||
       startTime >= '18:00' || startTime < '06:00';
     const rate = isWeekend ? rates.fds : (isNight ? rates.noturno : rates.diurno);

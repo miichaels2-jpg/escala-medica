@@ -2,33 +2,29 @@
 
 ## Project Context
 
-This is a Base44 app repository. Treat it as user-owned application code, keep changes focused on the user's request, and preserve existing project conventions.
+ScaleMedic is a medical shift-scheduling web app (React + Vite + Tailwind) backed directly by Supabase. It is deployed on Vercel and is installable on phones as a PWA. Treat it as user-owned application code, keep changes focused on the user's request, and preserve existing project conventions. User-facing text is in Brazilian Portuguese.
 
-Start with `README.md` for local setup, environment variables, and publish workflow.
-
-## Base44 References
-
-- CLI overview: https://docs.base44.com/developers/references/cli/get-started/overview.md
-- Agent skills: https://docs.base44.com/developers/backend/overview/skills.md
-
-If your agent supports Agent Skills, install or update Base44 skills before Base44-specific work:
-
-```bash
-npx skills add base44/skills
-```
+Start with `README.md` for local setup, environment variables, database migrations and publishing.
 
 ## Key Files
 
-- `src/`: frontend application source.
-- `src/api/base44Client.js`: frontend Base44 SDK client.
-- `vite.config.js`: Vite config and Base44 Vite plugin setup.
-- `.env.local`: local-only environment values; never commit secrets.
+- `src/lib/supabase.js`: the single Supabase client used by the whole app.
+- `src/lib/useAppData.jsx`: global data store (company, units, professionals, sectors, shifts, published schedules, payment statuses) shared by all pages.
+- `src/lib/AuthContext.jsx` and `src/pages/Login.jsx`: custom login (table `users`, RPC `auth_fallback_login`), not Supabase Auth.
+- `src/lib/financialCalculations.js`, `src/lib/productivityCalculations.js`, `src/lib/shiftLiveStatus.js`: business rules shared by Dashboard, Escalas, Faturamento, Relatórios and Minha Escala. Change them in one place; never re-implement a rule inside a page.
+- `src/lib/printBranding.js`: logos and HTML escaping for every printable document.
+- `src/lib/pwa.js`, `public/manifest.webmanifest`, `public/sw.js`: installable app.
+- `supabase/migrations/`: SQL to apply in the Supabase SQL Editor.
+- `.env`: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (local only; never commit).
+
+## Versioning
+
+- Current version lives in `package.json` (`version`, without the "V") and is shown in the app as `V<version>`.
+- Every production release bumps the last number: 0.1.2 → 0.1.3 … → 0.1.10; after 0.1.10 comes 0.2.1 (never x.y.0). See `nextVersion()` in `src/lib/version.js`.
+- Each release gets a `CHANGELOG.md` entry and a git tag `vX.Y.Z`.
 
 ## Working Notes
 
-- Use `base44 dev` as the default local development command when you need the local Base44 backend. It can run the backend and frontend together.
-- When docs or code mention the frontend being started automatically, that usually means the Base44 project config includes `site.serveCommand`, for example `"serveCommand": "npm run dev"` in `base44/config.jsonc`.
-- Use `npm run dev` only for frontend-only work against the hosted Base44 backend.
-- Prefer the existing Base44 CLI workflow over adding new npm scripts for Base44-specific tasks.
-- Reuse the existing SDK client and Vite plugin patterns before adding new Base44 integration paths.
-- Run the relevant checks from `package.json` before finishing code changes.
+- Run locally with `npm run dev`; it talks to the Supabase project configured in `.env`.
+- New database objects ship as a migration file in `supabase/migrations/` and the app must keep working (with a clear fallback) until the migration is applied.
+- Before finishing code changes run `npm run lint`, `node --test tests/*.test.js` and `npm run build`.

@@ -16,10 +16,11 @@ export default function AutoLogout({ timeoutMinutes = 60 }) {
         console.error('Erro ao encerrar sessão no Supabase:', err);
       }
 
-      // 2. Limpa todos os dados locais
+      // 2. Encerra apenas a sessão. Não usar localStorage.clear(): ele apagaria
+      // também as escalas publicadas, os status de pagamento e as preferências
+      // gravadas neste navegador.
       window.localStorage.removeItem('scale_logged_user');
       window.localStorage.removeItem('escala_medica_session');
-      window.localStorage.clear();
       
       // 3. Força um reload completo da página para redirecionar ao login
       window.location.href = '/login';

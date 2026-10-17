@@ -534,3 +534,30 @@
     padding: 0 !important;
   }
 }
+/* ===== Celular / aplicativo instalado ===== */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (max-width: 767px) {
+  /* O iPhone dá zoom automático em campos com fonte menor que 16px ao tocar para digitar. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Aberto pelo ícone na tela inicial: sem "puxar para atualizar" acidental. */
+@media (display-mode: standalone) {
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
+/* Tipografia: o peso 900 ("black") pesava demais em telas pequenas.
+   Mantém a hierarquia com 800, mais legível e menos cansativo. */
+.font-black {
+  font-weight: 800;
+}

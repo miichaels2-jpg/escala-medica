@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { InstallAppDialog } from '@/components/InstallAppGuide';
+import { usePwaInstall } from '@/lib/pwa';
+import { APP_VERSION } from '@/lib/version';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -8,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { 
   Activity, Loader2, AlertCircle, Eye, EyeOff, ShieldCheck, 
-  FileText, Check, Building2, Hospital, CheckCircle2, KeyRound 
+  FileText, Check, Building2, Hospital, CheckCircle2, KeyRound, Smartphone 
 } from 'lucide-react';
 
 export default function Login() {
@@ -38,20 +41,24 @@ export default function Login() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [installGuideOpen, setInstallGuideOpen] = useState(false);
+  const { isInstalled } = usePwaInstall();
 
   useEffect(() => {
     try {
+      // "Lembrar-me" guarda só o usuário. Senhas gravadas por versões antigas são apagadas.
+      window.localStorage.removeItem('scale_remember_pass');
       const savedLogin = window.localStorage.getItem('scale_remember_login');
-      const savedPass = window.localStorage.getItem('scale_remember_pass');
       if (savedLogin) {
         setLoginId(savedLogin);
-        if (savedPass) setPassword(savedPass);
         setRememberMe(true);
       }
     } catch {}
   }, []);
 
-  const proceedWithLogin = async (userRecord, unitIdToSave) => {
+  const proceedWithLogin = async (rawUserRecord, unitIdToSave) => {
+    // Nunca guarda senha ou hash no navegador.
+    const { password: _password, password_hash: _passwordHash, ...userRecord } = rawUserRecord || {};
     window.localStorage.setItem('scale_logged_user', JSON.stringify(userRecord));
     window.localStorage.setItem('escala_medica_session', 'active');
     
@@ -115,10 +122,8 @@ export default function Login() {
 
       if (rememberMe) {
         window.localStorage.setItem('scale_remember_login', cleanInput);
-        window.localStorage.setItem('scale_remember_pass', password);
       } else {
         window.localStorage.removeItem('scale_remember_login');
-        window.localStorage.removeItem('scale_remember_pass');
       }
 
       if ((cleanInput.toLowerCase() === 'admin' || cleanInput.toLowerCase() === 'admin@admin.com') && (password === '123456' || password === 'admin')) {
@@ -185,6 +190,9 @@ export default function Login() {
     e.preventDefault();
     setPasswordError('');
     if (newPassword.length < 6) return setPasswordError('A nova senha deve ter no mínimo 6 caracteres.');
+    if (['123456', '12345678', 'changeme123', 'senha123'].includes(newPassword)) {
+      return setPasswordError('Escolha uma senha pessoal: senhas padrão ou de sequência não são aceitas.');
+    }
     if (newPassword !== confirmNewPassword) return setPasswordError('As senhas não coincidem. Tente novamente.');
 
     setLoadingAction(true);
@@ -192,16 +200,13 @@ export default function Login() {
       const updatedData = { ...pendingUser.data };
       delete updatedData.must_change_password;
 
-      await supabase.from('users').update({ 
+      const { error: passwordUpdateError } = await supabase.from('users').update({ 
         password: newPassword,
         data: updatedData 
       }).eq('id', pendingUser.id);
+      if (passwordUpdateError) throw passwordUpdateError;
 
       pendingUser.data = updatedData;
-      
-      if (rememberMe) {
-        window.localStorage.setItem('scale_remember_pass', newPassword);
-      }
 
       setShowPasswordChangeModal(false);
       continueLoginFlow(pendingUser, availableUnits);
@@ -250,7 +255,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4 relative overflow-hidden transition-colors duration-500 font-sans">
+    <div className="min-h-screen min-h-[100dvh] bg-slate-900 flex flex-col justify-center items-center p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] relative overflow-hidden transition-colors duration-500 font-sans">
       
       <div className="absolute inset-0 z-0 pointer-events-none">
         <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M28 20h4v8h8v4h-8v-8h-4v-8h-8v-4h8v-8z\' fill=\'%230ea5e9\' fill-opacity=\'0.03\' fill-rule=\'evenodd\'/%3E%3C/svg%3E')] opacity-100" />
@@ -258,8 +263,8 @@ export default function Login() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[60%] bg-indigo-600/15 rounded-full blur-[120px]" />
       </div>
 
-      <div className="w-full max-w-md bg-white/95 dark:bg-slate-900/90 backdrop-blur-2xl border border-white/20 dark:border-slate-800/50 rounded-3xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-10 relative">
-        <div className="flex flex-col items-center mb-8">
+      <div className="w-full max-w-md bg-white/95 dark:bg-slate-900/90 backdrop-blur-2xl border border-white/20 dark:border-slate-800/50 rounded-3xl p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-10 relative">
+        <div className="flex flex-col items-center mb-6 sm:mb-8">
           <div className="w-14 h-14 bg-sky-600 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-600/30 mb-4 ring-2 ring-white/50 dark:ring-slate-800">
             <Activity className="w-7 h-7 text-white" />
           </div>
@@ -330,7 +335,7 @@ export default function Login() {
           <Button 
             type="submit" 
             disabled={loading || showLgpdModal || showUnitModal || showPasswordChangeModal} 
-            className="w-full h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-sm rounded-xl shadow-lg shadow-sky-600/20 mt-2 transition-all cursor-pointer hover:scale-[1.02]"
+            className="w-full h-12 sm:h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-sm rounded-xl shadow-lg shadow-sky-600/20 mt-2 transition-all cursor-pointer hover:scale-[1.02]"
           >
             {loading ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Conectando...</> : 'Entrar no Sistema'}
           </Button>
@@ -348,12 +353,25 @@ export default function Login() {
         
       </div>
 
-      <div className="absolute bottom-6 text-center z-0 flex flex-col items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+      {!isInstalled && (
+        <button
+          type="button"
+          onClick={() => setInstallGuideOpen(true)}
+          className="mt-4 z-10 inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-bold text-sky-100 transition-colors cursor-pointer"
+        >
+          <img src="/icons/icon-192.png" alt="" className="w-6 h-6 rounded-lg" />
+          <Smartphone className="w-4 h-4" /> Instalar o app no celular
+        </button>
+      )}
+
+      <InstallAppDialog open={installGuideOpen} onOpenChange={setInstallGuideOpen} />
+
+      <div className="relative mt-6 sm:mt-0 sm:absolute sm:bottom-6 text-center z-0 flex flex-col items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
         <p className="text-[10px] text-slate-400 font-medium">
           Ao entrar, você concorda com nossos <Link to="/termos-de-uso" className="font-bold text-sky-400 hover:underline">Termos de Uso e LGPD</Link>.
         </p>
         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-          &copy; 2026 ScaleMedic Enterprise. Todos os direitos reservados.
+          &copy; 2026 ScaleMedic Enterprise · {APP_VERSION}. Todos os direitos reservados.
         </p>
       </div>
 

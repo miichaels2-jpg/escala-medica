@@ -160,7 +160,7 @@ export default function Register() {
                       }`}
                     >
                       <span className="text-[11px] block truncate px-1">{cat.label}</span>
-                      <span className="text-[9px] opacity-60 px-1 truncate">Conselho: {cat.council}</span>
+                      <span className="text-[10px] opacity-60 px-1 truncate">Conselho: {cat.council}</span>
                     </div>
                   ))}
                 </div>

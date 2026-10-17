@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { supabase } from '@/lib/supabase';
+import { getShiftDateTimeRange } from '@/lib/shiftLiveStatus';
+import { recipientFor, sendNotifications } from '@/lib/notifications';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
@@ -34,17 +36,23 @@ function extractSpecialty(shift, prof) {
   return prof?.specialty || shift?.target_specialty || 'Clínica Médica';
 }
 
-function timeToMinutes(timeStr, isEnd = false) {
-  if (!timeStr) return isEnd ? 19 * 60 : 7 * 60;
-  const [h, m] = String(timeStr).split(':').map(Number);
-  return (h || 0) * 60 + (m || 0);
+function formatDateBR(dateStr) {
+  if (!dateStr) return '';
+  const parts = String(dateStr).split('T')[0].split('-');
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(dateStr);
 }
 
-function getShiftInterval(shift) {
-  const startMin = timeToMinutes(shift?.start_time || '07:00');
-  let endMin = timeToMinutes(shift?.end_time || '19:00', true);
-  if (endMin <= startMin) endMin += 24 * 60;
-  return { startMin, endMin };
+function getLocalDateString(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function isProfessionalAuthorizedForSector(professional, sectorId) {
+  if (!sectorId) return true;
+  const authorizedSectors = professional?.data?.authorized_sectors
+    ?? professional?.metadata?.authorized_sectors
+    ?? professional?.authorized_sectors;
+  if (!Array.isArray(authorizedSectors)) return true;
+  return authorizedSectors.some(id => String(id) === String(sectorId));
 }
 
 function parseShiftAudit(shift) {
@@ -92,12 +100,13 @@ async function safeUpdateShift(id, payload) {
   } catch (err) {
     const msg = err.message || '';
     if (msg.includes('status') || msg.includes('enum') || msg.includes('check constraint')) {
+      const appendTag = (notes, tag) => String(notes || '').includes(tag) ? String(notes || '').trim() : `${notes || ''} ${tag}`.trim();
       if (cleanPayload.status === 'aguardando_aprovacao_gestor') {
         cleanPayload.status = 'confirmado';
-        cleanPayload.notes = `${cleanPayload.notes || ''} [AGUARDANDO_GESTOR]`.trim();
+        cleanPayload.notes = appendTag(cleanPayload.notes, '[AGUARDANDO_GESTOR]');
       } else if (cleanPayload.status === 'disponivel_mural') {
         cleanPayload.status = 'vago';
-        cleanPayload.notes = `${cleanPayload.notes || ''} [DISPONIVEL_MURAL]`.trim();
+        cleanPayload.notes = appendTag(cleanPayload.notes, '[DISPONIVEL_MURAL]');
       }
       return await autoHealingSaveShift(id, cleanPayload);
     }
@@ -112,6 +121,7 @@ export default function Trocas() {
     professionals = [], 
     currentProfessional, 
     selectedUnitId,
+    company,
     user,
     isManager, 
     syncGlobalData 
@@ -127,6 +137,25 @@ export default function Trocas() {
       (p.name && user?.full_name && p.name.toLowerCase().trim() === user.full_name.toLowerCase().trim())
     ) || null;
   }, [currentProfessional, professionals, user]);
+
+  // Avisa o profissional que pediu a troca (pelo ID gravado no pedido ou pelo nome).
+  const notifyRequester = async (shift, audit, title, message, type) => {
+    const requester = (professionals || []).find(p =>
+      (audit.offeredById && String(p.id) === String(audit.offeredById)) ||
+      (!audit.offeredById && audit.offeredByName && String(p.name || '').toLowerCase().trim() === audit.offeredByName.toLowerCase().trim())
+    ) || (audit.offeredById ? { id: audit.offeredById } : null);
+    if (!requester) return;
+    await sendNotifications([{
+      ...recipientFor(requester),
+      company_id: shift.company_id || company?.id,
+      unit_id: shift.unit_id || selectedUnitId,
+      type,
+      category: 'troca',
+      title,
+      message,
+      data: { shift_id: shift.id, date: shift.date }
+    }]);
+  };
 
   const sectorMap = useMemo(() => {
     const m = {};
@@ -153,21 +182,22 @@ export default function Trocas() {
   const checkTimeConflict = (shiftCandidate) => {
     if (!shiftCandidate || !shiftCandidate.date) return { hasConflict: false };
 
-    const candInt = getShiftInterval(shiftCandidate);
+    const candidateRange = getShiftDateTimeRange(shiftCandidate);
+    if (!candidateRange) return { hasConflict: false };
 
     for (const myShift of myAllocatedShifts) {
       if (String(myShift.id) === String(shiftCandidate.id)) continue;
-      if (myShift.date !== shiftCandidate.date) continue;
 
-      const myInt = getShiftInterval(myShift);
-      const overlaps = Math.max(myInt.startMin, candInt.startMin) < Math.min(myInt.endMin, candInt.endMin);
+      // Data + hora reais: um plantão noturno de ontem pode avançar sobre hoje.
+      const myRange = getShiftDateTimeRange(myShift);
+      const overlaps = myRange && myRange.start < candidateRange.end && candidateRange.start < myRange.end;
 
       if (overlaps) {
         const sectorConflict = sectorMap[String(myShift.sector_id)]?.name || 'outro setor';
         return {
           hasConflict: true,
           conflictShift: myShift,
-          message: `Choque de Horário: Você já está alocado em "${sectorConflict}" (${myShift.start_time} às ${myShift.end_time}) no dia ${shiftCandidate.date}.`
+          message: `Choque de Horário: Você já está alocado em "${sectorConflict}" (${myShift.start_time} às ${myShift.end_time}) no dia ${formatDateBR(myShift.date)}.`
         };
       }
     }
@@ -189,7 +219,8 @@ export default function Trocas() {
     return Array.from(set).sort();
   }, [professionals, unitShifts]);
 
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  // Data local (toISOString usa UTC e, após as 21h no Brasil, já "vira" o dia).
+  const todayStr = useMemo(() => getLocalDateString(), []);
 
   const openShifts = useMemo(() => {
     return unitShifts.filter(s => {
@@ -283,7 +314,7 @@ export default function Trocas() {
     const audit = parseShiftAudit(shift);
     const originName = audit.offeredByName || formatFullName(shift.professional_name) || 'Colega';
 
-    if (!confirm(`Autorizar a abertura do plantão de ${shift.date} no Mural?\nOrigem: ${originName}`)) return;
+    if (!confirm(`Autorizar a abertura do plantão de ${formatDateBR(shift.date)} no Mural?\nOrigem: ${originName}`)) return;
 
     setSubmitting(true);
     try {
@@ -298,6 +329,7 @@ export default function Trocas() {
         notes: updatedNotes
       });
 
+      await notifyRequester(shift, audit, 'Troca aprovada', `Seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) foi liberado no Mural pela coordenação.`, 'troca_aprovada');
       await syncGlobalData();
       alert('Plantão autorizado e publicado com sucesso no Mural de Oportunidades!');
     } catch (err) {
@@ -316,7 +348,13 @@ export default function Trocas() {
     setSubmitting(true);
     try {
       const currentNotes = String(shift.notes || '');
-      const cleanNotes = currentNotes.replace(/\[AGUARDANDO_GESTOR\]/gi, '').trim();
+      // Remove também os marcadores do pedido: um pedido recusado não pode aparecer
+      // como "Repasse Concluído" no relatório de trocas.
+      const cleanNotes = currentNotes
+        .replace(/\[AGUARDANDO_GESTOR\]/gi, '')
+        .replace(/\[(SOLICITADO_POR|SOLICITADO_ID):[^\]]*\]/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
       const updatedNotes = `${cleanNotes} [RECUSADO_EM: ${new Date().toLocaleDateString('pt-BR')}]`.trim();
 
       await safeUpdateShift(shift.id, {
@@ -324,6 +362,7 @@ export default function Trocas() {
         notes: updatedNotes
       });
 
+      await notifyRequester(shift, audit, 'Troca recusada', `O pedido para liberar seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) foi recusado. O plantão continua com você.`, 'troca_recusada');
       await syncGlobalData();
       alert(`Solicitação cancelada. O plantão permanece com ${originName}.`);
     } catch (err) {
@@ -346,11 +385,17 @@ export default function Trocas() {
     }
 
     const sectorName = sectorMap[String(shift.sector_id)]?.name || 'Setor Hospitalar';
+    // Mesma regra da tela de Escalas: só assume quem está autorizado no setor.
+    if (!isProfessionalAuthorizedForSector(myProf, shift.sector_id)) {
+      alert(`⛔ Você não está autorizado(a) a atuar no setor ${sectorName}. Fale com a coordenação.`);
+      return;
+    }
+
     const audit = parseShiftAudit(shift);
     const originName = audit.transferFrom || audit.offeredByName || null;
     const originMsg = originName ? `\n(Cedido por: ${originName})` : '';
 
-    if (!confirm(`Confirmar assunção do plantão?${originMsg}\n\nSetor: ${sectorName}\nData: ${shift.date} (${shift.start_time || '07:00'} às ${shift.end_time || '19:00'})`)) {
+    if (!confirm(`Confirmar assunção do plantão?${originMsg}\n\nSetor: ${sectorName}\nData: ${formatDateBR(shift.date)} (${shift.start_time || '07:00'} às ${shift.end_time || '19:00'})`)) {
       return;
     }
 
@@ -371,6 +416,9 @@ export default function Trocas() {
         notes: updatedNotes
       });
 
+      if (audit.offeredById || audit.offeredByName) {
+        await notifyRequester(shift, audit, 'Seu plantão foi assumido', `${myProf.name} assumiu o plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) que você liberou no Mural.`, 'troca_assumida');
+      }
       await syncGlobalData();
       alert(`Plantão confirmado com sucesso para ${myProf.name}!`);
     } catch (err) {
@@ -548,7 +596,7 @@ export default function Trocas() {
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
                         <div className="min-w-0">
-                          <span className="text-[9px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-300">
                             Plantão disponível
                           </span>
                           <h3 className="font-black text-base text-slate-900 dark:text-white mt-1 break-words">
@@ -559,7 +607,7 @@ export default function Trocas() {
                           <span className="block text-sm font-mono font-black text-slate-900 dark:text-white">
                             {shift.start_time || '07:00'}–{shift.end_time || '19:00'}
                           </span>
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Horário</span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Horário</span>
                         </div>
                       </div>
 
@@ -571,7 +619,7 @@ export default function Trocas() {
                       <div className="flex items-start gap-2 rounded-xl bg-amber-50/80 dark:bg-amber-500/10 border border-amber-200/80 dark:border-amber-500/20 px-3 py-2">
                         <Stethoscope className="w-4 h-4 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5" />
                         <div className="min-w-0">
-                          <span className="block text-[9px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400">Especialidade necessária</span>
+                          <span className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400">Especialidade necessária</span>
                           <span className="text-xs font-black text-slate-900 dark:text-white break-words">{realSpecialty}</span>
                         </div>
                       </div>
@@ -682,7 +730,7 @@ export default function Trocas() {
                       <div className="space-y-2 text-xs">
                         <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
                           <div>
-                            <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 block">Solicitante da liberação</span>
+                            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">Solicitante da liberação</span>
                             <strong className="text-sm font-black text-slate-900 dark:text-white block truncate mt-0.5">
                               {requesterName}
                             </strong>
@@ -756,7 +804,7 @@ export default function Trocas() {
                     <div>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{sector?.name || 'Setor'}</span>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{sector?.name || 'Setor'}</span>
                           <h4 className="font-black text-sm text-slate-900 dark:text-white mt-1">
                             {new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'long' })}
                           </h4>
