@@ -22,14 +22,13 @@ import MinhaEscala from '@/pages/MinhaEscala';
 import Trocas from '@/pages/Trocas';
 import AutoLogout from '@/components/AutoLogout'; 
 import ContractGuard from '@/components/ContractGuard';
+import { getHomePath } from '@/lib/accessControl';
 
 const AuthenticatedApp = () => {
   const { isAuthenticated, isLoadingAuth, isLoadingPublicSettings, authError, user } = useAuth();
 
-  // No celular, o plantonista abre direto na própria escala; gestores seguem para o Painel.
-  const appRole = user?.data?.app_role || (user?.role === 'admin' ? 'gestor' : 'assistencial');
-  const isPhone = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px)').matches;
-  const homePath = isPhone && ['assistencial', 'medico'].includes(appRole) ? '/minha-escala' : '/dashboard';
+  // O plantonista entra direto na própria agenda; gestores seguem para o Painel.
+  const homePath = getHomePath(user);
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
