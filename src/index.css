@@ -555,3 +555,9 @@ html {
     overscroll-behavior-y: none;
   }
 }
+
+/* Tipografia: o peso 900 ("black") pesava demais em telas pequenas.
+   Mantém a hierarquia com 800, mais legível e menos cansativo. */
+.font-black {
+  font-weight: 800;
+}

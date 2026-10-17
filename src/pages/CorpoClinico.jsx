@@ -1016,8 +1016,8 @@ export default function CorpoClinico() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-black text-sm text-slate-900 dark:text-white">{prof.name || prof.full_name || 'Sem nome'}</h3>
-                      <span className="text-[9px] px-2 py-0.5 rounded-full font-black uppercase border bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-500/30">{catObj?.label}</span>
-                      <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase border ${
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-black uppercase border bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-500/30">{catObj?.label}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
                         profStatus === 'ativo' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30' :
                         profStatus === 'pendente' || profStatus === 'em_analise' ? 'bg-amber-500/10 text-amber-700 border-amber-500/30' :
                         'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
@@ -1087,8 +1087,8 @@ export default function CorpoClinico() {
                       <strong className={`font-mono ${isExpired ? 'text-rose-600 font-black' : isNearExpiry ? 'text-amber-600 dark:text-amber-400 font-black' : 'text-slate-700 dark:text-slate-300'}`}>
                         {expiry ? expiry.split('-').reverse().join('/') : 'Não informada'}
                       </strong>
-                      {isExpired && <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-600 text-white animate-pulse">VENCIDO</span>}
-                      {isNearExpiry && !isExpired && <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-white animate-pulse">{diffDays === 0 ? 'VENCE HOJE' : `VENCE EM ${diffDays}D`}</span>}
+                      {isExpired && <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-rose-600 text-white animate-pulse">VENCIDO</span>}
+                      {isNearExpiry && !isExpired && <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-white animate-pulse">{diffDays === 0 ? 'VENCE HOJE' : `VENCE EM ${diffDays}D`}</span>}
                     </div>
                   </div>
                 </div>
@@ -1151,7 +1151,7 @@ export default function CorpoClinico() {
                 {allCategories.map(cat => (
                   <div key={cat.id} onClick={() => setFormData({ ...formData, category: cat.id })} className={`p-2 rounded-xl border cursor-pointer text-center transition-all flex flex-col justify-center ${formData.category === cat.id ? 'border-sky-600 bg-sky-50 dark:bg-sky-900/20 font-black shadow-sm ring-1 ring-sky-600 text-sky-700 dark:text-sky-400' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-white'}`}>
                     <span className="text-[11px] block truncate px-1">{cat.label}</span>
-                    <span className="text-[9px] opacity-60 px-1 truncate">Conselho: {cat.council}</span>
+                    <span className="text-[10px] opacity-60 px-1 truncate">Conselho: {cat.council}</span>
                   </div>
                 ))}
                 <div onClick={() => { setEditingCatId(null); setNewCatData({label: '', council: 'Registro'}); setManageCatModalOpen(true); }} className="p-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 cursor-pointer flex items-center justify-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-900 font-bold min-h-[50px]">
@@ -1514,7 +1514,7 @@ export default function CorpoClinico() {
                     }`}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="text-xs font-black text-slate-900 dark:text-white">Linha {row.lineNumber}: {row.name}</span>
-                        <span className={`text-[9px] font-black uppercase ${
+                        <span className={`text-[10px] font-black uppercase ${
                           row.imported ? 'text-emerald-700 dark:text-emerald-300' :
                           row.errors.length || row.importError ? 'text-rose-700 dark:text-rose-300' :
                           'text-sky-700 dark:text-sky-300'
@@ -1559,7 +1559,7 @@ export default function CorpoClinico() {
                     <div>
                       <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
                         {c.label}
-                        {c.isDefault && <span className="text-[8px] bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded flex items-center gap-1"><Lock className="w-2 h-2"/> Padrão</span>}
+                        {c.isDefault && <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded flex items-center gap-1"><Lock className="w-2 h-2"/> Padrão</span>}
                       </div>
                       <div className="text-[10px] text-slate-500 mt-0.5">Conselho: {c.council}</div>
                     </div>
@@ -1582,7 +1582,7 @@ export default function CorpoClinico() {
               <div className="flex items-center justify-between">
                 <Label className="text-[10px] font-black uppercase text-slate-500">{editingCatId ? 'Editar Categoria Customizada' : 'Adicionar Nova Categoria'}</Label>
                 {editingCatId && (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => { setEditingCatId(null); setNewCatData({label: '', council: 'Registro'}); }} className="h-5 text-[9px] text-slate-400 hover:text-slate-600 cursor-pointer">Cancelar Edição</Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => { setEditingCatId(null); setNewCatData({label: '', council: 'Registro'}); }} className="h-5 text-[10px] text-slate-400 hover:text-slate-600 cursor-pointer">Cancelar Edição</Button>
                 )}
               </div>
               <div className="space-y-1.5">

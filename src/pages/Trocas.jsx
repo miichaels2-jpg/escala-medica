@@ -596,7 +596,7 @@ export default function Trocas() {
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
                         <div className="min-w-0">
-                          <span className="text-[9px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-300">
                             Plantão disponível
                           </span>
                           <h3 className="font-black text-base text-slate-900 dark:text-white mt-1 break-words">
@@ -607,7 +607,7 @@ export default function Trocas() {
                           <span className="block text-sm font-mono font-black text-slate-900 dark:text-white">
                             {shift.start_time || '07:00'}–{shift.end_time || '19:00'}
                           </span>
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Horário</span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Horário</span>
                         </div>
                       </div>
 
@@ -619,7 +619,7 @@ export default function Trocas() {
                       <div className="flex items-start gap-2 rounded-xl bg-amber-50/80 dark:bg-amber-500/10 border border-amber-200/80 dark:border-amber-500/20 px-3 py-2">
                         <Stethoscope className="w-4 h-4 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5" />
                         <div className="min-w-0">
-                          <span className="block text-[9px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400">Especialidade necessária</span>
+                          <span className="block text-[10px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400">Especialidade necessária</span>
                           <span className="text-xs font-black text-slate-900 dark:text-white break-words">{realSpecialty}</span>
                         </div>
                       </div>
@@ -730,7 +730,7 @@ export default function Trocas() {
                       <div className="space-y-2 text-xs">
                         <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
                           <div>
-                            <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400 block">Solicitante da liberação</span>
+                            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">Solicitante da liberação</span>
                             <strong className="text-sm font-black text-slate-900 dark:text-white block truncate mt-0.5">
                               {requesterName}
                             </strong>
@@ -804,7 +804,7 @@ export default function Trocas() {
                     <div>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{sector?.name || 'Setor'}</span>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{sector?.name || 'Setor'}</span>
                           <h4 className="font-black text-sm text-slate-900 dark:text-white mt-1">
                             {new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'long' })}
                           </h4>

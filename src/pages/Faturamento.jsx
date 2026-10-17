@@ -1313,7 +1313,7 @@ export default function Faturamento() {
         </Card>
       </div>
       <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-        O status de pagamento é salvo neste navegador e ainda não sincroniza entre usuários ou dispositivos.
+        O status de pagamento fica salvo no sistema e aparece igual para todos os gestores, em qualquer computador ou celular.
       </p>
 
       {/* TABELA DE CONCILIAÇÃO FINANCEIRA COM STATUS DE PAGAMENTO */}
@@ -1321,7 +1321,7 @@ export default function Faturamento() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
             <h3 className="text-base font-black text-slate-900 dark:text-white">Espelho de Conciliação Financeira</h3>
-            <p className="text-xs text-slate-500">Apuração restrita para <b>{currentUnitName}</b>. O status de pagamento é salvo neste navegador.</p>
+            <p className="text-xs text-slate-500">Apuração restrita para <b>{currentUnitName}</b>. O status de pagamento é compartilhado entre os gestores.</p>
           </div>
 
           <div className="relative w-full sm:w-72">
@@ -1358,9 +1358,9 @@ export default function Faturamento() {
               ) : (
                 filteredReport.map(item => {
                   const formaPagto = item.chavePix ? (
-                    <div><span className="text-sky-600 font-bold">{item.chavePix}</span><div className="text-[9px] text-slate-400">PIX ({item.pixTipo})</div></div>
+                    <div><span className="text-sky-600 font-bold">{item.chavePix}</span><div className="text-[10px] text-slate-400">PIX ({item.pixTipo})</div></div>
                   ) : item.banco ? (
-                    <div><span className="text-slate-800 dark:text-slate-200 font-bold">{item.banco}</span><div className="text-[9px] text-slate-400">Dados Bancários</div></div>
+                    <div><span className="text-slate-800 dark:text-slate-200 font-bold">{item.banco}</span><div className="text-[10px] text-slate-400">Dados Bancários</div></div>
                   ) : (
                     <span className="text-[10px] text-rose-500 italic">Pendente de cadastro</span>
                   );
@@ -1377,7 +1377,7 @@ export default function Faturamento() {
                         <div className="font-black text-slate-900 dark:text-white">{item.prof.name}</div>
                         <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono font-bold">
                           <span className="text-indigo-600 dark:text-indigo-400">{item.matricula} • {item.prof.document || 'CRM'}</span>
-                          {item.profStatus && item.profStatus !== 'ativo' && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-sans text-[9px] uppercase text-slate-500 dark:bg-slate-800">{item.profStatus} · com registro</span>}
+                          {item.profStatus && item.profStatus !== 'ativo' && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-sans text-[10px] uppercase text-slate-500 dark:bg-slate-800">{item.profStatus} · com registro</span>}
                         </div>
                       </td>
 
@@ -1394,7 +1394,7 @@ export default function Faturamento() {
                           </div>
                         )}
                         {item.plantõesAguardandoProducao > 0 && (
-                          <div className="mt-1 text-[9px] font-bold text-indigo-600 dark:text-indigo-400">{item.plantõesAguardandoProducao} dia(s) pendente(s)</div>
+                          <div className="mt-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{item.plantõesAguardandoProducao} dia(s) pendente(s)</div>
                         )}
                       </td>
 
@@ -1407,11 +1407,11 @@ export default function Faturamento() {
                           {formatCurrency(item.valorLiquido)}
                         </span>
                         {item.awaitingProduction && (
-                          <div className="text-[9px] font-semibold text-amber-600 dark:text-amber-400">
+                          <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
                             Saldo parcial · {item.plantõesAguardandoProducao} dia(s) pendente(s)
                           </div>
                         )}
-                        {item.taxRate > 0 && <div className="text-[9px] text-rose-500">-{item.taxRate}% retenção</div>}
+                        {item.taxRate > 0 && <div className="text-[10px] text-rose-500">-{item.taxRate}% retenção</div>}
                       </td>
 
                       <td className="py-3 px-4 text-center">
@@ -1600,7 +1600,7 @@ export default function Faturamento() {
                             <span className="font-bold text-slate-900 dark:text-white">
                               {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
                             </span>
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase ${p.isRealizado ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-black uppercase ${p.isRealizado ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
                               {p.isRealizado ? 'Realizado' : 'A Realizar'}
                             </span>
                           </div>

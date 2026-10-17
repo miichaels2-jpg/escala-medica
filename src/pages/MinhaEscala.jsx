@@ -631,9 +631,9 @@ export default function MinhaEscala() {
               </div>
               <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="text-sky-700 dark:text-sky-300">🏥 {featuredShift.unitName}</span>
-                <span className="text-slate-400">·</span>
+                <span className="hidden sm:inline text-slate-400">·</span>
                 <span>{featuredShift.sectorName}</span>
-                <span className="text-slate-400">·</span>
+                <span className="hidden sm:inline text-slate-400">·</span>
                 <span className="text-sm font-bold">{formatDateBR(featuredShift.date)} · {featuredShift.start_time}–{featuredShift.end_time}</span>
               </h3>
               <p className={`text-[11px] font-semibold mt-1 flex items-center gap-1 ${
@@ -673,7 +673,7 @@ export default function MinhaEscala() {
               <LogOut className="w-4 h-4" />
               {featuredShift.checkoutTime ? `Check-out · ${featuredShift.checkoutTime}` : 'Fazer check-out'}
             </Button>
-            <span className="col-span-2 text-[9px] text-slate-500 dark:text-slate-400 text-center">
+            <span className="col-span-2 text-[10px] text-slate-500 dark:text-slate-400 text-center">
               {featuredShift.canCheckIn || featuredShift.canCheckOut
                 ? 'Ação voluntária, sem bloquear o plantão.'
                 : 'Check-in/out libera até 15 min antes ou depois.'}
@@ -798,11 +798,11 @@ export default function MinhaEscala() {
 
                       <div className="flex items-center gap-1">
                         {hasConflict && (
-                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-600 text-white flex items-center gap-1 animate-pulse">
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-600 text-white flex items-center gap-1 animate-pulse">
                             <ShieldAlert className="w-3 h-3" /> Choque Horário
                           </span>
                         )}
-                        <span className={`text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                        <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
                           isAtivo 
                             ? 'bg-emerald-600 text-white animate-pulse' 
                             : isPending
@@ -902,7 +902,7 @@ export default function MinhaEscala() {
                     <span className="font-mono font-bold text-slate-900 dark:text-white block">
                       {formatDateBR(shift.date)}
                     </span>
-                    <span className="text-[9px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-black px-2 py-0.5 rounded-lg shrink-0">
+                    <span className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-black px-2 py-0.5 rounded-lg shrink-0">
                       ✓ Concluído
                     </span>
                   </div>
@@ -924,7 +924,7 @@ export default function MinhaEscala() {
                   </div>
                   
                   {(shift.checkinTime || shift.checkoutTime) && (
-                    <div className="flex items-center justify-between text-[9px] font-mono text-slate-500 bg-white dark:bg-slate-900 p-1.5 rounded-lg mt-0.5 border border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 bg-white dark:bg-slate-900 p-1.5 rounded-lg mt-0.5 border border-slate-100 dark:border-slate-800">
                       <span>In: <b className="text-emerald-600">{shift.checkinTime || '--:--'}</b></span>
                       <span>Out: <b className="text-rose-600">{shift.checkoutTime || '--:--'}</b></span>
                     </div>

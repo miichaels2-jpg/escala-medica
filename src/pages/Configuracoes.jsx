@@ -510,9 +510,9 @@ export default function Configuracoes() {
                             <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setUnitForm)} />
                           </label>
                           <div className="flex items-center justify-between mt-1.5">
-                            <span className="text-[9px] text-slate-400">Tamanho máximo: 2MB</span>
+                            <span className="text-[10px] text-slate-400">Tamanho máximo: 2MB</span>
                             {unitForm.logo_url && (
-                              <button type="button" onClick={() => setUnitForm(prev => ({...prev, logo_url: ''}))} className="text-[9px] font-bold text-rose-500 hover:underline">
+                              <button type="button" onClick={() => setUnitForm(prev => ({...prev, logo_url: ''}))} className="text-[10px] font-bold text-rose-500 hover:underline">
                                 Remover Imagem
                               </button>
                             )}
@@ -612,9 +612,9 @@ export default function Configuracoes() {
                           <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setContractForm)} />
                         </label>
                         <div className="flex items-center justify-between mt-1.5">
-                          <span className="text-[9px] text-slate-400">Tamanho máximo: 2MB</span>
+                          <span className="text-[10px] text-slate-400">Tamanho máximo: 2MB</span>
                           {contractForm.logo_url && (
-                            <button type="button" onClick={() => setContractForm(prev => ({...prev, logo_url: ''}))} className="text-[9px] font-bold text-rose-500 hover:underline">
+                            <button type="button" onClick={() => setContractForm(prev => ({...prev, logo_url: ''}))} className="text-[10px] font-bold text-rose-500 hover:underline">
                               Remover Imagem
                             </button>
                           )}
@@ -702,7 +702,7 @@ export default function Configuracoes() {
                         <div className="p-2.5 rounded-xl bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400">
                           {u.logo_url ? <img src={u.logo_url} className="w-5 h-5 object-contain" alt="logo" /> : <Hospital className="w-5 h-5" />}
                         </div>
-                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
                           u.status === 'inativo' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
                         }`}>
                           {u.status || 'Ativo'}
@@ -775,9 +775,9 @@ export default function Configuracoes() {
                           <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setNewUnitForm)} />
                         </label>
                         <div className="flex items-center justify-between mt-1.5">
-                          <span className="text-[9px] text-slate-400">Tamanho máximo: 2MB</span>
+                          <span className="text-[10px] text-slate-400">Tamanho máximo: 2MB</span>
                           {newUnitForm.logo_url && (
-                            <button type="button" onClick={() => setNewUnitForm(prev => ({ ...prev, logo_url: '' }))} className="text-[9px] font-bold text-rose-500 hover:underline">
+                            <button type="button" onClick={() => setNewUnitForm(prev => ({ ...prev, logo_url: '' }))} className="text-[10px] font-bold text-rose-500 hover:underline">
                               Remover Imagem
                             </button>
                           )}
