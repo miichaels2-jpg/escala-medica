@@ -15,11 +15,50 @@ import {
   HeartPulse, SlidersHorizontal, Flame, ArrowRight, MonitorPlay, 
   GripVertical, Printer, Sun, Moon, AlertTriangle, CheckCircle2, 
   Radio, Calendar as CalendarIcon, PanelLeftClose, PanelLeftOpen, 
-  Filter, ArrowLeftRight, Minimize2, Target, ShieldAlert,
-  BellRing, Check, History, Copy
+  Filter, Minimize2, Target, ShieldAlert,
+  Check, History, Copy
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+// Linhas exibidas por dia no calendário; o restante abre na lista daquele dia.
+const CALENDAR_LINES_PER_DAY = 6;
+
+// "07:00" → "07h"; "07:30" → "07h30" (cabe na célula do calendário).
+function shortTime(value) {
+  const [h = '', m = '00'] = String(value || '').split(':');
+  return m === '00' ? `${h}h` : `${h}h${m}`;
+}
+
+const CUSTOM_SPECIALTY = '__outra__';
+
+function SpecialtyPicker({ value, options, onChange, triggerClassName = '', contentClassName = '' }) {
+  const [typing, setTyping] = useState(false);
+  const list = useMemo(() => {
+    const set = new Set((options || []).map(o => String(o || '').trim()).filter(Boolean));
+    if (String(value || '').trim()) set.add(String(value).trim());
+    return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [options, value]);
+
+  if (typing) {
+    return (
+      <div className="flex items-center gap-1">
+        <Input autoFocus value={value} onChange={e => onChange(e.target.value)} placeholder="Digite a especialidade" className={triggerClassName} />
+        <Button type="button" variant="ghost" onClick={() => setTyping(false)} className="h-9 px-2 text-[11px] text-slate-400 hover:text-white shrink-0">Lista</Button>
+      </div>
+    );
+  }
+
+  return (
+    <Select value={String(value || '').trim() || undefined} onValueChange={v => { if (v === CUSTOM_SPECIALTY) { setTyping(true); onChange(''); } else onChange(v); }}>
+      <SelectTrigger className={triggerClassName}><SelectValue placeholder="Escolha a especialidade" /></SelectTrigger>
+      <SelectContent className={`z-[99999] ${contentClassName}`}>
+        {list.map(spec => <SelectItem key={spec} value={spec}>{spec}</SelectItem>)}
+        <SelectItem value={CUSTOM_SPECIALTY}>Outra (digitar)…</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
 const WEEKDAYS = [{ short: 'Dom', weekend: true }, { short: 'Seg', weekend: false }, { short: 'Ter', weekend: false }, { short: 'Qua', weekend: false }, { short: 'Qui', weekend: false }, { short: 'Sex', weekend: false }, { short: 'Sáb', weekend: true }];
 
 function getLocalDateString(d = new Date()) {
@@ -560,9 +599,9 @@ const closeTvMode = async () => {
 
   // Fluxo pós-geração: a grade é criada primeiro e, em seguida,
   // o gestor decide se deseja iniciar a alocação dos profissionais.
-  const [allocationPromptOpen, setAllocationPromptOpen] = useState(false);
   const [bulkAllocationOpen, setBulkAllocationOpen] = useState(false);
   const [generatedAllocationRows, setGeneratedAllocationRows] = useState([]);
+  const [generatorSkippedCount, setGeneratorSkippedCount] = useState(0);
   const [bulkAllocationDraft, setBulkAllocationDraft] = useState({});
 
   const registeredSpecialties = useMemo(() => {
@@ -1112,7 +1151,9 @@ const conflict = checkProfessionalConflict(
     }));
   };
 
-  const handleExecuteGenerator = async (e) => {
+  // Passo 1 → 2: a grade é montada só na tela. Nada é gravado até o gestor
+  // escolher os profissionais e salvar (rascunho) ou salvar e publicar.
+  const handleExecuteGenerator = (e) => {
     e.preventDefault();
     if (!generatorConfig.sector_id) { alert('Selecione o setor para a escala.'); return; }
 
@@ -1124,89 +1165,80 @@ const conflict = checkProfessionalConflict(
       alert('Configure pelo menos um turno com quantidade de vagas maior que zero.');
       return;
     }
+    if (validSlots.some(slot => !String(slot.specialty || '').trim())) {
+      alert('Escolha a especialidade de cada turno.');
+      return;
+    }
 
-    setSubmitting(true);
-    try {
-      const startDt = new Date(generatorConfig.start_date + 'T12:00:00');
-      const generatedRows = [];
-      let skippedExisting = 0;
-      // Rodar o gerador de novo não duplica: cada horário é completado só até a quantidade configurada.
-      const existingSlotCount = (dateStr, slot, spec) => (shifts || []).filter(s =>
-        s && s.status !== 'cancelado' &&
-        String(s.date).slice(0, 10) === dateStr &&
-        String(s.sector_id) === String(generatorConfig.sector_id) &&
-        String(s.start_time) === String(slot.start_time) &&
-        String(s.end_time) === String(slot.end_time) &&
-        normalize(extractSpecialty(s, professionalMap[String(s.professional_id)])) === normalize(spec)
-      ).length;
+    const startDt = new Date(generatorConfig.start_date + 'T12:00:00');
+    const rows = [];
+    let skippedExisting = 0;
+    // Rodar o gerador de novo não duplica: cada horário é completado só até a quantidade configurada.
+    const existingSlotCount = (dateStr, slot, spec) => (shifts || []).filter(s =>
+      s && s.status !== 'cancelado' &&
+      String(s.date).slice(0, 10) === dateStr &&
+      String(s.sector_id) === String(generatorConfig.sector_id) &&
+      String(s.start_time) === String(slot.start_time) &&
+      String(s.end_time) === String(slot.end_time) &&
+      normalize(extractSpecialty(s, professionalMap[String(s.professional_id)])) === normalize(spec)
+    ).length;
 
-      // Gera exatamente a quantidade configurada para cada horário.
-      // Ex.: 2 x 07:00-13:00 + 2 x 13:00-19:00 + 2 x 19:00-07:00.
-      for (let dayOffset = 0; dayOffset < totalDays; dayOffset += interval) {
-        const curDate = new Date(startDt);
-        curDate.setDate(curDate.getDate() + dayOffset);
-        const dateStr = getLocalDateString(curDate);
+    for (let dayOffset = 0; dayOffset < totalDays; dayOffset += interval) {
+      const curDate = new Date(startDt);
+      curDate.setDate(curDate.getDate() + dayOffset);
+      const dateStr = getLocalDateString(curDate);
 
-        for (const slot of validSlots) {
-          const spec = (slot.specialty || 'Clínica Médica').trim();
-          const configuredQty = parseInt(slot.quantity) || 0;
-          const alreadyThere = existingSlotCount(dateStr, slot, spec);
-          const qty = Math.max(0, configuredQty - alreadyThere);
-          skippedExisting += configuredQty - qty;
-          for (let q = 0; q < qty; q++) {
-            const sType = slot.shift_type || (slot.start_time >= '18:00' || slot.start_time < '06:00' ? 'noturno' : 'diurno');
-
-            const saved = await autoHealingSaveShift(null, {
-              company_id: company?.id || 'cmp_principal',
-              unit_id: selectedUnitId || 'unit_h1',
-              sector_id: generatorConfig.sector_id,
-              target_specialty: spec,
-              notes: `[ESP:${spec}] [GERADO_ESCALA_MASSA]`,
-              professional_id: null,
-              professional_name: null,
-              date: dateStr,
-              shift_type: sType,
-              start_time: slot.start_time,
-              end_time: slot.end_time,
-              status: 'vago'
-            });
-
-            if (saved?.id) {
-              const row = {
-                ...saved,
-                target_specialty: spec,
-                professional_id: null,
-                professional_name: null,
-                status: 'vago'
-              };
-              generatedRows.push(row);
-              try { window.localStorage.setItem(`shift_spec_${saved.id}`, spec); } catch {}
-            }
-          }
+      for (const slot of validSlots) {
+        const spec = slot.specialty.trim();
+        const configuredQty = parseInt(slot.quantity) || 0;
+        const alreadyThere = existingSlotCount(dateStr, slot, spec);
+        skippedExisting += Math.min(configuredQty, alreadyThere);
+        const sType = slot.shift_type || (slot.start_time >= '18:00' || slot.start_time < '06:00' ? 'noturno' : 'diurno');
+        for (let q = alreadyThere; q < configuredQty; q++) {
+          rows.push({
+            // ID estável: voltar para a grade e avançar de novo mantém as escolhas já feitas.
+            id: `draft_${dateStr}_${slot.id}_${q}`,
+            isDraft: true,
+            company_id: company?.id || 'cmp_principal',
+            unit_id: selectedUnitId || 'unit_h1',
+            sector_id: generatorConfig.sector_id,
+            target_specialty: spec,
+            notes: `[ESP:${spec}] [GERADO_ESCALA_MASSA]`,
+            professional_id: null,
+            professional_name: null,
+            date: dateStr,
+            shift_type: sType,
+            start_time: slot.start_time,
+            end_time: slot.end_time,
+            status: 'vago'
+          });
         }
       }
-
-      if (generatedRows.length === 0) {
-        throw new Error(skippedExisting > 0
-          ? `A grade já existe para esse período: ${skippedExisting} vaga(s) configurada(s) já estavam criadas. Nada foi duplicado.`
-          : 'Nenhuma vaga foi gerada. Verifique a quantidade configurada.');
-      }
-      if (skippedExisting > 0) {
-        alert(`${generatedRows.length} vaga(s) criada(s). ${skippedExisting} já existiam e não foram duplicadas.`);
-      }
-
-      setGeneratedAllocationRows(generatedRows);
-      setGeneratorModalOpen(false);
-      await syncGlobalData();
-
-      // Em vez de simplesmente encerrar a operação, abre o próximo passo.
-      setAllocationPromptOpen(true);
-    } catch (err) {
-      alert('Erro ao gerar escala: ' + (err?.message || 'Tente novamente.'));
-    } finally {
-      setSubmitting(false);
     }
+
+    if (rows.length === 0) {
+      alert(skippedExisting > 0
+        ? `A grade já existe para esse período: ${skippedExisting} vaga(s) configurada(s) já estavam criadas. Nada foi duplicado.`
+        : 'Nenhuma vaga foi gerada. Verifique a quantidade configurada.');
+      return;
+    }
+
+    setGeneratorSkippedCount(skippedExisting);
+    setGeneratedAllocationRows(rows);
+    setBulkAllocationDraft(prev => {
+      const next = {};
+      rows.forEach(row => { next[row.id] = prev[row.id] || ''; });
+      return next;
+    });
+    setGeneratorModalOpen(false);
+    setBulkAllocationOpen(true);
   };
+
+  const generatedRowsById = useMemo(() => {
+    const map = {};
+    (generatedAllocationRows || []).forEach(row => { map[String(row.id)] = row; });
+    return map;
+  }, [generatedAllocationRows]);
 
   const getBulkDraftConflict = (shift, profId, draft) => {
     if (!shift || !profId) return false;
@@ -1229,7 +1261,7 @@ const conflict = checkProfessionalConflict(
       if (!assignedProfId || String(shiftId) === String(shift.id)) return false;
       if (String(assignedProfId) !== String(profId)) return false;
 
-      const other = generatedAllocationRows.find(row => String(row.id) === String(shiftId));
+      const other = generatedRowsById[String(shiftId)];
       if (!other) return false;
       return shiftRangesOverlap(candidate, getShiftDateTimeRange(other));
     });
@@ -1250,42 +1282,52 @@ const conflict = checkProfessionalConflict(
       .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
   };
 
-  const openBulkAllocation = () => {
-    const draft = {};
-    (generatedAllocationRows || []).forEach(row => { draft[String(row.id)] = ''; });
-    setBulkAllocationDraft(draft);
-    setAllocationPromptOpen(false);
-    setBulkAllocationOpen(true);
-  };
-
   const autoFillBulkAllocation = () => {
     const draft = { ...bulkAllocationDraft };
+    const load = {};
+    Object.values(draft).forEach(profId => { if (profId) load[profId] = (load[profId] || 0) + 1; });
 
-    // Preenche somente vagas ainda vazias, respeitando especialidade e conflitos.
+    // Preenche só as vagas vazias, respeitando setor, especialidade e conflitos de horário,
+    // sempre com quem tem menos plantões neste lote.
     (generatedAllocationRows || [])
       .slice()
       .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start_time).localeCompare(String(b.start_time)))
       .forEach(row => {
         if (draft[String(row.id)]) return;
-        const candidate = getBulkCandidates(row, draft)[0];
-        if (candidate) draft[String(row.id)] = String(candidate.id);
+        const candidate = getBulkCandidates(row, draft)
+          .sort((a, b) => (load[String(a.id)] || 0) - (load[String(b.id)] || 0))[0];
+        if (!candidate) return;
+        draft[String(row.id)] = String(candidate.id);
+        load[String(candidate.id)] = (load[String(candidate.id)] || 0) + 1;
       });
 
     setBulkAllocationDraft(draft);
   };
 
-  const handleSaveBulkAllocation = async () => {
-    const assignments = (generatedAllocationRows || []).filter(row => bulkAllocationDraft[String(row.id)]);
-    if (assignments.length === 0) {
-      alert('Selecione pelo menos um profissional para salvar a alocação.');
-      return;
-    }
+  const backToGenerator = () => {
+    setBulkAllocationOpen(false);
+    setGeneratorModalOpen(true);
+  };
 
-    // Última validação antes de gravar: nenhum profissional pode ficar com dois
-    // plantões sobrepostos no mesmo dia.
+  const discardGeneratedSchedule = () => {
+    const assigned = Object.values(bulkAllocationDraft || {}).filter(Boolean).length;
+    if (assigned > 0 && !confirm('Descartar esta grade? Nada foi salvo ainda e as escolhas serão perdidas.')) return;
+    setBulkAllocationOpen(false);
+    setGeneratedAllocationRows([]);
+    setBulkAllocationDraft({});
+  };
+
+  // Passo 3: grava a grade de uma vez, já com os profissionais escolhidos.
+  // "Salvar e publicar" abre a publicação já preenchida com o setor e o período.
+  const handleSaveGeneratedSchedule = async (publishAfter = false) => {
+    const rows = generatedAllocationRows || [];
+    if (rows.length === 0) return;
+
+    // Última validação antes de gravar: autorização no setor e nenhum horário sobreposto.
     const validationDraft = {};
-    for (const row of assignments) {
+    for (const row of rows) {
       const profId = bulkAllocationDraft[String(row.id)];
+      if (!profId) continue;
       const prof = professionalMap[String(profId)];
       if (prof && !isProfessionalAuthorizedForSector(prof, row.sector_id)) {
         const sectorName = sectorMap[String(row.sector_id)]?.name || 'este setor';
@@ -1293,43 +1335,53 @@ const conflict = checkProfessionalConflict(
         return;
       }
       if (getBulkDraftConflict(row, profId, validationDraft)) {
-        alert(`⛔ Conflito de escala: ${prof?.name || 'Profissional'} não pode ser alocado em ${formatDateBR(row.date)} das ${row.start_time} às ${row.end_time} porque existe outro plantão sobreposto.`);
+        alert(`⛔ Conflito de escala: ${prof?.name || 'Profissional'} não pode ficar em ${formatDateBR(row.date)} das ${row.start_time} às ${row.end_time} porque já tem outro plantão nesse horário.`);
         return;
       }
       validationDraft[String(row.id)] = String(profId);
     }
 
     setSubmitting(true);
+    let saved = 0;
+    const savedAllocations = [];
     try {
-      const savedAllocations = [];
-      for (const row of assignments) {
-        const profId = String(bulkAllocationDraft[String(row.id)]);
-        const prof = professionalMap[profId];
-        if (!prof) continue;
-        savedAllocations.push({ shift: row, prof });
-
-        const currentNotes = String(row.notes || '')
-          .replace(/\[GERADO_ESCALA_MASSA\]/gi, '')
-          .trim();
-
-        await autoHealingSaveShift(row.id, {
-          professional_id: prof.id,
-          professional_name: prof.name,
-          status: 'confirmado',
-          notes: `${currentNotes} [ALOCADO_APOS_GERACAO]`.trim()
+      for (const row of rows) {
+        const profId = bulkAllocationDraft[String(row.id)];
+        const prof = profId ? professionalMap[String(profId)] : null;
+        // eslint-disable-next-line no-unused-vars
+        const { id, isDraft, ...payload } = row;
+        const result = await autoHealingSaveShift(null, {
+          ...payload,
+          professional_id: prof?.id || null,
+          professional_name: prof?.name || null,
+          status: prof ? 'confirmado' : 'vago',
+          notes: prof ? `[ESP:${row.target_specialty}] [ALOCADO_APOS_GERACAO]` : payload.notes
         });
+        if (!result?.id) continue;
+        saved += 1;
+        try { window.localStorage.setItem(`shift_spec_${result.id}`, row.target_specialty); } catch { /* armazenamento indisponível */ }
+        if (prof) savedAllocations.push({ shift: { ...payload, id: result.id }, prof });
       }
 
+      // Só avisa agora quem caiu em datas já publicadas; o resto é avisado na publicação.
       await notifyAllocations(savedAllocations);
+
+      const dates = rows.map(row => row.date).sort();
+      const sectorId = String(rows[0].sector_id);
       setBulkAllocationOpen(false);
-      setAllocationPromptOpen(false);
       setGeneratedAllocationRows([]);
       setBulkAllocationDraft({});
       await syncGlobalData();
 
-      alert(`✓ ${assignments.length} vaga(s) foram alocadas e salvas na escala.`);
+      if (publishAfter) {
+        setPublishConfig({ sector_id: sectorId, start_date: dates[0], end_date: dates[dates.length - 1] });
+        setPublishModalOpen(true);
+      } else {
+        alert(`✓ Escala salva como rascunho: ${saved} plantão(ões), ${savedAllocations.length} com profissional e ${saved - savedAllocations.length} vaga(s) aberta(s).\n\nOs profissionais só são avisados quando a escala for publicada.`);
+      }
     } catch (err) {
-      alert('Erro ao salvar alocações: ' + (err?.message || 'Tente novamente.'));
+      alert(`Erro ao salvar a escala (${saved} de ${rows.length} plantões gravados): ${err?.message || 'Tente novamente.'}`);
+      await syncGlobalData();
     } finally {
       setSubmitting(false);
     }
@@ -1791,6 +1843,73 @@ const handleAssignLegacyShiftUnit = async (shift) => {
   }
 };
 
+  const openShiftEditor = (shift) => {
+    if (!isManager || !shift) return;
+    const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+    setEditingShiftId(shift.id);
+    setFormData({
+      date: shift.date,
+      sector_id: shift.sector_id,
+      target_specialty: extractSpecialty(shift, prof),
+      start_time: shift.start_time,
+      end_time: shift.end_time,
+      shift_type: shift.shift_type || 'diurno',
+      action_type: 'alocar',
+      professional_id: shift.professional_id || '',
+      notes: shift.notes || '',
+      retroactive_justification: extractRetroactiveJustification(shift.notes)
+    });
+    setModalOpen(true);
+  };
+
+  // Calendário: uma linha discreta por plantão preenchido.
+  const renderCalendarShiftLine = (shift, dateStr) => {
+    const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+    const parts = String(prof?.name || shift.professional_name || 'Profissional').trim().split(/\s+/);
+    const name = parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1].charAt(0)}.` : parts[0];
+    const life = computeShiftHospitalLifecycle(shift, liveNow);
+    const sectorName = !selectedSectorObj ? sectorMap[String(shift.sector_id)]?.name : '';
+    return (
+      <button
+        type="button"
+        key={shift.id}
+        onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+        onDrop={e => { e.preventDefault(); e.stopPropagation(); setDraggingProfId(null); alert('Este horário já está preenchido. Solte o profissional em uma vaga aberta.'); }}
+        onClick={e => { e.stopPropagation(); openShiftEditor(shift); }}
+        title={`${shift.start_time}–${shift.end_time} · ${prof?.name || shift.professional_name || ''} · ${extractSpecialty(shift, prof)}${sectorName ? ` · ${sectorName}` : ''}${life.isLive ? ' · em andamento' : ''}`}
+        className={`group flex w-full min-w-0 items-center gap-1.5 rounded-md py-0.5 pl-0.5 pr-1 text-left text-[11px] leading-tight hover:bg-slate-100 dark:hover:bg-slate-800 ${isManager ? 'cursor-pointer' : 'cursor-default'} ${life.isConcluded ? 'opacity-60' : ''}`}
+      >
+        <span className={`h-3.5 w-1 shrink-0 rounded-full ${life.isLive ? 'bg-emerald-500' : 'bg-slate-400 dark:bg-slate-500'}`} />
+        <span className="shrink-0 font-mono text-[10px] text-slate-500 dark:text-slate-400">{shortTime(shift.start_time)}</span>
+        <span className="truncate font-medium text-slate-800 dark:text-slate-100">{name}</span>
+      </button>
+    );
+  };
+
+  // Calendário: vagas do mesmo horário agrupadas numa linha (alvo do arrastar e soltar).
+  const renderCalendarVacancyLine = (group, dateStr) => {
+    const firstVacant = group.shifts.find(s => isVacant(s));
+    const overdue = group.shifts.some(s => isVacant(s) && isShiftPast(s, liveNow));
+    const sectorName = !selectedSectorObj ? sectorMap[String(group.sector_id)]?.name : '';
+    return (
+      <button
+        type="button"
+        key={group.key}
+        onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+        onDrop={e => handleDropOnSlot(e, dateStr, group.start_time, group.end_time, group.specialty, group.sector_id)}
+        onClick={e => { e.stopPropagation(); openShiftEditor(firstVacant); }}
+        title={`${group.vacant} vaga(s) · ${group.start_time}–${group.end_time} · ${group.specialty}${sectorName ? ` · ${sectorName}` : ''}. Arraste um profissional ou clique para alocar.`}
+        className={`flex w-full min-w-0 items-center gap-1.5 rounded-md py-0.5 pl-0.5 pr-1 text-left text-[11px] leading-tight ${overdue ? 'bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 dark:hover:bg-rose-500/20' : 'bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20'} ${isManager ? 'cursor-pointer' : 'cursor-default'} ${draggingProfId ? 'ring-1 ring-sky-500' : ''}`}
+      >
+        <span className={`h-3.5 w-1 shrink-0 rounded-full ${overdue ? 'bg-rose-600' : 'bg-amber-500'}`} />
+        <span className="shrink-0 font-mono text-[10px] text-slate-500 dark:text-slate-400">{shortTime(group.start_time)}</span>
+        <span className={`truncate font-semibold ${overdue ? 'text-rose-700 dark:text-rose-300' : 'text-amber-800 dark:text-amber-200'}`}>
+          {group.vacant} {group.vacant === 1 ? 'vaga' : 'vagas'}
+        </span>
+      </button>
+    );
+  };
+
   const renderShiftCard = (shift, dateStr) => {
     const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
     const status = getStatusBadge(shift);
@@ -2035,46 +2154,42 @@ const handleAssignLegacyShiftUnit = async (shift) => {
         {sidebarHidden ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
       </button>
 
-      {/* BANNER 0: ALERTA CRÍTICO DE VAGAS EM ABERTO/FUROS */}
+      {/* BANNER 0: VAGAS EM ABERTO / FUROS */}
       {vacantShiftAlerts.length > 0 && isManager && (
-        <div className="p-4 rounded-3xl bg-rose-500/15 border-2 border-rose-500/60 shadow-lg animate-in fade-in flex flex-col gap-3">
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-3">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0">
+            <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 shrink-0">
               <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
-              <strong className="text-sm font-black text-rose-500 uppercase tracking-wider block">
-                {vacantShiftAlerts.length} plantão(ões) sem profissional
+              <strong className="text-sm font-semibold text-slate-900 dark:text-white block">
+                {vacantShiftAlerts.length} plantão(ões) sem profissional neste mês
               </strong>
-              <p className="text-xs text-rose-600 dark:text-rose-300">
-                Próximos turnos sem profissional neste mês. Toque para alocar.
-              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Próximos primeiro. Clique para alocar.</p>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             {vacantShiftAlerts.slice(0, showAllVacancyAlerts ? 24 : 4).map(v => {
               const isPast = isShiftPast(v, liveNow);
               return (
-                <div 
-                  key={v.id} 
-                  onClick={() => { setEditingShiftId(v.id); setFormData({ date: v.date, sector_id: v.sector_id, target_specialty: extractSpecialty(v), start_time: v.start_time, end_time: v.end_time, shift_type: v.shift_type || 'diurno', action_type: 'alocar', professional_id: '', notes: v.notes || '', retroactive_justification: extractRetroactiveJustification(v.notes) }); setModalOpen(true); }}
-                  className={`p-2 rounded-xl text-xs font-bold border cursor-pointer transition-all flex flex-col gap-1 shadow-sm hover:scale-[1.02] ${
-                    isPast ? 'bg-rose-100 border-rose-400 text-rose-800 dark:bg-rose-950/80 dark:border-rose-500 dark:text-rose-300' : 'bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-950/60 dark:border-amber-500/60 dark:text-amber-300'
-                  }`}
+                <button
+                  type="button"
+                  key={v.id}
+                  onClick={() => openShiftEditor(v)}
+                  className="p-2.5 rounded-xl text-left border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer transition-colors flex items-start gap-2 min-w-0"
                 >
-                  <div className="flex justify-between items-center">
-                    <span className="truncate">{sectorMap[v.sector_id]?.name || 'Setor'}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-black uppercase ${isPast ? 'bg-rose-500 text-white' : 'bg-amber-500 text-white'}`}>
-                      {isPast ? 'Falta / Furo' : 'Vaga Futura'}
-                    </span>
-                  </div>
-                  <div className="font-mono opacity-80">{formatDateBR(v.date)} • {v.start_time} às {v.end_time}</div>
-                </div>
+                  <span className={`mt-1 h-2 w-2 rounded-full shrink-0 ${isPast ? 'bg-rose-500' : 'bg-amber-500'}`} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">{sectorMap[v.sector_id]?.name || 'Setor'}</span>
+                    <span className="block text-[11px] font-mono text-slate-500 dark:text-slate-400">{formatDateBR(v.date).slice(0, 5)} · {v.start_time}–{v.end_time}</span>
+                    <span className={`block text-[11px] font-medium ${isPast ? 'text-rose-600 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400'}`}>{isPast ? 'Falta / furo' : 'Vaga aberta'}</span>
+                  </span>
+                </button>
               );
             })}
           </div>
           {vacantShiftAlerts.length > 4 && (
-            <button type="button" onClick={() => setShowAllVacancyAlerts(v => !v)} className="self-start text-xs font-semibold text-rose-600 dark:text-rose-300 hover:underline cursor-pointer">
+            <button type="button" onClick={() => setShowAllVacancyAlerts(v => !v)} className="self-start text-xs font-semibold text-sky-700 dark:text-sky-300 hover:underline cursor-pointer">
               {showAllVacancyAlerts ? 'Mostrar menos' : `Ver mais ${Math.min(20, vacantShiftAlerts.length - 4)} vaga(s)`}
             </button>
           )}
@@ -2115,37 +2230,33 @@ const handleAssignLegacyShiftUnit = async (shift) => {
         </div>
       )}
 
-      {/* BANNER 2: RADAR DE SETORES PENDENTES DE PUBLICAÇÃO */}
+      {/* BANNER 2: SETORES PENDENTES DE PUBLICAÇÃO */}
       {unsubmittedSectors.length > 0 && isManager && (
-        <div className="p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
-          <div className="flex items-start sm:items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-amber-500 text-white shrink-0 shadow-sm">
-              <AlertTriangle className="w-5 h-5" />
+        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start sm:items-center gap-3 min-w-0">
+            <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
+              <Send className="w-5 h-5" />
             </div>
-            <div>
-              <strong className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-300 block">
-                {unsubmittedSectors.length} Setor(es) Pendente(s) de Publicação em {MONTH_NAMES[currentMonth]}
+            <div className="min-w-0">
+              <strong className="text-sm font-semibold text-slate-900 dark:text-white block">
+                {unsubmittedSectors.length} setor(es) ainda em rascunho em {MONTH_NAMES[currentMonth]}
               </strong>
-              <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                <span className="text-[11px] text-slate-600 dark:text-slate-300">Setores em rascunho:</span>
-                {unsubmittedSectors.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => handleSelectSector(String(s.id))}
-                    className="text-[10px] font-black uppercase px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-800 dark:text-amber-200 hover:bg-amber-500/30 transition-all cursor-pointer border border-amber-500/30"
-                  >
-                    {s.name}
-                  </button>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {unsubmittedSectors.map((s, i) => (
+                  <React.Fragment key={s.id}>
+                    {i > 0 && ' · '}
+                    <button type="button" onClick={() => handleSelectSector(String(s.id))} className="hover:text-sky-700 dark:hover:text-sky-300 hover:underline cursor-pointer">{s.name}</button>
+                  </React.Fragment>
                 ))}
-              </div>
+              </p>
             </div>
           </div>
 
-          <Button 
+          <Button
             onClick={openPublishModal}
-            className="h-9 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs px-4 rounded-xl shadow-md shrink-0 cursor-pointer gap-1.5"
+            className="h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-4 rounded-xl shrink-0 cursor-pointer gap-1.5"
           >
-            <Send className="w-3.5 h-3.5" /> Publicar Setor
+            <Send className="w-3.5 h-3.5" /> Publicar setor
           </Button>
         </div>
       )}
@@ -2175,8 +2286,8 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               <Button onClick={() => setDuplicateModalOpen(true)} variant="outline" className="h-9 text-indigo-600 hover:bg-indigo-50 border-indigo-200 font-black text-xs px-4 rounded-2xl shadow-sm gap-1.5 cursor-pointer">
                 <Copy className="w-4 h-4" /> Duplicar Mês
               </Button>
-              <Button onClick={() => { setGeneratorConfig(prev => ({ ...prev, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '') })); setGeneratorModalOpen(true); }} className="h-9 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs px-4 rounded-2xl shadow-md gap-1.5 shrink-0 cursor-pointer">
-                <SlidersHorizontal className="w-4 h-4" /> Configurar & Gerar Escala
+              <Button onClick={() => { setGeneratorConfig(prev => ({ ...prev, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '') })); setGeneratorModalOpen(true); }} className="h-9 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs px-4 rounded-2xl shadow-sm gap-1.5 shrink-0 cursor-pointer">
+                <SlidersHorizontal className="w-4 h-4" /> Montar escala
               </Button>
             </>
           )}
@@ -2446,151 +2557,75 @@ const handleAssignLegacyShiftUnit = async (shift) => {
           )}
 
 {monthlyView === 'calendario' && <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
-            <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-center py-2.5">
-              {WEEKDAYS.map(day => (<div key={day.short} className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400"><span className={day.weekend ? 'text-indigo-600 font-black' : ''}>{day.short}</span></div>))}
-</div>
-            
+            <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 px-3 py-2 border-b border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400">
+              <span className="inline-flex items-center gap-1.5"><span className="h-3 w-1 rounded-full bg-slate-400 dark:bg-slate-500" /> Plantão preenchido</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-3 w-1 rounded-full bg-amber-500" /> Vaga aberta</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-3 w-1 rounded-full bg-rose-600" /> Vaga vencida</span>
+              <span className="inline-flex items-center gap-1.5"><CheckCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Dia publicado</span>
+            </div>
+            <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-center py-2">
+              {WEEKDAYS.map(day => (<div key={day.short} className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{day.short}</div>))}
+            </div>
+
             <div className="grid grid-cols-7 divide-x divide-y divide-slate-200 dark:divide-slate-800">
-              {Array.from({ length: (daysInMonth[0]?.getDay() || 0) }).map((_, idx) => (<div key={`empty-${idx}`} className="min-h-[190px] bg-slate-50/60 dark:bg-slate-950/40"></div>))}
-              
+              {Array.from({ length: (daysInMonth[0]?.getDay() || 0) }).map((_, idx) => (<div key={`empty-${idx}`} className="min-h-[140px] bg-slate-50/60 dark:bg-slate-950/40"></div>))}
+
               {daysInMonth.map(dateObj => {
                 const dateStr = getLocalDateString(dateObj);
                 const isToday = todayLocalStr === dateStr;
                 const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
                 const isSelected = selectedDays.includes(dateStr);
                 const isDatePublished = isDatePublishedForCurrentSector(dateStr);
-                const dayShifts = shiftsByDate[dateStr] || [];
-
-                const manha = dayShifts.filter(s => { const h = parseInt((s.start_time || '07:00').split(':')[0]); return h >= 6 && h < 13; });
-                const tarde = dayShifts.filter(s => { const h = parseInt((s.start_time || '07:00').split(':')[0]); return h >= 13 && h < 18; });
-                const noite = dayShifts.filter(s => { const h = parseInt((s.start_time || '07:00').split(':')[0]); return h >= 18 || h < 6; });
                 const dayVacancyGroups = vacancyGroupsByDate[dateStr] || [];
                 const dayVacantCount = dayVacancyGroups.reduce((sum, group) => sum + group.vacant, 0);
                 const hasOverdueVacancy = dayVacancyGroups.some(group =>
                   group.shifts.some(shift => isVacant(shift) && isShiftPast(shift, liveNow))
                 );
 
+                // Uma linha por plantão preenchido e uma linha por horário com vagas (agrupadas).
+                const filledLines = (shiftsByDate[dateStr] || [])
+                  .filter(shift => !isVacant(shift))
+                  .map(shift => ({ kind: 'shift', key: shift.id, start: shift.start_time || '', shift }));
+                const vacancyLines = dayVacancyGroups
+                  .filter(group => group.vacant > 0)
+                  .map(group => ({ kind: 'vaga', key: `v-${group.key}`, start: group.start_time || '', group }));
+                const lines = [...vacancyLines, ...filledLines].sort((a, b) => String(a.start).localeCompare(String(b.start)) || (a.kind === 'vaga' ? -1 : 1));
+                const visibleLines = lines.slice(0, CALENDAR_LINES_PER_DAY);
+                const hiddenCount = lines.length - visibleLines.length;
+
                 return (
-                  <div key={dateStr} onClick={(e) => handleDayClick(dateStr, e)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnDay(e, dateStr)} className={`min-h-[220px] p-2 transition-all flex flex-col justify-between select-none cursor-pointer ${isSelected ? 'bg-indigo-50 dark:bg-indigo-950/50 ring-2 ring-indigo-500 z-10' : isToday ? 'bg-sky-50/60 dark:bg-sky-950/20' : 'hover:bg-slate-50 dark:hover:bg-slate-850/50'}`}>
-                    <div className={`flex items-center justify-between p-1 px-2 rounded-xl mb-1.5 border shadow-sm ${isToday ? 'bg-gradient-to-r from-sky-600 to-cyan-600 border-sky-400 text-white font-black' : isWeekend ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-200 text-indigo-800 dark:text-indigo-300 font-bold' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 text-slate-800 dark:text-slate-200 font-bold'}`}>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-black">{dateObj.getDate()}</span>
-                        <span className="text-[10px] uppercase font-bold opacity-70">{WEEKDAYS[dateObj.getDay()].short}</span>
+                  <div key={dateStr} onClick={(e) => handleDayClick(dateStr, e)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnDay(e, dateStr)} className={`min-h-[140px] p-1.5 flex flex-col gap-1 min-w-0 select-none cursor-pointer transition-colors ${isSelected ? 'bg-sky-50 dark:bg-sky-950/40 ring-2 ring-inset ring-sky-500' : isWeekend ? 'bg-slate-50/70 dark:bg-slate-950/30 hover:bg-slate-100/70 dark:hover:bg-slate-800/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'}`}>
+                    <div className="flex items-center justify-between gap-1 px-0.5">
+                      <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold ${isToday ? 'bg-sky-600 text-white' : 'text-slate-700 dark:text-slate-200'}`}>
+                        {dateObj.getDate()}
+                      </span>
+                      <div className="flex items-center gap-1 min-w-0">
+                        {dayVacantCount > 0 && (
+                          <span className={`truncate rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${hasOverdueVacancy ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'}`}>
+                            {dayVacantCount} {dayVacantCount === 1 ? 'vaga' : 'vagas'}
+                          </span>
+                        )}
+                        {isDatePublished
+                          ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-label="Publicada" title="Escala publicada para esta data" />
+                          : <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" aria-label="Rascunho" title="Rascunho: ainda não publicada" />}
                       </div>
-
-                      {isDatePublished ? (
-<span title="Escala oficializada e publicada para esta data" className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded-md bg-emerald-600 text-white flex items-center gap-0.5 ring-1 ring-white/40">
-<CheckCheck className="w-2.5 h-2.5" /> Publicada
-                        </span>
-                      ) : (
-<span title="Rascunho: alterações ainda não foram publicadas" className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 ring-1 ring-amber-300/70 dark:ring-amber-500/40">
-                          Rascunho
-                        </span>
-                      )}
                     </div>
 
-                    <div className="mb-2 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/80 dark:bg-indigo-950/30 p-2">
-                        <div className="flex items-center justify-between gap-2 mb-1.5">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
-                            <Target className="w-3 h-3" /> Mapa de Vagas
-                          </span>
-                          <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-300">
-                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 ${dayVacantCount ? (hasOverdueVacancy ? 'bg-rose-600 text-white' : 'bg-amber-500 text-white') : 'bg-emerald-600 text-white'}`}>
-                              {dayVacantCount} {dayVacantCount === 1 ? 'vaga aberta' : 'vagas abertas'}
-                            </span>
-                          </span>
-                        </div>
-
-                        <div className="space-y-1">
-                          {dayVacancyGroups.map(group => {
-                            const sectorName = sectorMap[String(group.sector_id)]?.name;
-                            const isOpen = group.vacant > 0;
-                            return (
-                              <div
-                                key={group.key}
-                                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                onDrop={(e) => handleDropOnSlot(e, dateStr, group.start_time, group.end_time, group.specialty, group.sector_id)}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const firstVacant = group.shifts.find(s => isVacant(s));
-                                  if (firstVacant && isManager) {
-                                    setEditingShiftId(firstVacant.id);
-                                    setFormData({
-                                      date: firstVacant.date,
-                                      sector_id: firstVacant.sector_id,
-                                      target_specialty: extractSpecialty(firstVacant),
-                                      start_time: firstVacant.start_time,
-                                      end_time: firstVacant.end_time,
-                                      shift_type: firstVacant.shift_type || 'diurno',
-                                      action_type: 'alocar',
-                                      professional_id: '',
-                                      notes: firstVacant.notes || '',
-                                      retroactive_justification: extractRetroactiveJustification(firstVacant.notes)
-                                    });
-                                    setModalOpen(true);
-                                  }
-                                }}
-                                className={`rounded-lg border px-2 py-1.5 transition-all ${
-                                  isOpen
-                                    ? `border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 hover:border-amber-500 cursor-pointer ${draggingProfId ? 'ring-2 ring-sky-500 ring-offset-1 shadow-md' : ''}`
-                                    : 'border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/70 dark:bg-emerald-950/20'
-                                }`}
-                                title={isOpen ? 'Arraste um profissional para este horário ou clique para alocar' : 'Horário completamente preenchido'}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    {isOpen ? <Flame className="w-3 h-3 text-amber-500 shrink-0" /> : <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />}
-                                    <span className="font-mono font-black text-[10px] text-slate-800 dark:text-slate-100 whitespace-nowrap">
-                                      {group.start_time}–{group.end_time}
-                                    </span>
-                                    <span className="text-[10px] text-slate-500 truncate">
-                                      {group.specialty}{sectorName && !selectedSectorObj ? ` • ${sectorName}` : ''}
-                                    </span>
-                                  </div>
-                                  <span className={`shrink-0 px-1.5 py-0.5 rounded-md text-[10px] font-black ${
-                                    isOpen
-                                      ? 'bg-amber-500 text-white'
-                                      : 'bg-emerald-600 text-white'
-                                  }`}>
-                                    {group.vacant > 0 ? `${group.vacant} vaga${group.vacant > 1 ? 's' : ''}` : `${group.filled}/${group.total}`}
-                                  </span>
-                                </div>
-                                <div className="mt-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
-                                  <div
-                                    className={`h-full rounded-full ${isOpen ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                                    style={{ width: `${Math.min(100, (group.filled / Math.max(1, group.total)) * 100)}%` }}
-                                  />
-                                </div>
-                                <div className="flex justify-between mt-1 text-[10px] font-bold text-slate-400">
-                                  <span>{group.filled} preenchida(s)</span>
-                                  <span>{group.total} configurada(s)</span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="space-y-2 flex-1 overflow-y-auto max-h-[240px] pr-0.5 text-[11px]">
-                      {manha.length > 0 && (
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-200 block">☀️ Manhã</span>
-                          {manha.map(shift => renderShiftCard(shift, dateStr))}
-        </div>
-                      )}
-                      {tarde.length > 0 && (
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-black uppercase text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-200 block">🌇 Tarde</span>
-                          {tarde.map(shift => renderShiftCard(shift, dateStr))}
-                        </div>
-                      )}
-                      {noite.length > 0 && (
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-200 block">🌙 Noite</span>
-                          {noite.map(shift => renderShiftCard(shift, dateStr))}
-                        </div>
-                      )}
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      {visibleLines.map(line => line.kind === 'vaga'
+                        ? renderCalendarVacancyLine(line.group, dateStr)
+                        : renderCalendarShiftLine(line.shift, dateStr))}
                     </div>
+
+                    {hiddenCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setStartDateFilter(dateStr); setMonthlyView('lista'); }}
+                        className="mt-auto self-start px-1 text-[10px] font-semibold text-sky-700 dark:text-sky-300 hover:underline cursor-pointer"
+                      >
+                        + {hiddenCount} {hiddenCount === 1 ? 'outro' : 'outros'}
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -2754,8 +2789,13 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             
             <div className="space-y-1">
               <Label className="text-xs font-bold text-slate-300">Especialidade Exigida *</Label>
-              <Input placeholder="Ex: Ginecologista, Cirurgião Geral..." value={formData.target_specialty} onChange={e => setFormData({ ...formData, target_specialty: e.target.value })} className="h-10 bg-slate-900 border-slate-700 font-bold text-sky-400 rounded-xl" list="modal-specs" />
-              <datalist id="modal-specs">{registeredSpecialties.map(spec => <option key={spec} value={spec} />)}</datalist>
+              <SpecialtyPicker
+                value={formData.target_specialty}
+                options={registeredSpecialties}
+                onChange={value => setFormData(prev => ({ ...prev, target_specialty: value }))}
+                triggerClassName="h-10 bg-slate-900 border-slate-700 font-bold text-sky-400 rounded-xl"
+                contentClassName="bg-slate-900 border-slate-800 text-white"
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -2889,8 +2929,17 @@ const handleAssignLegacyShiftUnit = async (shift) => {
         <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-6">
           <DialogHeader className="border-b border-slate-800 pb-4">
             <DialogTitle className="text-lg font-black flex items-center gap-2 text-indigo-400">
-              <SlidersHorizontal className="w-5 h-5" /> Gerador de Grade Padrão
+              <SlidersHorizontal className="w-5 h-5" /> Montar escala
             </DialogTitle>
+            <ol className="flex items-center gap-2 pt-3 text-[11px] font-semibold" aria-label="Etapas">
+                {['Grade', 'Profissionais', 'Salvar e publicar'].map((label, i) => (
+                  <li key={label} className="flex items-center gap-2">
+                    <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${i + 1 === 1 ? 'bg-sky-500 text-white' : i + 1 < 1 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>{i + 1 < 1 ? <Check className="h-3 w-3" /> : i + 1}</span>
+                    <span className={i + 1 === 1 ? 'text-white' : 'text-slate-400'}>{label}</span>
+                    {i < 2 && <ChevronRight className="h-3.5 w-3.5 text-slate-600" />}
+                  </li>
+                ))}
+              </ol>
           </DialogHeader>
 
           <form onSubmit={handleExecuteGenerator} className="space-y-5 py-2">
@@ -2928,7 +2977,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                 <Label className="text-sm font-black text-sky-400 flex items-center gap-2">
                   <Clock className="w-4 h-4" /> Configuração Diária das Vagas
                 </Label>
-                <Button type="button" onClick={handleAddSlot} variant="outline" className="h-8 text-xs font-bold border-slate-700 text-slate-300 hover:text-white rounded-lg px-3 cursor-pointer">
+                <Button type="button" onClick={handleAddSlot} variant="outline" className="h-8 text-xs font-bold border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg px-3 cursor-pointer">
                   <Plus className="w-3.5 h-3.5 mr-1" /> Novo Turno
                 </Button>
               </div>
@@ -2936,9 +2985,15 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               <div className="space-y-2">
                 {generatorConfig.slots.map((slot, index) => (
                   <div key={slot.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-3 bg-slate-900 border border-slate-800 rounded-2xl relative group">
-                    <div className="w-full sm:w-auto flex-1 space-y-1">
+                    <div className="w-full sm:w-auto flex-1 min-w-0 space-y-1">
                       <Label className="text-[10px] uppercase text-slate-500 font-bold">Especialidade</Label>
-                      <Input placeholder="Especialidade" value={slot.specialty} onChange={e => handleUpdateSlot(slot.id, 'specialty', e.target.value)} className="h-9 text-xs bg-slate-950 border-slate-800 text-white" list="gen-specs" />
+                      <SpecialtyPicker
+                        value={slot.specialty}
+                        options={registeredSpecialties}
+                        onChange={value => handleUpdateSlot(slot.id, 'specialty', value)}
+                        triggerClassName="h-9 text-xs bg-slate-950 border-slate-800 text-white"
+                        contentClassName="bg-slate-900 border-slate-800 text-white"
+                      />
                     </div>
                     <div className="w-24 shrink-0 space-y-1">
                       <Label className="text-[10px] uppercase text-slate-500 font-bold">Entrada</Label>
@@ -2961,21 +3016,20 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                     )}
                   </div>
                 ))}
-                <datalist id="gen-specs">{registeredSpecialties.map(spec => <option key={spec} value={spec} />)}</datalist>
               </div>
             </div>
 
             <div className="p-4 bg-sky-950/30 border border-sky-900/50 rounded-2xl flex items-start gap-3">
               <CheckCircle2 className="w-5 h-5 text-sky-500 shrink-0 mt-0.5" />
               <p className="text-xs text-sky-200 leading-relaxed">
-                A cada data gerada, o sistema cria exatamente a quantidade configurada por horário. Serão <b>{Math.ceil((parseInt(generatorConfig.duration_days) || 0) / (parseInt(generatorConfig.interval_days) || 1))}</b> dia(s) de grade e <b>{(generatorConfig.slots.reduce((acc, slot) => acc + (parseInt(slot.quantity) || 0), 0)) * Math.ceil((parseInt(generatorConfig.duration_days) || 0) / (parseInt(generatorConfig.interval_days) || 1))}</b> vagas no total. Após a geração, o sistema perguntará se você deseja iniciar a alocação.
+                A cada data gerada, o sistema cria exatamente a quantidade configurada por horário. Serão <b>{Math.ceil((parseInt(generatorConfig.duration_days) || 0) / (parseInt(generatorConfig.interval_days) || 1))}</b> dia(s) de grade e <b>{(generatorConfig.slots.reduce((acc, slot) => acc + (parseInt(slot.quantity) || 0), 0)) * Math.ceil((parseInt(generatorConfig.duration_days) || 0) / (parseInt(generatorConfig.interval_days) || 1))}</b> vagas no total. Nada é gravado agora: no próximo passo você escolhe os profissionais e só então salva ou publica.
               </p>
             </div>
 
             <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" onClick={() => setGeneratorModalOpen(false)} className="h-11 border-slate-700 text-slate-300 rounded-xl cursor-pointer">Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="h-11 bg-indigo-600 hover:bg-indigo-500 text-white font-black px-8 rounded-xl shadow-lg shadow-indigo-500/20 cursor-pointer">
-                Gerar Escala em Massa
+              <Button type="button" variant="outline" onClick={() => setGeneratorModalOpen(false)} className="h-11 border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl cursor-pointer">Cancelar</Button>
+              <Button type="submit" disabled={submitting} className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-bold px-6 rounded-xl cursor-pointer">
+                Próximo: escolher profissionais <ArrowRight className="w-4 h-4 ml-1.5" />
               </Button>
             </DialogFooter>
           </form>
@@ -3033,175 +3087,126 @@ const handleAssignLegacyShiftUnit = async (shift) => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={allocationPromptOpen} onOpenChange={setAllocationPromptOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-lg bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-6">
-          <DialogHeader className="border-b border-slate-800 pb-4">
-            <DialogTitle className="text-lg font-black flex items-center gap-2 text-sky-400">
-              <HeartPulse className="w-5 h-5" /> Escala gerada — deseja alocar agora?
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4 py-3">
-            <div className="p-4 rounded-2xl bg-sky-950/40 border border-sky-800/60">
-              <div className="text-2xl font-black text-white">{generatedAllocationRows.length}</div>
-              <div className="text-[10px] uppercase tracking-wider font-black text-sky-300 mt-0.5">
-                vagas criadas na grade
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              A grade já foi salva com os horários e quantidades configurados. Agora você pode
-              continuar diretamente para a alocação dos profissionais, mantendo cada profissional
-              exatamente no horário e setor da vaga gerada.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setAllocationPromptOpen(false);
-                  setGeneratedAllocationRows([]);
-                }}
-                className="h-11 border-slate-700 text-slate-300 rounded-xl cursor-pointer"
-              >
-                Fazer depois
-              </Button>
-              <Button
-                type="button"
-                onClick={openBulkAllocation}
-                className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-black rounded-xl shadow-lg shadow-sky-500/20 cursor-pointer"
-              >
-                <HeartPulse className="w-4 h-4 mr-2" /> Sim, alocar profissionais
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* ========================================================================= */}
       {/* 6B. ALOCAÇÃO EM LOTE DAS VAGAS GERADAS                                  */}
       {/* ========================================================================= */}
-      <Dialog open={bulkAllocationOpen} onOpenChange={setBulkAllocationOpen}>
-        <DialogContent className="w-[96vw] sm:max-w-5xl max-h-[92vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-5 sm:p-6">
-          <DialogHeader className="border-b border-slate-800 pb-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <DialogTitle className="text-lg font-black flex items-center gap-2 text-sky-400">
-                  <HeartPulse className="w-5 h-5" /> Alocação da Escala Gerada
-                </DialogTitle>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Cada linha representa uma vaga real criada pelo gerador. Selecione o profissional
-                  no horário correto ou use o preenchimento automático.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black uppercase px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300">
-                  {(generatedAllocationRows || []).filter(row => !bulkAllocationDraft[String(row.id)]).length} pendente(s)
-                </span>
-                <span className="text-[10px] font-black uppercase px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
-                  {(generatedAllocationRows || []).filter(row => bulkAllocationDraft[String(row.id)]).length} alocada(s)
-                </span>
-              </div>
-            </div>
+      <Dialog open={bulkAllocationOpen} onOpenChange={open => { if (!open) discardGeneratedSchedule(); }}>
+        <DialogContent className="w-[96vw] sm:max-w-5xl max-h-[92vh] flex flex-col bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-5 sm:p-6">
+          <DialogHeader className="border-b border-slate-800 pb-4 shrink-0">
+            <DialogTitle className="text-lg font-bold flex items-center gap-2 text-sky-400">
+              <HeartPulse className="w-5 h-5" /> Montar escala · {sectorMap[String(generatedAllocationRows[0]?.sector_id)]?.name || 'Setor'}
+            </DialogTitle>
+            <ol className="flex items-center gap-2 pt-3 text-[11px] font-semibold" aria-label="Etapas">
+                {['Grade', 'Profissionais', 'Salvar e publicar'].map((label, i) => (
+                  <li key={label} className="flex items-center gap-2">
+                    <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${i + 1 === 2 ? 'bg-sky-500 text-white' : i + 1 < 2 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>{i + 1 < 2 ? <Check className="h-3 w-3" /> : i + 1}</span>
+                    <span className={i + 1 === 2 ? 'text-white' : 'text-slate-400'}>{label}</span>
+                    {i < 2 && <ChevronRight className="h-3.5 w-3.5 text-slate-600" />}
+                  </li>
+                ))}
+              </ol>
           </DialogHeader>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3">
-            <div className="text-xs text-slate-400">
-              A especialidade configurada na vaga é usada para priorizar profissionais compatíveis.
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={autoFillBulkAllocation}
-              className="h-9 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 rounded-xl font-black text-xs cursor-pointer"
-            >
-              <CheckCheck className="w-4 h-4 mr-1.5" /> Preencher automaticamente
-            </Button>
-          </div>
+          {(() => {
+            const rows = (generatedAllocationRows || [])
+              .slice()
+              .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start_time).localeCompare(String(b.start_time)));
+            const assignedCount = rows.filter(row => bulkAllocationDraft[String(row.id)]).length;
+            const load = {};
+            rows.forEach(row => { const id = bulkAllocationDraft[String(row.id)]; if (id) load[id] = (load[id] || 0) + 1; });
+            const loadList = Object.entries(load)
+              .map(([id, count]) => ({ id, count, name: formatFullName(professionalMap[id]?.name) || 'Profissional' }))
+              .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'pt-BR'));
 
-          <div className="rounded-2xl border border-slate-800 overflow-hidden">
-            <div className="grid grid-cols-[95px_120px_minmax(120px,1fr)_minmax(220px,1.5fr)_90px] gap-0 bg-slate-900 border-b border-slate-800 text-[10px] uppercase tracking-wider font-black text-slate-500">
-              <div className="px-3 py-2">Data</div>
-              <div className="px-3 py-2">Horário</div>
-              <div className="px-3 py-2">Setor</div>
-              <div className="px-3 py-2">Profissional</div>
-              <div className="px-3 py-2 text-center">Situação</div>
-            </div>
+            return (
+              <>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 shrink-0">
+                  <div className="text-xs text-slate-300">
+                    <b className="text-white">{rows.length}</b> plantões · <b className="text-emerald-300">{assignedCount}</b> com profissional · <b className="text-amber-300">{rows.length - assignedCount}</b> vagas abertas
+                    {generatorSkippedCount > 0 && <span className="block text-[11px] text-slate-500">{generatorSkippedCount} plantão(ões) desse período já existiam e não serão duplicados.</span>}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {assignedCount > 0 && (
+                      <Button type="button" variant="ghost" onClick={() => setBulkAllocationDraft(prev => Object.fromEntries(Object.keys(prev).map(k => [k, ''])))} className="h-9 text-xs text-slate-400 hover:text-white rounded-xl">
+                        Limpar escolhas
+                      </Button>
+                    )}
+                    <Button type="button" variant="outline" onClick={autoFillBulkAllocation} className="h-9 border-emerald-500/40 bg-transparent text-emerald-300 hover:bg-emerald-500/10 hover:text-emerald-200 rounded-xl font-semibold text-xs cursor-pointer">
+                      <CheckCheck className="w-4 h-4 mr-1.5" /> Preencher automaticamente
+                    </Button>
+                  </div>
+                </div>
 
-            <div className="max-h-[58vh] overflow-y-auto divide-y divide-slate-800/80">
-              {(generatedAllocationRows || [])
-                .slice()
-                .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start_time).localeCompare(String(b.start_time)))
-                .map(row => {
-                  const assignedId = bulkAllocationDraft[String(row.id)] || '';
-                  const candidates = getBulkCandidates(row, bulkAllocationDraft);
-                  const assignedProf = assignedId ? professionalMap[String(assignedId)] : null;
-                  const assignedProfAuthorized = assignedProf && isProfessionalAuthorizedForSector(assignedProf, row.sector_id);
+                {loadList.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pb-3 shrink-0" aria-label="Plantões por profissional">
+                    {loadList.map(item => (
+                      <span key={item.id} className="inline-flex items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900 px-2.5 py-1 text-[11px] text-slate-300">
+                        {item.name} <b className="text-white">{item.count}</b>
+                      </span>
+                    ))}
+                  </div>
+                )}
 
-                  return (
-                    <div key={row.id} className="grid grid-cols-[95px_120px_minmax(120px,1fr)_minmax(220px,1.5fr)_90px] items-center bg-slate-950 hover:bg-slate-900/80">
-                      <div className="px-3 py-2 text-[10px] font-black text-slate-200">{formatDateBR(row.date)}</div>
-                      <div className="px-3 py-2 font-mono text-[10px] font-black text-sky-300 whitespace-nowrap">
-                        {row.start_time}–{row.end_time}
-                      </div>
-                      <div className="px-3 py-2 text-[10px] text-slate-300 truncate">
-                        {sectorMap[String(row.sector_id)]?.name || 'Setor'}
-                        <span className="block text-[10px] text-slate-500 truncate">{extractSpecialty(row)}</span>
-                      </div>
-                      <div className="px-3 py-2">
-                        <select
-                          value={assignedId}
-                          onChange={e => setBulkAllocationDraft(prev => ({ ...prev, [String(row.id)]: e.target.value }))}
-                          className="w-full h-9 rounded-lg bg-slate-900 border border-slate-700 text-white text-[10px] font-bold px-2 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
-                        >
-                          <option value="">Selecionar profissional...</option>
-                          {assignedProf && !candidates.some(p => String(p.id) === String(assignedProf.id)) && (
-                            <option value={String(assignedProf.id)} disabled={!assignedProfAuthorized}>
-                              {assignedProf.name} • {assignedProfAuthorized ? 'selecionado' : 'não autorizado para este setor'}
-                            </option>
-                          )}
-                          {candidates.map(p => (
-                            <option key={p.id} value={String(p.id)}>
-                              {p.name} • {p.specialty || 'Geral'}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="px-3 py-2 text-center">
-                        {assignedId ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 text-[10px] font-black uppercase">
-                            <Check className="w-3 h-3" /> Alocada
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-black uppercase">
-                            <Flame className="w-3 h-3" /> Vaga
-                          </span>
+                <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-slate-800">
+                  {rows.map((row, index) => {
+                    const assignedId = bulkAllocationDraft[String(row.id)] || '';
+                    const candidates = getBulkCandidates(row, bulkAllocationDraft);
+                    const assignedProf = assignedId ? professionalMap[String(assignedId)] : null;
+                    const isNewDay = index === 0 || rows[index - 1].date !== row.date;
+
+                    return (
+                      <React.Fragment key={row.id}>
+                        {isNewDay && (
+                          <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur px-3 py-1.5 text-[11px] font-semibold text-slate-300 border-b border-slate-800">
+                            {(() => { const s = new Date(row.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short' }); return s.charAt(0).toUpperCase() + s.slice(1); })()}
+                          </div>
                         )}
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
+                        <div className="grid grid-cols-[88px_minmax(0,1fr)] sm:grid-cols-[110px_minmax(0,180px)_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-3 py-2 border-b border-slate-800/70 last:border-b-0">
+                          <span className="font-mono text-xs text-slate-200 whitespace-nowrap">{row.start_time}–{row.end_time}</span>
+                          <span className="text-[11px] text-slate-400 truncate">{extractSpecialty(row)}</span>
+                          <select
+                            value={assignedId}
+                            onChange={e => setBulkAllocationDraft(prev => ({ ...prev, [String(row.id)]: e.target.value }))}
+                            aria-label={`Profissional para ${formatDateBR(row.date)} ${row.start_time}`}
+                            className={`col-span-2 sm:col-span-1 w-full h-9 rounded-lg border text-xs px-2 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer ${assignedId ? 'bg-slate-900 border-emerald-600/50 text-white' : 'bg-slate-950 border-slate-700 text-slate-400'}`}
+                          >
+                            <option value="">Deixar como vaga aberta</option>
+                            {assignedProf && !candidates.some(p => String(p.id) === String(assignedProf.id)) && (
+                              <option value={String(assignedProf.id)}>{assignedProf.name}</option>
+                            )}
+                            {candidates.map(p => (
+                              <option key={p.id} value={String(p.id)}>
+                                {p.name}{load[String(p.id)] ? ` · ${load[String(p.id)]} plantão(ões)` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
 
-          <DialogFooter className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setBulkAllocationOpen(false)}
-              className="h-11 border-slate-700 text-slate-300 rounded-xl cursor-pointer"
-            >
-              Fechar
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSaveBulkAllocation}
-              disabled={submitting}
-              className="h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-black px-7 rounded-xl shadow-lg shadow-emerald-500/20 cursor-pointer"
-            >
-              <CheckCheck className="w-4 h-4 mr-2" /> Salvar alocações
-            </Button>
+          <DialogFooter className="pt-4 mt-3 border-t border-slate-800 flex flex-col-reverse sm:flex-row sm:justify-between gap-2 shrink-0">
+            <div className="flex gap-2">
+              <Button type="button" variant="ghost" onClick={backToGenerator} disabled={submitting} className="h-11 text-slate-300 hover:text-white rounded-xl cursor-pointer">
+                <ChevronLeft className="w-4 h-4 mr-1" /> Voltar à grade
+              </Button>
+              <Button type="button" variant="ghost" onClick={discardGeneratedSchedule} disabled={submitting} className="h-11 text-slate-400 hover:text-rose-300 rounded-xl cursor-pointer">
+                Descartar
+              </Button>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => handleSaveGeneratedSchedule(false)} disabled={submitting} className="h-11 border-slate-700 bg-transparent text-slate-200 hover:bg-slate-900 hover:text-white rounded-xl font-semibold cursor-pointer">
+                Salvar como rascunho
+              </Button>
+              <Button type="button" onClick={() => handleSaveGeneratedSchedule(true)} disabled={submitting} className="h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 rounded-xl cursor-pointer">
+                <Send className="w-4 h-4 mr-2" /> {submitting ? 'Salvando…' : 'Salvar e publicar'}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
