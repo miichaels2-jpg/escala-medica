@@ -45,17 +45,19 @@ export default function Login() {
 
   useEffect(() => {
     try {
+      // "Lembrar-me" guarda só o usuário. Senhas gravadas por versões antigas são apagadas.
+      window.localStorage.removeItem('scale_remember_pass');
       const savedLogin = window.localStorage.getItem('scale_remember_login');
-      const savedPass = window.localStorage.getItem('scale_remember_pass');
       if (savedLogin) {
         setLoginId(savedLogin);
-        if (savedPass) setPassword(savedPass);
         setRememberMe(true);
       }
     } catch {}
   }, []);
 
-  const proceedWithLogin = async (userRecord, unitIdToSave) => {
+  const proceedWithLogin = async (rawUserRecord, unitIdToSave) => {
+    // Nunca guarda senha ou hash no navegador.
+    const { password: _password, password_hash: _passwordHash, ...userRecord } = rawUserRecord || {};
     window.localStorage.setItem('scale_logged_user', JSON.stringify(userRecord));
     window.localStorage.setItem('escala_medica_session', 'active');
     
@@ -119,10 +121,8 @@ export default function Login() {
 
       if (rememberMe) {
         window.localStorage.setItem('scale_remember_login', cleanInput);
-        window.localStorage.setItem('scale_remember_pass', password);
       } else {
         window.localStorage.removeItem('scale_remember_login');
-        window.localStorage.removeItem('scale_remember_pass');
       }
 
       if ((cleanInput.toLowerCase() === 'admin' || cleanInput.toLowerCase() === 'admin@admin.com') && (password === '123456' || password === 'admin')) {
@@ -189,6 +189,9 @@ export default function Login() {
     e.preventDefault();
     setPasswordError('');
     if (newPassword.length < 6) return setPasswordError('A nova senha deve ter no mínimo 6 caracteres.');
+    if (['123456', '12345678', 'changeme123', 'senha123'].includes(newPassword)) {
+      return setPasswordError('Escolha uma senha pessoal: senhas padrão ou de sequência não são aceitas.');
+    }
     if (newPassword !== confirmNewPassword) return setPasswordError('As senhas não coincidem. Tente novamente.');
 
     setLoadingAction(true);
@@ -196,16 +199,13 @@ export default function Login() {
       const updatedData = { ...pendingUser.data };
       delete updatedData.must_change_password;
 
-      await supabase.from('users').update({ 
+      const { error: passwordUpdateError } = await supabase.from('users').update({ 
         password: newPassword,
         data: updatedData 
       }).eq('id', pendingUser.id);
+      if (passwordUpdateError) throw passwordUpdateError;
 
       pendingUser.data = updatedData;
-      
-      if (rememberMe) {
-        window.localStorage.setItem('scale_remember_pass', newPassword);
-      }
 
       setShowPasswordChangeModal(false);
       continueLoginFlow(pendingUser, availableUnits);

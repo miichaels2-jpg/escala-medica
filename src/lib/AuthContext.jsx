@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { USER_PUBLIC_COLUMNS } from '@/lib/useAppData';
 
 const defaultAuthState = {
   user: null,
@@ -33,7 +34,7 @@ export const AuthProvider = ({ children }) => {
   const fetchUserProfile = async (authUser) => {
     if (!authUser) return null;
     try {
-      const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single();
+      const { data: profile } = await supabase.from('users').select(USER_PUBLIC_COLUMNS).eq('id', authUser.id).single();
       return { ...authUser, ...(profile || {}) };
     } catch {
       return authUser;

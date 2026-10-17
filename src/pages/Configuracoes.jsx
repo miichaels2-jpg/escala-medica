@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useAppData } from '@/lib/useAppData';
+import { USER_PUBLIC_COLUMNS, useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -103,7 +103,7 @@ export default function Configuracoes() {
   const loadUsers = async () => {
     if (!companyId) return;
     try {
-      const { data } = await supabase.from('users').select('*');
+      const { data } = await supabase.from('users').select(USER_PUBLIC_COLUMNS);
       const filtered = (data || []).filter(u => u.data?.company_id === companyId || u.company_id === companyId);
       setCompanyUsers(filtered);
     } catch (e) {}
@@ -384,17 +384,21 @@ export default function Configuracoes() {
           unit_id: selectedUnitId,
           allowed_unit_ids: [selectedUnitId],
           status: 'pendente',
+          must_change_password: true,
           is_active: true,
           app_role: inviteRole === 'admin' ? 'gestor' : 'assistencial'
         }
       };
 
       const { error } = await supabase.from('users').insert([payload]);
-      if (error && error.code !== '23505') throw error; 
+      if (error && error.code !== '23505') throw error;
+      const alreadyExisted = error?.code === '23505';
 
       setInviteEmail('');
       loadUsers();
-      alert(`Acesso liberado! O profissional ${inviteEmail} já pode fazer login na unidade ${currentUnit?.name || 'Hospital Atual'}.`);
+      alert(alreadyExisted
+        ? `O e-mail ${inviteEmail} já possui acesso cadastrado. Nada foi alterado.`
+        : `Acesso liberado! ${inviteEmail} já pode entrar na unidade ${currentUnit?.name || 'Hospital Atual'} com a senha provisória changeme123 (o sistema pede a troca no primeiro acesso).`);
     } catch (err) { alert(err.message || 'Erro ao liberar acesso'); } 
     finally { setSaving(false); }
   };

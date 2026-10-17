@@ -9,6 +9,7 @@ import {
   Clock, Hospital, Bell, Flame, CheckCircle2, ChevronRight, CheckCheck, Smartphone
 } from 'lucide-react';
 import { InstallAppBanner, InstallAppDialog } from '@/components/InstallAppGuide';
+import { NotificationPanel, useNotificationCenter } from '@/components/NotificationCenter';
 import { usePwaInstall } from '@/lib/pwa';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -72,14 +73,6 @@ export default function AppLayout({ children }) {
     setMobileMenuOpen(false);
     setNotifOpen(false);
   }, [location.pathname]);
-  const [readNotifIds, setReadNotifIds] = useState(() => {
-    try {
-      return JSON.parse(window.localStorage.getItem('scale_read_notifs') || '[]');
-    } catch {
-      return [];
-    }
-  });
-
   const [theme, setTheme] = useState('dark');
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
@@ -148,45 +141,8 @@ export default function AppLayout({ children }) {
     window.location.reload();
   };
 
-  const userCategory = currentProfessional?.category || (currentProfessional?.specialty?.toLowerCase().includes('enferm') ? 'enfermeiro' : 'medico');
-  // Data local: toISOString usa UTC e, após as 21h no Brasil, já seria "amanhã".
-  const todayStr = `${currentTime.getFullYear()}-${String(currentTime.getMonth() + 1).padStart(2, '0')}-${String(currentTime.getDate()).padStart(2, '0')}`;
-
-  const rawMuralShifts = (shifts || []).filter(s => {
-    const isVago = s.status === 'vago' || s.is_open === true;
-    const isCancelado = String(s.status || '').toLowerCase().includes('cancel') || String(s.notes || '').toLowerCase().includes('cancel');
-    if (!isVago || isCancelado) return false;
-    if (s.date && s.date < todayStr) return false;
-
-    if (String(s.unit_id) !== String(selectedUnitId)) return false;
-
-    if (!isManager) {
-      const targetCat = s.target_category || 'medico';
-      if (targetCat !== userCategory) return false;
-    }
-    return true;
-  });
-
-  const unreadMuralShifts = rawMuralShifts.filter(s => !readNotifIds.includes(s.id));
-
-  const handleMarkAsRead = (shiftId) => {
-    const updated = [...readNotifIds, shiftId];
-    setReadNotifIds(updated);
-    try {
-      window.localStorage.setItem('scale_read_notifs', JSON.stringify(updated));
-    } catch {}
-    setNotifOpen(false);
-    navigate('/trocas');
-  };
-
-  const handleMarkAllAsRead = () => {
-    const allIds = rawMuralShifts.map(s => s.id);
-    const merged = Array.from(new Set([...readNotifIds, ...allIds]));
-    setReadNotifIds(merged);
-    try {
-      window.localStorage.setItem('scale_read_notifs', JSON.stringify(merged));
-    } catch {}
-  };
+  const notificationCenter = useNotificationCenter({ user, currentProfessional, shifts, selectedUnitId, isManager });
+  const muralBadge = notificationCenter.unreadVacancies.length;
 
   const dayName = WEEKDAYS_LONG[currentTime.getDay()];
   const formattedDate = currentTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -195,7 +151,7 @@ export default function AppLayout({ children }) {
   const navItems = [
     { label: 'Painel Geral', path: '/dashboard', icon: LayoutDashboard, visible: true },
     { label: 'Escalas & Plantões', path: '/escalas', icon: CalendarDays, visible: true },
-    { label: 'Mural de Oportunidades', path: '/trocas', icon: Flame, visible: true, badge: unreadMuralShifts.length },
+    { label: 'Mural de Oportunidades', path: '/trocas', icon: Flame, visible: true, badge: muralBadge },
     { label: 'Minha Escala', path: '/minha-escala', icon: Activity, visible: true },
     { label: 'Corpo Clínico', path: '/corpo-clinico', icon: Users, visible: isManager || isBilling },
     { label: 'Setores & Especialidades', path: '/setores', icon: Building2, visible: isManager },
@@ -228,7 +184,7 @@ export default function AppLayout({ children }) {
       ? { label: 'Minha Escala', path: '/minha-escala', icon: Activity }
       : { label: 'Painel', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Escalas', path: '/escalas', icon: CalendarDays },
-    { label: 'Mural', path: '/trocas', icon: Flame, badge: unreadMuralShifts.length }
+    { label: 'Mural', path: '/trocas', icon: Flame, badge: muralBadge }
   ];
   const userInitials = String(user?.full_name || user?.email || 'U')
     .trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase();
@@ -355,70 +311,18 @@ export default function AppLayout({ children }) {
                 type="button"
                 onClick={() => setNotifOpen(!notifOpen)}
                 className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300 transition-all relative shadow-sm cursor-pointer"
-                title="Notificações"
+                title="Notificações" aria-label="Notificações"
               >
                 <Bell className="w-4 h-4" />
-                {unreadMuralShifts.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-500 text-white font-mono font-black text-[10px] flex items-center justify-center animate-bounce shadow-lg shadow-rose-500/50">
-                    {unreadMuralShifts.length}
+                {notificationCenter.unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-rose-500 text-white font-mono font-black text-[10px] flex items-center justify-center shadow-lg shadow-rose-500/50">
+                    {notificationCenter.unreadCount > 99 ? '99+' : notificationCenter.unreadCount}
                   </span>
                 )}
               </button>
 
               {notifOpen && (
-                <div className="fixed left-3 right-3 top-[calc(4rem+env(safe-area-inset-top))] sm:absolute sm:left-auto sm:right-0 sm:top-auto mt-2 sm:w-96 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2">
-                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                    <div className="flex items-center gap-2">
-                      <Bell className="w-4 h-4 text-sky-600" />
-                      <span className="text-xs font-black uppercase text-slate-900 dark:text-white">Central de Vagas</span>
-                    </div>
-                    {unreadMuralShifts.length > 0 && (
-                      <button 
-                        onClick={handleMarkAllAsRead} 
-                        className="text-[10px] font-bold text-sky-600 hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <CheckCheck className="w-3 h-3" /> Limpar todas
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
-                    {unreadMuralShifts.length === 0 ? (
-                      <div className="text-center py-6 space-y-1">
-                        <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto opacity-80" />
-                        <p className="text-xs font-bold text-slate-900 dark:text-white">Nenhuma notificação pendente</p>
-                        <p className="text-[11px] text-slate-500">Você já visualizou todas as vagas abertas.</p>
-                      </div>
-                    ) : (
-                      unreadMuralShifts.map(shift => (
-                        <div 
-                          key={shift.id} 
-                          onClick={() => handleMarkAsRead(shift.id)}
-                          className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:border-amber-500 transition-all cursor-pointer space-y-1 group"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                              <Flame className="w-3 h-3" /> Vaga Disponível
-                            </span>
-                            <span className="text-[10px] font-mono text-slate-400">{shift.date}</span>
-                          </div>
-                          <p className="text-xs font-black text-slate-900 dark:text-white group-hover:text-sky-600 transition-colors">
-                            Plantão {shift.shift_type === 'diurno' ? '07h às 19h' : '19h às 07h'}
-                          </p>
-                          <span className="text-[10px] text-slate-500 block">Clique para assumir este plantão no Mural.</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  <Button 
-                    size="sm" 
-                    onClick={() => { setNotifOpen(false); navigate('/trocas'); }}
-                    className="w-full h-8 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl cursor-pointer"
-                  >
-                    Ir para o Mural de Oportunidades <ChevronRight className="w-3.5 h-3.5 ml-1" />
-                  </Button>
-                </div>
+                <NotificationPanel center={notificationCenter} isManager={isManager} onClose={() => setNotifOpen(false)} />
               )}
             </div>
 

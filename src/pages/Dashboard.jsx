@@ -83,7 +83,7 @@ function computeShiftLiveStatus(shift, liveNowDate) {
 }
 
 export default function Painel() {
-  const { user, company, units = [], selectedUnitId, isManager, shifts, sectors, professionals, loading } = useAppData();
+  const { user, company, units = [], selectedUnitId, isManager, shifts, sectors, professionals, loading, publishedRanges, getPublishedRanges } = useAppData();
   const navigate = useNavigate();
 
   const [tvMode, setTvMode] = useState(false);
@@ -111,16 +111,8 @@ export default function Painel() {
   }, [company, currentTime]);
 
   const unsubmittedSectors = useMemo(() => {
-    return (sectors || []).filter(s => {
-      try {
-        const raw = window.localStorage.getItem(`scale_published_ranges_${unitId}_${s.id}_${currentYear}_${currentMonth + 1}`);
-        const ranges = raw ? JSON.parse(raw) : [];
-        return ranges.length === 0;
-      } catch {
-        return true;
-      }
-    });
-  }, [sectors, unitId, currentYear, currentMonth]);
+    return (sectors || []).filter(s => getPublishedRanges(unitId, s.id, currentYear, currentMonth + 1).length === 0);
+  }, [sectors, unitId, currentYear, currentMonth, publishedRanges]);
 
   function getProfMeta(prof) {
     if (!prof) return {};

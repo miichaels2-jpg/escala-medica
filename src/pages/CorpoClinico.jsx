@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { useAppData } from '@/lib/useAppData';
+import { USER_PUBLIC_COLUMNS, useAppData } from '@/lib/useAppData';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -839,29 +839,53 @@ export default function CorpoClinico() {
         app_role: formData.app_role,
         registration_code: formData.registration_id,
         status: formData.status,
-        must_change_password: !!formData.password 
+        // Vínculo usado para entregar notificações e montar a "Minha Escala".
+        ...(savedProfId ? { professional_id: String(savedProfId) } : {})
       };
 
+      let userSyncWarning = '';
       try {
-        const { data: existingUsers } = await supabase.from('users').select('*').eq('email', finalEmail);
+        const { data: existingUsers, error: lookupError } = await supabase.from('users').select(USER_PUBLIC_COLUMNS).eq('email', finalEmail);
+        if (lookupError) throw lookupError;
+        let linkedUserId = null;
         if (existingUsers && existingUsers.length > 0) {
+          const existingData = existingUsers[0].data || {};
           let updatePayload = {
             username: cleanUsername,
             full_name: formData.name,
-            data: { ...(existingUsers[0].data || {}), ...userDataPayload, is_active: formData.status === 'ativo' }
+            data: {
+              ...existingData,
+              ...userDataPayload,
+              is_active: formData.status === 'ativo',
+              // Só uma nova senha definida pelo gestor obriga a troca; editar o
+              // cadastro sem mexer na senha mantém a situação atual.
+              must_change_password: formData.password ? true : Boolean(existingData.must_change_password)
+            }
           };
           if (formData.password) updatePayload.password = formData.password;
-          await supabase.from('users').update(updatePayload).eq('id', existingUsers[0].id);
+          const { error: updateError } = await supabase.from('users').update(updatePayload).eq('id', existingUsers[0].id);
+          if (updateError) throw updateError;
+          linkedUserId = existingUsers[0].id;
         } else {
+          // Senha provisória (informada ou padrão): o profissional troca no 1º acesso.
           const finalPass = formData.password || '123456';
-          await supabase.from('users').insert([{
+          const { data: createdUser, error: insertError } = await supabase.from('users').insert([{
             email: finalEmail, username: cleanUsername, password: finalPass,
-            full_name: formData.name, data: { ...userDataPayload, is_active: formData.status === 'ativo' }
-          }]);
+            full_name: formData.name,
+            data: { ...userDataPayload, must_change_password: true, is_active: formData.status === 'ativo' }
+          }]).select('id').single();
+          if (insertError) throw insertError;
+          linkedUserId = createdUser?.id || null;
         }
-      } catch (uErr) { console.warn('Aviso na sincronização de usuário:', uErr); }
+        if (linkedUserId && savedProfId && String(savedProf?.user_id || editingProf?.user_id || '') !== String(linkedUserId)) {
+          await supabase.from('professionals').update({ user_id: String(linkedUserId) }).eq('id', savedProfId);
+        }
+      } catch (uErr) {
+        console.warn('Aviso na sincronização de usuário:', uErr);
+        userSyncWarning = `\n\nAtenção: o acesso ao sistema (login) não foi atualizado: ${uErr?.message || 'erro desconhecido'}.`;
+      }
 
-      setModalOpen(false); resetForm(); await syncGlobalData(); alert('Profissional salvo com sucesso!');
+      setModalOpen(false); resetForm(); await syncGlobalData(); alert(`Profissional salvo com sucesso!${userSyncWarning}`);
     } catch (err) { alert('Erro ao salvar: ' + err.message); } finally { setSubmitting(false); }
   };
 

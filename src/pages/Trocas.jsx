@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { supabase } from '@/lib/supabase';
 import { getShiftDateTimeRange } from '@/lib/shiftLiveStatus';
+import { recipientFor, sendNotifications } from '@/lib/notifications';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
@@ -120,6 +121,7 @@ export default function Trocas() {
     professionals = [], 
     currentProfessional, 
     selectedUnitId,
+    company,
     user,
     isManager, 
     syncGlobalData 
@@ -135,6 +137,25 @@ export default function Trocas() {
       (p.name && user?.full_name && p.name.toLowerCase().trim() === user.full_name.toLowerCase().trim())
     ) || null;
   }, [currentProfessional, professionals, user]);
+
+  // Avisa o profissional que pediu a troca (pelo ID gravado no pedido ou pelo nome).
+  const notifyRequester = async (shift, audit, title, message, type) => {
+    const requester = (professionals || []).find(p =>
+      (audit.offeredById && String(p.id) === String(audit.offeredById)) ||
+      (!audit.offeredById && audit.offeredByName && String(p.name || '').toLowerCase().trim() === audit.offeredByName.toLowerCase().trim())
+    ) || (audit.offeredById ? { id: audit.offeredById } : null);
+    if (!requester) return;
+    await sendNotifications([{
+      ...recipientFor(requester),
+      company_id: shift.company_id || company?.id,
+      unit_id: shift.unit_id || selectedUnitId,
+      type,
+      category: 'troca',
+      title,
+      message,
+      data: { shift_id: shift.id, date: shift.date }
+    }]);
+  };
 
   const sectorMap = useMemo(() => {
     const m = {};
@@ -308,6 +329,7 @@ export default function Trocas() {
         notes: updatedNotes
       });
 
+      await notifyRequester(shift, audit, 'Troca aprovada', `Seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) foi liberado no Mural pela coordenação.`, 'troca_aprovada');
       await syncGlobalData();
       alert('Plantão autorizado e publicado com sucesso no Mural de Oportunidades!');
     } catch (err) {
@@ -340,6 +362,7 @@ export default function Trocas() {
         notes: updatedNotes
       });
 
+      await notifyRequester(shift, audit, 'Troca recusada', `O pedido para liberar seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) foi recusado. O plantão continua com você.`, 'troca_recusada');
       await syncGlobalData();
       alert(`Solicitação cancelada. O plantão permanece com ${originName}.`);
     } catch (err) {
@@ -393,6 +416,9 @@ export default function Trocas() {
         notes: updatedNotes
       });
 
+      if (audit.offeredById || audit.offeredByName) {
+        await notifyRequester(shift, audit, 'Seu plantão foi assumido', `${myProf.name} assumiu o plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) que você liberou no Mural.`, 'troca_assumida');
+      }
       await syncGlobalData();
       alert(`Plantão confirmado com sucesso para ${myProf.name}!`);
     } catch (err) {

@@ -125,12 +125,8 @@ function getSpreadsheetCellValue(cell) {
   return value;
 }
 
-function getPaymentStatusKey(unitId, professionalId, monthPrefix) {
-  return `${unitId}_${professionalId}_${monthPrefix}`;
-}
-
 export default function Faturamento() {
-  const { shifts = [], professionals = [], sectors = [], company, selectedUnitId, units = [], isManager, syncGlobalData } = useAppData();
+  const { shifts = [], professionals = [], sectors = [], company, user, selectedUnitId, units = [], isManager, syncGlobalData, paymentStatuses, isPaymentMarkedPaid, savePaymentStatus } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [now, setNow] = useState(() => new Date());
@@ -150,43 +146,6 @@ export default function Faturamento() {
     const intervalId = window.setInterval(() => setNow(new Date()), 60_000);
     return () => window.clearInterval(intervalId);
   }, []);
-
-  const [pagamentosStatus, setPagamentosStatus] = useState(() => {
-    try { 
-      const stored = window.localStorage.getItem('scale_faturamento_pagos');
-      const parsed = stored ? JSON.parse(stored) : {};
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch (error) {
-      console.warn('Não foi possível carregar os status de pagamento locais:', error);
-      return {};
-    }
-  });
-
-  useEffect(() => {
-    const mappings = units.filter(unit => unit.id && unit.legacy_id &&
-      String(unit.id) !== String(unit.legacy_id));
-    if (mappings.length === 0) return;
-
-    const nextState = { ...pagamentosStatus };
-    let changed = false;
-    mappings.forEach(unit => {
-      const oldPrefix = `${unit.legacy_id}_`;
-      Object.keys(nextState).filter(key => key.startsWith(oldPrefix)).forEach(oldKey => {
-        const newKey = `${unit.id}_${oldKey.slice(oldPrefix.length)}`;
-        nextState[newKey] = Boolean(nextState[newKey] || nextState[oldKey]);
-        delete nextState[oldKey];
-        changed = true;
-      });
-    });
-    if (!changed) return;
-
-    try {
-      window.localStorage.setItem('scale_faturamento_pagos', JSON.stringify(nextState));
-      setPagamentosStatus(nextState);
-    } catch (error) {
-      console.warn('Não foi possível atualizar os status locais de pagamento para os UUIDs hospitalares:', error);
-    }
-  }, [units, pagamentosStatus]);
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
@@ -284,57 +243,29 @@ export default function Faturamento() {
     );
   }, [isProductivityPoolUnit, productivityRuleUnitId, productivityRule?.daily_amount, shifts, monthPrefix, todayStr, now, productivityProfessionalsById]);
 
-  useEffect(() => {
-    if (professionals.length === 0) return;
-    const migratedStatus = { ...pagamentosStatus };
-    let changed = false;
+  const [paymentSavingId, setPaymentSavingId] = useState(null);
 
-    professionals.forEach(professional => {
-      if (!professional?.id) return;
-      const meta = getProfessionalMeta(professional);
-      const primaryUnitId = professional.unit_id || meta.allowed_unit_ids?.[0] || professional.unit_ids?.[0];
-      if (!primaryUnitId) return;
-      const legacyPrefix = `${professional.id}_`;
-      Object.keys(migratedStatus).forEach(legacyKey => {
-        if (!legacyKey.startsWith(legacyPrefix)) return;
-        const month = legacyKey.slice(legacyPrefix.length);
-        if (!/^\d{4}-\d{2}$/.test(month)) return;
-
-        const scopedKey = getPaymentStatusKey(primaryUnitId, professional.id, month);
-        if (!Object.prototype.hasOwnProperty.call(migratedStatus, scopedKey)) {
-          migratedStatus[scopedKey] = migratedStatus[legacyKey];
-        }
-        delete migratedStatus[legacyKey];
-        changed = true;
-      });
-    });
-
-    if (changed) {
-      setPagamentosStatus(migratedStatus);
-      try {
-        window.localStorage.setItem('scale_faturamento_pagos', JSON.stringify(migratedStatus));
-      } catch (error) {
-        console.warn('Não foi possível migrar os status de pagamento para as unidades:', error);
-      }
-    }
-  }, [professionals, pagamentosStatus]);
-
-  const handleTogglePago = (profId) => {
+  // O status "PAGO" fica no banco (payment_statuses): todos os gestores veem o mesmo.
+  const handleTogglePago = async (profId) => {
     const item = reportData.find(summary => String(summary.prof.id) === String(profId));
     if (item?.awaitingProduction && !item.isPago) {
       alert('Não é possível marcar como pago enquanto houver plantões por produtividade sem apuração registrada.');
       return;
     }
-    setPagamentosStatus(prev => {
-      const key = getPaymentStatusKey(selectedUnitId, profId, monthPrefix);
-      const nextState = { ...prev, [key]: !prev[key] };
-      try {
-        window.localStorage.setItem('scale_faturamento_pagos', JSON.stringify(nextState));
-      } catch (error) {
-        console.warn('Não foi possível salvar o status de pagamento neste navegador:', error);
-      }
-      return nextState;
-    });
+    setPaymentSavingId(String(profId));
+    try {
+      await savePaymentStatus({
+        unitId: selectedUnitId,
+        professionalId: profId,
+        month: monthPrefix,
+        paid: !item?.isPago,
+        updatedBy: user?.full_name || user?.email || null
+      });
+    } catch (error) {
+      alert(`O status de pagamento não foi salvo. ${error?.message || 'Verifique a conexão e tente novamente.'}`);
+    } finally {
+      setPaymentSavingId(null);
+    }
   };
 
   const handleSaveProductivityConfiguration = async () => {
@@ -743,7 +674,7 @@ export default function Faturamento() {
       valorBrutoTotal = roundCurrency(valorBrutoTotal);
       const valorDesconto = roundCurrency((valorBrutoTotal * item.taxRate) / 100);
       const valorLiquido = roundCurrency(valorBrutoTotal - valorDesconto);
-      const isPago = pagamentosStatus[getPaymentStatusKey(selectedUnitId, item.prof.id, monthPrefix)] || false;
+      const isPago = isPaymentMarkedPaid(selectedUnitId, item.prof.id, monthPrefix);
 
       return {
         ...item,
@@ -760,7 +691,7 @@ export default function Faturamento() {
       item.plantõesFuturos > 0 ||
       (['mensal', 'monthly', 'salario mensal'].includes(item.remunType) && item.profStatus === 'ativo' && item.isAssignedToCurrentUnit)
     );
-  }, [professionals, shifts, monthPrefix, selectedUnitId, pagamentosStatus, todayStr, now, productivityAllocations, isProductivityPoolUnit]);
+  }, [professionals, shifts, monthPrefix, selectedUnitId, paymentStatuses, todayStr, now, productivityAllocations, isProductivityPoolUnit]);
 
   const filteredReport = useMemo(() => {
     const term = normalizeText(searchQuery);
@@ -1486,7 +1417,7 @@ export default function Faturamento() {
                       <td className="py-3 px-4 text-center">
                         <button 
                           onClick={() => handleTogglePago(item.prof.id)}
-                          disabled={item.awaitingProduction && !item.isPago}
+                          disabled={(item.awaitingProduction && !item.isPago) || paymentSavingId === String(item.prof.id)}
                           title={item.awaitingProduction ? item.isPago ? 'O pagamento já marcado deve ser revisado após a apuração.' : 'Aguarde o lançamento da produção para conciliar o pagamento.' : undefined}
                           className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all border disabled:cursor-not-allowed disabled:opacity-60 ${
                             item.isPago 

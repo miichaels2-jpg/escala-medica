@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
+import { recipientFor, sendNotifications } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -175,74 +176,26 @@ function extractRetroactiveJustification(notes) {
   return match && match[1] ? match[1].trim() : '';
 }
 
-function createScheduleNotification(notification) {
-  try {
-    const storageKeys = ['hospital_notifications', 'mural_notifications'];
-    const current = {
-      id: notification.id || `escala_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      type: 'escala_publicada',
-      category: 'mural',
-      title: notification.title || 'Novo plantão publicado',
-      message: notification.message || 'Um novo plantão foi publicado na sua escala.',
-      professional_id: notification.professional_id || null,
-      shift_id: notification.shift_id || null,
-      date: notification.date || null,
-      start_time: notification.start_time || null,
-      end_time: notification.end_time || null,
-      sector_id: notification.sector_id || null,
-      company_id: notification.company_id || null,
-      unit_id: notification.unit_id || null,
-      read: false,
-      created_at: new Date().toISOString()
-    };
-
-    storageKeys.forEach(key => {
-      const raw = window.localStorage.getItem(key);
-      const list = raw ? JSON.parse(raw) : [];
-      const safeList = Array.isArray(list) ? list : [];
-      safeList.unshift(current);
-      window.localStorage.setItem(key, JSON.stringify(safeList.slice(0, 300)));
+// Divide um período em trechos por mês (cada mês guarda a sua publicação).
+function splitRangeByMonth(startDate, endDate) {
+  const parts = [];
+  if (!startDate || !endDate || startDate > endDate) return parts;
+  let [year, month] = startDate.split('-').map(Number);
+  const [endYear, endMonth] = endDate.split('-').map(Number);
+  while (year < endYear || (year === endYear && month <= endMonth)) {
+    const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    parts.push({
+      year,
+      month,
+      start_date: startDate > monthStart ? startDate : monthStart,
+      end_date: endDate < monthEnd ? endDate : monthEnd
     });
-
-    window.dispatchEvent(new CustomEvent('hospital-notification-created', { detail: current }));
-    window.dispatchEvent(new CustomEvent('mural-notification-created', { detail: current }));
-
-    return current;
-  } catch (error) {
-    return null;
+    month += 1;
+    if (month > 12) { month = 1; year += 1; }
   }
-}
-
-async function createRemoteScheduleNotification(notification, professional) {
-  const recipientUserId = professional?.user_id || professional?.userId || professional?.auth_user_id;
-  if (!recipientUserId) return false;
-
-  try {
-    const { error } = await supabase.from('notifications').insert([{
-      user_id: recipientUserId,
-      professional_id: notification.professional_id || professional.id || null,
-      type: 'escala_publicada',
-      category: 'mural',
-      title: notification.title || 'Novo plantão publicado',
-      message: notification.message || 'Um novo plantão foi publicado na sua escala.',
-      read: false,
-      data: {
-        shift_id: notification.shift_id || null,
-        date: notification.date || null,
-        start_time: notification.start_time || null,
-        end_time: notification.end_time || null,
-        sector_id: notification.sector_id || null,
-        company_id: notification.company_id || null,
-        unit_id: notification.unit_id || null
-      }
-    }]);
-
-    return !error;
-  } catch (error) {
-    // A tela continua funcionando mesmo se o projeto ainda não possuir
-    // a tabela de notificações. O evento/localStorage continua disponível.
-    return false;
-  }
+  return parts;
 }
 
 async function autoHealingSaveShift(id, initialPayload) {
@@ -263,7 +216,7 @@ async function autoHealingSaveShift(id, initialPayload) {
 }
 
 export default function Escalas() {
-  const { shifts = [], sectors = [], professionals = [], selectedUnitId, units = [], company, isManager, syncGlobalData, unassignedShifts = [] } = useAppData();
+  const { shifts = [], allCompanyShifts = [], allCompanySectors = [], sectors = [], professionals = [], selectedUnitId, units = [], company, user, isManager, syncGlobalData, unassignedShifts = [], publishedRanges, getPublishedRanges, savePublishedRanges } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState('mensal'); 
@@ -337,25 +290,20 @@ const closeTvMode = async () => {
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
 
-  const [publishedVersion, setPublishedVersion] = useState(0);
-
-  const getSectorPublishedRanges = (secId) => {
-    try {
-      const raw = window.localStorage.getItem(`scale_published_ranges_${selectedUnitId}_${secId}_${currentYear}_${currentMonth + 1}`);
-      return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
-  };
+  // Publicações ficam no banco (published_schedules): todos os gestores veem o mesmo estado.
+  const getSectorPublishedRanges = (secId, year = currentYear, month = currentMonth + 1) =>
+    getPublishedRanges(selectedUnitId, secId, year, month);
 
   const isCurrentSectorPublished = useMemo(() => {
     if (selectedSectorId === 'todos') {
       return (sectors || []).length > 0 && (sectors || []).every(s => getSectorPublishedRanges(s.id).length > 0);
     }
     return getSectorPublishedRanges(selectedSectorId).length > 0;
-  }, [selectedSectorId, sectors, currentYear, currentMonth, selectedUnitId, publishedVersion]);
+  }, [selectedSectorId, sectors, currentYear, currentMonth, selectedUnitId, publishedRanges]);
 
   const unsubmittedSectors = useMemo(() => {
     return (sectors || []).filter(s => getSectorPublishedRanges(s.id).length === 0);
-  }, [sectors, currentYear, currentMonth, selectedUnitId, publishedVersion]);
+  }, [sectors, currentYear, currentMonth, selectedUnitId, publishedRanges]);
 
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [publishConfig, setPublishConfig] = useState({
@@ -394,13 +342,11 @@ const closeTvMode = async () => {
 
   const existingPublishedOverlaps = useMemo(() => {
     if (!publishConfig.sector_id || !publishConfig.start_date || !publishConfig.end_date) return [];
-    const ranges = getSectorPublishedRanges(publishConfig.sector_id);
+    const ranges = splitRangeByMonth(publishConfig.start_date, publishConfig.end_date)
+      .flatMap(part => getSectorPublishedRanges(publishConfig.sector_id, part.year, part.month));
 
-    return ranges.filter(r => {
-      return Math.max(new Date(r.start_date).getTime(), new Date(publishConfig.start_date).getTime()) <= 
-             Math.min(new Date(r.end_date).getTime(), new Date(publishConfig.end_date).getTime());
-    });
-  }, [publishConfig, publishedVersion]);
+    return ranges.filter(r => r.start_date <= publishConfig.end_date && r.end_date >= publishConfig.start_date);
+  }, [publishConfig, publishedRanges, selectedUnitId]);
 
   const publishTargetShifts = useMemo(() => {
     if (!publishConfig.sector_id || !publishConfig.start_date || !publishConfig.end_date) return [];
@@ -425,22 +371,25 @@ const closeTvMode = async () => {
 
     setSubmitting(true);
     try {
-      const storageKey = `scale_published_ranges_${selectedUnitId}_${publishConfig.sector_id}_${currentYear}_${currentMonth + 1}`;
-      const currentRanges = getSectorPublishedRanges(publishConfig.sector_id);
-      
-      const newRange = {
-        start_date: publishConfig.start_date,
-        end_date: publishConfig.end_date,
-        published_at: new Date().toISOString()
-      };
+      const publishedAt = new Date().toISOString();
+      // Um período pode atravessar meses: cada mês guarda só o trecho que lhe pertence.
+      for (const part of splitRangeByMonth(publishConfig.start_date, publishConfig.end_date)) {
+        const newRange = { start_date: part.start_date, end_date: part.end_date, published_at: publishedAt };
+        const currentRanges = getSectorPublishedRanges(publishConfig.sector_id, part.year, part.month);
+        await savePublishedRanges({
+          unitId: selectedUnitId,
+          sectorId: publishConfig.sector_id,
+          year: part.year,
+          month: part.month,
+          ranges: [
+            ...currentRanges.filter(r => !(r.start_date >= newRange.start_date && r.end_date <= newRange.end_date)),
+            newRange
+          ],
+          updatedBy: user?.full_name || user?.email || null
+        });
+      }
 
-      const updatedRanges = [
-        ...currentRanges.filter(r => !(r.start_date >= newRange.start_date && r.end_date <= newRange.end_date)),
-        newRange
-      ];
-
-      window.localStorage.setItem(storageKey, JSON.stringify(updatedRanges));
-      
+      const newlyPublishedByProfessional = new Map();
       for (const shift of publishTargetShifts) {
         const currNotes = String(shift.notes || '');
         const wasAlreadyPublished = currNotes.includes('[ESCALA_PUBLICADA]');
@@ -451,45 +400,48 @@ const closeTvMode = async () => {
           notes: publishedNotes
         });
 
-        // Cada profissional recebe uma notificação individual somente quando
-        // a escala entra efetivamente em estado publicado.
-        if (!wasAlreadyPublished && shift.professional_id) {
-          const sector = sectorMap[String(shift.sector_id)];
-          const notificationPayload = {
-            professional_id: shift.professional_id,
-            shift_id: shift.id,
-            date: shift.date,
-            start_time: shift.start_time,
-            end_time: shift.end_time,
-            sector_id: shift.sector_id,
-            company_id: shift.company_id || company?.id || 'cmp_principal',
-            unit_id: shift.unit_id || selectedUnitId || 'unit_h1',
-            title: 'Plantão publicado',
-            message: `Seu plantão de ${formatDateBR(shift.date)} das ${shift.start_time} às ${shift.end_time} foi publicado${sector?.name ? ` no setor ${sector.name}` : ''}.`
-          };
-
-          createScheduleNotification(notificationPayload);
-          await createRemoteScheduleNotification(notificationPayload, professionalMap[String(shift.professional_id)]);
+        if (!wasAlreadyPublished && shift.professional_id && !isVacant(shift)) {
+          const list = newlyPublishedByProfessional.get(String(shift.professional_id)) || [];
+          list.push(shift);
+          newlyPublishedByProfessional.set(String(shift.professional_id), list);
         }
       }
 
-      setPublishedVersion(v => v + 1);
+      // Um aviso por profissional, com a lista dos seus plantões publicados.
+      const notificationsSent = await sendNotifications([...newlyPublishedByProfessional.entries()].map(([professionalId, profShifts]) => {
+        const sorted = profShifts.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start_time).localeCompare(String(b.start_time)));
+        const lines = sorted.slice(0, 6).map(s => `${formatDateBR(s.date)} ${s.start_time}–${s.end_time}`).join(' • ');
+        return {
+          ...recipientFor(professionalMap[professionalId] || { id: professionalId }),
+          company_id: company?.id,
+          unit_id: selectedUnitId,
+          type: 'escala_publicada',
+          category: 'escala',
+          title: `Escala publicada: ${secName}`,
+          message: `${sorted.length} plantão(ões) confirmado(s): ${lines}${sorted.length > 6 ? ' …' : ''}`,
+          data: { sector_id: publishConfig.sector_id, start_date: publishConfig.start_date, end_date: publishConfig.end_date, shift_ids: sorted.map(s => s.id) }
+        };
+      }));
+
       setPublishModalOpen(false);
       await syncGlobalData();
 
-      alert(`✓ Escala de "${secName}" oficializada!\n\nVigência: ${formatDateBR(publishConfig.start_date)} até ${formatDateBR(publishConfig.end_date)}\n${publishImpactedProfessionalsCount} profissional(is) notificado(s).`);
+      alert(`✓ Escala de "${secName}" oficializada!\n\nVigência: ${formatDateBR(publishConfig.start_date)} até ${formatDateBR(publishConfig.end_date)}\n${newlyPublishedByProfessional.size} profissional(is) ${notificationsSent ? 'notificado(s)' : 'a notificar (falha no envio do aviso)'}.`);
       } catch (err) { alert('Erro ao publicar escala: ' + err.message); } finally { setSubmitting(false); }
   };
 
-  const handleUnpublishSector = () => {
+  const handleUnpublishSector = async () => {
     const secId = selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '');
     const secName = sectorMap[String(secId)]?.name || 'Setor';
 
-    if (!confirm(`Reverter escala de "${secName}" para Modo Rascunho?`)) return;
+    if (!confirm(`Reverter escala de "${secName}" em ${MONTH_NAMES[currentMonth]} para Modo Rascunho?`)) return;
 
-    window.localStorage.removeItem(`scale_published_ranges_${selectedUnitId}_${secId}_${currentYear}_${currentMonth + 1}`);
-    setPublishedVersion(v => v + 1);
-    alert(`A escala de "${secName}" voltou para Modo Rascunho.`);
+    try {
+      await savePublishedRanges({ unitId: selectedUnitId, sectorId: secId, year: currentYear, month: currentMonth + 1, ranges: [] });
+      alert(`A escala de "${secName}" voltou para Modo Rascunho.`);
+    } catch (err) {
+      alert('Erro ao reverter a publicação: ' + err.message);
+    }
   };
 
   // MODAL DE DUPLICAR ESCALA 
@@ -660,6 +612,15 @@ const closeTvMode = async () => {
   }, [formData.date, formData.start_time, formData.end_time, liveNow]);
 
   const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if(s) m[String(s.id)] = s; }); return m; }, [sectors]);
+  const companyShifts = useMemo(() => (allCompanyShifts.length ? allCompanyShifts : shifts) || [], [allCompanyShifts, shifts]);
+  const allSectorsMap = useMemo(() => { const m = {}; (allCompanySectors || []).forEach(s => { if (s) m[String(s.id)] = s; }); return m; }, [allCompanySectors]);
+  // "Setor" ou "Setor — Outro Hospital" quando o plantão é de outra unidade.
+  const describeShiftPlace = (shift) => {
+    const sectorName = (sectorMap[String(shift?.sector_id)] || allSectorsMap[String(shift?.sector_id)])?.name || shift?.sector_name || 'outro setor';
+    if (!shift || String(shift.unit_id) === String(selectedUnitId)) return sectorName;
+    const unitName = (units || []).find(u => String(u.id) === String(shift.unit_id))?.name || 'outra unidade';
+    return `${sectorName} — ${unitName}`;
+  };
   const professionalMap = useMemo(() => { const m = {}; (professionals || []).forEach(p => { if(p) m[String(p.id)] = p; }); return m; }, [professionals]);
 
   const todayLocalStr = useMemo(() => getLocalDateString(liveNow), [liveNow]);
@@ -976,6 +937,32 @@ const closeTvMode = async () => {
     printWindow.document.close();
   };
 
+  // Alocação feita numa data já publicada avisa o profissional na hora.
+  // (Em rascunho o aviso sai junto com a publicação da escala.)
+  const isShiftDatePublished = (shift) => {
+    const date = String(shift?.date || '').slice(0, 10);
+    const [year, month] = date.split('-').map(Number);
+    if (!year || !month) return false;
+    return getPublishedRanges(selectedUnitId, shift.sector_id, year, month)
+      .some(range => date >= range.start_date && date <= range.end_date);
+  };
+
+  const notifyAllocations = async (allocations) => {
+    const items = allocations
+      .filter(({ shift, prof }) => prof?.id && isShiftDatePublished(shift))
+      .map(({ shift, prof }) => ({
+        ...recipientFor(prof),
+        company_id: company?.id,
+        unit_id: selectedUnitId,
+        type: 'plantao_alocado',
+        category: 'escala',
+        title: 'Novo plantão na sua escala',
+        message: `${formatDateBR(shift.date)} das ${shift.start_time} às ${shift.end_time}${sectorMap[String(shift.sector_id)]?.name ? ` · ${sectorMap[String(shift.sector_id)].name}` : ''}`,
+        data: { shift_id: shift.id, date: shift.date }
+      }));
+    if (items.length) await sendNotifications(items);
+  };
+
   const isDatePublishedForCurrentSector = (dateStr) => {
     if (selectedSectorId === 'todos') {
       return (sectors || []).length > 0 && (sectors || []).every(sec => {
@@ -993,7 +980,9 @@ const closeTvMode = async () => {
     const candidateRange = getShiftRangeFor(targetDate, startTime, endTime);
     if (!candidateRange) return { hasConflict: false };
 
-    for (const s of shifts) {
+    // Considera os plantões de TODOS os hospitais: o profissional não pode estar
+    // em duas unidades ao mesmo tempo.
+    for (const s of companyShifts) {
       if (!s || s.status === 'cancelado' || s.status === 'vago') continue;
       if (excludeShiftId && String(s.id) === String(excludeShiftId)) continue;
       if (String(s.professional_id) !== String(profId)) continue;
@@ -1001,7 +990,7 @@ const closeTvMode = async () => {
       // Compara data + hora reais para pegar também plantões noturnos
       // que avançam sobre o dia seguinte.
       if (shiftRangesOverlap(candidateRange, getShiftDateTimeRange(s))) {
-        const secName = sectorMap[String(s.sector_id)]?.name || 'outro setor';
+        const secName = describeShiftPlace(s);
         const profName = professionalMap[String(profId)]?.name || 'O profissional';
         const sameDate = String(s.date || '').slice(0, 10) === String(targetDate).slice(0, 10);
         return {
@@ -1040,7 +1029,7 @@ const conflict = checkProfessionalConflict(
       );
 
       if (conflict.hasConflict) {
-        const conflictSec = sectorMap[String(conflict.conflictShift?.sector_id)]?.name || 'Outro Setor';
+        const conflictSec = describeShiftPlace(conflict.conflictShift);
         unavailable.push({
           ...prof,
           conflictReason: `Alocado em ${conflictSec} (${conflict.conflictShift?.start_time} - ${conflict.conflictShift?.end_time})`
@@ -1051,11 +1040,11 @@ const conflict = checkProfessionalConflict(
     });
 
     return { available, unavailable };
-}, [professionals, formData.date, formData.sector_id, formData.start_time, formData.end_time, editingShiftId, shifts, sectorMap]);
+}, [professionals, formData.date, formData.sector_id, formData.start_time, formData.end_time, editingShiftId, companyShifts, sectorMap]);
 
   const allScaleConflicts = useMemo(() => {
     const byProfessional = new Map();
-    (shifts || []).forEach(s => {
+    companyShifts.forEach(s => {
       if (!s || s.status === 'cancelado' || s.status === 'vago' || !s.professional_id) return;
       const range = getShiftDateTimeRange(s);
       if (!range) return;
@@ -1070,12 +1059,19 @@ const conflict = checkProfessionalConflict(
       for (let i = 0; i < list.length; i++) {
         for (let j = i + 1; j < list.length; j++) {
           if (list[j].range.start >= list[i].range.end) break;
-          conflicts.push({ a: list[i].shift, b: list[j].shift });
+          const a = list[i].shift;
+          const b = list[j].shift;
+          // O alerta desta tela mostra só choques que envolvem a unidade aberta;
+          // a vaga liberada pelo botão de resolver é sempre a desta unidade.
+          const aHere = String(a.unit_id) === String(selectedUnitId);
+          const bHere = String(b.unit_id) === String(selectedUnitId);
+          if (!aHere && !bHere) continue;
+          conflicts.push(bHere ? { a, b } : { a: b, b: a });
         }
       }
     });
     return conflicts;
-  }, [shifts]);
+  }, [companyShifts, selectedUnitId]);
 
   const [generatorConfig, setGeneratorConfig] = useState({
     sector_id: '', start_date: getLocalDateString(), duration_days: 30, interval_days: 1,
@@ -1131,6 +1127,16 @@ const conflict = checkProfessionalConflict(
     try {
       const startDt = new Date(generatorConfig.start_date + 'T12:00:00');
       const generatedRows = [];
+      let skippedExisting = 0;
+      // Rodar o gerador de novo não duplica: cada horário é completado só até a quantidade configurada.
+      const existingSlotCount = (dateStr, slot, spec) => (shifts || []).filter(s =>
+        s && s.status !== 'cancelado' &&
+        String(s.date).slice(0, 10) === dateStr &&
+        String(s.sector_id) === String(generatorConfig.sector_id) &&
+        String(s.start_time) === String(slot.start_time) &&
+        String(s.end_time) === String(slot.end_time) &&
+        normalize(extractSpecialty(s, professionalMap[String(s.professional_id)])) === normalize(spec)
+      ).length;
 
       // Gera exatamente a quantidade configurada para cada horário.
       // Ex.: 2 x 07:00-13:00 + 2 x 13:00-19:00 + 2 x 19:00-07:00.
@@ -1140,9 +1146,12 @@ const conflict = checkProfessionalConflict(
         const dateStr = getLocalDateString(curDate);
 
         for (const slot of validSlots) {
-          const qty = parseInt(slot.quantity) || 0;
+          const spec = (slot.specialty || 'Clínica Médica').trim();
+          const configuredQty = parseInt(slot.quantity) || 0;
+          const alreadyThere = existingSlotCount(dateStr, slot, spec);
+          const qty = Math.max(0, configuredQty - alreadyThere);
+          skippedExisting += configuredQty - qty;
           for (let q = 0; q < qty; q++) {
-            const spec = (slot.specialty || 'Clínica Médica').trim();
             const sType = slot.shift_type || (slot.start_time >= '18:00' || slot.start_time < '06:00' ? 'noturno' : 'diurno');
 
             const saved = await autoHealingSaveShift(null, {
@@ -1176,7 +1185,12 @@ const conflict = checkProfessionalConflict(
       }
 
       if (generatedRows.length === 0) {
-        throw new Error('Nenhuma vaga foi gerada. Verifique a quantidade configurada.');
+        throw new Error(skippedExisting > 0
+          ? `A grade já existe para esse período: ${skippedExisting} vaga(s) configurada(s) já estavam criadas. Nada foi duplicado.`
+          : 'Nenhuma vaga foi gerada. Verifique a quantidade configurada.');
+      }
+      if (skippedExisting > 0) {
+        alert(`${generatedRows.length} vaga(s) criada(s). ${skippedExisting} já existiam e não foram duplicadas.`);
       }
 
       setGeneratedAllocationRows(generatedRows);
@@ -1199,7 +1213,7 @@ const conflict = checkProfessionalConflict(
     if (!candidate) return false;
 
     // Conflitos já existentes na base.
-    const existingConflict = (shifts || []).some(existing => {
+    const existingConflict = companyShifts.some(existing => {
       if (!existing || existing.status === 'cancelado' || existing.status === 'vago') return false;
       if (String(existing.id) === String(shift.id)) return false;
       if (String(existing.professional_id) !== String(profId)) return false;
@@ -1285,10 +1299,12 @@ const conflict = checkProfessionalConflict(
 
     setSubmitting(true);
     try {
+      const savedAllocations = [];
       for (const row of assignments) {
         const profId = String(bulkAllocationDraft[String(row.id)]);
         const prof = professionalMap[profId];
         if (!prof) continue;
+        savedAllocations.push({ shift: row, prof });
 
         const currentNotes = String(row.notes || '')
           .replace(/\[GERADO_ESCALA_MASSA\]/gi, '')
@@ -1302,6 +1318,7 @@ const conflict = checkProfessionalConflict(
         });
       }
 
+      await notifyAllocations(savedAllocations);
       setBulkAllocationOpen(false);
       setAllocationPromptOpen(false);
       setGeneratedAllocationRows([]);
@@ -1605,6 +1622,7 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
         });
       }
 
+      await notifyAllocations(targets.map(target => ({ shift: target, prof })));
       setSelectedDays([]);
       await syncGlobalData();
     } catch (err) {
@@ -1709,8 +1727,14 @@ if (!isMural && formData.professional_id) {
         notes: newNotes.trim()
       };
 
+      const previousProfessionalId = editingShiftId
+        ? String((shifts || []).find(s => String(s.id) === String(editingShiftId))?.professional_id || '')
+        : '';
       const saved = await autoHealingSaveShift(editingShiftId, payload);
       if (saved?.id || editingShiftId) try { window.localStorage.setItem(`shift_spec_${saved?.id || editingShiftId}`, finalSpecialty); } catch {}
+      if (!isMural && prof && String(prof.id) !== previousProfessionalId && !isPast) {
+        await notifyAllocations([{ shift: { ...payload, id: saved?.id || editingShiftId }, prof }]);
+      }
 
       setModalOpen(false); await syncGlobalData();
     } catch (err) {
