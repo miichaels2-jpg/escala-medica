@@ -6,8 +6,10 @@ import {
   Activity, LayoutDashboard, CalendarDays, Repeat, 
   DollarSign, Users, Building2, LogOut, Menu, X, 
   AlertTriangle, Sun, Moon, Settings, FileBarChart,
-  Clock, Hospital, Bell, Flame, CheckCircle2, ChevronRight, CheckCheck
+  Clock, Hospital, Bell, Flame, CheckCircle2, ChevronRight, CheckCheck, Smartphone
 } from 'lucide-react';
+import { InstallAppBanner, InstallAppDialog } from '@/components/InstallAppGuide';
+import { usePwaInstall } from '@/lib/pwa';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -62,6 +64,14 @@ export default function AppLayout({ children }) {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [installGuideOpen, setInstallGuideOpen] = useState(false);
+  const { isInstalled } = usePwaInstall();
+
+  // Fecha o menu do celular ao trocar de tela.
+  useEffect(() => {
+    setMobileMenuOpen(false);
+    setNotifOpen(false);
+  }, [location.pathname]);
   const [readNotifIds, setReadNotifIds] = useState(() => {
     try {
       return JSON.parse(window.localStorage.getItem('scale_read_notifs') || '[]');
@@ -121,8 +131,16 @@ export default function AppLayout({ children }) {
     try {
       window.localStorage.setItem('scale_selected_unit', newUnitId);
       if (user?.id) {
-        // Atualiza preferência na tabela profiles do Supabase, se aplicável
-        await supabase.from('profiles').update({ selected_unit_id: newUnitId }).eq('id', user.id);
+        // A preferência fica em users.data (a tabela "profiles" não existe neste banco).
+        const nextData = { ...(user.data || {}), selected_unit_id: newUnitId };
+        const { error } = await supabase.from('users').update({ data: nextData }).eq('id', user.id);
+        if (error) throw error;
+        try {
+          const stored = JSON.parse(window.localStorage.getItem('scale_logged_user') || 'null');
+          if (stored && String(stored.id) === String(user.id)) {
+            window.localStorage.setItem('scale_logged_user', JSON.stringify({ ...stored, data: { ...(stored.data || {}), selected_unit_id: newUnitId } }));
+          }
+        } catch {}
       }
     } catch (e) {
       console.error('Erro ao salvar unidade padrão', e);
@@ -131,7 +149,8 @@ export default function AppLayout({ children }) {
   };
 
   const userCategory = currentProfessional?.category || (currentProfessional?.specialty?.toLowerCase().includes('enferm') ? 'enfermeiro' : 'medico');
-  const todayStr = new Date().toISOString().split('T')[0];
+  // Data local: toISOString usa UTC e, após as 21h no Brasil, já seria "amanhã".
+  const todayStr = `${currentTime.getFullYear()}-${String(currentTime.getMonth() + 1).padStart(2, '0')}-${String(currentTime.getDate()).padStart(2, '0')}`;
 
   const rawMuralShifts = (shifts || []).filter(s => {
     const isVago = s.status === 'vago' || s.is_open === true;
@@ -195,8 +214,27 @@ export default function AppLayout({ children }) {
 
   const currentHospitalName = units?.find(u => String(u.id) === String(selectedUnitId))?.name || company?.name || 'Hospital Principal';
 
+  // Mesma regra do Login: fora do administrador, só aparecem os hospitais liberados para o usuário.
+  const allowedUnitIds = Array.isArray(user?.data?.allowed_unit_ids) ? user.data.allowed_unit_ids.map(String) : [];
+  const selectableUnits = (units || []).filter(u =>
+    user?.role === 'admin' || allowedUnitIds.length === 0 ||
+    allowedUnitIds.includes(String(u.id)) || String(u.id) === String(selectedUnitId)
+  );
+
+  // Barra inferior do celular: o plantonista começa pela própria escala.
+  const isFieldProfessional = ['assistencial', 'medico'].includes(userAppRole);
+  const mobileTabs = [
+    isFieldProfessional
+      ? { label: 'Minha Escala', path: '/minha-escala', icon: Activity }
+      : { label: 'Painel', path: '/dashboard', icon: LayoutDashboard },
+    { label: 'Escalas', path: '/escalas', icon: CalendarDays },
+    { label: 'Mural', path: '/trocas', icon: Flame, badge: unreadMuralShifts.length }
+  ];
+  const userInitials = String(user?.full_name || user?.email || 'U')
+    .trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase();
+
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200">
+    <div className="flex h-screen h-[100dvh] overflow-hidden bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
       {/* SIDEBAR DESKTOP */}
       <aside className="hidden md:flex w-64 flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 select-none shadow-xl print:hidden transition-colors">
@@ -267,14 +305,17 @@ export default function AppLayout({ children }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-100 dark:bg-slate-950 transition-colors">
         
         {/* HEADER SUPERIOR COM SELETOR DE UNIDADE BLINDADO */}
-        <header className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4 shrink-0 shadow-sm z-30 print:hidden transition-colors">
-          
-          <div className="flex items-center gap-3">
-            <div className="md:hidden flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-sky-600 flex items-center justify-center text-white">
+        <header className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2.5 pt-[max(0.625rem,env(safe-area-inset-top))] md:pt-2.5 flex items-center justify-between gap-3 sm:gap-4 shrink-0 shadow-sm z-30 print:hidden transition-colors">
+
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="md:hidden flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-sky-600/30 shrink-0">
                 <Activity className="w-4 h-4" />
               </div>
-              <span className="font-black text-sm text-slate-900 dark:text-white">ScaleMedic</span>
+              <div className="min-w-0 leading-tight">
+                <span className="font-black text-sm text-slate-900 dark:text-white block">ScaleMedic</span>
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block truncate max-w-[170px]">{currentHospitalName}</span>
+              </div>
             </div>
 
             <div className="hidden sm:flex items-center gap-2">
@@ -286,7 +327,7 @@ export default function AppLayout({ children }) {
                   <SelectValue placeholder="Selecione o Hospital..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
-                  {units.map(u => (
+                  {selectableUnits.map(u => (
                     <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold cursor-pointer">
                       {u.name}
                     </SelectItem>
@@ -296,8 +337,8 @@ export default function AppLayout({ children }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+
             <div className="hidden lg:flex items-center gap-2.5 px-3.5 py-1.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs shadow-inner">
               <span className="text-slate-600 dark:text-slate-400 font-bold">
                 {dayName}, {formattedDate}
@@ -325,7 +366,7 @@ export default function AppLayout({ children }) {
               </button>
 
               {notifOpen && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2">
+                <div className="fixed left-3 right-3 top-[calc(4rem+env(safe-area-inset-top))] sm:absolute sm:left-auto sm:right-0 sm:top-auto mt-2 sm:w-96 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2">
                   <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
                     <div className="flex items-center gap-2">
                       <Bell className="w-4 h-4 text-sky-600" />
@@ -390,8 +431,9 @@ export default function AppLayout({ children }) {
               {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
             </button>
 
-            <button 
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label={mobileMenuOpen ? 'Fechar menu' : 'Abrir menu'}
               className="md:hidden p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl cursor-pointer"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -419,7 +461,23 @@ export default function AppLayout({ children }) {
         )}
 
         {mobileMenuOpen && (
-          <div className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 space-y-2 z-50 shadow-2xl print:hidden">
+          <div className="md:hidden fixed inset-0 z-[60] print:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+            <button type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm animate-in fade-in cursor-default" />
+            <div className="absolute right-0 top-0 h-full w-[86%] max-w-sm bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+            <div className="p-4 flex items-center gap-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-600 to-cyan-500 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-md shadow-sky-600/30">
+                {userInitials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-sm font-black text-slate-900 dark:text-white block truncate">{user?.full_name || 'Usuário'}</span>
+                <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider block truncate">{roleBadgeLabel}</span>
+              </div>
+              <button type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Fechar menu" className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
             <div className="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
               <Label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Hospital Atual</Label>
               <Select value={selectedUnitId} onValueChange={handleUnitChange}>
@@ -427,7 +485,7 @@ export default function AppLayout({ children }) {
                   <SelectValue placeholder="Selecione o Hospital..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
-                  {units.map(u => (
+                  {selectableUnits.map(u => (
                     <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold cursor-pointer">
                       {u.name}
                     </SelectItem>
@@ -441,28 +499,103 @@ export default function AppLayout({ children }) {
                 key={item.path}
                 to={item.path}
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-between p-2.5 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                className={({ isActive }) => `flex items-center justify-between px-3.5 py-3 rounded-2xl text-sm font-bold cursor-pointer transition-colors ${
+                  isActive
+                    ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-md shadow-sky-600/30'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
               >
-                <div className="flex items-center gap-3">
-                  <item.icon className="w-4 h-4 text-sky-600" />
-                  <span>{item.label}</span>
-                </div>
-                {item.badge > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white">
-                    {item.badge}
-                  </span>
+                {({ isActive }) => (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <item.icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-sky-600'}`} />
+                      <span>{item.label}</span>
+                    </div>
+                    {item.badge > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white">
+                        {item.badge}
+                      </span>
+                    )}
+                  </>
                 )}
               </NavLink>
             ))}
+            </div>
+
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 space-y-2">
+              {!isInstalled && (
+                <button
+                  type="button"
+                  onClick={() => { setMobileMenuOpen(false); setInstallGuideOpen(true); }}
+                  className="w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900 cursor-pointer"
+                >
+                  <Smartphone className="w-5 h-5" /> Instalar aplicativo no celular
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
+              >
+                <LogOut className="w-5 h-5" /> Sair do sistema
+              </button>
+            </div>
+            </div>
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto">
+        <InstallAppBanner onOpenGuide={() => setInstallGuideOpen(true)} />
+
+        <main className="flex-1 overflow-y-auto pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-0">
           <LayoutErrorBoundary>
             {children || <Outlet />}
           </LayoutErrorBoundary>
         </main>
+
+        {/* BARRA INFERIOR NO CELULAR (padrão de aplicativo) */}
+        <nav
+          aria-label="Navegação principal"
+          className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] pb-[env(safe-area-inset-bottom)] print:hidden"
+        >
+          <div className="grid grid-cols-4 h-16">
+            {mobileTabs.map(tab => (
+              <NavLink
+                key={tab.path}
+                to={tab.path}
+                className={({ isActive }) => `relative flex flex-col items-center justify-center gap-1 text-[10px] font-black transition-colors ${
+                  isActive ? 'text-sky-600 dark:text-sky-400' : 'text-slate-500 dark:text-slate-400'
+                }`}
+              >
+                {({ isActive }) => (
+                  <>
+                    <span className={`flex items-center justify-center w-12 h-7 rounded-full transition-colors ${isActive ? 'bg-sky-100 dark:bg-sky-500/15' : ''}`}>
+                      <tab.icon className="w-5 h-5" />
+                    </span>
+                    <span>{tab.label}</span>
+                    {tab.badge > 0 && (
+                      <span className="absolute top-1.5 left-1/2 ml-2 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                        {tab.badge > 9 ? '9+' : tab.badge}
+                      </span>
+                    )}
+                  </>
+                )}
+              </NavLink>
+            ))}
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className={`flex flex-col items-center justify-center gap-1 text-[10px] font-black cursor-pointer ${mobileMenuOpen ? 'text-sky-600 dark:text-sky-400' : 'text-slate-500 dark:text-slate-400'}`}
+            >
+              <span className="flex items-center justify-center w-12 h-7 rounded-full">
+                <Menu className="w-5 h-5" />
+              </span>
+              <span>Menu</span>
+            </button>
+          </div>
+        </nav>
       </div>
+
+      <InstallAppDialog open={installGuideOpen} onOpenChange={setInstallGuideOpen} />
     </div>
   );
 }

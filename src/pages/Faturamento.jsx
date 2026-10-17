@@ -3,6 +3,7 @@ import { useAppData } from '@/lib/useAppData';
 import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
 import { calculateProductivityPoolAllocations } from '@/lib/productivityCalculations';
 import { supabase } from '@/lib/supabase';
+import { escapeHtml, getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -383,6 +384,8 @@ export default function Faturamento() {
       const ExcelJS = await import('exceljs');
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Atendimentos diários');
+      // Usa o mesmo valor diário da regra aplicada no rateio da tela.
+      const dailyPoolAmount = safeNumber(productivityRule?.daily_amount, 150);
       worksheet.columns = [
         { header: 'PROFISSIONAL', key: 'professional', width: 34 },
         { header: 'QTD ATENDIMENTO', key: 'attendance', width: 20 },
@@ -399,7 +402,7 @@ export default function Faturamento() {
           schedule: `${shiftCount} plantão(ões)`,
           date: new Date(`${productionDate}T12:00:00`),
           id: String(professional.id),
-          amount: { formula: `IFERROR(B${rowNumber}*150/SUM(B$2:B$${productionEntryRows.length + 1}),0)` }
+          amount: { formula: `IFERROR(B${rowNumber}*${dailyPoolAmount}/SUM(B$2:B$${productionEntryRows.length + 1}),0)` }
         });
         row.getCell(4).numFmt = 'dd/mm/yyyy';
         row.getCell(6).numFmt = '"R$" #,##0.00';
@@ -744,6 +747,8 @@ export default function Faturamento() {
 
       return {
         ...item,
+        // Evita resíduos de ponto flutuante (ex.: 36.300000000000004h) nos totais e impressos.
+        horasRealizadas: Math.round(item.horasRealizadas * 10) / 10,
         valorBruto: valorBrutoTotal,
         valorDesconto,
         valorLiquido,
@@ -844,9 +849,9 @@ export default function Faturamento() {
 
       return `
         <tr>
-          <td style="border: 1px solid #cbd5e1;">${item.prof.name}</td>
-          <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${item.matricula}</td>
-          <td style="border: 1px solid #cbd5e1;">${item.prof.specialty || 'Geral'}</td>
+          <td style="border: 1px solid #cbd5e1;">${escapeHtml(item.prof.name)}</td>
+          <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${escapeHtml(item.matricula)}</td>
+          <td style="border: 1px solid #cbd5e1;">${escapeHtml(item.prof.specialty || 'Geral')}</td>
           <td style="border: 1px solid #cbd5e1;">${regime}</td>
           <td class="num" style="border: 1px solid #cbd5e1;">${item.plantõesRealizados}</td>
           <td class="num" style="border: 1px solid #cbd5e1;">${item.remunType === 'produtividade' ? item.atendimentosApurados : ''}</td>
@@ -854,7 +859,7 @@ export default function Faturamento() {
           <td class="money" style="border: 1px solid #cbd5e1;">${item.valorBruto.toFixed(2).replace('.', ',')}</td>
           <td class="money" style="border: 1px solid #cbd5e1; color: #ef4444;">${item.valorDesconto.toFixed(2).replace('.', ',')}</td>
           <td class="money" style="border: 1px solid #cbd5e1; font-weight: bold; color: #059669;">${item.valorLiquido.toFixed(2).replace('.', ',')}</td>
-          <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${formaPagamento}</td>
+          <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${escapeHtml(formaPagamento)}</td>
           <td style="border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: ${item.awaitingProduction ? '#b45309' : item.isPago ? '#059669' : '#f59e0b'};">${item.awaitingProduction ? 'Apuração pendente · saldo parcial' : item.isPago ? 'PAGO' : 'Pendente'}</td>
         </tr>
       `;
@@ -876,7 +881,7 @@ export default function Faturamento() {
       <body>
         <table>
           <tr>
-            <td colspan="12" style="font-size: 20px; font-weight: bold; text-align: center; background-color: #0f172a; color: #ffffff; padding: 12px;">${hospitalName}</td>
+            <td colspan="12" style="font-size: 20px; font-weight: bold; text-align: center; background-color: #0f172a; color: #ffffff; padding: 12px;">${escapeHtml(hospitalName)}</td>
           </tr>
           <tr>
             <td colspan="12" style="font-size: 14px; font-weight: bold; text-align: center; background-color: #1e293b; color: #94a3b8; padding: 6px;">RELATÓRIO OFICIAL DE FATURAMENTO E REPASSE</td>
@@ -885,7 +890,7 @@ export default function Faturamento() {
             <td colspan="5" style="font-weight: bold; padding: 10px 0;">Competência Mês: ${competencia}</td>
             <td colspan="7" style="text-align: right; padding: 10px 0;">Emissão do Relatório: ${emissao}</td>
           </tr>
-          <tr><td colspan="12" style="padding-bottom: 8px;">Busca: ${searchQuery.trim() || 'Todos os profissionais'}</td></tr>
+          <tr><td colspan="12" style="padding-bottom: 8px;">Busca: ${escapeHtml(searchQuery.trim() || 'Todos os profissionais')}</td></tr>
           <tr><td colspan="12"></td></tr>
           <tr>
             <th>Profissional</th>
@@ -941,8 +946,10 @@ export default function Faturamento() {
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
     const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR');
 
-    const companyLogoHtml = company?.logo_url ? `<img src="${company.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` : `<div class="logo-badge">${logoLetter}</div>`;
-    const unitLogoHtml = currentUnitObj?.logo_url ? `<img src="${currentUnitObj.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` : '';
+    const companyLogoUrl = getCompanyLogoUrl(company);
+    const unitLogoUrl = getUnitLogoUrl(currentUnitObj);
+    const companyLogoHtml = companyLogoUrl ? `<img src="${escapeHtml(companyLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` : `<div class="logo-badge">${escapeHtml(logoLetter)}</div>`;
+    const unitLogoHtml = unitLogoUrl ? `<img src="${escapeHtml(unitLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` : '';
 
     const rowsHtml = filteredReport.map((item, idx) => {
       const formaPagto = item.chavePix ? `PIX: ${item.chavePix}` : (item.banco ? `Banco: ${item.banco}` : 'Pendente');
@@ -953,13 +960,13 @@ export default function Faturamento() {
 
       return `
         <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9fafb'};">
-          <td style="border: 1px solid #111; padding: 6px 8px; font-weight: bold;">${item.prof.name}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace;">${item.matricula}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px;">${item.prof.specialty || 'Geral'}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; font-weight: bold;">${escapeHtml(item.prof.name)}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace;">${escapeHtml(item.matricula)}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px;">${escapeHtml(item.prof.specialty || 'Geral')}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; font-size: 9px;">${regime}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.plantõesRealizados}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.remunType === 'produtividade' ? item.atendimentosApurados : ''}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-size: 9px;">${formaPagto}</td>
+          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-size: 9px;">${escapeHtml(formaPagto)}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${formatCurrency(item.valorBruto)}${item.awaitingProduction ? ' (PARCIAL)' : ''}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: right; font-weight: bold;">${formatCurrency(item.valorLiquido)}${item.awaitingProduction ? ' (PARCIAL)' : ''}</td>
           <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${statusPago}</td>
@@ -991,7 +998,7 @@ export default function Faturamento() {
             ${companyLogoHtml}
             ${unitLogoHtml}
             <div class="header-info" style="${unitLogoHtml ? 'margin-left: 15px;' : ''}">
-              <h1>${hospitalName}</h1>
+              <h1>${escapeHtml(hospitalName)}</h1>
               <p>FECHAMENTO DE HONORÁRIOS E REPASSE DE PLANTÕES REALIZADOS</p>
               <div style="margin-top: 4px;">Competência: <b>${competencia}</b></div>
             </div>
@@ -1027,7 +1034,7 @@ export default function Faturamento() {
         </div>
         ${shiftsAwaitingProduction > 0 ? `<p style="margin-top: 8px; color: #92400e; font-weight: bold;">Atenção: ${shiftsAwaitingProduction} dia(s) por produtividade aguardam lançamento completo. O valor exibido para esses profissionais é parcial e inclui somente os dias já fechados.</p>` : ''}
 
-        <script>window.onload = function() { window.print(); };</script>
+        ${PRINT_WHEN_IMAGES_READY_SCRIPT}
       </body>
       </html>
     `;
@@ -1051,13 +1058,13 @@ export default function Faturamento() {
     let dadosPagamentoHtml = '';
     if (item.chavePix && item.banco) {
       dadosPagamentoHtml = `
-        <div class="grid"><span>Chave PIX (${item.pixTipo}):</span> <span>${item.chavePix}</span></div>
-        <div class="grid"><span>Dados Bancários Físicos:</span> <span>${item.banco}</span></div>
+        <div class="grid"><span>Chave PIX (${escapeHtml(item.pixTipo)}):</span> <span>${escapeHtml(item.chavePix)}</span></div>
+        <div class="grid"><span>Dados Bancários Físicos:</span> <span>${escapeHtml(item.banco)}</span></div>
       `;
     } else if (item.chavePix) {
-      dadosPagamentoHtml = `<div class="grid"><span>Chave PIX (${item.pixTipo}):</span> <span>${item.chavePix}</span></div>`;
+      dadosPagamentoHtml = `<div class="grid"><span>Chave PIX (${escapeHtml(item.pixTipo)}):</span> <span>${escapeHtml(item.chavePix)}</span></div>`;
     } else if (item.banco) {
-      dadosPagamentoHtml = `<div class="grid"><span>Dados Bancários Físicos:</span> <span>${item.banco}</span></div>`;
+      dadosPagamentoHtml = `<div class="grid"><span>Dados Bancários Físicos:</span> <span>${escapeHtml(item.banco)}</span></div>`;
     } else {
       dadosPagamentoHtml = `<div class="grid"><span style="color: #b91c1c; font-weight: bold;">Forma de Pagamento:</span> <span style="color: #b91c1c;">Pendente de cadastro</span></div>`;
     }
@@ -1070,7 +1077,7 @@ export default function Faturamento() {
         <div class="header">
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
-              <h1>${hospitalName}</h1>
+              <h1>${escapeHtml(hospitalName)}</h1>
               <p>${item.awaitingProduction ? 'APURAÇÃO PENDENTE — NÃO COMPROVA PAGAMENTO' : isActuallyPaid ? 'RECIBO DE HONORÁRIOS & REPASSE MÉDICO' : 'DEMONSTRATIVO DE HONORÁRIOS A PAGAR'}</p>
               <p style="font-size: 9.5px; margin-top: 2px;">Competência: <b>${competencia}</b></p>
             </div>
@@ -1082,8 +1089,8 @@ export default function Faturamento() {
         </div>
 
         <div class="section">
-          <div class="grid"><span>Profissional:</span> <span>${item.prof.name} (ID: ${item.matricula})</span></div>
-          <div class="grid"><span>Documento / Especialidade:</span> <span>${item.prof.document || 'CRM'} • ${item.prof.specialty || 'Geral'}</span></div>
+          <div class="grid"><span>Profissional:</span> <span>${escapeHtml(item.prof.name)} (ID: ${escapeHtml(item.matricula)})</span></div>
+          <div class="grid"><span>Documento / Especialidade:</span> <span>${escapeHtml(item.prof.document || 'CRM')} • ${escapeHtml(item.prof.specialty || 'Geral')}</span></div>
           <div class="grid"><span>Regime de Contratação:</span> <span>${regimeLabel}</span></div>
           <div class="grid"><span>Plantões Cumpridos no Período:</span> <span>${item.plantõesRealizados} plantões (${item.horasRealizadas}h computadas)</span></div>
           ${item.remunType === 'produtividade' ? `<div class="grid"><span>Atendimentos apurados em dias completos:</span> <span>${item.atendimentosApurados}</span></div>` : ''}
@@ -1104,7 +1111,7 @@ export default function Faturamento() {
 
         <p class="termo">
           ${isActuallyPaid
-            ? `Declaro ter recebido da instituição ${hospitalName} a quantia líquida discriminada acima, correspondente à quitação integral dos serviços profissionais prestados no período de ${competencia}, dando plena e geral quitação.`
+            ? `Declaro ter recebido da instituição ${escapeHtml(hospitalName)} a quantia líquida discriminada acima, correspondente à quitação integral dos serviços profissionais prestados no período de ${competencia}, dando plena e geral quitação.`
             : `Demonstrativo dos valores apurados pelos serviços profissionais prestados no período de ${competencia}. Este documento não comprova pagamento ou quitação.`
           }
         </p>
@@ -1112,11 +1119,11 @@ export default function Faturamento() {
         <div class="signatures">
           <div class="sig-col">
             <div class="sig-line"></div>
-            <span>${hospitalName}</span>
+            <span>${escapeHtml(hospitalName)}</span>
           </div>
           <div class="sig-col">
             <div class="sig-line"></div>
-            <span>${item.prof.name}</span>
+            <span>${escapeHtml(item.prof.name)}</span>
           </div>
         </div>
       </div>
@@ -1127,7 +1134,7 @@ export default function Faturamento() {
       <html lang="pt-BR">
       <head>
         <meta charset="utf-8">
-        <title>${isActuallyPaid ? 'Recibo Oficial' : 'Demonstrativo de Honorários'} - ${item.prof.name}</title>
+        <title>${isActuallyPaid ? 'Recibo Oficial' : 'Demonstrativo de Honorários'} - ${escapeHtml(item.prof.name)}</title>
         <style>
           @page { size: A4 portrait; margin: 8mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1158,7 +1165,7 @@ export default function Faturamento() {
 
         ${templateVia('2ª VIA - PROFISSIONAL')}
 
-        <script>window.onload = function() { window.print(); };</script>
+        ${PRINT_WHEN_IMAGES_READY_SCRIPT}
       </body>
       </html>
     `;

@@ -30,11 +30,56 @@ function getUnitStorageErrorMessage(error) {
   return error?.message || 'Erro ao salvar unidade.';
 }
 
+const MAX_LOGO_FILE_BYTES = 2 * 1024 * 1024;
+const LOGO_MAX_DIMENSION = 600;
+
+// A tabela units exige legacy_id; hospitais novos usam o próprio UUID nos dois campos.
+function generateUnitId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  const bytes = window.crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+// Lê a logomarca, confirma que o navegador consegue exibi-la (evita salvar
+// arquivos que sairiam em branco nos impressos) e reduz imagens grandes para
+// no máximo 600px, mantendo a transparência de PNGs.
+function readLogoAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo selecionado.'));
+    reader.onload = () => {
+      const original = String(reader.result || '');
+      const img = new Image();
+      img.onerror = () => reject(new Error('Este formato de imagem não pode ser exibido pelo navegador. Use PNG ou JPG.'));
+      img.onload = () => {
+        const largestSide = Math.max(img.naturalWidth, img.naturalHeight);
+        if (file.type === 'image/svg+xml' || !largestSide || largestSide <= LOGO_MAX_DIMENSION) {
+          resolve(original);
+          return;
+        }
+        const scale = LOGO_MAX_DIMENSION / largestSide;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const optimized = file.type === 'image/jpeg'
+          ? canvas.toDataURL('image/jpeg', 0.9)
+          : canvas.toDataURL('image/png');
+        resolve(optimized.length < original.length ? optimized : original);
+      };
+      img.src = original;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function Configuracoes() {
   const { user, company, units = [], selectedUnitId, loading, refreshAllData } = useAppData();
   
   const [activeTab, setActiveTab] = useState('unidade_atual');
-  const [companies, setCompanies] = useState([]);
   const [companyUsers, setCompanyUsers] = useState([]);
   const [saving, setSaving] = useState(false);
   
@@ -53,15 +98,7 @@ export default function Configuracoes() {
     name: '', cnpj: '', address: '', phone: '', email: '', primary_contact: '', logo_url: '', status: 'ativo' 
   });
 
-  const isAdmin = user?.role === 'admin' || user?.app_role === 'gestor';
   const companyId = user?.data?.company_id || user?.company_id || company?.id || 'cmp_principal';
-
-  const loadCompanies = async () => {
-    try {
-      const { data } = await supabase.from('companies').select('*').order('created_at', { ascending: false });
-      setCompanies(data || []);
-    } catch (e) {}
-  };
 
   const loadUsers = async () => {
     if (!companyId) return;
@@ -74,7 +111,6 @@ export default function Configuracoes() {
 
   useEffect(() => {
     if (loading) return;
-    if (isAdmin) loadCompanies();
     loadUsers();
     
     if (company) {
@@ -87,7 +123,7 @@ export default function Configuracoes() {
         logo_url: company.logo_url || company.data?.logo_url || ''
       });
     }
-  }, [loading, company, isAdmin]);
+  }, [loading, company]);
 
   useEffect(() => {
     if (currentUnit) {
@@ -121,20 +157,29 @@ export default function Configuracoes() {
   }, [contractForm.contract_end]);
 
   // FUNÇÃO UNIVERSAL DE UPLOAD DE ARQUIVO (Imagem -> Base64)
-  const handleImageUpload = (e, setFormState) => {
-    const file = e.target.files[0];
+  const handleImageUpload = async (e, setFormState) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    // Limpa o campo para que escolher o mesmo arquivo de novo (ex.: depois de
+    // "Remover Imagem") volte a disparar o carregamento.
+    input.value = '';
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
+    if (!String(file.type || '').startsWith('image/')) {
+      alert('Selecione um arquivo de imagem (PNG ou JPG).');
+      return;
+    }
+    if (file.size > MAX_LOGO_FILE_BYTES) {
       alert('A imagem é muito grande. Escolha uma logo com tamanho máximo de 2MB.');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setFormState(prev => ({ ...prev, logo_url: reader.result }));
-    };
-    reader.readAsDataURL(file);
+    try {
+      const logoDataUrl = await readLogoAsDataUrl(file);
+      setFormState(prev => ({ ...prev, logo_url: logoDataUrl }));
+    } catch (error) {
+      alert(error.message);
+    }
   };
 
   const handleSaveCurrentUnit = async (e) => {
@@ -252,9 +297,10 @@ export default function Configuracoes() {
           .eq('id', editingUnit.id)
           .eq('company_id', companyId);
       } else {
+        const newUnitId = generateUnitId();
         request = supabase
           .from('units')
-          .insert([{ ...newUnitForm, company_id: companyId }]);
+          .insert([{ ...newUnitForm, id: newUnitId, legacy_id: newUnitId, company_id: companyId }]);
       }
       const { error } = await request;
       if (error) throw error;
@@ -724,6 +770,14 @@ export default function Configuracoes() {
                           <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Procurar Imagem</span>
                           <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setNewUnitForm)} />
                         </label>
+                        <div className="flex items-center justify-between mt-1.5">
+                          <span className="text-[9px] text-slate-400">Tamanho máximo: 2MB</span>
+                          {newUnitForm.logo_url && (
+                            <button type="button" onClick={() => setNewUnitForm(prev => ({ ...prev, logo_url: '' }))} className="text-[9px] font-bold text-rose-500 hover:underline">
+                              Remover Imagem
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>

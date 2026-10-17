@@ -19,6 +19,8 @@ let globalState = {
 
 const listeners = new Set();
 let isFetching = false;
+let activeFetch = null;
+let refetchRequested = false;
 
 function updateGlobal(patch) {
   globalState = { ...globalState, ...patch };
@@ -77,9 +79,29 @@ async function fetchTable(tableName, filterObj = {}, limit = 5000) {
   return data || [];
 }
 
-async function fetchAllData() {
-  if (isFetching) return;
+// Garante que uma sincronização pedida durante outra em andamento não seja
+// descartada: ela roda logo em seguida e quem aguardou recebe os dados novos.
+function fetchAllData() {
+  if (isFetching) {
+    refetchRequested = true;
+    return activeFetch;
+  }
   isFetching = true;
+  activeFetch = (async () => {
+    try {
+      do {
+        refetchRequested = false;
+        await loadAllData();
+      } while (refetchRequested);
+    } finally {
+      isFetching = false;
+      activeFetch = null;
+    }
+  })();
+  return activeFetch;
+}
+
+async function loadAllData() {
   const dataWarnings = [];
 
   try {
@@ -276,8 +298,6 @@ async function fetchAllData() {
   } catch (err) {
     console.error('Erro ao sincronizar dados:', err);
     updateGlobal({ loading: false, dataWarnings: [`Falha ao sincronizar os dados da plataforma: ${err?.message || err}`] });
-  } finally {
-    isFetching = false;
   }
 }
 
@@ -291,9 +311,7 @@ export function useAppData() {
     return () => listeners.delete(listener);
   }, []);
 
-  const syncGlobalData = useCallback(() => {
-    fetchAllData();
-  }, []);
+  const syncGlobalData = useCallback(() => fetchAllData(), []);
 
   const setSelectedUnitId = useCallback((newId) => {
     const validUnit = globalState.units.some(unit => String(unit.id) === String(newId));
@@ -352,7 +370,7 @@ export function useAppData() {
       specialty: user?.data?.specialty || 'Clínica Geral',
       status: 'ativo'
     };
-  }, [user]);
+  }, [user, globalState.professionals]);
 
   return {
     ...globalState,

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
-import { getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
+import { DEFAULT_REMUNERATION_TYPE, getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -148,7 +148,7 @@ export default function Painel() {
         monthlyByUnit[String(unitId)] !== undefined;
       const primaryUnitId = p.unit_id || meta.allowed_unit_ids?.[0] || p.unit_ids?.[0];
       const legacySalary = meta.monthly_salary !== undefined ? meta.monthly_salary : p.monthly_salary;
-      const remunerationType = meta.remuneration_type || p.remuneration_type || 'mensal';
+      const remunerationType = meta.remuneration_type || p.remuneration_type || DEFAULT_REMUNERATION_TYPE;
       const mergedProf = { 
         ...p, 
         monthly_salary: remunerationType !== 'mensal'
@@ -218,6 +218,10 @@ export default function Painel() {
   const todayFinancials = useMemo(() => {
     let executedValue = 0; let plannedValue = 0; let shiftsMissingRate = 0; let shiftsAwaitingProduction = 0;
     todayShifts.forEach((s) => {
+      // O custo do dia considera só plantões com data de hoje (mesma regra de
+      // Relatórios/Faturamento). O noturno de ontem que ainda está ativo já foi
+      // contabilizado na data dele e não pode ser somado duas vezes.
+      if ((s.date || '').split('T')[0] !== todayStr) return;
       const prof = profById[s.professional_id] || profByName[normalizeStr(s.professional_name)];
       if (isVacantShift(s)) return;
       if (!prof) {
@@ -234,7 +238,7 @@ export default function Painel() {
       }
     });
     return { executedValue, plannedValue, totalToday: plannedValue, shiftsMissingRate, shiftsAwaitingProduction };
-  }, [todayShifts, profById, profByName]);
+  }, [todayShifts, profById, profByName, todayStr]);
 
   const sectorsCoverage = useMemo(() => {
     const map = {};

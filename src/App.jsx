@@ -27,7 +27,12 @@ import AutoLogout from '@/components/AutoLogout';
 import ContractGuard from '@/components/ContractGuard';
 
 const AuthenticatedApp = () => {
-  const { isAuthenticated, isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
+  const { isAuthenticated, isLoadingAuth, isLoadingPublicSettings, authError, user } = useAuth();
+
+  // No celular, o plantonista abre direto na própria escala; gestores seguem para o Painel.
+  const appRole = user?.data?.app_role || (user?.role === 'admin' ? 'gestor' : 'assistencial');
+  const isPhone = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px)').matches;
+  const homePath = isPhone && ['assistencial', 'medico'].includes(appRole) ? '/minha-escala' : '/dashboard';
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
@@ -48,10 +53,10 @@ const AuthenticatedApp = () => {
       <Routes>
         <Route 
           path="/" 
-          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
+          element={isAuthenticated ? <Navigate to={homePath} replace /> : <Login />} 
         />
 
-        <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} />
+        <Route path="/login" element={isAuthenticated ? <Navigate to={homePath} replace /> : <Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />

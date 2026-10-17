@@ -109,3 +109,19 @@ test('infers an unassigned shift unit only from unique, valid evidence', () => {
   assert.equal(inferUnassignedShiftUnitId({ units }), null);
   assert.equal(inferUnassignedShiftUnitId({ units: [{ id: 'unit-1' }] }), 'unit-1');
 });
+
+test('treats a professional without remuneration type as per-shift, like the registration and billing screens', () => {
+  const professional = { data: { unit_rates: { 'unit-1': { diurno: 900, noturno: 1100, fds: 1300 } } } };
+  assert.deepEqual(
+    getShiftCostEstimate(professional, { unit_id: 'unit-1', date: '2026-10-14', start_time: '07:00', end_time: '19:00' }),
+    { amount: 900, missingRate: false }
+  );
+});
+
+test('classifies an unpadded night start time as night shift', () => {
+  const professional = { data: { remuneration_type: 'plantao', unit_rates: { 'unit-1': { diurno: 900, noturno: 1100 } } } };
+  assert.equal(
+    getShiftCostEstimate(professional, { unit_id: 'unit-1', date: '2026-10-14', start_time: '7:00', end_time: '19:00' }).amount,
+    900
+  );
+});

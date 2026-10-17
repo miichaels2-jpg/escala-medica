@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { supabase } from '@/lib/supabase';
+import { getShiftDateTimeRange } from '@/lib/shiftLiveStatus';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
@@ -34,17 +35,23 @@ function extractSpecialty(shift, prof) {
   return prof?.specialty || shift?.target_specialty || 'Clínica Médica';
 }
 
-function timeToMinutes(timeStr, isEnd = false) {
-  if (!timeStr) return isEnd ? 19 * 60 : 7 * 60;
-  const [h, m] = String(timeStr).split(':').map(Number);
-  return (h || 0) * 60 + (m || 0);
+function formatDateBR(dateStr) {
+  if (!dateStr) return '';
+  const parts = String(dateStr).split('T')[0].split('-');
+  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(dateStr);
 }
 
-function getShiftInterval(shift) {
-  const startMin = timeToMinutes(shift?.start_time || '07:00');
-  let endMin = timeToMinutes(shift?.end_time || '19:00', true);
-  if (endMin <= startMin) endMin += 24 * 60;
-  return { startMin, endMin };
+function getLocalDateString(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function isProfessionalAuthorizedForSector(professional, sectorId) {
+  if (!sectorId) return true;
+  const authorizedSectors = professional?.data?.authorized_sectors
+    ?? professional?.metadata?.authorized_sectors
+    ?? professional?.authorized_sectors;
+  if (!Array.isArray(authorizedSectors)) return true;
+  return authorizedSectors.some(id => String(id) === String(sectorId));
 }
 
 function parseShiftAudit(shift) {
@@ -92,12 +99,13 @@ async function safeUpdateShift(id, payload) {
   } catch (err) {
     const msg = err.message || '';
     if (msg.includes('status') || msg.includes('enum') || msg.includes('check constraint')) {
+      const appendTag = (notes, tag) => String(notes || '').includes(tag) ? String(notes || '').trim() : `${notes || ''} ${tag}`.trim();
       if (cleanPayload.status === 'aguardando_aprovacao_gestor') {
         cleanPayload.status = 'confirmado';
-        cleanPayload.notes = `${cleanPayload.notes || ''} [AGUARDANDO_GESTOR]`.trim();
+        cleanPayload.notes = appendTag(cleanPayload.notes, '[AGUARDANDO_GESTOR]');
       } else if (cleanPayload.status === 'disponivel_mural') {
         cleanPayload.status = 'vago';
-        cleanPayload.notes = `${cleanPayload.notes || ''} [DISPONIVEL_MURAL]`.trim();
+        cleanPayload.notes = appendTag(cleanPayload.notes, '[DISPONIVEL_MURAL]');
       }
       return await autoHealingSaveShift(id, cleanPayload);
     }
@@ -153,21 +161,22 @@ export default function Trocas() {
   const checkTimeConflict = (shiftCandidate) => {
     if (!shiftCandidate || !shiftCandidate.date) return { hasConflict: false };
 
-    const candInt = getShiftInterval(shiftCandidate);
+    const candidateRange = getShiftDateTimeRange(shiftCandidate);
+    if (!candidateRange) return { hasConflict: false };
 
     for (const myShift of myAllocatedShifts) {
       if (String(myShift.id) === String(shiftCandidate.id)) continue;
-      if (myShift.date !== shiftCandidate.date) continue;
 
-      const myInt = getShiftInterval(myShift);
-      const overlaps = Math.max(myInt.startMin, candInt.startMin) < Math.min(myInt.endMin, candInt.endMin);
+      // Data + hora reais: um plantão noturno de ontem pode avançar sobre hoje.
+      const myRange = getShiftDateTimeRange(myShift);
+      const overlaps = myRange && myRange.start < candidateRange.end && candidateRange.start < myRange.end;
 
       if (overlaps) {
         const sectorConflict = sectorMap[String(myShift.sector_id)]?.name || 'outro setor';
         return {
           hasConflict: true,
           conflictShift: myShift,
-          message: `Choque de Horário: Você já está alocado em "${sectorConflict}" (${myShift.start_time} às ${myShift.end_time}) no dia ${shiftCandidate.date}.`
+          message: `Choque de Horário: Você já está alocado em "${sectorConflict}" (${myShift.start_time} às ${myShift.end_time}) no dia ${formatDateBR(myShift.date)}.`
         };
       }
     }
@@ -189,7 +198,8 @@ export default function Trocas() {
     return Array.from(set).sort();
   }, [professionals, unitShifts]);
 
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  // Data local (toISOString usa UTC e, após as 21h no Brasil, já "vira" o dia).
+  const todayStr = useMemo(() => getLocalDateString(), []);
 
   const openShifts = useMemo(() => {
     return unitShifts.filter(s => {
@@ -283,7 +293,7 @@ export default function Trocas() {
     const audit = parseShiftAudit(shift);
     const originName = audit.offeredByName || formatFullName(shift.professional_name) || 'Colega';
 
-    if (!confirm(`Autorizar a abertura do plantão de ${shift.date} no Mural?\nOrigem: ${originName}`)) return;
+    if (!confirm(`Autorizar a abertura do plantão de ${formatDateBR(shift.date)} no Mural?\nOrigem: ${originName}`)) return;
 
     setSubmitting(true);
     try {
@@ -316,7 +326,13 @@ export default function Trocas() {
     setSubmitting(true);
     try {
       const currentNotes = String(shift.notes || '');
-      const cleanNotes = currentNotes.replace(/\[AGUARDANDO_GESTOR\]/gi, '').trim();
+      // Remove também os marcadores do pedido: um pedido recusado não pode aparecer
+      // como "Repasse Concluído" no relatório de trocas.
+      const cleanNotes = currentNotes
+        .replace(/\[AGUARDANDO_GESTOR\]/gi, '')
+        .replace(/\[(SOLICITADO_POR|SOLICITADO_ID):[^\]]*\]/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
       const updatedNotes = `${cleanNotes} [RECUSADO_EM: ${new Date().toLocaleDateString('pt-BR')}]`.trim();
 
       await safeUpdateShift(shift.id, {
@@ -346,11 +362,17 @@ export default function Trocas() {
     }
 
     const sectorName = sectorMap[String(shift.sector_id)]?.name || 'Setor Hospitalar';
+    // Mesma regra da tela de Escalas: só assume quem está autorizado no setor.
+    if (!isProfessionalAuthorizedForSector(myProf, shift.sector_id)) {
+      alert(`⛔ Você não está autorizado(a) a atuar no setor ${sectorName}. Fale com a coordenação.`);
+      return;
+    }
+
     const audit = parseShiftAudit(shift);
     const originName = audit.transferFrom || audit.offeredByName || null;
     const originMsg = originName ? `\n(Cedido por: ${originName})` : '';
 
-    if (!confirm(`Confirmar assunção do plantão?${originMsg}\n\nSetor: ${sectorName}\nData: ${shift.date} (${shift.start_time || '07:00'} às ${shift.end_time || '19:00'})`)) {
+    if (!confirm(`Confirmar assunção do plantão?${originMsg}\n\nSetor: ${sectorName}\nData: ${formatDateBR(shift.date)} (${shift.start_time || '07:00'} às ${shift.end_time || '19:00'})`)) {
       return;
     }
 

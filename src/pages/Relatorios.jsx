@@ -1,7 +1,9 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useAppData } from '@/lib/useAppData';
-import { getProfessionalFinancialMeta, getShiftCostEstimate, getShiftDurationHours, safeFinancialNumber } from '@/lib/financialCalculations';
+import { DEFAULT_REMUNERATION_TYPE, getProfessionalFinancialMeta, getShiftCostEstimate, getShiftDurationHours, safeFinancialNumber } from '@/lib/financialCalculations';
 import { calculateProductivityPoolAllocations, isProductivityDayComplete } from '@/lib/productivityCalculations';
+import { isShiftVacant } from '@/lib/shiftLiveStatus';
+import { escapeHtml, getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -62,15 +64,14 @@ function getSectorName(shift, sectors) {
   return sector?.name || 'Setor Não Informado';
 }
 
+// Mesma regra de vaga usada no Painel e em Escalas: um plantão com
+// profissional atribuído não é vaga só porque o status ficou desatualizado.
 function isVacant(shift) {
-  const name = normalize(getShiftName(shift));
-  const hasProfId = Boolean(shift.professional_id);
-  const hasName = Boolean(name);
+  return isShiftVacant(shift);
+}
 
-  if (normalize(shift.status) === 'vago') return true;
-  if (name.includes('vaga') || name.includes('descoberto') || name.includes('aberto') || name === 'plantao sem profissional') return true;
-  if (!hasProfId && !hasName) return true;
-  return false;
+function roundHours(value) {
+  return Math.round(safeNumber(value) * 10) / 10;
 }
 
 function isShiftPast(shift) {
@@ -116,7 +117,7 @@ function getProfessionalCost(professional, hours, shift) {
 function getProfessionalRemuneration(professional, unitId) {
   if (!professional) return 'Não cadastrado';
   const meta = getProfessionalMeta(professional);
-  const type = normalize(meta.remuneration_type || meta.remunerationType || meta.payment_type || 'mensal');
+  const type = normalize(meta.remuneration_type || meta.remunerationType || meta.payment_type || DEFAULT_REMUNERATION_TYPE);
   const unitKey = String(unitId ?? '');
   const monthlySalaries = meta.unit_monthly_salaries || {};
   const unitMonthlySalary = monthlySalaries[unitKey];
@@ -589,7 +590,7 @@ export default function Relatorios() {
         }
       }
     });
-    return { totalCost, executedCost, pendingCost, vacantCost, hours: totalHours, shiftsMissingRate, shiftsAwaitingProduction };
+    return { totalCost, executedCost, pendingCost, vacantCost, hours: roundHours(totalHours), shiftsMissingRate, shiftsAwaitingProduction };
   }, [filteredShifts, getProf]);
 
   const sectorMetrics = useMemo(() => {
@@ -613,7 +614,7 @@ export default function Relatorios() {
       else item.filled += 1;
       item.cost += getReportShiftCost(shift, getProf(shift));
     });
-    return Object.values(map).filter(item => item.total > 0).sort((a, b) => b.total - a.total);
+    return Object.values(map).filter(item => item.total > 0).map(item => ({ ...item, hours: roundHours(item.hours) })).sort((a, b) => b.total - a.total);
   }, [sectors, filteredShifts, getProf]);
 
   const enrichedSectors = useMemo(() => {
@@ -639,48 +640,52 @@ export default function Relatorios() {
 
   const professionalMetrics = useMemo(() => {
     const map = {};
+    // Agrupa pelo ID do profissional; o nome só é usado quando o plantão não
+    // tem vínculo. Assim homônimos não se misturam e renomeações não duplicam linhas.
     filteredProfessionals.forEach(p => {
-      const name = normalize(p.name);
-      if (name) {
-        map[name] = { 
-          id: p.id || name, 
-          name: titleCase(p.name), 
-          specialty: p.specialty,
-          shifts: 0, hours: 0, sectors: new Set(), cost: 0 
-        };
-      }
+      if (!p.id && !normalize(p.name)) return;
+      const key = p.id ? `id:${p.id}` : `nome:${normalize(p.name)}`;
+      map[key] = {
+        id: p.id || normalize(p.name),
+        name: titleCase(p.name),
+        specialty: p.specialty,
+        shifts: 0, hours: 0, sectors: new Set(), cost: 0
+      };
     });
 
     filteredShifts.forEach(shift => {
       if (isVacant(shift)) return;
-      let rawName = getShiftName(shift);
+      const prof = getProf(shift);
+      let rawName = prof?.name || getShiftName(shift);
       let normName = normalize(rawName);
       if (!normName) {
         normName = `desconhecido_${shift.id}`;
         rawName = 'Profissional Não Identificado';
       }
+      const professionalId = prof?.id || shift.professional_id;
+      const key = professionalId ? `id:${professionalId}` : `nome:${normName}`;
 
-      if (!map[normName]) {
-        const prof = getProf(shift);
-        map[normName] = { 
-          id: shift.professional_id || normName, 
-          name: titleCase(prof?.name || rawName), 
+      if (!map[key]) {
+        map[key] = {
+          id: professionalId || normName,
+          name: titleCase(rawName),
           specialty: titleCase(prof?.specialty || 'Não Informada'),
-          shifts: 0, hours: 0, sectors: new Set(), cost: 0 
+          shifts: 0, hours: 0, sectors: new Set(), cost: 0
         };
       }
-      
-      const item = map[normName];
+
+      const item = map[key];
       item.shifts += 1;
       const h = getShiftHours(shift);
       item.hours += h;
       const sName = getSectorName(shift, sectors);
       if (sName) item.sectors.add(titleCase(sName));
-      item.cost += getReportShiftCost(shift, getProf(shift));
+      item.cost += getReportShiftCost(shift, prof);
     });
 
-    return Object.values(map).map(item => ({ 
-      ...item, 
+    return Object.values(map).map(item => ({
+      ...item,
+      hours: roundHours(item.hours),
       sectors: item.sectors.size > 0 ? Array.from(item.sectors).join(', ') : '—' 
     })).sort((a, b) => b.shifts - a.shifts);
   }, [filteredShifts, filteredProfessionals, sectors, getProf]);
@@ -899,7 +904,7 @@ export default function Relatorios() {
             <td ${isVencido}>${vencimento}</td>
             <td>${p.phone || p.telefone || 'Não inf.'}</td>
             <td>${p.email || 'Não inf.'}</td>
-            <td>${titleCase(p.remuneration_type || p.payment_type || 'Mensal')}</td>
+            <td>${titleCase(p.remuneration_type || p.payment_type || DEFAULT_REMUNERATION_TYPE)}</td>
             <td>${getProfessionalRemuneration(p, selectedUnitId)}</td>
             <td>${p.bank_name || p.banco || 'Não inf.'}</td>
             <td>${p.pix_key || p.chave_pix || p.pix || 'Não inf.'}</td>
@@ -1146,12 +1151,14 @@ export default function Relatorios() {
 
     // Lógica para injetar a logo da Rede e da Unidade
     const logoLetter = hospitalName[0] || 'H';
-    const companyLogoHtml = company?.logo_url || company?.data?.logo_url 
-      ? `<img src="${company.logo_url || company.data?.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` 
+    const companyLogoUrl = getCompanyLogoUrl(company);
+    const unitLogoUrl = getUnitLogoUrl(currentUnitObj);
+    const companyLogoHtml = companyLogoUrl
+      ? `<img src="${escapeHtml(companyLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />`
       : `<div style="width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px;">${logoLetter}</div>`;
     
-    const unitLogoHtml = currentUnitObj?.logo_url 
-      ? `<img src="${currentUnitObj.logo_url}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` 
+    const unitLogoHtml = unitLogoUrl
+      ? `<img src="${escapeHtml(unitLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` 
       : '';
 
     let printHtml = `
@@ -1643,6 +1650,7 @@ export default function Relatorios() {
           Documento processado eletronicamente pelo ScaleMedic.<br/>
           Informações confidenciais · Uso autorizado pela unidade.
         </div>
+        ${PRINT_WHEN_IMAGES_READY_SCRIPT}
       </body>
       </html>
     `;
@@ -1650,11 +1658,6 @@ export default function Relatorios() {
     printWindow.document.open();
     printWindow.document.write(printHtml);
     printWindow.document.close();
-
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-    }, 400);
   };
 
   return (
