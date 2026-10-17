@@ -9,6 +9,19 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.1.3 — 17/10/2026
+
+- **Correção — tela em branco após o login:** profissionais com permissões gravadas no
+  formato antigo (ex.: , ) caíam num redirecionamento
+  infinito. O controle de acesso agora aceita os dois formatos e nunca redireciona para
+  uma tela também bloqueada; sem nenhuma tela liberada, mostra aviso com botão Sair.
+- **Plantonista entra direto em Minha Escala** (celular, app instalado e computador);
+  gestores continuam entrando no Painel.
+- **Telas de gestão** (Painel, Faturamento, Relatórios, Corpo Clínico, Setores,
+  Configurações) fechadas para plantonistas, inclusive pelo endereço.
+- **Menu e barra inferior** mostram só as telas liberadas; Minha Escala em primeiro.
+- **Sair** também no topo do menu do celular, visível sem rolar.
+
 ## V0.1.2 — 17/10/2026
 
 Primeira versão numerada. Reúne:

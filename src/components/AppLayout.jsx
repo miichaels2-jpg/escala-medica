@@ -12,6 +12,7 @@ import { InstallAppBanner, InstallAppDialog } from '@/components/InstallAppGuide
 import { NotificationPanel, useNotificationCenter } from '@/components/NotificationCenter';
 import { usePwaInstall } from '@/lib/pwa';
 import { APP_VERSION } from '@/lib/version';
+import { canAccessRoute } from '@/lib/accessControl';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -159,7 +160,9 @@ export default function AppLayout({ children }) {
     { label: 'Relatórios', path: '/relatorios', icon: FileBarChart, visible: isManager || isBilling },
     { label: 'Faturamento & Repasse', path: '/faturamento', icon: DollarSign, visible: isManager || isBilling },
     { label: 'Configurações', path: '/configuracoes', icon: Settings, visible: isManager },
-  ].filter(item => item.visible);
+  ].filter(item => item.visible && canAccessRoute(user, item.path))
+    // Plantonista: a própria agenda vem primeiro.
+    .sort((a, b) => ['assistencial', 'medico'].includes(userAppRole) ? (b.path === '/minha-escala') - (a.path === '/minha-escala') : 0);
 
   const roleBadgeLabel = {
     gestor: 'Gestor Geral',
@@ -186,7 +189,8 @@ export default function AppLayout({ children }) {
       : { label: 'Painel', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Escalas', path: '/escalas', icon: CalendarDays },
     { label: 'Mural', path: '/trocas', icon: Flame, badge: muralBadge }
-  ];
+  ].filter(tab => canAccessRoute(user, tab.path));
+  const mobileGridCols = ['grid-cols-2', 'grid-cols-2', 'grid-cols-3', 'grid-cols-4'][mobileTabs.length] || 'grid-cols-4';
   const userInitials = String(user?.full_name || user?.email || 'U')
     .trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase();
 
@@ -378,6 +382,15 @@ export default function AppLayout({ children }) {
                 <span className="text-sm font-black text-slate-900 dark:text-white block truncate">{user?.full_name || 'Usuário'}</span>
                 <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider block truncate">{roleBadgeLabel}</span>
               </div>
+              <button
+                type="button"
+                onClick={handleLogout}
+                aria-label="Sair do sistema"
+                className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
+              >
+                <LogOut className="w-5 h-5" />
+                <span className="text-[10px] font-bold">Sair</span>
+              </button>
               <button type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Fechar menu" className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
@@ -464,7 +477,7 @@ export default function AppLayout({ children }) {
           aria-label="Navegação principal"
           className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] pb-[env(safe-area-inset-bottom)] print:hidden"
         >
-          <div className="grid grid-cols-4 h-16">
+          <div className={`grid ${mobileGridCols} h-16`}>
             {mobileTabs.map(tab => (
               <NavLink
                 key={tab.path}
