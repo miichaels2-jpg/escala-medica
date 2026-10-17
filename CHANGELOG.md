@@ -12,7 +12,7 @@
 ## V0.1.3 — 17/10/2026
 
 - **Correção — tela em branco após o login:** profissionais com permissões gravadas no
-  formato antigo (ex.: , ) caíam num redirecionamento
+  formato antigo (ex.: `minha_escala`, `trocas_plantao`) caíam num redirecionamento
   infinito. O controle de acesso agora aceita os dois formatos e nunca redireciona para
   uma tela também bloqueada; sem nenhuma tela liberada, mostra aviso com botão Sair.
 - **Plantonista entra direto em Minha Escala** (celular, app instalado e computador);
