@@ -285,6 +285,22 @@ export default function Trocas() {
   const openShifts = isManager && managerView === 'todas' ? muralShifts : claimableShifts;
   const hiddenForMeCount = muralShifts.length - claimableShifts.length;
 
+  const hiddenReasons = useMemo(() => {
+    const reasons = { sector: 0, conflict: 0, specialties: new Map() };
+    if (!myProf?.id) return reasons;
+    muralShifts.forEach(shift => {
+      if (!isProfessionalAuthorizedForSector(myProf, shift.sector_id)) { reasons.sector += 1; return; }
+      if (!isVacancyRelevantFor(shift, myProf)) {
+        const spec = extractSpecialty(shift, null);
+        reasons.specialties.set(spec, (reasons.specialties.get(spec) || 0) + 1);
+        return;
+      }
+      if (checkTimeConflict(shift).hasConflict) reasons.conflict += 1;
+    });
+    return reasons;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [muralShifts, myProf, myCompanyShifts]);
+
   const openShiftsByDate = useMemo(() => {
     const groups = [];
     openShifts.forEach(shift => {
@@ -435,6 +451,10 @@ export default function Trocas() {
     }
 
     const sectorName = sectorMap[String(shift.sector_id)]?.name || 'Setor Hospitalar';
+    if (!isVacancyRelevantFor(shift, myProf) && isProfessionalAuthorizedForSector(myProf, shift.sector_id)) {
+      alert(`⛔ Esta vaga é para ${extractSpecialty(shift, null)}. Sua especialidade cadastrada é ${myProf.specialty || 'não informada'}.`);
+      return;
+    }
     // Mesma regra da tela de Escalas: só assume quem está autorizado no setor.
     if (!isProfessionalAuthorizedForSector(myProf, shift.sector_id)) {
       alert(`⛔ Você não está autorizado(a) a atuar no setor ${sectorName}. Fale com a coordenação.`);
@@ -652,10 +672,17 @@ export default function Trocas() {
             </div>
           )}
 
-          {!isManager && hiddenForMeCount > 0 && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
-              {hiddenForMeCount} vaga(s) do hospital não aparecem aqui porque são de outro setor ou especialidade, ou chocam com a sua escala.
-            </p>
+          {!isManager && hiddenForMeCount > 0 && myProf?.id && (
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-sm text-slate-600 dark:text-slate-300">
+              <p className="font-medium text-slate-800 dark:text-slate-100">{hiddenForMeCount} vaga(s) do hospital não estão disponíveis para você:</p>
+              <ul className="mt-1.5 space-y-0.5 text-xs">
+                {[...hiddenReasons.specialties.entries()].map(([spec, count]) => (
+                  <li key={spec}>· {count} de outra especialidade (<b>{spec}</b>) — a sua é {myProf.specialty || 'não informada'}</li>
+                ))}
+                {hiddenReasons.sector > 0 && <li>· {hiddenReasons.sector} de setor em que você não está autorizado(a)</li>}
+                {hiddenReasons.conflict > 0 && <li>· {hiddenReasons.conflict} em horário em que você já está escalado(a)</li>}
+              </ul>
+            </div>
           )}
         </div>
       )}

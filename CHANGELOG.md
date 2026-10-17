@@ -9,6 +9,16 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.1.6 — 17/10/2026
+
+- **Faturamento › Produtividade diária:** o lançamento agora é do mês inteiro numa tela só. Lista os dias
+  pendentes com os profissionais escalados em cada um; dá para preencher vários dias e salvar de uma vez.
+  Campos em branco continuam pendentes. O botão mostra quantos dias faltam. O modelo Excel cobre todos os
+  dias listados (com o rateio de cada dia), e a importação aceita o mês inteiro.
+- **Mural (regra rígida de especialidade):** o plantonista vê por que as vagas não aparecem para ele (outra
+  especialidade, setor não autorizado ou choque de horário). O botão "Assumir" também passa a exigir a
+  especialidade da vaga, como o Mural já fazia.
+
 ## V0.1.5 — 17/10/2026
 
 - **Montar escala (antigo Gerador de Grade Padrão):** agora é feito em etapas — grade → profissionais →
