@@ -11,6 +11,7 @@ import {
 import { InstallAppBanner, InstallAppDialog } from '@/components/InstallAppGuide';
 import { NotificationPanel, useNotificationCenter } from '@/components/NotificationCenter';
 import { usePwaInstall } from '@/lib/pwa';
+import { APP_VERSION } from '@/lib/version';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -254,6 +255,7 @@ export default function AppLayout({ children }) {
               <LogOut className="w-4 h-4" />
             </button>
           </div>
+          <p className="mt-2 text-center text-[10px] font-semibold text-slate-400 dark:text-slate-500" title="Versão do sistema">ScaleMedic {APP_VERSION}</p>
         </div>
       </aside>
 
@@ -443,6 +445,7 @@ export default function AppLayout({ children }) {
               >
                 <LogOut className="w-5 h-5" /> Sair do sistema
               </button>
+              <p className="pt-1 text-center text-[11px] font-semibold text-slate-400 dark:text-slate-500">ScaleMedic {APP_VERSION}</p>
             </div>
             </div>
           </div>

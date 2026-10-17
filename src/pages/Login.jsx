@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { InstallAppDialog } from '@/components/InstallAppGuide';
 import { usePwaInstall } from '@/lib/pwa';
+import { APP_VERSION } from '@/lib/version';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -370,7 +371,7 @@ export default function Login() {
           Ao entrar, você concorda com nossos <Link to="/termos-de-uso" className="font-bold text-sky-400 hover:underline">Termos de Uso e LGPD</Link>.
         </p>
         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-          &copy; 2026 ScaleMedic Enterprise. Todos os direitos reservados.
+          &copy; 2026 ScaleMedic Enterprise · {APP_VERSION}. Todos os direitos reservados.
         </p>
       </div>
 

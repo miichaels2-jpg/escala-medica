@@ -17,6 +17,12 @@ Start with `README.md` for local setup, environment variables, database migratio
 - `supabase/migrations/`: SQL to apply in the Supabase SQL Editor.
 - `.env`: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (local only; never commit).
 
+## Versioning
+
+- Current version lives in `package.json` (`version`, without the "V") and is shown in the app as `V<version>`.
+- Every production release bumps the last number: 0.1.2 → 0.1.3 … → 0.1.10; after 0.1.10 comes 0.2.1 (never x.y.0). See `nextVersion()` in `src/lib/version.js`.
+- Each release gets a `CHANGELOG.md` entry and a git tag `vX.Y.Z`.
+
 ## Working Notes
 
 - Run locally with `npm run dev`; it talks to the Supabase project configured in `.env`.
