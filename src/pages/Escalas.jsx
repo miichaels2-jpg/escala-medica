@@ -222,7 +222,9 @@ export default function Escalas() {
   const [activeTab, setActiveTab] = useState('mensal'); 
   const [monthlyView, setMonthlyView] = useState('lista');
   const [filterTurno, setFilterTurno] = useState('todos'); 
-  const [startDateFilter, setStartDateFilter] = useState('');
+  // A lista abre a partir de hoje: dias que já passaram ficam a um clique (setas do mês / filtro).
+  const [startDateFilter, setStartDateFilter] = useState(() => getLocalDateString());
+  const [showAllVacancyAlerts, setShowAllVacancyAlerts] = useState(false);
 const [legacyAssignmentOpen, setLegacyAssignmentOpen] = useState(false);
 const [legacyUnitDrafts, setLegacyUnitDrafts] = useState({});
 const [legacyAssignmentSaving, setLegacyAssignmentSaving] = useState(false);
@@ -2038,19 +2040,19 @@ const handleAssignLegacyShiftUnit = async (shift) => {
         <div className="p-4 rounded-3xl bg-rose-500/15 border-2 border-rose-500/60 shadow-lg animate-in fade-in flex flex-col gap-3">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0">
-              <AlertTriangle className="w-5 h-5 animate-pulse" />
+              <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
               <strong className="text-sm font-black text-rose-500 uppercase tracking-wider block">
-                Alerta Crítico: Plantões Descobertos ({vacantShiftAlerts.length})
+                {vacantShiftAlerts.length} plantão(ões) sem profissional
               </strong>
               <p className="text-xs text-rose-600 dark:text-rose-300">
-                Os turnos abaixo estão sem profissional alocado e precisam de atenção imediata da coordenação.
+                Próximos turnos sem profissional neste mês. Toque para alocar.
               </p>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-2">
-            {vacantShiftAlerts.slice(0, 8).map(v => {
+            {vacantShiftAlerts.slice(0, showAllVacancyAlerts ? 24 : 4).map(v => {
               const isPast = isShiftPast(v, liveNow);
               return (
                 <div 
@@ -2071,6 +2073,11 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               );
             })}
           </div>
+          {vacantShiftAlerts.length > 4 && (
+            <button type="button" onClick={() => setShowAllVacancyAlerts(v => !v)} className="self-start text-xs font-semibold text-rose-600 dark:text-rose-300 hover:underline cursor-pointer">
+              {showAllVacancyAlerts ? 'Mostrar menos' : `Ver mais ${Math.min(20, vacantShiftAlerts.length - 4)} vaga(s)`}
+            </button>
+          )}
         </div>
       )}
 

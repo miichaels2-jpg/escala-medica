@@ -9,6 +9,20 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.1.4 — 17/10/2026
+
+Revisão de excesso de informação nas telas:
+
+- **Painel Geral:** setores sem plantão no dia viram uma linha só; lista de setores em rascunho recolhida;
+  menos animações piscando ao mesmo tempo; textos de alerta mais curtos.
+- **Correções no Painel:** plantões do dia mostravam "Setor Geral" em vez do setor real; gráfico
+  "Distribuição da carga horária 24h" aparecia vazio.
+- **Escalas:** a lista abre a partir de hoje (antes começava no dia 1, cheia de furos já passados);
+  alerta de vagas mostra 4 e expande sob demanda.
+- **Mural:** plantonista vê primeiro "Compatíveis comigo" (setor e especialidade), com opção
+  "Todas as vagas"; cartões de vaga mais compactos.
+- **Faturamento:** configuração da produtividade recolhida em "Configurar"; aviso repetido removido.
+
 ## V0.1.3 — 17/10/2026
 
 - **Correção — tela em branco após o login:** profissionais com permissões gravadas no

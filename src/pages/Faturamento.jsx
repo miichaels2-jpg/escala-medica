@@ -244,6 +244,7 @@ export default function Faturamento() {
   }, [isProductivityPoolUnit, productivityRuleUnitId, productivityRule?.daily_amount, shifts, monthPrefix, todayStr, now, productivityProfessionalsById]);
 
   const [paymentSavingId, setPaymentSavingId] = useState(null);
+  const [showProductivitySettings, setShowProductivitySettings] = useState(false);
 
   // O status "PAGO" fica no banco (payment_statuses): todos os gestores veem o mesmo.
   const handleTogglePago = async (profId) => {
@@ -1212,18 +1213,27 @@ export default function Faturamento() {
         <Card className="space-y-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-500/30 dark:bg-indigo-950/20">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-sm font-black text-indigo-950 dark:text-indigo-200">Produtividade diária por unidade</h2>
+              <h2 className="text-sm font-black text-indigo-950 dark:text-indigo-200">Produtividade diária</h2>
               <p className="mt-1 text-xs text-indigo-900/80 dark:text-indigo-200/80">
-                Uma única unidade pode usar o rateio diário de R$ 150. Só entram profissionais cadastrados com regime de produtividade. O valor unitário é o pool dividido pelos atendimentos do dia; cada profissional recebe sua parte proporcional.
+                {productivityRuleUnitId
+                  ? <>Rateio de <strong>{formatCurrency(safeNumber(productivityRule?.daily_amount, 150))}</strong> por dia em <strong>{units.find(unit => String(unit.id) === productivityRuleUnitId)?.name || 'unidade não encontrada'}</strong>, dividido pelos atendimentos de cada profissional.</>
+                  : 'Regra de rateio diário não configurada.'}
               </p>
             </div>
-            {isProductivityPoolUnit && isManager && (
-              <Button type="button" onClick={() => setProductionEntryOpen(true)} className="shrink-0 bg-indigo-600 text-white hover:bg-indigo-700">
-                Lançar atendimentos do dia
-              </Button>
-            )}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {isManager && (
+                <Button type="button" variant="outline" onClick={() => setShowProductivitySettings(v => !v)} aria-expanded={showProductivitySettings} className="h-9 text-xs border-indigo-300 dark:border-indigo-500/40 text-indigo-800 dark:text-indigo-200">
+                  {showProductivitySettings ? 'Fechar configuração' : 'Configurar'}
+                </Button>
+              )}
+              {isProductivityPoolUnit && isManager && (
+                <Button type="button" onClick={() => setProductionEntryOpen(true)} className="bg-indigo-600 text-white hover:bg-indigo-700">
+                  Lançar atendimentos do dia
+                </Button>
+              )}
+            </div>
           </div>
-          {isManager && (
+          {isManager && (showProductivitySettings || !productivityRuleUnitId) && (
             <div className="flex flex-col gap-2 border-t border-indigo-200 pt-3 dark:border-indigo-500/20 sm:flex-row sm:items-end">
               <label className="flex-1 space-y-1 text-[10px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
                 Unidade exclusiva para esta regra
@@ -1241,11 +1251,10 @@ export default function Faturamento() {
               </Button>
             </div>
           )}
-          {productivityRuleUnitId && (
-            <div className="rounded-xl border border-indigo-200 bg-white/80 p-3 text-xs text-indigo-950 dark:border-indigo-500/20 dark:bg-slate-900/80 dark:text-indigo-100">
-              Unidade configurada: <strong>{units.find(unit => String(unit.id) === productivityRuleUnitId)?.name || 'Unidade não encontrada'}</strong> · Limite diário compartilhado: <strong>{formatCurrency(safeNumber(productivityRule.daily_amount, 150))}</strong>.
-              {isProductivityPoolUnit && <span> Cada dia é apurado separadamente; só os profissionais cadastrados como produtividade entram no rateio. Dias completos já entram no saldo acumulado, mesmo que outro dia ainda esteja pendente.</span>}
-            </div>
+          {showProductivitySettings && (
+            <p className="text-xs text-indigo-900/80 dark:text-indigo-200/80">
+              Só uma unidade usa o rateio. Entram apenas profissionais com regime de produtividade; cada dia é fechado separadamente quando todos os atendimentos do dia forem lançados.
+            </p>
           )}
         </Card>
       )}
@@ -1312,9 +1321,6 @@ export default function Faturamento() {
           <strong className="text-sm font-black text-indigo-700 dark:text-indigo-300">Produção</strong>
         </Card>
       </div>
-      <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
-        O status de pagamento fica salvo no sistema e aparece igual para todos os gestores, em qualquer computador ou celular.
-      </p>
 
       {/* TABELA DE CONCILIAÇÃO FINANCEIRA COM STATUS DE PAGAMENTO */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 space-y-4">
