@@ -10,8 +10,6 @@ import ScrollToTop from './components/ScrollToTop';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
-import ForgotPassword from '@/pages/ForgotPassword';
-import ResetPassword from '@/pages/ResetPassword';
 import AppLayout from '@/components/AppLayout';
 import Dashboard from '@/pages/Dashboard';
 import Escalas from '@/pages/Escalas';
@@ -22,7 +20,6 @@ import Faturamento from '@/pages/Faturamento';
 import Configuracoes from '@/pages/Configuracoes';
 import MinhaEscala from '@/pages/MinhaEscala';
 import Trocas from '@/pages/Trocas';
-import MobilePreview from '@/pages/MobilePreview';
 import AutoLogout from '@/components/AutoLogout'; 
 import ContractGuard from '@/components/ContractGuard';
 
@@ -58,9 +55,6 @@ const AuthenticatedApp = () => {
 
         <Route path="/login" element={isAuthenticated ? <Navigate to={homePath} replace /> : <Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/mobile-preview" element={<MobilePreview />} />
         <Route path="/termos-de-uso" element={<TermosDeUso />} />
 
         <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/" replace />} />}>

@@ -22,9 +22,7 @@
     "src/**/*.js",
     "src/**/*.jsx",
     "src/**/*.ts",
-    "src/**/*.tsx",
-    "functions/**/*.ts",
-    "shared/**/*.ts"
+    "src/**/*.tsx"
   ],
   "exclude": [
     "node_modules",
