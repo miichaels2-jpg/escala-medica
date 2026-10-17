@@ -7,6 +7,8 @@ import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 
 const READ_VACANCIES_KEY = 'scale_read_notifs';
 const REFRESH_MS = 60_000;
+// Gestor recebe aviso só das vagas próximas; a lista completa fica no Painel e em Escalas.
+const MANAGER_VACANCY_WINDOW_MS = 72 * 60 * 60 * 1000;
 
 function normalize(value) {
   return String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -43,7 +45,7 @@ export function isVacancyRelevantFor(shift, professional) {
   return required === mine || required.includes(mine) || mine.includes(required);
 }
 
-export function useNotificationCenter({ user, currentProfessional, shifts, selectedUnitId, isManager }) {
+export function useNotificationCenter({ user, currentProfessional, shifts, companyShifts, selectedUnitId, isManager }) {
   const [notices, setNotices] = useState([]);
   const [readVacancyIds, setReadVacancyIds] = useState(() => {
     try { return JSON.parse(window.localStorage.getItem(READ_VACANCIES_KEY) || '[]'); } catch { return []; }
@@ -70,6 +72,15 @@ export function useNotificationCenter({ user, currentProfessional, shifts, selec
     };
   }, [refresh]);
 
+  // Plantões da própria pessoa (em qualquer hospital), para não avisar de vaga que choca com a escala dela.
+  const myRanges = useMemo(() => {
+    if (!professionalId) return [];
+    return (companyShifts?.length ? companyShifts : shifts || [])
+      .filter(s => s && String(s.professional_id) === professionalId && !normalize(s.status).includes('cancel') && !isShiftVacant(s))
+      .map(getShiftDateTimeRange)
+      .filter(Boolean);
+  }, [companyShifts, shifts, professionalId]);
+
   const vacancies = useMemo(() => {
     const now = new Date();
     return (shifts || [])
@@ -78,10 +89,12 @@ export function useNotificationCenter({ user, currentProfessional, shifts, selec
         if (normalize(s.status).includes('cancel') || !isShiftVacant(s)) return false;
         const range = getShiftDateTimeRange(s);
         if (!range || range.end <= now) return false;
-        return isManager || isVacancyRelevantFor(s, currentProfessional);
+        if (isManager) return range.start.getTime() - now.getTime() <= MANAGER_VACANCY_WINDOW_MS;
+        if (!isVacancyRelevantFor(s, currentProfessional)) return false;
+        return !myRanges.some(mine => mine.start < range.end && range.start < mine.end);
       })
       .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start_time).localeCompare(String(b.start_time)));
-  }, [shifts, selectedUnitId, isManager, currentProfessional]);
+  }, [shifts, selectedUnitId, isManager, currentProfessional, myRanges]);
 
   const pendingApprovals = useMemo(() => {
     if (!isManager) return [];

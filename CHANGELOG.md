@@ -9,6 +9,25 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.1.5 — 17/10/2026
+
+- **Montar escala (antigo Gerador de Grade Padrão):** agora é feito em etapas — grade → profissionais →
+  salvar como rascunho ou salvar e publicar. Nada é gravado antes da última etapa. Voltar à grade mantém
+  as escolhas. O preenchimento automático reparte os plantões entre os profissionais compatíveis, em vez
+  de dar tudo ao primeiro da lista.
+- **Especialidade:** o campo mostra sempre a lista completa (antes só aparecia depois de apagar o texto),
+  com a opção "Outra (digitar)". Vale no gerador e no lançamento de plantão.
+- **Calendário da escala:** uma linha por plantão (hora + nome curto); vagas agrupadas por horário;
+  cor só para status (laranja = vaga, vermelho = vaga vencida, verde = em andamento); "+N outros" abre a
+  lista daquele dia. Saíram o "Mapa de Vagas" e os blocos Manhã/Tarde/Noite de cada dia.
+- **Mural de vagas:** o plantonista vê só as vagas que pode assumir (setor, especialidade e sem choque de
+  horário em qualquer hospital). O gestor escolhe entre "Todas" e "Que eu posso assumir". Vagas agrupadas por
+  dia, em linhas alinhadas (horário · setor · especialidade · ação). Cabeçalho e abas mais simples.
+- **Notificações:** o plantonista não recebe aviso de vaga que choca com a escala dele; o gestor recebe aviso
+  só das vagas das próximas 72 h (a lista completa continua no Painel e em Escalas).
+- **Cores:** avisos de vagas e de setores em rascunho no topo de Escalas viraram cartões neutros, com a cor
+  só no ícone e no marcador de status.
+
 ## V0.1.4 — 17/10/2026
 
 Revisão de excesso de informação nas telas:

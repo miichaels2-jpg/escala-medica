@@ -58,6 +58,7 @@ export default function AppLayout({ children }) {
     isBilling, 
     userAppRole,
     shifts,
+    allCompanyShifts,
     currentProfessional,
     dataWarnings = [],
     syncGlobalData
@@ -143,7 +144,7 @@ export default function AppLayout({ children }) {
     window.location.reload();
   };
 
-  const notificationCenter = useNotificationCenter({ user, currentProfessional, shifts, selectedUnitId, isManager });
+  const notificationCenter = useNotificationCenter({ user, currentProfessional, shifts, companyShifts: allCompanyShifts, selectedUnitId, isManager });
   const muralBadge = notificationCenter.unreadVacancies.length;
 
   const dayName = WEEKDAYS_LONG[currentTime.getDay()];

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { supabase } from '@/lib/supabase';
 import { getShiftDateTimeRange } from '@/lib/shiftLiveStatus';
@@ -7,10 +7,9 @@ import { isVacancyRelevantFor } from '@/components/NotificationCenter';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
-  Flame, Calendar, Clock, Building2, User, 
-  CheckCircle2, Check, AlertCircle, ShieldAlert, Trash2, 
-  Repeat, ArrowRightLeft, Stethoscope, Filter, XCircle,
-  Clock3, ShieldCheck, History, UserCheck, AlertTriangle, ArrowRight
+  Flame, Calendar, 
+  CheckCircle2, Check, Trash2, ArrowRightLeft, Stethoscope, Filter, XCircle,
+  Clock3, ShieldCheck, History, ArrowRight
 } from 'lucide-react';
 
 function formatFullName(name) {
@@ -35,6 +34,12 @@ function extractSpecialty(shift, prof) {
     }
   } catch {}
   return prof?.specialty || shift?.target_specialty || 'Clínica Médica';
+}
+
+// "sábado, 17 de outubro" → "Sábado, 17 de outubro"
+function formatLongDate(dateStr) {
+  const text = new Date(String(dateStr).slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function formatDateBR(dateStr) {
@@ -120,6 +125,8 @@ export default function Trocas() {
     shifts = [], 
     sectors = [], 
     professionals = [], 
+    allCompanyShifts = [],
+    allCompanySectors = [],
     currentProfessional, 
     selectedUnitId,
     company,
@@ -130,8 +137,9 @@ export default function Trocas() {
 
   const [activeTab, setActiveTab] = useState('vagas');
   const [selectedSpecialtyFilter, setSelectedSpecialtyFilter] = useState('todas');
-  // Plantonista vê primeiro só as vagas que pode assumir (setor e especialidade).
-  const [onlyCompatible, setOnlyCompatible] = useState(true);
+  // Gestor escolhe entre ver todas as vagas (gestão) ou só as que ele mesmo pode assumir.
+  // O plantonista vê sempre só as vagas que pode assumir.
+  const [managerView, setManagerView] = useState('todas');
   const [submitting, setSubmitting] = useState(false);
 
   const myProf = useMemo(() => {
@@ -182,13 +190,30 @@ export default function Trocas() {
     });
   }, [unitShifts, myProf, user]);
 
+  const myCompanyShifts = useMemo(() => {
+    const myIds = new Set([myProf?.id, user?.data?.professional_id].filter(Boolean).map(String));
+    const myName = String(user?.full_name || '').toLowerCase().trim();
+    const source = allCompanyShifts.length ? allCompanyShifts : unitShifts;
+    return source.filter(s => {
+      if (!s || s.status === 'cancelado' || s.status === 'vago' || !s.professional_id) return false;
+      return myIds.has(String(s.professional_id)) ||
+        (myName && String(s.professional_name || '').toLowerCase().trim() === myName);
+    });
+  }, [allCompanyShifts, unitShifts, myProf, user]);
+
+  const companySectorMap = useMemo(() => {
+    const m = {};
+    [...(allCompanySectors || []), ...(sectors || [])].forEach(s => { if (s?.id) m[String(s.id)] = s; });
+    return m;
+  }, [allCompanySectors, sectors]);
+
   const checkTimeConflict = (shiftCandidate) => {
     if (!shiftCandidate || !shiftCandidate.date) return { hasConflict: false };
 
     const candidateRange = getShiftDateTimeRange(shiftCandidate);
     if (!candidateRange) return { hasConflict: false };
 
-    for (const myShift of myAllocatedShifts) {
+    for (const myShift of myCompanyShifts) {
       if (String(myShift.id) === String(shiftCandidate.id)) continue;
 
       // Data + hora reais: um plantão noturno de ontem pode avançar sobre hoje.
@@ -196,11 +221,11 @@ export default function Trocas() {
       const overlaps = myRange && myRange.start < candidateRange.end && candidateRange.start < myRange.end;
 
       if (overlaps) {
-        const sectorConflict = sectorMap[String(myShift.sector_id)]?.name || 'outro setor';
+        const sectorConflict = companySectorMap[String(myShift.sector_id)]?.name || 'outro setor';
         return {
           hasConflict: true,
           conflictShift: myShift,
-          message: `Choque de Horário: Você já está alocado em "${sectorConflict}" (${myShift.start_time} às ${myShift.end_time}) no dia ${formatDateBR(myShift.date)}.`
+          message: `Você já está em ${sectorConflict} das ${myShift.start_time} às ${myShift.end_time} (${formatDateBR(myShift.date)}).`
         };
       }
     }
@@ -225,7 +250,7 @@ export default function Trocas() {
   // Data local (toISOString usa UTC e, após as 21h no Brasil, já "vira" o dia).
   const todayStr = useMemo(() => getLocalDateString(), []);
 
-  const openShifts = useMemo(() => {
+  const muralShifts = useMemo(() => {
     return unitShifts.filter(s => {
       if (!s) return false;
       const st = String(s.status || '').toLowerCase();
@@ -239,16 +264,36 @@ export default function Trocas() {
       if (s.professional_id) return false;
       if (s.date && s.date < todayStr) return false;
 
-      if (!isManager && onlyCompatible && !isVacancyRelevantFor(s, myProf)) return false;
-
-      if (selectedSpecialtyFilter !== 'todas') {
+      if (isManager && selectedSpecialtyFilter !== 'todas') {
         const spec = extractSpecialty(s, null);
         if (spec.toLowerCase() !== selectedSpecialtyFilter.toLowerCase()) return false;
       }
 
       return true;
-    }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
-  }, [unitShifts, selectedSpecialtyFilter, todayStr, isManager, onlyCompatible, myProf]);
+    }).sort((a, b) => (a?.date || '').localeCompare(b?.date || '') || String(a?.start_time || '').localeCompare(String(b?.start_time || '')));
+  }, [unitShifts, selectedSpecialtyFilter, todayStr, isManager]);
+
+  // Pode assumir: setor autorizado, especialidade compatível e sem choque com a própria escala.
+  const canClaim = (shift) => Boolean(myProf?.id) && isVacancyRelevantFor(shift, myProf) && !checkTimeConflict(shift).hasConflict;
+
+  const claimableShifts = useMemo(
+    () => muralShifts.filter(canClaim),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [muralShifts, myProf, myCompanyShifts]
+  );
+
+  const openShifts = isManager && managerView === 'todas' ? muralShifts : claimableShifts;
+  const hiddenForMeCount = muralShifts.length - claimableShifts.length;
+
+  const openShiftsByDate = useMemo(() => {
+    const groups = [];
+    openShifts.forEach(shift => {
+      const last = groups[groups.length - 1];
+      if (last && last.date === shift.date) last.items.push(shift);
+      else groups.push({ date: shift.date, items: [shift] });
+    });
+    return groups;
+  }, [openShifts]);
 
   const pendingApprovalShifts = useMemo(() => {
     return unitShifts.filter(s => {
@@ -447,238 +492,172 @@ export default function Trocas() {
   return (
     <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
       
-      {/* 1. HEADER EXECUTIVO */}
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-r from-slate-900 via-slate-950 to-indigo-950 p-6 md:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-400">
-            <Flame className="w-4 h-4" /> Centro de Oportunidades & Trocas
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Mural de Vagas & Repasses</h1>
-          <p className="text-xs text-slate-400 max-w-2xl">
-            Ambiente auditado com trava matemática contra duplicidade e choques de horário.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="px-5 py-3 rounded-2xl bg-slate-900/90 border border-slate-800 text-center shadow-lg">
-            <span className="text-[10px] font-black uppercase text-slate-400 block">Vagas no Mural</span>
-            <span className="text-2xl font-black font-mono text-amber-400">{openShifts.length}</span>
-          </div>
-
-          {isManager && (
-            <div className="px-5 py-3 rounded-2xl bg-slate-900/90 border border-indigo-500/40 text-center shadow-lg">
-              <span className="text-[10px] font-black uppercase text-indigo-400 block">Pendentes Gestor</span>
-              <span className="text-2xl font-black font-mono text-indigo-300">{pendingApprovalShifts.length}</span>
-            </div>
-          )}
-        </div>
+      {/* 1. CABEÇALHO */}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Mural de vagas</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          {isManager ? 'Vagas abertas, pedidos de troca e histórico de repasses.' : 'Vagas que você pode assumir, sem choque com a sua escala.'}
+        </p>
       </div>
 
       {myPendingShifts.length > 0 && !isManager && (
-        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-3">
-            <Clock3 className="w-5 h-5 text-amber-500 shrink-0 animate-pulse" />
-            <div>
-              <strong className="text-xs font-black uppercase tracking-wider block">
-                Você possui {myPendingShifts.length} solicitação(ões) em análise pela coordenação
-              </strong>
-              <span className="text-[11px] opacity-90">
-                O plantão só ficará disponível para os colegas no Mural após a autorização do gestor.
-              </span>
-            </div>
-          </div>
-          <span className="text-xs font-black font-mono px-3 py-1 rounded-xl bg-amber-500/20 text-amber-800 dark:text-amber-300">
-            AGUARDANDO GESTÃO
-          </span>
+        <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-amber-900 dark:text-amber-200 flex items-start gap-3">
+          <Clock3 className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-sm">
+            <b>{myPendingShifts.length} pedido(s) de troca em análise.</b>{' '}
+            <span className="text-amber-800/90 dark:text-amber-200/80">O plantão só vai para o mural depois da autorização da coordenação.</span>
+          </p>
         </div>
       )}
 
-      {/* 2. BARRA DE NAVEGAÇÃO POR ABAS */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <button 
-            onClick={() => setActiveTab('vagas')} 
-            className={`px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
-              activeTab === 'vagas' ? 'bg-amber-600 text-white shadow-md' : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50'
-            }`}
-          >
-            <Flame className="w-4 h-4" />
-            <span>Vagas no Mural ({openShifts.length})</span>
-          </button>
-
-          {isManager && (
-            <button 
-              onClick={() => setActiveTab('pendentes')} 
-              className={`px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
-                activeTab === 'pendentes' ? 'bg-indigo-600 text-white shadow-md ring-2 ring-indigo-400' : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4 text-indigo-400" />
-              <span>Aprovações Pendentes ({pendingApprovalShifts.length})</span>
-            </button>
-          )}
-
-          <button 
-            onClick={() => setActiveTab('trocas')} 
-            className={`px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
-              activeTab === 'trocas' ? 'bg-sky-600 text-white shadow-md' : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50'
-            }`}
-          >
-            <ArrowRightLeft className="w-4 h-4" />
-            <span>Meus Plantões / Passar p/ Mural ({myUpcomingShifts.length})</span>
-          </button>
-
-          <button 
-            onClick={() => setActiveTab('historico')} 
-            className={`px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
-              activeTab === 'historico' ? 'bg-slate-900 text-white dark:bg-slate-800 shadow-md' : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50'
-            }`}
-          >
-            <History className="w-4 h-4" />
-            <span>Histórico de Repasses ({transferHistory.length})</span>
-          </button>
-        </div>
-
-        {activeTab === 'vagas' && (
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm space-y-3">
-            {!isManager && (
-              <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800" role="tablist" aria-label="Quais vagas mostrar">
-                <button type="button" role="tab" aria-selected={onlyCompatible} onClick={() => setOnlyCompatible(true)}
-                  className={`h-9 rounded-lg text-xs font-semibold cursor-pointer ${onlyCompatible ? 'bg-white dark:bg-slate-900 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
-                  Compatíveis comigo
-                </button>
-                <button type="button" role="tab" aria-selected={!onlyCompatible} onClick={() => setOnlyCompatible(false)}
-                  className={`h-9 rounded-lg text-xs font-semibold cursor-pointer ${!onlyCompatible ? 'bg-white dark:bg-slate-900 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>
-                  Todas as vagas
-                </button>
-              </div>
-            )}
-            {(isManager || !onlyCompatible) && <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 mr-1 flex items-center gap-1">
-                <Filter className="w-3 h-3" /> Especialidade
-              </span>
+      {/* 2. ABAS */}
+      <div className="-mx-4 px-4 md:mx-0 md:px-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="inline-flex min-w-max items-center gap-1 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1" role="tablist">
+          {[
+            { id: 'vagas', label: 'Vagas', count: openShifts.length, icon: Flame },
+            ...(isManager ? [{ id: 'pendentes', label: 'Aprovações', count: pendingApprovalShifts.length, icon: ShieldCheck }] : []),
+            { id: 'trocas', label: 'Meus plantões', count: myUpcomingShifts.length, icon: ArrowRightLeft },
+            { id: 'historico', label: 'Histórico', count: transferHistory.length, icon: History },
+          ].map(tab => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
               <button
-                onClick={() => setSelectedSpecialtyFilter('todas')}
-                className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
-                  selectedSpecialtyFilter === 'todas' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveTab(tab.id)}
+                className={`h-9 px-3 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 cursor-pointer ${active ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
               >
-                Todas
+                <Icon className="w-4 h-4" />
+                {tab.label}
+                <span className={`rounded-full px-1.5 text-xs ${active ? 'bg-white/20 dark:bg-slate-900/10' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>{tab.count}</span>
               </button>
-              {allHospitalSpecialties.map(spec => (
-                <button
-                  key={spec}
-                  onClick={() => setSelectedSpecialtyFilter(spec)}
-                  className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
-                    selectedSpecialtyFilter === spec ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {spec}
-                </button>
-              ))}
-            </div>}
-          </div>
-        )}
+            );
+          })}
+        </div>
       </div>
 
       {/* 3. VAGAS NO MURAL */}
       {activeTab === 'vagas' && (
-        <>
+        <div className="space-y-4">
+          {isManager && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="inline-flex rounded-xl bg-slate-200/70 dark:bg-slate-800 p-1" role="tablist" aria-label="Quais vagas mostrar">
+                {[{ id: 'todas', label: `Todas (${muralShifts.length})` }, { id: 'minhas', label: `Que eu posso assumir (${claimableShifts.length})` }].map(opt => (
+                  <button key={opt.id} type="button" role="tab" aria-selected={managerView === opt.id} onClick={() => setManagerView(opt.id)}
+                    className={`h-8 px-3 rounded-lg text-xs font-medium cursor-pointer ${managerView === opt.id ? 'bg-white dark:bg-slate-950 shadow-sm text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400'}`}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {allHospitalSpecialties.length > 0 && (
+                <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 sm:ml-auto">
+                  <Filter className="w-3.5 h-3.5" /> Especialidade
+                  <select
+                    value={selectedSpecialtyFilter}
+                    onChange={e => setSelectedSpecialtyFilter(e.target.value)}
+                    className="h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-sm text-slate-800 dark:text-slate-100 cursor-pointer"
+                  >
+                    <option value="todas">Todas</option>
+                    {allHospitalSpecialties.map(spec => <option key={spec} value={spec}>{spec}</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
+          )}
+
           {openShifts.length === 0 ? (
-            <Card className="p-16 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-2 rounded-3xl">
-              <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
-              <h3 className="font-black text-slate-900 dark:text-white text-base">{!isManager && onlyCompatible ? 'Nenhuma vaga compatível com você agora' : 'Nenhuma vaga aberta no momento'}</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-                {!isManager && onlyCompatible ? 'Toque em "Todas as vagas" para ver as demais oportunidades do hospital.' : 'Todas as escalas dos setores estão preenchidas e não há repasses pendentes nesta categoria.'}
+            <Card className="p-12 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-2 rounded-2xl">
+              <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+              <h3 className="font-semibold text-slate-900 dark:text-white">
+                {!myProf?.id && (!isManager || managerView === 'minhas') ? 'Seu perfil profissional não foi encontrado' : 'Nenhuma vaga para você agora'}
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                {!myProf?.id && (!isManager || managerView === 'minhas')
+                  ? 'Peça à coordenação para vincular seu usuário ao cadastro no Corpo Clínico.'
+                  : isManager && managerView === 'todas'
+                    ? 'Todas as escalas estão preenchidas e não há repasses pendentes.'
+                    : 'Quando abrir uma vaga no seu setor e especialidade, sem choque com a sua escala, ela aparece aqui.'}
               </p>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {openShifts.map(shift => {
-                const sector = sectorMap[String(shift.sector_id)];
-                const realSpecialty = extractSpecialty(shift, null);
-                const conflictInfo = checkTimeConflict(shift);
-                const audit = parseShiftAudit(shift);
-                const originName = audit.transferFrom || audit.offeredByName || null;
+            <div className="space-y-5">
+              {openShiftsByDate.map(group => (
+                <section key={group.date} aria-label={formatDateBR(group.date)}>
+                  <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    <Calendar className="w-4 h-4 text-slate-400" />
+                    <span>{formatLongDate(group.date)}</span>
+                    <span className="rounded-full bg-slate-200 dark:bg-slate-800 px-2 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-300">{group.items.length}</span>
+                  </h2>
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+                    {group.items.map(shift => {
+                      const sector = sectorMap[String(shift.sector_id)];
+                      const realSpecialty = extractSpecialty(shift, null);
+                      const conflictInfo = checkTimeConflict(shift);
+                      const claimable = canClaim(shift);
+                      const audit = parseShiftAudit(shift);
+                      const originName = audit.transferFrom || audit.offeredByName || null;
 
-                return (
-                  <Card 
-                    key={shift.id} 
-                    className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 shadow-sm ${
-                      conflictInfo.hasConflict 
-                        ? 'border-rose-300 dark:border-rose-900/60 bg-rose-50/30 dark:bg-rose-950/20' 
-                        : 'border-amber-300 dark:border-amber-500/40 bg-white dark:bg-slate-900 hover:shadow-md'
-                    }`}
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
-                        <div className="min-w-0">
-                          <h3 className="font-bold text-base text-slate-900 dark:text-white break-words">
-                            {sector?.name || 'Setor Hospitalar'}
-                          </h3>
-                          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                            <Calendar className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
-                            {new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })}
-                          </p>
-                        </div>
-                        <span className="shrink-0 text-sm font-mono font-bold text-slate-900 dark:text-white">
-                          {shift.start_time || '07:00'}–{shift.end_time || '19:00'}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-2.5 py-1 font-semibold text-amber-800 dark:text-amber-200">
-                          <Stethoscope className="w-3.5 h-3.5" /> {realSpecialty}
-                        </span>
-                        {originName && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 px-2.5 py-1 text-sky-800 dark:text-sky-200 min-w-0">
-                            <ArrowRightLeft className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">Cedido por {originName}</span>
-                          </span>
-                        )}
-                      </div>
-
-                      {conflictInfo.hasConflict && (
-                        <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 space-y-1">
-                          <div className="font-black flex items-center gap-1.5 uppercase text-[10px]">
-                            <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
-                            Bloqueio Anti-Duplicidade
+                      return (
+                        <div key={shift.id} title={isManager && conflictInfo.hasConflict ? conflictInfo.message : undefined} className="flex items-center gap-3 sm:gap-4 px-4 py-3">
+                          <div className="hidden sm:block w-28 shrink-0 font-mono text-sm font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                            {shift.start_time || '07:00'}–{shift.end_time || '19:00'}
                           </div>
-                          <p className="leading-tight text-[11px] font-medium">{conflictInfo.message}</p>
+
+                          <div className="min-w-0 flex-1 space-y-1.5">
+                            <div className="sm:hidden font-mono text-sm font-semibold text-slate-900 dark:text-white">{shift.start_time || '07:00'}–{shift.end_time || '19:00'}</div>
+                            <div className="font-semibold text-slate-900 dark:text-white truncate">{sector?.name || 'Setor'}</div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="inline-flex h-6 items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-200">
+                                <Stethoscope className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" /> {realSpecialty}
+                              </span>
+                              {originName && (
+                                <span className="inline-flex h-6 max-w-full items-center gap-1 rounded-full bg-sky-50 dark:bg-sky-500/10 px-2.5 text-xs font-medium text-sky-800 dark:text-sky-200">
+                                  <ArrowRightLeft className="w-3.5 h-3.5 shrink-0" /> <span className="truncate">Repasse de {formatFullName(originName)}</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex shrink-0 items-center gap-1">
+                            {claimable && (
+                              <Button
+                                onClick={() => handleClaimShift(shift)}
+                                disabled={submitting}
+                                className="h-9 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold gap-1.5 cursor-pointer"
+                              >
+                                <Check className="w-4 h-4" /> Assumir
+                              </Button>
+                            )}
+                            {isManager && (
+                              <Button
+                                variant="ghost"
+                                onClick={() => handleDeleteVaga(shift.id)}
+                                className="h-9 w-9 p-0 text-slate-400 hover:text-rose-500 rounded-xl cursor-pointer"
+                                title="Excluir vaga"
+                                aria-label="Excluir vaga"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </div>
-
-                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
-                      <Button 
-                        onClick={() => handleClaimShift(shift)} 
-                        disabled={submitting || conflictInfo.hasConflict} 
-                        className={`flex-1 h-11 font-black text-xs rounded-xl shadow-md gap-2 ${
-                          conflictInfo.hasConflict 
-                            ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 border border-slate-300 dark:border-slate-700 cursor-not-allowed opacity-80' 
-                            : 'bg-amber-600 hover:bg-amber-500 text-white cursor-pointer'
-                        }`}
-                      >
-                        <Check className="w-4 h-4" /> 
-                        {conflictInfo.hasConflict ? 'Horário Conflitante (Bloqueado)' : 'Assumir Plantão'}
-                      </Button>
-
-                      {isManager && (
-                        <Button 
-                          variant="ghost" 
-                          onClick={() => handleDeleteVaga(shift.id)} 
-                          className="h-11 w-11 p-0 text-slate-400 hover:text-rose-500 rounded-xl cursor-pointer"
-                          title="Excluir Vaga"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </Card>
-                );
-              })}
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
             </div>
           )}
-        </>
+
+          {!isManager && hiddenForMeCount > 0 && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
+              {hiddenForMeCount} vaga(s) do hospital não aparecem aqui porque são de outro setor ou especialidade, ou chocam com a sua escala.
+            </p>
+          )}
+        </div>
       )}
 
       {/* 4. APROVAÇÕES PENDENTES */}
