@@ -15,7 +15,8 @@ const TYPES = [
   { id: 'todos', label: 'Tudo' },
   { id: 'shifts', label: 'Plantões' },
   { id: 'published_schedules', label: 'Publicações' },
-  { id: 'payment_statuses', label: 'Pagamentos' }
+  { id: 'payment_statuses', label: 'Pagamentos' },
+  { id: 'shift_swaps', label: 'Trocas' }
 ];
 
 function startOfPeriod(days) {
@@ -102,7 +103,7 @@ export default function Historico() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><History className="w-6 h-6 text-slate-400" /> Histórico de alterações</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Quem criou, alocou, trocou, excluiu, publicou ou marcou pagamento, e quando.</p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Quem criou, alocou, trocou, excluiu, publicou, aprovou troca ou marcou pagamento, e quando.</p>
         </div>
         <Button type="button" variant="outline" onClick={load} disabled={loading} className="h-9 gap-1.5">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Atualizar

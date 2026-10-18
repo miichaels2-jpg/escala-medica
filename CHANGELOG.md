@@ -9,6 +9,20 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.2.3 — 18/10/2026
+
+- **Troca direta entre colegas:** em Mural › Meus plantões, "Propor troca" lista só os plantões de colegas
+  que dá para trocar nos dois sentidos (especialidade, setor autorizado, unidade, sem choque de horário e sem
+  férias). O colega aceita ou recusa pelo app; depois a coordenação aprova em Mural › Aprovações. A troca dos
+  dois plantões acontece numa única operação no banco e só se a escala não mudou desde o pedido. Avisos no
+  sino em cada etapa (inclusive para quem coordena a unidade); pedidos podem ser cancelados por quem propôs.
+- **Meus ganhos do mês (Minha Escala):** já realizado, a realizar e total previsto no mês, por hospital, com a
+  situação do pagamento (Pago / A receber / Previsto) e atalho para o espelho em PDF.
+- "Meus plantões" no Mural mostra só plantões que ainda não começaram.
+- Histórico de alterações inclui as trocas (filtro "Trocas").
+- **Banco:** migração `20261019120000_direct_shift_swaps.sql` (aplicada) — colunas da troca direta, função
+  `approve_shift_swap`, tempo real e histórico para `shift_swaps`.
+
 ## V0.2.2 — 18/10/2026
 
 - **Acesso tela por tela (Corpo Clínico):** o perfil vira o ponto de partida e abaixo dele há a lista de

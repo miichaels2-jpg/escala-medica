@@ -35,7 +35,7 @@ let lastLoadAt = 0;
 // plantão, uma publicação ou um pagamento muda (ex.: profissional assumiu uma
 // vaga pelo celular) e o app recarrega em seguida. Como reserva, recarrega a
 // cada 30 s com a tela visível e ao voltar para a aba.
-const LIVE_TABLES = ['shifts', 'published_schedules', 'payment_statuses'];
+const LIVE_TABLES = ['shifts', 'published_schedules', 'payment_statuses', 'shift_swaps'];
 const LIVE_POLL_MS = 30_000;
 const FOCUS_REFRESH_MIN_MS = 10_000;
 let liveSyncStarted = false;
@@ -598,6 +598,7 @@ export function useAppData() {
     allCompanyProfessionals: globalState.professionals,
     allCompanySectors: globalState.sectors,
     allCompanyShifts: globalState.shifts,
+    allCompanySwaps: globalState.swaps,
     getPublishedRanges: (unitId, sectorId, year, month) =>
       globalState.publishedRanges?.[publishedKey(unitId, sectorId, year, month)] || [],
     isPaymentMarkedPaid: (unitId, professionalId, month) =>

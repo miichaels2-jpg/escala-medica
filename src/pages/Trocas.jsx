@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { getShiftDateTimeRange } from '@/lib/shiftLiveStatus';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
 import { isVacancyRelevantFor } from '@/components/NotificationCenter';
+import { ManagerSwapApprovals, MySwapsList, SwapProposalDialog, useDirectSwaps } from '@/components/DirectSwaps';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
@@ -122,6 +123,9 @@ export default function Trocas() {
     professionals = [], 
     allCompanyShifts = [],
     allCompanySectors = [],
+    allCompanySwaps = [],
+    allCompanyProfessionals = [],
+    appUsers = [],
     currentProfessional, 
     selectedUnitId,
     units = [],
@@ -200,6 +204,21 @@ export default function Trocas() {
     if (myUnitIds.length === 0) return source;
     return source.filter(s => myUnitIds.includes(String(s.unit_id)));
   }, [isManager, managerAllUnits, managerUnitIds, shifts, allCompanyShifts, selectedUnitId, myUnitIds]);
+
+  const [swapShift, setSwapShift] = useState(null);
+  const swapsApi = useDirectSwaps({
+    swaps: allCompanySwaps,
+    myProf,
+    user,
+    company,
+    isManager,
+    managerUnitIds,
+    shifts: allCompanyShifts.length ? allCompanyShifts : shifts,
+    professionals: allCompanyProfessionals.length ? allCompanyProfessionals : professionals,
+    appUsers,
+    sectorName: id => sectorMap[String(id)]?.name || 'Setor',
+    syncGlobalData
+  });
 
   const myAllocatedShifts = useMemo(() => {
     if (!myProf?.id && !user?.full_name) return [];
@@ -360,8 +379,11 @@ export default function Trocas() {
       const isMine = (myProf?.id && String(s.professional_id) === String(myProf.id)) || 
                      (s.professional_name && myProf?.name && s.professional_name.toLowerCase().trim() === myProf.name.toLowerCase().trim()) ||
                      (s.professional_name && user?.full_name && s.professional_name.toLowerCase().trim() === user.full_name.toLowerCase().trim());
-      return isMine && s.date >= todayStr && s.status !== 'cancelado';
-    }).sort((a, b) => (a?.date || '').localeCompare(b?.date || ''));
+      if (!isMine || s.date < todayStr || s.status === 'cancelado') return false;
+      // Só plantões que ainda não começaram podem ir para o Mural ou ser trocados.
+      const range = getShiftDateTimeRange(s);
+      return !range || range.start > new Date();
+    }).sort((a, b) => (a?.date || '').localeCompare(b?.date || '') || String(a?.start_time || '').localeCompare(String(b?.start_time || '')));
   }, [unitShifts, myProf, user, todayStr]);
 
   const transferHistory = useMemo(() => {
@@ -559,8 +581,8 @@ export default function Trocas() {
         <div className="inline-flex min-w-max items-center gap-1 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1" role="tablist">
           {[
             { id: 'vagas', label: 'Vagas', count: openShifts.length, icon: Flame },
-            ...(isManager ? [{ id: 'pendentes', label: 'Aprovações', count: pendingApprovalShifts.length, icon: ShieldCheck }] : []),
-            { id: 'trocas', label: 'Meus plantões', count: myUpcomingShifts.length, icon: ArrowRightLeft },
+            ...(isManager ? [{ id: 'pendentes', label: 'Aprovações', count: pendingApprovalShifts.length + swapsApi.awaitingManager.length, icon: ShieldCheck }] : []),
+            { id: 'trocas', label: swapsApi.incoming.length ? `Meus plantões · ${swapsApi.incoming.length} proposta(s)` : 'Meus plantões', count: myUpcomingShifts.length, icon: ArrowRightLeft },
             { id: 'historico', label: 'Histórico', count: transferHistory.length, icon: History },
           ].map(tab => {
             const Icon = tab.icon;
@@ -735,6 +757,7 @@ export default function Trocas() {
       {/* 4. APROVAÇÕES PENDENTES */}
       {activeTab === 'pendentes' && isManager && (
         <div className="space-y-4">
+          <ManagerSwapApprovals swapsApi={swapsApi} unitNameById={unitNameById} />
           <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 text-xs text-indigo-900 dark:text-indigo-200 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-indigo-600" />
@@ -834,10 +857,12 @@ export default function Trocas() {
             <div className="flex items-center gap-2">
               <ArrowRightLeft className="w-5 h-5 text-sky-600" />
               <span>
-                <b>Passar Plantão:</b> Ao disponibilizar seu plantão, o pedido irá para a aprovação do gestor antes de ser liberado aos colegas no Mural.
+                <b>Passar para o Mural</b> libera o plantão para qualquer colega (após aprovação). <b>Propor troca</b> troca o seu plantão pelo de um colega específico.
               </span>
             </div>
           </div>
+
+          <MySwapsList swapsApi={swapsApi} myProfId={myProf?.id} />
 
           {myUpcomingShifts.length === 0 ? (
             <Card className="p-12 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-3xl">
@@ -874,17 +899,31 @@ export default function Trocas() {
 
                     {isPending ? (
                       <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] font-bold text-amber-700 dark:text-amber-300 text-center flex items-center justify-center gap-1.5">
-                        <Clock3 className="w-3.5 h-3.5 animate-pulse" />
+                        <Clock3 className="w-3.5 h-3.5" />
                         Aguardando autorização do gestor
                       </div>
+                    ) : swapsApi.openShiftIds.includes(String(shift.id)) ? (
+                      <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/30 text-[11px] font-bold text-sky-700 dark:text-sky-300 text-center flex items-center justify-center gap-1.5">
+                        <ArrowRightLeft className="w-3.5 h-3.5" /> Troca em andamento
+                      </div>
                     ) : (
-                      <Button 
-                        onClick={() => handleRequestSendToMural(shift)} 
-                        disabled={submitting} 
-                        className="w-full h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs rounded-xl gap-2 shadow-sm cursor-pointer"
-                      >
-                        <Flame className="w-3.5 h-3.5" /> Passar para o Mural
-                      </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setSwapShift(shift)}
+                          className="h-10 text-xs font-semibold rounded-xl gap-1.5 cursor-pointer"
+                        >
+                          <ArrowRightLeft className="w-3.5 h-3.5" /> Propor troca
+                        </Button>
+                        <Button
+                          onClick={() => handleRequestSendToMural(shift)}
+                          disabled={submitting}
+                          className="h-10 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs rounded-xl gap-1.5 cursor-pointer"
+                        >
+                          <Flame className="w-3.5 h-3.5" /> Passar p/ Mural
+                        </Button>
+                      </div>
                     )}
                   </Card>
                 );
@@ -973,6 +1012,13 @@ export default function Trocas() {
           )}
         </div>
       )}
+      <SwapProposalDialog
+        shift={swapShift}
+        onClose={() => setSwapShift(null)}
+        swapsApi={swapsApi}
+        sectorName={id => sectorMap[String(id)]?.name || 'Setor'}
+        unitNameById={unitNameById}
+      />
     </div>
   );
 }

@@ -74,5 +74,20 @@ export function describeAuditEntry(entry, ctx = {}) {
     return `${paid ? 'Marcou como pago' : 'Desmarcou o pagamento de'} ${who} (${row?.month || ''})`;
   }
 
+  if (entry?.table_name === 'shift_swaps') {
+    const row = after || before;
+    const pair = `${row?.requester_name || 'profissional'} (${br(row?.shift_date)}) ⇄ ${row?.target_name || 'colega'} (${br(row?.target_shift_date)})`;
+    if (entry.action === 'insert') return `Propôs troca: ${pair}`;
+    const status = after?.status;
+    const verbs = {
+      aguardando_gestor: 'Colega aceitou a troca',
+      recusada_colega: 'Colega recusou a troca',
+      aprovada: 'Aprovou a troca',
+      recusada_gestor: 'Recusou a troca',
+      cancelada: 'Cancelou o pedido de troca'
+    };
+    return `${verbs[status] || 'Atualizou o pedido de troca'}: ${pair}`;
+  }
+
   return `${entry?.action || 'alteração'} em ${entry?.table_name || 'registro'}`;
 }

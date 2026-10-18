@@ -35,3 +35,9 @@ test('ajuste só de observações é interno', () => {
   assert.equal(isInternalOnly({ table_name: 'shifts', action: 'update', changed_fields: ['notes', 'status'] }), false);
   assert.equal(isInternalOnly({ table_name: 'shifts', action: 'insert' }), false);
 });
+
+test('trocas entre colegas no histórico', () => {
+  const row = { requester_name: 'Ana', shift_date: '2026-10-20', target_name: 'Bruno', target_shift_date: '2026-10-22' };
+  assert.equal(describeAuditEntry({ table_name: 'shift_swaps', action: 'insert', new_data: { ...row, status: 'aguardando_colega' } }), 'Propôs troca: Ana (20/10/2026) ⇄ Bruno (22/10/2026)');
+  assert.equal(describeAuditEntry({ table_name: 'shift_swaps', action: 'update', changed_fields: ['status'], new_data: { ...row, status: 'aprovada' } }), 'Aprovou a troca: Ana (20/10/2026) ⇄ Bruno (22/10/2026)');
+});
