@@ -9,6 +9,12 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.1.8 — 18/10/2026
+
+- **Correção em Setores & Especialidades:** salvar um setor dava "Could not find the 'status' column of
+  'sectors'". A tabela guarda a situação na coluna `active` (sim/não); a tela agora grava ali, e o app
+  traduz para Ativo/Inativo ao carregar. Nenhuma mudança no banco.
+
 ## V0.1.7 — 17/10/2026
 
 - **Atualização automática:** quando alguém assume uma vaga, troca, aloca, publica ou marca pagamento,

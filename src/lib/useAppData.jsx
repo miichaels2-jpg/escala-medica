@@ -368,7 +368,9 @@ async function loadAllData() {
       console.error(`[Supabase] Falha ao carregar ${tableName}:`, error);
       return [];
     });
-    const [unitRows, rawProfs, secRes, rawShifts, rawSwaps, allUsers, publishedRows, paymentRows] = loadedTables;
+    const [unitRows, rawProfs, rawSectors, rawShifts, rawSwaps, allUsers, publishedRows, paymentRows] = loadedTables;
+    // A tabela guarda a situação do setor na coluna booleana "active"; as telas usam status ativo/inativo.
+    const secRes = (rawSectors || []).map(sector => ({ ...sector, status: sector.active === false ? 'inativo' : 'ativo' }));
 
     const activeUnits = unitRows.length > 0
       ? unitRows
