@@ -25,11 +25,15 @@ export async function sendNotifications(items) {
       category: item.category || null,
       title: String(item.title),
       message: item.message ? String(item.message) : null,
-      data: item.data || {}
+      data: item.data || {},
+      ...(item.dedupe_key ? { dedupe_key: String(item.dedupe_key) } : {})
     }));
   if (rows.length === 0) return true;
   try {
-    const { error } = await supabase.from('notifications').insert(rows);
+    // Com chave única (ex.: alerta de vaga urgente), um aviso repetido é ignorado pelo banco.
+    const { error } = rows.some(row => row.dedupe_key)
+      ? await supabase.from('notifications').upsert(rows, { onConflict: 'dedupe_key', ignoreDuplicates: true })
+      : await supabase.from('notifications').insert(rows);
     if (error) throw error;
     return true;
   } catch (error) {

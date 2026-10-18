@@ -20,6 +20,7 @@ import Faturamento from '@/pages/Faturamento';
 import Configuracoes from '@/pages/Configuracoes';
 import MinhaEscala from '@/pages/MinhaEscala';
 import Trocas from '@/pages/Trocas';
+import Planejamento from '@/pages/Planejamento'; // TEMPORÁRIO
 import AutoLogout from '@/components/AutoLogout'; 
 import ContractGuard from '@/components/ContractGuard';
 import { getHomePath } from '@/lib/accessControl';
@@ -66,6 +67,7 @@ const AuthenticatedApp = () => {
             <Route path="/faturamento" element={<Faturamento />} />
             <Route path="/minha-escala" element={<MinhaEscala />} />
             <Route path="/trocas" element={<Trocas />} />
+            <Route path="/planejamento" element={<Planejamento />} /> {/* TEMPORÁRIO */}
             <Route path="/configuracoes" element={<Configuracoes />} />
           </Route>
         </Route>

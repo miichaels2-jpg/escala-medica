@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
+import { describeUnavailability, findUnavailability } from '@/lib/availability';
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
@@ -1051,6 +1052,11 @@ if (!isProfessionalAuthorizedForSector(prof, formData.sector_id)) {
   });
   return;
 }
+const away = findUnavailability(prof, formData.date);
+if (away) {
+  unavailable.push({ ...prof, conflictReason: `Indisponível: ${describeUnavailability(away)}` });
+  return;
+}
 
 const conflict = checkProfessionalConflict(
         prof.id, 
@@ -1265,6 +1271,7 @@ const conflict = checkProfessionalConflict(
     return (professionals || [])
       .filter(prof => prof?.status === 'ativo')
       .filter(prof => isProfessionalAuthorizedForSector(prof, shift.sector_id))
+      .filter(prof => !findUnavailability(prof, shift.date))
       .filter(prof => {
         if (!requiredSpecialty) return true;
         return !prof.specialty || normalize(prof.specialty) === requiredSpecialty || requiredSpecialty === 'geral';
@@ -1633,6 +1640,12 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
         return;
       }
 
+      const away = findUnavailability(prof, d);
+      if (away && !confirm(`${prof.name || 'O profissional'} informou indisponibilidade: ${describeUnavailability(away)}.\n\nEscalar mesmo assim em ${formatDateBR(d)}?`)) {
+        setDraggingProfId(null);
+        return;
+      }
+
       const conflict = checkProfessionalConflict(profId, d, startTime, endTime, candidate.id);
       if (conflict.hasConflict) {
         alert(`⛔ BLOQUEIO DE ESCALA:\n\n${conflict.message}\n\nO profissional não pode assumir dois plantões no mesmo horário.`);
@@ -1730,6 +1743,9 @@ if (!isMural && formData.professional_id &&
 }
 
 if (!isMural && formData.professional_id) {
+      const away = findUnavailability(selectedProfessional, formData.date);
+      if (away && !confirm(`${selectedProfessional?.name || 'O profissional'} informou indisponibilidade: ${describeUnavailability(away)}.\n\nEscalar mesmo assim?`)) return;
+
       const conflict = checkProfessionalConflict(
         formData.professional_id, 
         formData.date, 

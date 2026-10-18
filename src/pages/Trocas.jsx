@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { getProfessionalUnitIds, isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
+import { findUnavailability } from '@/lib/availability';
+import { getShiftUrgency } from '@/lib/urgentVacancies';
 import { supabase } from '@/lib/supabase';
 import { getShiftDateTimeRange } from '@/lib/shiftLiveStatus';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
@@ -134,6 +136,8 @@ export default function Trocas() {
   // Gestor escolhe entre ver todas as vagas (gestão) ou só as que ele mesmo pode assumir.
   // O plantonista vê sempre só as vagas que pode assumir.
   const [managerView, setManagerView] = useState('todas');
+  // Gestor com mais de uma unidade pode ver o mural de todas de uma vez.
+  const [managerAllUnits, setManagerAllUnits] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const myProf = useMemo(() => {
@@ -178,13 +182,24 @@ export default function Trocas() {
   // Gestor: unidade selecionada. Plantonista: todas as unidades em que atua,
   // num único login, sem precisar trocar de unidade.
   const myUnitIds = useMemo(() => getProfessionalUnitIds(myProf), [myProf]);
-  const showUnitName = !isManager && myUnitIds.length > 1;
+  const managerUnitIds = useMemo(() => {
+    if (!isManager) return [];
+    const allowed = Array.isArray(user?.data?.allowed_unit_ids) ? user.data.allowed_unit_ids.map(String) : [];
+    return (units || [])
+      .filter(u => user?.role === 'admin' || allowed.length === 0 || allowed.includes(String(u.id)))
+      .map(u => String(u.id));
+  }, [isManager, units, user]);
+  const showUnitName = isManager ? managerAllUnits : myUnitIds.length > 1;
   const unitShifts = useMemo(() => {
+    if (isManager && managerAllUnits) {
+      const source = allCompanyShifts.length ? allCompanyShifts : shifts || [];
+      return source.filter(s => managerUnitIds.includes(String(s.unit_id)));
+    }
     if (isManager) return (shifts || []).filter(s => !selectedUnitId || String(s.unit_id) === String(selectedUnitId));
     const source = allCompanyShifts.length ? allCompanyShifts : shifts || [];
     if (myUnitIds.length === 0) return source;
     return source.filter(s => myUnitIds.includes(String(s.unit_id)));
-  }, [isManager, shifts, allCompanyShifts, selectedUnitId, myUnitIds]);
+  }, [isManager, managerAllUnits, managerUnitIds, shifts, allCompanyShifts, selectedUnitId, myUnitIds]);
 
   const myAllocatedShifts = useMemo(() => {
     if (!myProf?.id && !user?.full_name) return [];
@@ -281,7 +296,8 @@ export default function Trocas() {
   }, [unitShifts, selectedSpecialtyFilter, todayStr, isManager]);
 
   // Pode assumir: setor autorizado, especialidade compatível e sem choque com a própria escala.
-  const canClaim = (shift) => Boolean(myProf?.id) && isVacancyRelevantFor(shift, myProf) && !checkTimeConflict(shift).hasConflict;
+  const canClaim = (shift) => Boolean(myProf?.id) && isVacancyRelevantFor(shift, myProf) &&
+    !findUnavailability(myProf, shift.date) && !checkTimeConflict(shift).hasConflict;
 
   const claimableShifts = useMemo(
     () => muralShifts.filter(canClaim),
@@ -293,7 +309,7 @@ export default function Trocas() {
   const hiddenForMeCount = muralShifts.length - claimableShifts.length;
 
   const hiddenReasons = useMemo(() => {
-    const reasons = { sector: 0, conflict: 0, specialties: new Map() };
+    const reasons = { sector: 0, conflict: 0, away: 0, specialties: new Map() };
     if (!myProf?.id) return reasons;
     muralShifts.forEach(shift => {
       if (!isProfessionalAuthorizedForSector(myProf, shift.sector_id)) { reasons.sector += 1; return; }
@@ -302,6 +318,7 @@ export default function Trocas() {
         reasons.specialties.set(spec, (reasons.specialties.get(spec) || 0) + 1);
         return;
       }
+      if (findUnavailability(myProf, shift.date)) { reasons.away += 1; return; }
       if (checkTimeConflict(shift).hasConflict) reasons.conflict += 1;
     });
     return reasons;
@@ -570,7 +587,17 @@ export default function Trocas() {
       {activeTab === 'vagas' && (
         <div className="space-y-4">
           {isManager && (
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
+              {managerUnitIds.length > 1 && (
+                <div className="inline-flex rounded-xl bg-slate-200/70 dark:bg-slate-800 p-1" role="tablist" aria-label="Unidades">
+                  {[{ id: false, label: 'Esta unidade' }, { id: true, label: `Todas as unidades (${managerUnitIds.length})` }].map(opt => (
+                    <button key={String(opt.id)} type="button" role="tab" aria-selected={managerAllUnits === opt.id} onClick={() => setManagerAllUnits(opt.id)}
+                      className={`h-8 px-3 rounded-lg text-xs font-medium cursor-pointer ${managerAllUnits === opt.id ? 'bg-white dark:bg-slate-950 shadow-sm text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400'}`}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="inline-flex rounded-xl bg-slate-200/70 dark:bg-slate-800 p-1" role="tablist" aria-label="Quais vagas mostrar">
                 {[{ id: 'todas', label: `Todas (${muralShifts.length})` }, { id: 'minhas', label: `Que eu posso assumir (${claimableShifts.length})` }].map(opt => (
                   <button key={opt.id} type="button" role="tab" aria-selected={managerView === opt.id} onClick={() => setManagerView(opt.id)}
@@ -642,6 +669,11 @@ export default function Trocas() {
                               </div>
                             )}
                             <div className="flex flex-wrap items-center gap-1.5">
+                              {getShiftUrgency(shift) && (
+                                <span className="inline-flex h-6 items-center gap-1 rounded-full bg-rose-50 dark:bg-rose-500/10 px-2.5 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                                  <Clock3 className="w-3.5 h-3.5" /> Urgente · {getShiftUrgency(shift).label}
+                                </span>
+                              )}
                               <span className="inline-flex h-6 items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-200">
                                 <Stethoscope className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" /> {realSpecialty}
                               </span>
@@ -693,6 +725,7 @@ export default function Trocas() {
                 ))}
                 {hiddenReasons.sector > 0 && <li>· {hiddenReasons.sector} de setor em que você não está autorizado(a)</li>}
                 {hiddenReasons.conflict > 0 && <li>· {hiddenReasons.conflict} em horário em que você já está escalado(a)</li>}
+                {hiddenReasons.away > 0 && <li>· {hiddenReasons.away} em dias que você marcou como indisponível</li>}
               </ul>
             </div>
           )}
