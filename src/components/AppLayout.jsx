@@ -196,7 +196,7 @@ export default function AppLayout({ children }) {
     { label: 'Histórico de alterações', path: '/historico', icon: History, visible: isManager },
     { label: 'Configurações', path: '/configuracoes', icon: Settings, visible: isManager },
     { label: 'Planejamento (temporário)', path: '/planejamento', icon: ListChecks, visible: isManager }, // TEMPORÁRIO
-  ].filter(item => item.visible && canAccessRoute(user, item.path))
+  ].filter(item => canAccessRoute(user, item.path))
     // Plantonista: a própria agenda vem primeiro.
     .sort((a, b) => ['assistencial', 'medico'].includes(userAppRole) ? (b.path === '/minha-escala') - (a.path === '/minha-escala') : 0);
 

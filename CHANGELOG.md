@@ -9,6 +9,21 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.2.2 — 18/10/2026
+
+- **Acesso tela por tela (Corpo Clínico):** o perfil vira o ponto de partida e abaixo dele há a lista de
+  todas as telas do menu para liberar ou bloquear uma a uma ("Liberar todas" / "Padrão do perfil"). A opção
+  "Pode criar e alterar nas telas liberadas" dá os poderes de edição sem a pessoa ser Gestor — ex.: um
+  administrativo com acesso a tudo. Cadastros antigos continuam seguindo o perfil até serem editados.
+  O usuário logado é relido do banco ao abrir o app, então mudanças de acesso valem sem sair e entrar.
+- **Montar mês seguinte (antes "Duplicar Mês"):** usa um mês como modelo, mantendo o dia da semana (ou o
+  mesmo dia do mês). Quem ainda pode assumir continua no plantão; quem está de férias, em choque de horário,
+  inativo ou sem autorização no setor vira vaga. Abre a mesma revisão do gerador — nada é gravado antes de
+  "Salvar como rascunho" ou "Salvar e publicar".
+- **Limite de carga horária:** aviso ao passar do máximo semanal (padrão 60 h) ou emendar plantões além do
+  limite seguido (padrão 24 h) — na janela de alocação, ao arrastar e na revisão do gerador. O preenchimento
+  automático não ultrapassa os limites. Limites ajustáveis em Configurações › Regras da escala.
+
 ## V0.2.1 — 18/10/2026
 
 Primeira versão da série 0.2 (depois de V0.1.10, pela regra de numeração).

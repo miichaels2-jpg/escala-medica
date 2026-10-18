@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import WorkloadRulesCard from '@/components/WorkloadRulesCard';
 import { 
   Building2, Save, UserPlus, Trash2, 
   Settings, Hospital, ShieldCheck, FileText,
@@ -441,6 +442,7 @@ export default function Configuracoes() {
           { id: 'contrato', label: 'Contrato Matriz', icon: FileText },
           { id: 'unidades', label: 'Gerenciar Hospitais', icon: Building2 },
           { id: 'usuarios', label: 'Equipe & Acessos', icon: ShieldCheck },
+          { id: 'regras', label: 'Regras da escala', icon: Settings },
         ].map(tab => {
           const isActive = activeTab === tab.id;
           const Icon = tab.icon;
@@ -557,6 +559,9 @@ export default function Configuracoes() {
             </Card>
           </div>
         )}
+
+        {/* ABA: REGRAS DA ESCALA */}
+        {activeTab === 'regras' && <WorkloadRulesCard />}
 
         {/* ABA: CONTRATO MATRIZ */}
         {activeTab === 'contrato' && (

@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { USER_PUBLIC_COLUMNS } from '@/lib/useAppData';
+import { refreshStoredUser } from '@/lib/storedUser';
 
 const defaultAuthState = {
   user: null,
@@ -63,7 +64,7 @@ export const AuthProvider = ({ children }) => {
           const localUserStr = window.localStorage.getItem('scale_logged_user');
           const isSessionActive = window.localStorage.getItem('escala_medica_session') === 'active';
           if (localUserStr && isSessionActive) {
-            authenticatedUser = JSON.parse(localUserStr);
+            authenticatedUser = await refreshStoredUser(JSON.parse(localUserStr), USER_PUBLIC_COLUMNS);
           }
         } catch (e) {}
       }
