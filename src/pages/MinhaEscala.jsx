@@ -89,7 +89,7 @@ const MONTH_NAMES = [
 
 export default function MinhaEscala() {
   // Minha Escala mostra os plantões de TODAS as unidades do profissional, sem trocar de unidade.
-  const { user, company, units, allCompanyProfessionals = [], allCompanySectors = [], selectedUnitId, loading: appLoading, syncGlobalData } = useAppData();
+  const { user, company, units, allCompanyProfessionals = [], allCompanySectors = [], selectedUnitId, loading: appLoading, syncGlobalData, isPaymentMarkedPaid } = useAppData();
   const sectors = allCompanySectors;
   const navigate = useNavigate();
 
@@ -433,6 +433,43 @@ export default function MinhaEscala() {
     return { cumpridos, futuros, horas: Math.round(horas * 10) / 10, valorBruto, totalMes: monthShifts.length, monthlySalaryMissing };
   }, [monthShifts, profMeta, currentProfessional, isMonthlyRemuneration]);
 
+  const earnings = useMemo(() => {
+    const byUnit = new Map();
+    const entry = unitId => {
+      const key = String(unitId || '');
+      if (!byUnit.has(key)) {
+        const unit = (units || []).find(u => String(u.id) === key);
+        byUnit.set(key, { unitId: key, name: unit?.name || company?.name || 'Unidade', done: 0, upcoming: 0, shiftsDone: 0, shiftsUpcoming: 0, missingRate: false });
+      }
+      return byUnit.get(key);
+    };
+    monthShifts.forEach(s => {
+      const isCompleted = s.state === 'concluido' || ['realizado', 'concluido', 'concluida'].includes(normalizeFinancialText(s.status));
+      const row = entry(s.unit_id);
+      const value = s.shiftValue?.type === 'valor' ? s.shiftValue.value : 0;
+      if (s.shiftValue?.missingRate) row.missingRate = true;
+      if (isCompleted) { row.done += value; row.shiftsDone += 1; } else { row.upcoming += value; row.shiftsUpcoming += 1; }
+    });
+    if (isMonthlyRemuneration) {
+      const allowedUnits = Array.isArray(profMeta.allowed_unit_ids) && profMeta.allowed_unit_ids.length
+        ? profMeta.allowed_unit_ids
+        : currentProfessional?.unit_id ? [currentProfessional.unit_id] : [];
+      allowedUnits.forEach(unitId => {
+        const salary = getMonthlySalaryForUnit(currentProfessional, unitId);
+        if (!salary.missing && salary.value > 0) entry(unitId).done += salary.value;
+      });
+    }
+    const rows = [...byUnit.values()]
+      .filter(row => row.shiftsDone || row.shiftsUpcoming || row.done)
+      .map(row => ({ ...row, paid: Boolean(currentProfessional?.id && isPaymentMarkedPaid?.(row.unitId, currentProfessional.id, monthPrefix)) }));
+    return {
+      rows,
+      done: rows.reduce((sum, row) => sum + row.done, 0),
+      upcoming: rows.reduce((sum, row) => sum + row.upcoming, 0),
+      missingRate: rows.some(row => row.missingRate)
+    };
+  }, [monthShifts, units, company, isMonthlyRemuneration, profMeta, currentProfessional, isPaymentMarkedPaid, monthPrefix]);
+
   const handlePassShiftToMural = async (shift) => {
     const requesterName = currentProfessional?.name || user?.full_name || 'Profissional';
     const requesterId = currentProfessional?.id || user?.id || '';
@@ -743,20 +780,42 @@ export default function MinhaEscala() {
 
         <Card className="col-span-2 sm:col-span-1 order-last sm:order-none p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400">{isMonthlyRemuneration ? 'Folha contratual mensal' : 'Repasse apurado'}</span>
+            <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400">Meus ganhos · {MONTH_NAMES[currentMonth]}</span>
             <DollarSign className="w-4 h-4 text-emerald-600" />
           </div>
-          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-3 font-mono">
-            {isProductivityRemuneration ? 'COMISSÃO' : formatCurrency(monthMetrics.valorBruto)}
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1 font-semibold">
-            {isMonthlyRemuneration ? 'Total mensal das unidades vinculadas' : 'Valores de plantões realizados até hoje'}
-          </p>
-          {isMonthlyRemuneration && monthMetrics.monthlySalaryMissing && (
+          {isProductivityRemuneration ? (
+            <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">Produtividade: o valor sai no fechamento, conforme os atendimentos lançados pela coordenação.</p>
+          ) : (
+            <>
+              <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-3 font-mono">{formatCurrency(earnings.done)}</div>
+              <p className="text-[11px] text-slate-500 font-semibold">{isMonthlyRemuneration ? 'Salário mensal das unidades' : 'Já realizado'}</p>
+              {!isMonthlyRemuneration && (
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                  + {formatCurrency(earnings.upcoming)} a realizar · <b>{formatCurrency(earnings.done + earnings.upcoming)}</b> previsto no mês
+                </p>
+              )}
+            </>
+          )}
+          {earnings.rows.length > 0 && (
+            <ul className="mt-2 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-2">
+              {earnings.rows.map(row => (
+                <li key={row.unitId} className="flex items-center justify-between gap-2 text-[11px]">
+                  <span className="truncate text-slate-600 dark:text-slate-300">{row.name}{!isProductivityRemuneration && !isMonthlyRemuneration ? (row.shiftsDone ? ` · ${formatCurrency(row.done)}` : ` · ${formatCurrency(row.upcoming)} a realizar`) : ''}</span>
+                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 font-semibold ${row.paid ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>
+                    {row.paid ? 'Pago' : row.shiftsDone || isMonthlyRemuneration ? 'A receber' : 'Previsto'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {(earnings.missingRate || (isMonthlyRemuneration && monthMetrics.monthlySalaryMissing)) && (
             <p className="mt-1 text-[10px] font-bold text-amber-600 dark:text-amber-400">
-              Salário mensal ausente em uma ou mais unidades vinculadas; confira o cadastro do profissional.
+              Falta valor cadastrado em alguma unidade; o total pode estar incompleto. Fale com a coordenação.
             </p>
           )}
+          <button type="button" onClick={handlePrintMyStatement} className="mt-2 text-[11px] font-semibold text-sky-700 dark:text-sky-300 hover:underline cursor-pointer">
+            Ver espelho do mês (PDF)
+          </button>
         </Card>
 
         <Card className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
