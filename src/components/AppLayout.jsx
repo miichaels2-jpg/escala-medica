@@ -6,12 +6,15 @@ import {
   Activity, LayoutDashboard, CalendarDays, Repeat, 
   DollarSign, Users, Building2, LogOut, Menu, X, 
   AlertTriangle, Sun, Moon, Settings, FileBarChart,
-  Clock, Hospital, Bell, Flame, CheckCircle2, ChevronRight, CheckCheck, Smartphone
+  Clock, Hospital, Bell, Flame, CheckCircle2, ChevronRight, CheckCheck, Smartphone,
+  ListChecks
 } from 'lucide-react';
 import { InstallAppBanner, InstallAppDialog } from '@/components/InstallAppGuide';
 import { NotificationPanel, useNotificationCenter } from '@/components/NotificationCenter';
 import { usePwaInstall } from '@/lib/pwa';
 import { APP_VERSION } from '@/lib/version';
+import { useUrgentVacancyAlerts } from '@/lib/useUrgentVacancyAlerts';
+import { SWITCH_UNIT_EVENT } from '@/components/UnitsOverview';
 import { canAccessRoute } from '@/lib/accessControl';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -59,6 +62,8 @@ export default function AppLayout({ children }) {
     userAppRole,
     shifts,
     allCompanyShifts,
+    allCompanyProfessionals,
+    allCompanySectors,
     currentProfessional,
     dataWarnings = [],
     syncGlobalData
@@ -144,8 +149,25 @@ export default function AppLayout({ children }) {
     window.location.reload();
   };
 
+  // "Abrir" no quadro Suas unidades (Painel) usa a mesma troca do seletor do cabeçalho.
+  useEffect(() => {
+    const onSwitch = event => { if (event.detail && String(event.detail) !== String(selectedUnitId)) handleUnitChange(String(event.detail)); };
+    window.addEventListener(SWITCH_UNIT_EVENT, onSwitch);
+    return () => window.removeEventListener(SWITCH_UNIT_EVENT, onSwitch);
+  });
+
   const notificationCenter = useNotificationCenter({ user, currentProfessional, shifts, companyShifts: allCompanyShifts, selectedUnitId, isManager });
   const muralBadge = notificationCenter.unreadVacancies.length;
+
+  // Alerta de furo iminente (vaga sem ninguém a menos de 24 h) para os profissionais compatíveis.
+  useUrgentVacancyAlerts({
+    enabled: Boolean(user?.id) && user.id !== 'usr_guest',
+    companyId: company?.id,
+    shifts: allCompanyShifts,
+    professionals: allCompanyProfessionals,
+    sectors: allCompanySectors,
+    units
+  });
 
   const dayName = WEEKDAYS_LONG[currentTime.getDay()];
   const formattedDate = currentTime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -161,6 +183,7 @@ export default function AppLayout({ children }) {
     { label: 'Relatórios', path: '/relatorios', icon: FileBarChart, visible: isManager || isBilling },
     { label: 'Faturamento & Repasse', path: '/faturamento', icon: DollarSign, visible: isManager || isBilling },
     { label: 'Configurações', path: '/configuracoes', icon: Settings, visible: isManager },
+    { label: 'Planejamento (temporário)', path: '/planejamento', icon: ListChecks, visible: isManager }, // TEMPORÁRIO
   ].filter(item => item.visible && canAccessRoute(user, item.path))
     // Plantonista: a própria agenda vem primeiro.
     .sort((a, b) => ['assistencial', 'medico'].includes(userAppRole) ? (b.path === '/minha-escala') - (a.path === '/minha-escala') : 0);

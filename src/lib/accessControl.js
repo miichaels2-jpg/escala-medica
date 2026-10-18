@@ -35,7 +35,8 @@ const ROLE_RULES = {
   '/relatorios': user => isBillingUser(user),
   '/faturamento': user => isBillingUser(user),
   '/setores': user => isManagerUser(user),
-  '/configuracoes': user => isManagerUser(user)
+  '/configuracoes': user => isManagerUser(user),
+  '/planejamento': user => isManagerUser(user) // TEMPORÁRIO
 };
 
 // Nomes de permissão aceitos para cada tela.
@@ -48,7 +49,8 @@ const PERMISSION_KEYS = {
   '/relatorios': ['relatorios'],
   '/faturamento': ['faturamento', 'meus_repasses'],
   '/setores': ['setores'],
-  '/configuracoes': ['configuracoes']
+  '/configuracoes': ['configuracoes'],
+  '/planejamento': ['configuracoes'] // TEMPORÁRIO
 };
 
 // Ordem usada para escolher a tela de destino quando uma rota é negada.

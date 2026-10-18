@@ -10,6 +10,7 @@ import {
   Radio, TrendingUp, Flame, ChevronRight, ChevronDown, ChevronUp, X, Send
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import UnitsOverview from '@/components/UnitsOverview';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -83,7 +84,12 @@ function computeShiftLiveStatus(shift, liveNowDate) {
 }
 
 export default function Painel() {
-  const { user, company, units = [], selectedUnitId, isManager, shifts, sectors, professionals, loading, publishedRanges, getPublishedRanges } = useAppData();
+  const { user, company, units = [], selectedUnitId, isManager, shifts, sectors, professionals, loading, publishedRanges, getPublishedRanges, allCompanyShifts = [] } = useAppData();
+  // Unidades que o gestor administra (mesma regra do seletor do cabeçalho).
+  const managedUnits = useMemo(() => {
+    const allowed = Array.isArray(user?.data?.allowed_unit_ids) ? user.data.allowed_unit_ids.map(String) : [];
+    return (units || []).filter(u => user?.role === 'admin' || allowed.length === 0 || allowed.includes(String(u.id)));
+  }, [units, user]);
   const navigate = useNavigate();
 
   const [tvMode, setTvMode] = useState(false);
@@ -404,6 +410,8 @@ export default function Painel() {
           </div>
         </div>
       )}
+
+      {isManager && <UnitsOverview units={managedUnits} shifts={allCompanyShifts} selectedUnitId={selectedUnitId} now={currentTime} />}
 
       <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white p-6 md:p-8 rounded-3xl border border-slate-800 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1.5">

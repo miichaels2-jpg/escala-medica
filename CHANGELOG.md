@@ -9,6 +9,20 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.1.10 — 18/10/2026
+
+- **Planejamento (temporário):** nova tela, só para gestor, com a lista das melhorias combinadas e o
+  andamento de cada uma. Some quando terminarmos (ver `src/lib/roadmap.js`).
+- **Visão de todas as unidades (gestor):** quadro "Suas unidades" no Painel (plantões hoje, vagas em 7 dias,
+  urgentes e furos no mês, com "Abrir" para entrar na unidade) e opção "Todas as unidades" no Mural.
+- **Alerta de furo iminente:** vaga sem ninguém a menos de 24 h ganha o selo "Urgente" no Mural, e os
+  profissionais compatíveis, livres e disponíveis recebem um aviso no sino (um por vaga). Qualquer aparelho
+  logado com o app aberto faz a conferência a cada 5 min.
+- **Indisponibilidade e férias:** cartão "Minha disponibilidade" na Minha Escala. Quem marcou o dia aparece
+  como indisponível na alocação, sai do preenchimento automático e não vê vagas desses dias no Mural; se o
+  gestor escalar mesmo assim, o app pede confirmação.
+- **Banco:** migração `20261018150000_notifications_dedupe_key.sql` (aplicada) — chave única por aviso.
+
 ## V0.1.9 — 18/10/2026
 
 - **Várias unidades num único login (profissional):** Minha Escala, Mural e o sino mostram plantões e vagas
