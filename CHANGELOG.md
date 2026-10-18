@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.1.7 — 17/10/2026
+
+- **Atualização automática:** quando alguém assume uma vaga, troca, aloca, publica ou marca pagamento,
+  as telas abertas em outros computadores e celulares se atualizam sozinhas em poucos segundos (Supabase
+  Realtime). Rajadas de mudanças viram no máximo uma recarga a cada 5 s. Como reserva, o app também
+  recarrega a cada 30 s com a tela visível e ao voltar para a aba.
+- **Banco:** migração `20261018120000_realtime_shifts.sql` (aplicada) inclui `shifts`, `published_schedules`
+  e `payment_statuses` no Realtime. Nenhuma permissão nova.
+
 ## V0.1.6 — 17/10/2026
 
 - **Faturamento › Produtividade diária:** o lançamento agora é do mês inteiro numa tela só. Lista os dias

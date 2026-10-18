@@ -27,6 +27,64 @@ const listeners = new Set();
 let isFetching = false;
 let activeFetch = null;
 let refetchRequested = false;
+let lastLoadAt = 0;
+
+// Atualização automática das telas: o Realtime do Supabase avisa quando um
+// plantão, uma publicação ou um pagamento muda (ex.: profissional assumiu uma
+// vaga pelo celular) e o app recarrega em seguida. Como reserva, recarrega a
+// cada 30 s com a tela visível e ao voltar para a aba.
+const LIVE_TABLES = ['shifts', 'published_schedules', 'payment_statuses'];
+const LIVE_POLL_MS = 30_000;
+const FOCUS_REFRESH_MIN_MS = 10_000;
+let liveSyncStarted = false;
+let realtimeTimer = null;
+
+function hasActiveSession() {
+  try { return window.localStorage.getItem('escala_medica_session') === 'active'; } catch { return false; }
+}
+
+const REALTIME_DEBOUNCE_MS = 1500;
+const REALTIME_MIN_GAP_MS = 5000;
+
+// Agrupa avisos seguidos (ex.: publicação de um mês inteiro, várias exclusões)
+// numa só recarga, e nunca recarrega por aviso mais de uma vez a cada 5 s.
+function scheduleRealtimeRefresh() {
+  if (realtimeTimer) return;
+  const wait = Math.max(REALTIME_DEBOUNCE_MS, REALTIME_MIN_GAP_MS - (Date.now() - lastLoadAt));
+  realtimeTimer = window.setTimeout(() => {
+    realtimeTimer = null;
+    if (hasActiveSession()) fetchAllData();
+  }, wait);
+}
+
+function startLiveSync() {
+  if (liveSyncStarted || typeof window === 'undefined') return;
+  liveSyncStarted = true;
+
+  try {
+    const channel = supabase.channel('scalemedic-live');
+    LIVE_TABLES.forEach(table => {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, scheduleRealtimeRefresh);
+    });
+    channel.subscribe(status => {
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        console.warn(`[Realtime] ${status}; seguindo com a atualização periódica.`);
+      }
+    });
+  } catch (err) {
+    console.warn('[Realtime] indisponível; seguindo com a atualização periódica.', err);
+  }
+
+  const isVisible = () => document.visibilityState === 'visible';
+  window.setInterval(() => {
+    if (isVisible() && hasActiveSession() && Date.now() - lastLoadAt >= LIVE_POLL_MS - 1000) fetchAllData();
+  }, LIVE_POLL_MS);
+  const onReturn = () => {
+    if (isVisible() && hasActiveSession() && Date.now() - lastLoadAt > FOCUS_REFRESH_MIN_MS) fetchAllData();
+  };
+  document.addEventListener('visibilitychange', onReturn);
+  window.addEventListener('focus', onReturn);
+}
 
 function updateGlobal(patch) {
   globalState = { ...globalState, ...patch };
@@ -225,6 +283,7 @@ function fetchAllData() {
     } finally {
       isFetching = false;
       activeFetch = null;
+      lastLoadAt = Date.now();
     }
   })();
   return activeFetch;
@@ -458,6 +517,7 @@ export function useAppData() {
     const listener = () => setTick(t => t + 1);
     listeners.add(listener);
     fetchAllData();
+    startLiveSync();
     return () => listeners.delete(listener);
   }, []);
 
