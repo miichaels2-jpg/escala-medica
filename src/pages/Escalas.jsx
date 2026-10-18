@@ -24,15 +24,6 @@ import {
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-// Linhas exibidas por dia no calendário; o restante abre na lista daquele dia.
-const CALENDAR_LINES_PER_DAY = 6;
-
-// "07:00" → "07h"; "07:30" → "07h30" (cabe na célula do calendário).
-function shortTime(value) {
-  const [h = '', m = '00'] = String(value || '').split(':');
-  return m === '00' ? `${h}h` : `${h}h${m}`;
-}
-
 const CUSTOM_SPECIALTY = '__outra__';
 
 function SpecialtyPicker({ value, options, onChange, triggerClassName = '', contentClassName = '' }) {
@@ -254,6 +245,9 @@ export default function Escalas() {
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState('mensal'); 
   const [monthlyView, setMonthlyView] = useState('lista');
+  // Calendário: dia aberto no painel de detalhes (abre como gaveta em telas menores).
+  const [calendarDay, setCalendarDay] = useState(null);
+  const [dayPanelOpen, setDayPanelOpen] = useState(false);
   const [filterTurno, setFilterTurno] = useState('todos'); 
   // A lista abre a partir de hoje: dias que já passaram ficam a um clique (setas do mês / filtro).
   const [startDateFilter, setStartDateFilter] = useState(() => getLocalDateString());
@@ -1458,13 +1452,14 @@ const conflict = checkProfessionalConflict(
     const days = [];
     while (date.getMonth() === currentMonth) { 
       const curStr = getLocalDateString(date);
-      if (!startDateFilter || curStr >= startDateFilter) {
+      // O calendário mostra o mês inteiro (dias passados esmaecidos); o filtro "a partir de" vale na lista.
+      if (monthlyView === 'calendario' || !startDateFilter || curStr >= startDateFilter) {
         days.push(new Date(date)); 
       }
       date.setDate(date.getDate() + 1); 
     }
     return days;
-  }, [currentYear, currentMonth, startDateFilter]);
+  }, [currentYear, currentMonth, startDateFilter, monthlyView]);
 
   const getStatusBadge = (shift) => {
     const isVago = isVacant(shift);
@@ -1517,12 +1512,12 @@ const conflict = checkProfessionalConflict(
     const prefix = `${currentYear}-${monthStr}`;
     return (shifts || []).filter(s => {
       if (!s?.date || !s.date.startsWith(prefix) || s.status === 'cancelado') return false;
-      if (startDateFilter && s.date < startDateFilter) return false;
+      if (monthlyView !== 'calendario' && startDateFilter && s.date < startDateFilter) return false;
       if (selectedSectorId !== 'todos' && String(s.sector_id) !== String(selectedSectorId)) return false;
       if (!isShiftMatchingTurno(s, filterTurno)) return false;
       return true;
     });
-  }, [shifts, currentYear, currentMonth, selectedSectorId, filterTurno, startDateFilter]);
+  }, [shifts, currentYear, currentMonth, selectedSectorId, filterTurno, startDateFilter, monthlyView]);
 
   const scheduleSpecialties = useMemo(() => {
     const specialties = new Set(
@@ -1559,56 +1554,6 @@ const conflict = checkProfessionalConflict(
     });
     return map;
   }, [scheduleVisibleShifts]);
-
-  // Mapa visual da capacidade configurada para cada dia/horário.
-  // A chave representa um slot físico da grade: setor + horário + especialidade.
-  const vacancyGroupsByDate = useMemo(() => {
-    const map = {};
-
-    scheduleFilteredShifts.forEach(shift => {
-      if (!shift?.date) return;
-
-      const dateKey = shift.date;
-      if (!map[dateKey]) map[dateKey] = {};
-
-      const specialty = extractSpecialty(shift, professionalMap[String(shift.professional_id)]);
-      const key = [
-        String(shift.sector_id || ''),
-        String(shift.start_time || '07:00'),
-        String(shift.end_time || '19:00'),
-        normalize(specialty)
-      ].join('|');
-
-      if (!map[dateKey][key]) {
-        map[dateKey][key] = {
-          key,
-          sector_id: shift.sector_id,
-          start_time: shift.start_time || '07:00',
-          end_time: shift.end_time || '19:00',
-          specialty,
-          total: 0,
-          vacant: 0,
-          filled: 0,
-          shifts: []
-        };
-      }
-
-      const group = map[dateKey][key];
-      group.total += 1;
-      if (isVacant(shift)) group.vacant += 1;
-      else group.filled += 1;
-      group.shifts.push(shift);
-    });
-
-    const result = {};
-    Object.entries(map).forEach(([date, groups]) => {
-      result[date] = Object.values(groups).sort((a, b) => {
-        return String(a.start_time).localeCompare(String(b.start_time));
-      });
-    });
-
-    return result;
-  }, [scheduleFilteredShifts, professionalMap]);
 
   const allActiveProfessionals = useMemo(() => (professionals || []).filter(p => p?.status === 'ativo'), [professionals]);
 
@@ -1912,51 +1857,122 @@ const handleAssignLegacyShiftUnit = async (shift) => {
     setModalOpen(true);
   };
 
-  // Calendário: uma linha discreta por plantão preenchido.
-  const renderCalendarShiftLine = (shift, dateStr) => {
-    const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-    const parts = String(prof?.name || shift.professional_name || 'Profissional').trim().split(/\s+/);
-    const name = parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1].charAt(0)}.` : parts[0];
-    const life = computeShiftHospitalLifecycle(shift, liveNow);
-    const sectorName = !selectedSectorObj ? sectorMap[String(shift.sector_id)]?.name : '';
-    return (
-      <button
-        type="button"
-        key={shift.id}
-        onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
-        onDrop={e => { e.preventDefault(); e.stopPropagation(); setDraggingProfId(null); alert('Este horário já está preenchido. Solte o profissional em uma vaga aberta.'); }}
-        onClick={e => { e.stopPropagation(); openShiftEditor(shift); }}
-        title={`${shift.start_time}–${shift.end_time} · ${prof?.name || shift.professional_name || ''} · ${extractSpecialty(shift, prof)}${sectorName ? ` · ${sectorName}` : ''}${life.isLive ? ' · em andamento' : ''}`}
-        className={`group flex w-full min-w-0 items-center gap-1.5 rounded-md py-0.5 pl-0.5 pr-1 text-left text-[11px] leading-tight hover:bg-slate-100 dark:hover:bg-slate-800 ${isManager ? 'cursor-pointer' : 'cursor-default'} ${life.isConcluded ? 'opacity-60' : ''}`}
-      >
-        <span className={`h-3.5 w-1 shrink-0 rounded-full ${life.isLive ? 'bg-emerald-500' : 'bg-slate-400 dark:bg-slate-500'}`} />
-        <span className="shrink-0 font-mono text-[10px] text-slate-500 dark:text-slate-400">{shortTime(shift.start_time)}</span>
-        <span className="truncate font-medium text-slate-800 dark:text-slate-100">{name}</span>
-      </button>
-    );
-  };
+  const TURNOS = [
+    { id: 'manha', label: 'Manhã', icon: Sun, match: h => h >= 5 && h < 12 },
+    { id: 'tarde', label: 'Tarde', icon: Sun, match: h => h >= 12 && h < 18 },
+    { id: 'noite', label: 'Noite', icon: Moon, match: h => h >= 18 || h < 5 }
+  ];
 
-  // Calendário: vagas do mesmo horário agrupadas numa linha (alvo do arrastar e soltar).
-  const renderCalendarVacancyLine = (group, dateStr) => {
-    const firstVacant = group.shifts.find(s => isVacant(s));
-    const overdue = group.shifts.some(s => isVacant(s) && isShiftPast(s, liveNow));
-    const sectorName = !selectedSectorObj ? sectorMap[String(group.sector_id)]?.name : '';
+  const renderDayPanel = (dateStr) => {
+    const dayShifts = (shiftsByDate[dateStr] || []).slice()
+      .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)) || Number(isVacant(b)) - Number(isVacant(a)));
+    const filled = dayShifts.filter(s => !isVacant(s)).length;
+    const published = isDatePublishedForCurrentSector(dateStr);
+    const title = (() => { const s = new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }); return s.charAt(0).toUpperCase() + s.slice(1); })();
+
     return (
-      <button
-        type="button"
-        key={group.key}
-        onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
-        onDrop={e => handleDropOnSlot(e, dateStr, group.start_time, group.end_time, group.specialty, group.sector_id)}
-        onClick={e => { e.stopPropagation(); openShiftEditor(firstVacant); }}
-        title={`${group.vacant} vaga(s) · ${group.start_time}–${group.end_time} · ${group.specialty}${sectorName ? ` · ${sectorName}` : ''}. Arraste um profissional ou clique para alocar.`}
-        className={`flex w-full min-w-0 items-center gap-1.5 rounded-md py-0.5 pl-0.5 pr-1 text-left text-[11px] leading-tight ${overdue ? 'bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 dark:hover:bg-rose-500/20' : 'bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20'} ${isManager ? 'cursor-pointer' : 'cursor-default'} ${draggingProfId ? 'ring-1 ring-sky-500' : ''}`}
-      >
-        <span className={`h-3.5 w-1 shrink-0 rounded-full ${overdue ? 'bg-rose-600' : 'bg-amber-500'}`} />
-        <span className="shrink-0 font-mono text-[10px] text-slate-500 dark:text-slate-400">{shortTime(group.start_time)}</span>
-        <span className={`truncate font-semibold ${overdue ? 'text-rose-700 dark:text-rose-300' : 'text-amber-800 dark:text-amber-200'}`}>
-          {group.vacant} {group.vacant === 1 ? 'vaga' : 'vagas'}
-        </span>
-      </button>
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex items-start justify-between gap-2 border-b border-slate-200 dark:border-slate-800 p-4">
+          <div className="min-w-0">
+            <h3 className="font-semibold text-slate-900 dark:text-white">{title}</h3>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              {dayShifts.length === 0 ? 'Sem plantões' : `${filled} de ${dayShifts.length} preenchidos`}
+              {' · '}{published ? 'Publicada' : 'Rascunho'}
+            </p>
+          </div>
+          <span className="flex shrink-0 items-center gap-1">
+            {isManager && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingShiftId(null);
+                  setFormData({ date: dateStr, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || ''), target_specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar', professional_id: '', notes: '', retroactive_justification: '' });
+                  setModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-2 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" /> Plantão
+              </button>
+            )}
+            <button type="button" onClick={() => setDayPanelOpen(false)} aria-label="Fechar" className="2xl:hidden rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+              <X className="h-4 w-4" />
+            </button>
+          </span>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
+          {dayShifts.length === 0 && (
+            <p className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">Nenhum plantão neste dia.</p>
+          )}
+          {TURNOS.map(turno => {
+            const items = dayShifts.filter(s => turno.match(parseInt(String(s.start_time || '07').split(':')[0], 10)));
+            if (items.length === 0) return null;
+            const Icon = turno.icon;
+            return (
+              <section key={turno.id}>
+                <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  <Icon className="h-3.5 w-3.5" /> {turno.label} <span className="font-normal normal-case">· {items.length}</span>
+                </h4>
+                <ul className="space-y-1.5">
+                  {items.map(shift => {
+                    const open = isVacant(shift);
+                    const overdue = open && isShiftPast(shift, liveNow);
+                    const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+                    const name = prof?.name || shift.professional_name;
+                    const life = computeShiftHospitalLifecycle(shift, liveNow);
+                    const spec = extractSpecialty(shift, prof);
+                    const sectorName = !selectedSectorObj ? sectorMap[String(shift.sector_id)]?.name : '';
+                    return (
+                      <li
+                        key={shift.id}
+                        onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                        onDrop={e => {
+                          e.preventDefault(); e.stopPropagation();
+                          if (!open) { setDraggingProfId(null); alert('Este horário já está preenchido. Solte o profissional em uma vaga aberta.'); return; }
+                          handleDropOnSlot(e, dateStr, shift.start_time, shift.end_time, spec, shift.sector_id);
+                        }}
+                        className={`flex items-center gap-3 rounded-xl border p-2.5 ${open
+                          ? (overdue ? 'border-rose-200 bg-rose-50/60 dark:border-rose-500/30 dark:bg-rose-500/5' : 'border-amber-200 bg-amber-50/60 dark:border-amber-500/30 dark:bg-amber-500/5')
+                          : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'} ${draggingProfId && open ? 'ring-2 ring-sky-500' : ''}`}
+                      >
+                        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${open
+                          ? (overdue ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300')
+                          : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'}`}>
+                          {open ? <AlertTriangle className="h-4 w-4" /> : getInitials(name)}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-slate-900 dark:text-white">
+                            {open ? (overdue ? 'Furo (sem profissional)' : 'Vaga aberta') : name}
+                          </span>
+                          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                            {shift.start_time}–{shift.end_time} · {spec}{sectorName ? ` · ${sectorName}` : ''}
+                          </span>
+                        </span>
+                        {open ? (
+                          isManager && (
+                            <button type="button" onClick={() => openShiftEditor(shift)} className="shrink-0 rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-sky-500 cursor-pointer">
+                              Alocar
+                            </button>
+                          )
+                        ) : (
+                          <span className="flex shrink-0 items-center gap-2">
+                            {life.isLive && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">Agora</span>}
+                            {isManager && (
+                              <button type="button" onClick={() => openShiftEditor(shift)} aria-label={`Editar plantão de ${name}`} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer">
+                                <SlidersHorizontal className="h-4 w-4" />
+                              </button>
+                            )}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      </div>
     );
   };
 
@@ -2606,81 +2622,111 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             </aside>
           )}
 
-{monthlyView === 'calendario' && <div className="flex-1 w-full min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
-            <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 px-3 py-2 border-b border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400">
-              <span className="inline-flex items-center gap-1.5"><span className="h-3 w-1 rounded-full bg-slate-400 dark:bg-slate-500" /> Plantão preenchido</span>
-              <span className="inline-flex items-center gap-1.5"><span className="h-3 w-1 rounded-full bg-amber-500" /> Vaga aberta</span>
-              <span className="inline-flex items-center gap-1.5"><span className="h-3 w-1 rounded-full bg-rose-600" /> Vaga vencida</span>
-              <span className="inline-flex items-center gap-1.5"><CheckCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Dia publicado</span>
-            </div>
-            <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-center py-2">
-              {WEEKDAYS.map(day => (<div key={day.short} className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{day.short}</div>))}
-            </div>
+{monthlyView === 'calendario' && (() => {
+            const activeDay = calendarDay && daysInMonth.some(d => getLocalDateString(d) === calendarDay)
+              ? calendarDay
+              : (daysInMonth.some(d => getLocalDateString(d) === todayLocalStr) ? todayLocalStr : (daysInMonth[0] ? getLocalDateString(daysInMonth[0]) : null));
+            return (
+            <div className="flex-1 w-full min-w-0 grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px] items-start">
+              <div className="min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+                <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400">
+                  <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-4 rounded-full bg-emerald-500" /> Completo</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-4 rounded-full bg-amber-500" /> Com vaga</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-4 rounded-full bg-rose-500" /> Furo</span>
+                  <span className="inline-flex items-center gap-1.5"><CheckCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Publicada</span>
+                </div>
+                <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 text-center py-2">
+                  {WEEKDAYS.map(day => (<div key={day.short} className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{day.short}</div>))}
+                </div>
 
-            <div className="grid grid-cols-7 divide-x divide-y divide-slate-200 dark:divide-slate-800">
-              {Array.from({ length: (daysInMonth[0]?.getDay() || 0) }).map((_, idx) => (<div key={`empty-${idx}`} className="min-h-[140px] bg-slate-50/60 dark:bg-slate-950/40"></div>))}
+                <div className="grid grid-cols-7 gap-px bg-slate-200 dark:bg-slate-800">
+                  {Array.from({ length: (daysInMonth[0]?.getDay() || 0) }).map((_, idx) => (<div key={`empty-${idx}`} className="bg-slate-50 dark:bg-slate-950/60" />))}
 
-              {daysInMonth.map(dateObj => {
-                const dateStr = getLocalDateString(dateObj);
-                const isToday = todayLocalStr === dateStr;
-                const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
-                const isSelected = selectedDays.includes(dateStr);
-                const isDatePublished = isDatePublishedForCurrentSector(dateStr);
-                const dayVacancyGroups = vacancyGroupsByDate[dateStr] || [];
-                const dayVacantCount = dayVacancyGroups.reduce((sum, group) => sum + group.vacant, 0);
-                const hasOverdueVacancy = dayVacancyGroups.some(group =>
-                  group.shifts.some(shift => isVacant(shift) && isShiftPast(shift, liveNow))
-                );
+                  {daysInMonth.map(dateObj => {
+                    const dateStr = getLocalDateString(dateObj);
+                    const isToday = todayLocalStr === dateStr;
+                    const isPastDay = dateStr < todayLocalStr;
+                    const isActive = activeDay === dateStr;
+                    const isSelected = selectedDays.includes(dateStr);
+                    const dayShifts = shiftsByDate[dateStr] || [];
+                    const total = dayShifts.length;
+                    const filled = dayShifts.filter(s => !isVacant(s)).length;
+                    const vacant = total - filled;
+                    const overdue = dayShifts.some(s => isVacant(s) && isShiftPast(s, liveNow));
+                    const barColor = vacant === 0 ? 'bg-emerald-500' : overdue ? 'bg-rose-500' : 'bg-amber-500';
+                    const people = [...new Map(dayShifts.filter(s => !isVacant(s)).map(s => {
+                      const prof = professionalMap[String(s.professional_id)];
+                      return [String(s.professional_id || s.professional_name), prof?.name || s.professional_name];
+                    })).values()];
 
-                // Uma linha por plantão preenchido e uma linha por horário com vagas (agrupadas).
-                const filledLines = (shiftsByDate[dateStr] || [])
-                  .filter(shift => !isVacant(shift))
-                  .map(shift => ({ kind: 'shift', key: shift.id, start: shift.start_time || '', shift }));
-                const vacancyLines = dayVacancyGroups
-                  .filter(group => group.vacant > 0)
-                  .map(group => ({ kind: 'vaga', key: `v-${group.key}`, start: group.start_time || '', group }));
-                const lines = [...vacancyLines, ...filledLines].sort((a, b) => String(a.start).localeCompare(String(b.start)) || (a.kind === 'vaga' ? -1 : 1));
-                const visibleLines = lines.slice(0, CALENDAR_LINES_PER_DAY);
-                const hiddenCount = lines.length - visibleLines.length;
-
-                return (
-                  <div key={dateStr} onClick={(e) => handleDayClick(dateStr, e)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDropOnDay(e, dateStr)} className={`min-h-[140px] p-1.5 flex flex-col gap-1 min-w-0 select-none cursor-pointer transition-colors ${isSelected ? 'bg-sky-50 dark:bg-sky-950/40 ring-2 ring-inset ring-sky-500' : isWeekend ? 'bg-slate-50/70 dark:bg-slate-950/30 hover:bg-slate-100/70 dark:hover:bg-slate-800/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'}`}>
-                    <div className="flex items-center justify-between gap-1 px-0.5">
-                      <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold ${isToday ? 'bg-sky-600 text-white' : 'text-slate-700 dark:text-slate-200'}`}>
-                        {dateObj.getDate()}
-                      </span>
-                      <div className="flex items-center gap-1 min-w-0">
-                        {dayVacantCount > 0 && (
-                          <span className={`truncate rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${hasOverdueVacancy ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300'}`}>
-                            {dayVacantCount} {dayVacantCount === 1 ? 'vaga' : 'vagas'}
-                          </span>
-                        )}
-                        {isDatePublished
-                          ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-label="Publicada" title="Escala publicada para esta data" />
-                          : <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" aria-label="Rascunho" title="Rascunho: ainda não publicada" />}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      {visibleLines.map(line => line.kind === 'vaga'
-                        ? renderCalendarVacancyLine(line.group, dateStr)
-                        : renderCalendarShiftLine(line.shift, dateStr))}
-                    </div>
-
-                    {hiddenCount > 0 && (
+                    return (
                       <button
                         type="button"
-                        onClick={(e) => { e.stopPropagation(); setStartDateFilter(dateStr); setMonthlyView('lista'); }}
-                        className="mt-auto self-start px-1 text-[10px] font-semibold text-sky-700 dark:text-sky-300 hover:underline cursor-pointer"
+                        key={dateStr}
+                        onClick={(e) => {
+                          if (e.ctrlKey || e.metaKey) { handleDayClick(dateStr, e); return; }
+                          if (selectedDays.length) setSelectedDays([]);
+                          setCalendarDay(dateStr);
+                          setDayPanelOpen(true);
+                        }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => handleDropOnDay(e, dateStr)}
+                        aria-pressed={isActive}
+                        aria-label={`${dateObj.getDate()}: ${total ? `${filled} de ${total} preenchidos` : 'sem plantões'}`}
+                        className={`group relative flex min-h-[78px] sm:min-h-[104px] flex-col gap-1.5 p-1.5 sm:p-2 text-left transition-colors cursor-pointer ${
+                          isActive ? 'bg-sky-50 dark:bg-sky-950/40 ring-2 ring-inset ring-sky-500' :
+                          isSelected ? 'bg-indigo-50 dark:bg-indigo-950/40 ring-2 ring-inset ring-indigo-500' :
+                          'bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60'} ${isPastDay && !isActive ? 'opacity-60' : ''}`}
                       >
-                        + {hiddenCount} {hiddenCount === 1 ? 'outro' : 'outros'}
+                        <span className="flex items-center justify-between">
+                          <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold ${isToday ? 'bg-sky-600 text-white' : 'text-slate-700 dark:text-slate-200'}`}>
+                            {dateObj.getDate()}
+                          </span>
+                          {total > 0 && isDatePublishedForCurrentSector(dateStr) && <CheckCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />}
+                        </span>
+
+                        {total > 0 ? (
+                          <>
+                            <span className="block h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                              <span className={`block h-full rounded-full ${barColor}`} style={{ width: `${Math.max(6, Math.round((filled / total) * 100))}%` }} />
+                            </span>
+                            <span className="flex items-baseline justify-between gap-1 text-[11px]">
+                              <span className="font-semibold text-slate-700 dark:text-slate-200">{filled}/{total}</span>
+                              {vacant > 0 && <span className={`hidden sm:inline font-medium ${overdue ? 'text-rose-600 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400'}`}>{vacant} vaga{vacant > 1 ? 's' : ''}</span>}
+                            </span>
+                            {people.length > 0 && (
+                              <span className="mt-auto hidden sm:flex items-center -space-x-1.5">
+                                {people.slice(0, 4).map((name, i) => (
+                                  <span key={i} title={name} className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white dark:border-slate-900 bg-slate-200 dark:bg-slate-700 text-[9px] font-semibold text-slate-700 dark:text-slate-200">
+                                    {getInitials(name)}
+                                  </span>
+                                ))}
+                                {people.length > 4 && <span className="pl-2.5 text-[10px] text-slate-500">+{people.length - 4}</span>}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="mt-auto text-[11px] text-slate-300 dark:text-slate-600">—</span>
+                        )}
                       </button>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Painel do dia: ao lado em telas largas; gaveta (direita ou de baixo) nas demais. */}
+              {dayPanelOpen && <button type="button" aria-label="Fechar detalhes do dia" onClick={() => setDayPanelOpen(false)} className="2xl:hidden fixed inset-0 z-40 bg-slate-950/30 cursor-default" />}
+              <aside
+                aria-label="Plantões do dia"
+                className={`${dayPanelOpen ? 'flex' : 'hidden'} 2xl:flex flex-col fixed z-50 inset-x-0 bottom-0 max-h-[75vh] rounded-t-3xl sm:inset-x-auto sm:right-0 sm:top-0 sm:bottom-0 sm:max-h-none sm:w-[380px] sm:rounded-none sm:rounded-l-3xl
+                  2xl:sticky 2xl:z-auto 2xl:inset-auto 2xl:top-4 2xl:w-auto 2xl:max-h-[calc(100vh-180px)] 2xl:rounded-3xl
+                  bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl 2xl:shadow-sm overflow-hidden`}
+              >
+                {activeDay ? renderDayPanel(activeDay) : <p className="p-6 text-sm text-slate-500">Escolha um dia no calendário.</p>}
+              </aside>
             </div>
-          </div>}
+            );
+          })()}
           {monthlyView === 'lista' && (
             <div className="w-full space-y-3">
               {daysInMonth

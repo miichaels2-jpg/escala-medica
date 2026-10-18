@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.2.4 — 18/10/2026
+
+- **Calendário da escala, novo visual:** cada dia mostra só o essencial — número (hoje em destaque), barra de
+  cobertura (verde completo, laranja com vaga, vermelho furo), "preenchidos/total" e as iniciais de quem
+  trabalha. Clicar no dia abre o **painel do dia** com os plantões por Manhã / Tarde / Noite, nomes completos,
+  "Alocar" nas vagas, editar e "+ Plantão" já com a data. Em telas largas o painel fica ao lado; nas demais abre
+  como gaveta (no celular, de baixo para cima). Arrastar profissional continua funcionando no dia e nas vagas.
+- O calendário mostra o mês inteiro (dias passados esmaecidos); o filtro "a partir de" vale para a lista.
+
 ## V0.2.3 — 18/10/2026
 
 - **Troca direta entre colegas:** em Mural › Meus plantões, "Propor troca" lista só os plantões de colegas
