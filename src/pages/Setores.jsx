@@ -86,7 +86,8 @@ export default function Setores() {
         unit_id: unitId,
         name: formData.name.trim(),
         specialty: 'Geral', // Mantém compatibilidade com a estrutura de colunas do banco
-        status: formData.status
+        // O banco guarda a situação em "active" (sim/não); não existe coluna "status" em sectors.
+        active: formData.status !== 'inativo'
       };
 
       if (editingSector?.id) {
