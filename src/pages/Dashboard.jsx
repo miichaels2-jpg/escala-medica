@@ -13,7 +13,6 @@ import { useNavigate } from 'react-router-dom';
 import UnitsOverview, { ALL_UNITS, requestUnitSwitch } from '@/components/UnitsOverview';
 import { getProfessionalUnitIds } from '@/lib/sectorAccess';
 
-const DASHBOARD_SCOPE_KEY = 'scale_dashboard_scope';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -87,7 +86,7 @@ function computeShiftLiveStatus(shift, liveNowDate) {
 }
 
 export default function Painel() {
-  const { user, company, units = [], selectedUnitId, isManager, shifts: selectedUnitShifts, sectors: selectedUnitSectors, professionals: selectedUnitProfessionals, loading, publishedRanges, getPublishedRanges, allCompanyShifts = [], allCompanySectors = [], allCompanyProfessionals = [] } = useAppData();
+  const { user, company, units = [], selectedUnitId, isManager, shifts: selectedUnitShifts, sectors: selectedUnitSectors, professionals: selectedUnitProfessionals, loading, publishedRanges, getPublishedRanges, allCompanyShifts = [], allCompanySectors = [], allCompanyProfessionals = [], allUnitsView, setUnitScope } = useAppData();
   // Unidades que o gestor administra (mesma regra do seletor do cabeçalho).
   const managedUnits = useMemo(() => {
     const allowed = Array.isArray(user?.data?.allowed_unit_ids) ? user.data.allowed_unit_ids.map(String) : [];
@@ -97,16 +96,11 @@ export default function Painel() {
   // Escopo do Painel: "Todas as unidades" (padrão de quem administra mais de uma) ou um hospital.
   // É o único seletor nesta tela: o do cabeçalho fica oculto aqui.
   const multiUnit = isManager && managedUnits.length > 1;
-  const [scope, setScope] = useState(() => {
-    try { return window.localStorage.getItem(DASHBOARD_SCOPE_KEY) || ALL_UNITS; } catch { return ALL_UNITS; }
-  });
+  // Mesma escolha do sistema todo: escolher um hospital aqui vale nas outras telas.
   const effectiveScope = !multiUnit
     ? String(selectedUnitId || '')
-    : scope === ALL_UNITS || managedUnits.some(u => String(u.id) === String(scope)) ? scope : ALL_UNITS;
-  const changeScope = (next) => {
-    setScope(next);
-    try { window.localStorage.setItem(DASHBOARD_SCOPE_KEY, next); } catch { /* sem armazenamento */ }
-  };
+    : allUnitsView || !managedUnits.some(u => String(u.id) === String(selectedUnitId)) ? ALL_UNITS : String(selectedUnitId);
+  const changeScope = (next) => setUnitScope(next);
   const scopeUnitIds = useMemo(() => (
     effectiveScope === ALL_UNITS ? managedUnits.map(u => String(u.id)) : [String(effectiveScope)]
   ), [effectiveScope, managedUnits]);
