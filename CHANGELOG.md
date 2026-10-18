@@ -9,6 +9,24 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.2.1 — 18/10/2026
+
+Primeira versão da série 0.2 (depois de V0.1.10, pela regra de numeração).
+
+- **Painel do gestor sem controle duplicado:** os cartões de unidade viraram o filtro do próprio Painel
+  ("Todas as unidades" ou um hospital) e o seletor do cabeçalho some nessa tela. Por padrão o Painel mostra
+  todas as unidades juntas — profissionais, plantões do dia, vagas e custo — com o hospital ao lado do setor.
+  Clicar numa vaga ou setor de outro hospital abre Escalas já na unidade certa.
+- **Versão na tela de login**, logo abaixo da senha.
+- **Agenda do celular:** botão "Adicionar à agenda" na Minha Escala baixa os próximos plantões (.ics,
+  funciona no iPhone, Android e Outlook) com endereço e alarmes 12 h e 1 h antes — tocam mesmo com o app
+  fechado. Cada plantão também tem o link "Google Agenda".
+- **Lembrete no sino:** aviso nas últimas 12 h e na última hora antes do plantão (só escala publicada).
+- **Histórico de alterações:** nova tela para o gestor com quem criou, alocou, trocou, liberou, excluiu,
+  publicou ou marcou pagamento, e quando; filtros por período, tipo, unidade e busca. O registro é feito por
+  gatilho no banco e o app não consegue apagá-lo.
+- **Banco:** migração `20261018180000_audit_log.sql` (aplicada).
+
 ## V0.1.10 — 18/10/2026
 
 - **Planejamento (temporário):** nova tela, só para gestor, com a lista das melhorias combinadas e o

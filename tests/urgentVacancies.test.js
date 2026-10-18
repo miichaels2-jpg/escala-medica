@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getShiftUrgency, findUrgentAlerts, urgentAlertKey } from '../src/lib/urgentVacancies.js';
+import { getShiftUrgency, findUrgentAlerts, urgentAlertKey, findShiftReminders } from '../src/lib/urgentVacancies.js';
 
 const now = new Date(2026, 9, 18, 10, 0); // 18/10/2026 10:00
 const vaga = (id, date, start, end, extra = {}) => ({ id, date, start_time: start, end_time: end, status: 'vago', professional_id: null, unit_id: 'A', sector_id: 's1', ...extra });
@@ -31,4 +31,18 @@ test('avisa só quem atua na unidade, é compatível, está livre e disponível'
   const alerts = findUrgentAlerts({ shifts, professionals, isRelevant, now });
   assert.deepEqual(alerts.map(a => a.professional.id), ['livre']);
   assert.equal(urgentAlertKey(alerts[0].shift, alerts[0].professional), 'vaga_urgente:v1:livre');
+});
+
+test('lembretes do próprio plantão: 12 h e 1 h antes, só escala publicada', () => {
+  const shifts = [
+    { id: 'a', date: '2026-10-18', start_time: '19:00', end_time: '07:00', status: 'confirmado', professional_id: 'p1', unit_id: 'A' },
+    { id: 'b', date: '2026-10-18', start_time: '10:40', end_time: '19:00', status: 'confirmado', professional_id: 'p2', unit_id: 'A' },
+    { id: 'c', date: '2026-10-19', start_time: '07:00', end_time: '19:00', status: 'confirmado', professional_id: 'p3', unit_id: 'A' },
+    { id: 'd', date: '2026-10-18', start_time: '15:00', end_time: '19:00', status: 'confirmado', professional_id: 'p4', unit_id: 'A' },
+    { id: 'e', date: '2026-10-18', start_time: '15:00', end_time: '19:00', status: 'vago', professional_id: null, unit_id: 'A' }
+  ];
+  const isPublished = s => s.id !== 'd';
+  const list = findShiftReminders({ shifts, isPublished, now });
+  assert.deepEqual(list.map(r => `${r.shift.id}:${r.kind}`), ['a:12h', 'b:1h']);
+  assert.equal(list[0].key, 'lembrete_12h:a:p1');
 });

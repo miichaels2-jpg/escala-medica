@@ -53,3 +53,20 @@ export function findUrgentAlerts({ shifts, professionals, isRelevant, now = new 
 export function urgentAlertKey(shift, professional) {
   return `vaga_urgente:${shift.id}:${professional.id}`;
 }
+
+// Lembrete do próprio plantão: um aviso ao entrar nas últimas 12 h e outro na última hora.
+// Só para escala publicada (isPublished), para não antecipar rascunho ao profissional.
+export function findShiftReminders({ shifts, isPublished, now = new Date() }) {
+  const reminders = [];
+  (shifts || []).forEach(shift => {
+    if (!shift?.professional_id || isShiftVacant(shift) || String(shift.status || '').toLowerCase().includes('cancel')) return;
+    const range = getShiftDateTimeRange(shift);
+    if (!range) return;
+    const minutesLeft = Math.round((range.start.getTime() - now.getTime()) / 60000);
+    if (minutesLeft <= 0 || minutesLeft > 12 * 60) return;
+    if (isPublished && !isPublished(shift)) return;
+    const kind = minutesLeft <= 60 ? '1h' : '12h';
+    reminders.push({ shift, kind, minutesLeft, key: `lembrete_${kind}:${shift.id}:${shift.professional_id}` });
+  });
+  return reminders;
+}

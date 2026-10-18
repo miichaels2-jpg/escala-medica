@@ -11,6 +11,7 @@ let globalState = {
   units: [{ id: 'unit_h1', name: 'Unidade Matriz' }],
   selectedUnitId: 'unit_h1',
   professionals: [],
+  appUsers: [],
   sectors: [],
   shifts: [],
   swaps: [],
@@ -496,6 +497,8 @@ async function loadAllData() {
       units: activeUnits,
       selectedUnitId,
       professionals: enrichedProfs,
+      // Usuários (só colunas públicas), para mostrar quem fez cada alteração no histórico.
+      appUsers: allUsers,
       sectors: secRes,
       shifts: normalizedShifts,
       swaps: normalizedSwaps,

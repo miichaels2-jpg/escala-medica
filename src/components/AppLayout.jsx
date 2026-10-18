@@ -7,7 +7,7 @@ import {
   DollarSign, Users, Building2, LogOut, Menu, X, 
   AlertTriangle, Sun, Moon, Settings, FileBarChart,
   Clock, Hospital, Bell, Flame, CheckCircle2, ChevronRight, CheckCheck, Smartphone,
-  ListChecks
+  ListChecks, History
 } from 'lucide-react';
 import { InstallAppBanner, InstallAppDialog } from '@/components/InstallAppGuide';
 import { NotificationPanel, useNotificationCenter } from '@/components/NotificationCenter';
@@ -64,6 +64,7 @@ export default function AppLayout({ children }) {
     allCompanyShifts,
     allCompanyProfessionals,
     allCompanySectors,
+    getPublishedRanges,
     currentProfessional,
     dataWarnings = [],
     syncGlobalData
@@ -127,7 +128,7 @@ export default function AppLayout({ children }) {
   };
 
   // GARANTE QUE A UNIDADE ESCOLHIDA NÃO MUDE AO TROCAR DE TELA
-  const handleUnitChange = async (newUnitId) => {
+  const handleUnitChange = async (newUnitId, nextPath) => {
     setSelectedUnitId(newUnitId);
     try {
       window.localStorage.setItem('scale_selected_unit', newUnitId);
@@ -146,12 +147,17 @@ export default function AppLayout({ children }) {
     } catch (e) {
       console.error('Erro ao salvar unidade padrão', e);
     }
-    window.location.reload();
+    if (nextPath) window.location.href = nextPath;
+    else window.location.reload();
   };
 
   // "Abrir" no quadro Suas unidades (Painel) usa a mesma troca do seletor do cabeçalho.
   useEffect(() => {
-    const onSwitch = event => { if (event.detail && String(event.detail) !== String(selectedUnitId)) handleUnitChange(String(event.detail)); };
+    const onSwitch = event => {
+      const { unitId, path } = event.detail || {};
+      if (unitId && String(unitId) !== String(selectedUnitId)) handleUnitChange(String(unitId), path);
+      else if (path) navigate(path);
+    };
     window.addEventListener(SWITCH_UNIT_EVENT, onSwitch);
     return () => window.removeEventListener(SWITCH_UNIT_EVENT, onSwitch);
   });
@@ -166,7 +172,12 @@ export default function AppLayout({ children }) {
     shifts: allCompanyShifts,
     professionals: allCompanyProfessionals,
     sectors: allCompanySectors,
-    units
+    units,
+    isPublished: shift => {
+      const [y, m] = String(shift.date || '').split('-').map(Number);
+      return getPublishedRanges(shift.unit_id, shift.sector_id, y, m)
+        .some(range => shift.date >= range.start_date && shift.date <= range.end_date);
+    }
   });
 
   const dayName = WEEKDAYS_LONG[currentTime.getDay()];
@@ -182,6 +193,7 @@ export default function AppLayout({ children }) {
     { label: 'Setores & Especialidades', path: '/setores', icon: Building2, visible: isManager },
     { label: 'Relatórios', path: '/relatorios', icon: FileBarChart, visible: isManager || isBilling },
     { label: 'Faturamento & Repasse', path: '/faturamento', icon: DollarSign, visible: isManager || isBilling },
+    { label: 'Histórico de alterações', path: '/historico', icon: History, visible: isManager },
     { label: 'Configurações', path: '/configuracoes', icon: Settings, visible: isManager },
     { label: 'Planejamento (temporário)', path: '/planejamento', icon: ListChecks, visible: isManager }, // TEMPORÁRIO
   ].filter(item => item.visible && canAccessRoute(user, item.path))
@@ -209,10 +221,14 @@ export default function AppLayout({ children }) {
   // O plantonista vê Minha Escala e Mural de todas as unidades juntas; o seletor
   // de unidade só aparece para ele na grade de Escalas (que é por hospital).
   const professionalSeesAllUnits = isFieldProfessional && selectableUnits.length > 1;
-  const showUnitSelector = !professionalSeesAllUnits || location.pathname.startsWith('/escalas');
-  const currentHospitalName = professionalSeesAllUnits && !location.pathname.startsWith('/escalas')
-    ? `Todas as suas unidades (${selectableUnits.length})`
-    : selectedHospitalName;
+  // No Painel, o gestor com várias unidades escolhe o escopo nos cartões da própria tela.
+  const managerDashboardScope = !isFieldProfessional && selectableUnits.length > 1 && (location.pathname === '/dashboard' || location.pathname === '/');
+  const showUnitSelector = !managerDashboardScope && (!professionalSeesAllUnits || location.pathname.startsWith('/escalas'));
+  const currentHospitalName = managerDashboardScope
+    ? `Gestão · ${selectableUnits.length} unidades`
+    : professionalSeesAllUnits && !location.pathname.startsWith('/escalas')
+      ? `Todas as suas unidades (${selectableUnits.length})`
+      : selectedHospitalName;
 
   // Barra inferior do celular: o plantonista começa pela própria escala.
   const mobileTabs = [

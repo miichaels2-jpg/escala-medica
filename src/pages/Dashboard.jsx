@@ -10,7 +10,10 @@ import {
   Radio, TrendingUp, Flame, ChevronRight, ChevronDown, ChevronUp, X, Send
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import UnitsOverview from '@/components/UnitsOverview';
+import UnitsOverview, { ALL_UNITS, requestUnitSwitch } from '@/components/UnitsOverview';
+import { getProfessionalUnitIds } from '@/lib/sectorAccess';
+
+const DASHBOARD_SCOPE_KEY = 'scale_dashboard_scope';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -84,12 +87,41 @@ function computeShiftLiveStatus(shift, liveNowDate) {
 }
 
 export default function Painel() {
-  const { user, company, units = [], selectedUnitId, isManager, shifts, sectors, professionals, loading, publishedRanges, getPublishedRanges, allCompanyShifts = [] } = useAppData();
+  const { user, company, units = [], selectedUnitId, isManager, shifts: selectedUnitShifts, sectors: selectedUnitSectors, professionals: selectedUnitProfessionals, loading, publishedRanges, getPublishedRanges, allCompanyShifts = [], allCompanySectors = [], allCompanyProfessionals = [] } = useAppData();
   // Unidades que o gestor administra (mesma regra do seletor do cabeçalho).
   const managedUnits = useMemo(() => {
     const allowed = Array.isArray(user?.data?.allowed_unit_ids) ? user.data.allowed_unit_ids.map(String) : [];
     return (units || []).filter(u => user?.role === 'admin' || allowed.length === 0 || allowed.includes(String(u.id)));
   }, [units, user]);
+
+  // Escopo do Painel: "Todas as unidades" (padrão de quem administra mais de uma) ou um hospital.
+  // É o único seletor nesta tela: o do cabeçalho fica oculto aqui.
+  const multiUnit = isManager && managedUnits.length > 1;
+  const [scope, setScope] = useState(() => {
+    try { return window.localStorage.getItem(DASHBOARD_SCOPE_KEY) || ALL_UNITS; } catch { return ALL_UNITS; }
+  });
+  const effectiveScope = !multiUnit
+    ? String(selectedUnitId || '')
+    : scope === ALL_UNITS || managedUnits.some(u => String(u.id) === String(scope)) ? scope : ALL_UNITS;
+  const changeScope = (next) => {
+    setScope(next);
+    try { window.localStorage.setItem(DASHBOARD_SCOPE_KEY, next); } catch { /* sem armazenamento */ }
+  };
+  const scopeUnitIds = useMemo(() => (
+    effectiveScope === ALL_UNITS ? managedUnits.map(u => String(u.id)) : [String(effectiveScope)]
+  ), [effectiveScope, managedUnits]);
+  const isAllUnits = multiUnit && effectiveScope === ALL_UNITS;
+  const unitNameById = useMemo(() => Object.fromEntries((units || []).map(u => [String(u.id), u.name])), [units]);
+
+  const shifts = useMemo(() => (multiUnit
+    ? allCompanyShifts.filter(s => scopeUnitIds.includes(String(s.unit_id)))
+    : selectedUnitShifts || []), [multiUnit, allCompanyShifts, scopeUnitIds, selectedUnitShifts]);
+  const sectors = useMemo(() => (multiUnit
+    ? allCompanySectors.filter(s => scopeUnitIds.includes(String(s.unit_id)))
+    : selectedUnitSectors || []), [multiUnit, allCompanySectors, scopeUnitIds, selectedUnitSectors]);
+  const professionals = useMemo(() => (multiUnit
+    ? allCompanyProfessionals.filter(p => getProfessionalUnitIds(p).some(id => scopeUnitIds.includes(id)))
+    : selectedUnitProfessionals || []), [multiUnit, allCompanyProfessionals, scopeUnitIds, selectedUnitProfessionals]);
   const navigate = useNavigate();
 
   const [tvMode, setTvMode] = useState(false);
@@ -97,9 +129,11 @@ export default function Painel() {
   const [showAllVacantShifts, setShowAllVacantShifts] = useState(false);
   const [showDraftSectors, setShowDraftSectors] = useState(false);
 
-  const unitId = selectedUnitId || user?.data?.selected_unit_id || company?.selected_unit_id || 'unit_h1';
+  const unitId = (multiUnit && !isAllUnits ? effectiveScope : null) || selectedUnitId || user?.data?.selected_unit_id || company?.selected_unit_id || 'unit_h1';
   const currentUnit = units.find(u => String(u.id) === String(unitId));
-  const dashboardTitle = currentUnit ? currentUnit.name : (company?.name || 'Hospital Principal');
+  const dashboardTitle = isAllUnits
+    ? `Todas as unidades (${managedUnits.length})`
+    : currentUnit ? currentUnit.name : (company?.name || 'Hospital Principal');
 
   useEffect(() => {
     const id = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -119,7 +153,7 @@ export default function Painel() {
   }, [company, currentTime]);
 
   const unsubmittedSectors = useMemo(() => {
-    return (sectors || []).filter(s => getPublishedRanges(unitId, s.id, currentYear, currentMonth + 1).length === 0);
+    return (sectors || []).filter(s => getPublishedRanges(s.unit_id || unitId, s.id, currentYear, currentMonth + 1).length === 0);
   }, [sectors, unitId, currentYear, currentMonth, publishedRanges]);
 
   function getProfMeta(prof) {
@@ -136,6 +170,33 @@ export default function Painel() {
       .filter(source => source && typeof source === 'object' && !Array.isArray(source));
     return Object.assign({}, localMeta, ...serverMeta);
   }
+
+  const mergeProfForUnit = (p, targetUnitId) => {
+      const meta = getProfMeta(p);
+      const monthlyByUnit = meta.unit_monthly_salaries || {};
+      const hasUnitSalary = Object.prototype.hasOwnProperty.call(monthlyByUnit, String(targetUnitId)) &&
+        monthlyByUnit[String(targetUnitId)] !== '' &&
+        monthlyByUnit[String(targetUnitId)] !== null &&
+        monthlyByUnit[String(targetUnitId)] !== undefined;
+      const primaryUnitId = p.unit_id || meta.allowed_unit_ids?.[0] || p.unit_ids?.[0];
+      const legacySalary = meta.monthly_salary !== undefined ? meta.monthly_salary : p.monthly_salary;
+      const remunerationType = meta.remuneration_type || p.remuneration_type || DEFAULT_REMUNERATION_TYPE;
+      return {
+        ...p,
+        monthly_salary: remunerationType !== 'mensal'
+          ? legacySalary
+          : hasUnitSalary
+            ? monthlyByUnit[String(targetUnitId)]
+            : Object.keys(monthlyByUnit).length > 0
+              ? String(primaryUnitId) === String(targetUnitId) ? legacySalary : 0
+              : legacySalary,
+        hourly_rate: meta.hourly_rate !== undefined ? meta.hourly_rate : p.hourly_rate,
+        daily_rate: meta.daily_rate !== undefined ? meta.daily_rate : p.daily_rate,
+        remuneration_type: remunerationType
+      };
+  };
+
+  const rawProfById = useMemo(() => Object.fromEntries((professionals || []).filter(p => p?.id).map(p => [String(p.id), p])), [professionals]);
 
   const { profById, profByName } = useMemo(() => {
     const byId = {}; const byName = {};
@@ -228,7 +289,8 @@ export default function Painel() {
       // Relatórios/Faturamento). O noturno de ontem que ainda está ativo já foi
       // contabilizado na data dele e não pode ser somado duas vezes.
       if ((s.date || '').split('T')[0] !== todayStr) return;
-      const prof = profById[s.professional_id] || profByName[normalizeStr(s.professional_name)];
+      const matched = profById[s.professional_id] || profByName[normalizeStr(s.professional_name)];
+      const prof = matched ? mergeProfForUnit(rawProfById[String(matched.id)] || matched, s.unit_id || unitId) : null;
       if (isVacantShift(s)) return;
       if (!prof) {
         shiftsMissingRate += 1;
@@ -244,7 +306,8 @@ export default function Painel() {
       }
     });
     return { executedValue, plannedValue, totalToday: plannedValue, shiftsMissingRate, shiftsAwaitingProduction };
-  }, [todayShifts, profById, profByName, todayStr]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayShifts, profById, profByName, rawProfById, todayStr, unitId]);
 
   const sectorsCoverage = useMemo(() => {
     const map = {};
@@ -294,15 +357,21 @@ export default function Painel() {
     return buckets.map(b => ({ ...b, height: Math.round((b.count / max) * 100) }));
   }, [todayShifts]);
 
+  // Escalas é por hospital: se o item for de outra unidade, troca a unidade e abre Escalas.
+  const openEscalasFor = (targetUnitId) => {
+    if (targetUnitId && String(targetUnitId) !== String(selectedUnitId)) requestUnitSwitch(targetUnitId, '/escalas');
+    else navigate('/escalas');
+  };
+
   const handleResolveAlert = (vs) => {
     if (vs?.sector_id) window.localStorage.setItem('scale_filter_sector_id', String(vs.sector_id));
     if (vs?.id) window.localStorage.setItem('scale_auto_open_shift_id', String(vs.id));
-    navigate('/escalas');
+    openEscalasFor(vs?.unit_id);
   };
 
   const handleNavigateToSectorScale = (secId) => {
     if (secId) window.localStorage.setItem('scale_filter_sector_id', String(secId));
-    navigate('/escalas');
+    openEscalasFor(sectors.find(sec => String(sec.id) === String(secId))?.unit_id);
   };
 
   const openTvMode = async () => { setTvMode(true); try { await document.documentElement.requestFullscreen?.(); } catch {} };
@@ -411,7 +480,7 @@ export default function Painel() {
         </div>
       )}
 
-      {isManager && <UnitsOverview units={managedUnits} shifts={allCompanyShifts} selectedUnitId={selectedUnitId} now={currentTime} />}
+      {multiUnit && <UnitsOverview units={managedUnits} shifts={allCompanyShifts} scope={effectiveScope} onScopeChange={changeScope} now={currentTime} />}
 
       <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white p-6 md:p-8 rounded-3xl border border-slate-800 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1.5">
@@ -422,7 +491,7 @@ export default function Painel() {
             {dashboardTitle}
           </h1>
           <p className="text-xs md:text-sm text-slate-300 font-medium max-w-2xl">
-            Monitoramento em tempo real de escalas, cobertura médica hospitalar e custo operacional diário da unidade selecionada.
+            Monitoramento em tempo real de escalas, cobertura médica hospitalar e custo operacional diário {isAllUnits ? 'de todas as unidades' : 'da unidade selecionada'}.
           </p>
         </div>
 
@@ -715,7 +784,7 @@ export default function Painel() {
                     {isVago ? <span className="text-rose-600">Vaga em Aberto</span> : toTitleCase(shift.professional_name)}
                   </div>
                   <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
-                    <span className="truncate">{toTitleCase(shift.sector_name || sectors.find(sec => String(sec.id) === String(shift.sector_id))?.name) || 'Setor não informado'}</span>
+                    <span className="truncate">{toTitleCase(shift.sector_name || sectors.find(sec => String(sec.id) === String(shift.sector_id))?.name) || 'Setor não informado'}{isAllUnits && unitNameById[String(shift.unit_id)] ? ` · ${unitNameById[String(shift.unit_id)]}` : ''}</span>
                     <span className="text-[10px] font-semibold text-slate-400">{shift.lifecycle.detail}</span>
                   </div>
                 </div>

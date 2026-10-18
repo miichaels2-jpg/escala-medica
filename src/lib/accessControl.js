@@ -36,6 +36,7 @@ const ROLE_RULES = {
   '/faturamento': user => isBillingUser(user),
   '/setores': user => isManagerUser(user),
   '/configuracoes': user => isManagerUser(user),
+  '/historico': user => isManagerUser(user),
   '/planejamento': user => isManagerUser(user) // TEMPORÁRIO
 };
 
@@ -50,6 +51,7 @@ const PERMISSION_KEYS = {
   '/faturamento': ['faturamento', 'meus_repasses'],
   '/setores': ['setores'],
   '/configuracoes': ['configuracoes'],
+  '/historico': ['configuracoes', 'relatorios'],
   '/planejamento': ['configuracoes'] // TEMPORÁRIO
 };
 
