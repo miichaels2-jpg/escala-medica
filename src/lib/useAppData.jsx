@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
+import { refreshStoredUser } from '@/lib/storedUser';
 import { inferUnassignedShiftUnitId, resolveUnitId } from '@/lib/unitAssignment';
 import {
   PAYMENTS_STORAGE_KEY, PUBLISHED_STORAGE_PREFIX, paymentKey, publishedKey, readLegacySharedState, sanitizeRanges
@@ -313,7 +314,7 @@ async function loadAllData() {
         const localUserStr = window.localStorage.getItem('scale_logged_user');
         const isSessionActive = window.localStorage.getItem('escala_medica_session') === 'active';
         if (localUserStr && isSessionActive) {
-          currentUser = JSON.parse(localUserStr);
+          currentUser = await refreshStoredUser(JSON.parse(localUserStr), USER_PUBLIC_COLUMNS);
         }
       } catch {}
     }
@@ -541,7 +542,8 @@ export function useAppData() {
   const user = globalState.user;
   const userAppRole = user?.data?.app_role || (user?.role === 'admin' ? 'gestor' : 'assistencial');
   const isAdmin = user?.role === 'admin' || userAppRole === 'gestor' || user?.email === 'admin@admin.com';
-  const isCoordinator = isAdmin || userAppRole === 'coordenador';
+  // "Pode criar e alterar" (Corpo Clínico) dá os poderes de edição sem a pessoa ser gestor.
+  const isCoordinator = isAdmin || userAppRole === 'coordenador' || user?.data?.can_edit === true;
   const isBilling = isAdmin || userAppRole === 'faturamento';
   const isManager = isAdmin || isCoordinator;
   const isAssistencial = userAppRole === 'assistencial' || userAppRole === 'medico';

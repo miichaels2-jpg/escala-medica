@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canAccessRoute, getHomePath, ROUTE_PRIORITY } from '../src/lib/accessControl.js';
+import { canAccessRoute, getHomePath, ROUTE_PRIORITY, SCREENS, defaultScreensForRole, isManagerUser } from '../src/lib/accessControl.js';
 
 const professionalWithOldPermissions = {
   role: 'user',
@@ -34,4 +34,26 @@ test('gestor e administrador entram no Painel e acessam a gestão', () => {
   assert.equal(getHomePath(admin), '/dashboard');
   assert.equal(canAccessRoute(manager, '/configuracoes'), true);
   assert.equal(canAccessRoute(admin, '/faturamento'), true);
+});
+
+test('liberação tela por tela: administrativo com acesso a tudo sem ser gestor', () => {
+  const adminStaff = { role: 'user', data: { app_role: 'assistencial', screen_access: SCREENS.map(s => s.path), can_edit: true } };
+  for (const screen of SCREENS) assert.equal(canAccessRoute(adminStaff, screen.path), true, screen.path);
+  assert.equal(isManagerUser(adminStaff), true);
+});
+
+test('liberação tela por tela também tira acesso, mesmo de gestor', () => {
+  const limited = { role: 'user', data: { app_role: 'gestor', screen_access: ['/escalas', '/relatorios'] } };
+  assert.equal(canAccessRoute(limited, '/escalas'), true);
+  assert.equal(canAccessRoute(limited, '/relatorios'), true);
+  assert.equal(canAccessRoute(limited, '/faturamento'), false);
+  assert.equal(canAccessRoute(limited, '/dashboard'), false);
+  assert.equal(getHomePath(limited), '/escalas');
+});
+
+test('perfis dão o ponto de partida das telas', () => {
+  assert.deepEqual(defaultScreensForRole('assistencial'), ['/escalas', '/trocas', '/minha-escala']);
+  assert.ok(defaultScreensForRole('faturamento').includes('/faturamento'));
+  assert.ok(!defaultScreensForRole('faturamento').includes('/configuracoes'));
+  assert.equal(defaultScreensForRole('gestor').length, SCREENS.length);
 });

@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { describeUnavailability, findUnavailability } from '@/lib/availability';
+import { mapDateToMonth } from '@/lib/scheduleCopy';
+import { checkWorkload, getWorkloadRules } from '@/lib/workload';
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
@@ -480,93 +482,106 @@ const closeTvMode = async () => {
   // MODAL DE DUPLICAR ESCALA 
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
   const [duplicateConfig, setDuplicateConfig] = useState({
-    source_date: getLocalDateString(new Date(currentYear, currentMonth - 1, 1)).slice(0, 7), // Mês Anterior (YYYY-MM)
-    target_date: getLocalDateString(new Date(currentYear, currentMonth, 1)).slice(0, 7),     // Mês Atual
-    sector_id: 'todos'
+    source_date: getLocalDateString(new Date(currentYear, currentMonth, 1)).slice(0, 7),     // Mês em tela (YYYY-MM)
+    target_date: getLocalDateString(new Date(currentYear, currentMonth + 1, 1)).slice(0, 7), // Mês seguinte
+    sector_id: 'todos',
+    mode: 'semana'
   });
+  const [generatorSourceInfo, setGeneratorSourceInfo] = useState('');
 
-  const handleExecuteDuplicate = async (e) => {
+  const handleExecuteDuplicate = (e) => {
     e.preventDefault();
-    if (!confirm(`Isso fará uma cópia de todos os plantões de ${duplicateConfig.source_date} para ${duplicateConfig.target_date}. Confirma a operação?`)) return;
+    const [sY, sM] = duplicateConfig.source_date.split('-').map(Number);
+    const [tY, tM] = duplicateConfig.target_date.split('-').map(Number);
+    if (!sY || !tY) { alert('Escolha o mês de referência e o mês a montar.'); return; }
+    if (sY === tY && sM === tM) { alert('O mês de referência e o mês a montar precisam ser diferentes.'); return; }
+    const prefixSource = `${sY}-${String(sM).padStart(2, '0')}-`;
+    const prefixTarget = `${tY}-${String(tM).padStart(2, '0')}-`;
 
-    setSubmitting(true);
-    try {
-      const [sY, sM] = duplicateConfig.source_date.split('-');
-      const [tY, tM] = duplicateConfig.target_date.split('-');
-      const prefixSource = `${sY}-${sM}-`;
-      const prefixTarget = `${tY}-${tM}-`;
+    const sourceShifts = (shifts || [])
+      .filter(s => s?.date && String(s.date).startsWith(prefixSource) && s.status !== 'cancelado')
+      .filter(s => duplicateConfig.sector_id === 'todos' || String(s.sector_id) === String(duplicateConfig.sector_id))
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start_time).localeCompare(String(b.start_time)));
+    if (sourceShifts.length === 0) { alert('Nenhum plantão encontrado no mês de referência.'); return; }
 
-      if (prefixSource === prefixTarget) throw new Error('O mês de origem e o de destino precisam ser diferentes.');
+    // Não duplica o que já existe no mês a montar (mesmo dia, setor, horário e especialidade).
+    const slotKey = (date, s) => [date, s.sector_id, s.start_time, s.end_time, normalize(extractSpecialty(s, professionalMap[String(s.professional_id)]))].map(String).join('|');
+    const existing = new Map();
+    (shifts || []).forEach(s => {
+      if (!s?.date || s.status === 'cancelado' || !String(s.date).startsWith(prefixTarget)) return;
+      const key = slotKey(String(s.date).slice(0, 10), s);
+      existing.set(key, (existing.get(key) || 0) + 1);
+    });
 
-      const sourceShifts = shifts.filter(s => {
-        if (!s?.date || !String(s.date).startsWith(prefixSource)) return false;
-        if (s.status === 'cancelado') return false;
-        if (duplicateConfig.sector_id !== 'todos' && String(s.sector_id) !== String(duplicateConfig.sector_id)) return false;
-        return true;
-      });
+    const rows = [];
+    const draft = {};
+    const assignedRanges = {};
+    let skippedExisting = 0;
+    let notMapped = 0;
+    let kept = 0;
+    const freed = { inativo: 0, setor: 0, indisponivel: 0, choque: 0 };
 
-      if (sourceShifts.length === 0) throw new Error("Nenhum plantão encontrado no mês de origem para ser copiado.");
+    sourceShifts.forEach((shift, index) => {
+      const date = mapDateToMonth(shift.date, tY, tM, duplicateConfig.mode);
+      if (!date) { notMapped += 1; return; }
+      const key = slotKey(date, shift);
+      if ((existing.get(key) || 0) > 0) { existing.set(key, existing.get(key) - 1); skippedExisting += 1; return; }
 
-      // Evita duplicar plantões se a cópia for executada mais de uma vez.
-      const getCopyKey = (date, s) => [date, s.sector_id, s.start_time, s.end_time, s.professional_id || 'vago'].map(String).join('|');
-      const existingTargetKeys = new Map();
-      shifts.forEach(s => {
-        if (!s?.date || s.status === 'cancelado' || !String(s.date).startsWith(prefixTarget)) return;
-        const key = getCopyKey(String(s.date).slice(0, 10), s);
-        existingTargetKeys.set(key, (existingTargetKeys.get(key) || 0) + 1);
-      });
+      const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
+      const spec = extractSpecialty(shift, prof);
+      const row = {
+        id: `draft_copy_${index}_${date}`,
+        isDraft: true,
+        company_id: shift.company_id || company?.id || 'cmp_principal',
+        unit_id: shift.unit_id || selectedUnitId,
+        sector_id: shift.sector_id,
+        target_specialty: spec,
+        notes: `[ESP:${spec}] [GERADO_ESCALA_MASSA]`,
+        professional_id: null,
+        professional_name: null,
+        date,
+        shift_type: shift.shift_type || (shift.start_time >= '18:00' || shift.start_time < '06:00' ? 'noturno' : 'diurno'),
+        start_time: shift.start_time,
+        end_time: shift.end_time,
+        status: 'vago'
+      };
+      rows.push(row);
 
-      let copiedCount = 0;
-      let skippedExisting = 0;
-      for (const shift of sourceShifts) {
-        const day = String(shift.date).slice(8, 10);
-        const newDate = `${prefixTarget}${day}`;
+      // Mantém o mesmo profissional só se ele ainda puder assumir.
+      if (!shift.professional_id) return;
+      if (!prof || prof.status !== 'ativo') { freed.inativo += 1; return; }
+      if (!isProfessionalAuthorizedForSector(prof, row.sector_id)) { freed.setor += 1; return; }
+      if (findUnavailability(prof, date)) { freed.indisponivel += 1; return; }
+      const range = getShiftRangeFor(date, row.start_time, row.end_time);
+      const clashesDraft = (assignedRanges[prof.id] || []).some(other => shiftRangesOverlap(range, other));
+      if (clashesDraft || checkProfessionalConflict(prof.id, date, row.start_time, row.end_time).hasConflict) { freed.choque += 1; return; }
+      draft[row.id] = String(prof.id);
+      assignedRanges[prof.id] = [...(assignedRanges[prof.id] || []), range];
+      kept += 1;
+    });
 
-        // Validação: Ignora dia 31 se o mês de destino só tiver 30 dias (ex: Copiar de Agosto pra Setembro)
-        const checkDate = new Date(parseInt(tY), parseInt(tM) - 1, parseInt(day));
-        if (checkDate.getMonth() !== parseInt(tM) - 1) continue;
-
-        const copyKey = getCopyKey(newDate, shift);
-        if ((existingTargetKeys.get(copyKey) || 0) > 0) {
-          existingTargetKeys.set(copyKey, existingTargetKeys.get(copyKey) - 1);
-          skippedExisting++;
-          continue;
-        }
-
-        await autoHealingSaveShift(null, {
-          company_id: shift.company_id,
-          unit_id: shift.unit_id,
-          sector_id: shift.sector_id,
-          target_specialty: shift.target_specialty,
-          professional_id: shift.professional_id,
-          professional_name: shift.professional_name,
-          date: newDate,
-          shift_type: shift.shift_type,
-          start_time: shift.start_time,
-          end_time: shift.end_time,
-          // Se estava realizado no passado, vira "confirmado" (ou "vago" se não tiver profissional)
-          // Pendências do mês de origem (pedido de troca aguardando gestor) não são herdadas.
-          status: !shift.professional_id ? 'vago' : ['realizado', 'aguardando_aprovacao_gestor'].includes(shift.status) ? 'confirmado' : shift.status,
-          // A cópia nasce como rascunho: remove marcadores de publicação, ponto e ajustes do mês de origem.
-          notes: stripPublicationTags(shift.notes)
-            .replace(/\[AJUSTE_RETROATIVO:[^\]]+\]/gi, '')
-            .replace(/\[(CHECKIN|CHECKOUT):[^\]]+\]/gi, '')
-            .replace(/\[(SOLICITADO_POR|SOLICITADO_ID):[^\]]*\]/gi, '')
-            .replace(/\[AGUARDANDO_GESTOR\]/gi, '')
-            .replace(/\s{2,}/g, ' ')
-            .trim()
-        });
-        copiedCount++;
-      }
-
-      setDuplicateModalOpen(false);
-      await syncGlobalData();
-      alert(`✅ Sucesso! ${copiedCount} plantões foram duplicados com sucesso para ${duplicateConfig.target_date}.${skippedExisting > 0 ? `\n${skippedExisting} plantão(ões) já existiam no destino e não foram copiados de novo.` : ''}`);
-    } catch (err) {
-      alert("Erro ao duplicar: " + err.message);
-    } finally {
-      setSubmitting(false);
+    if (rows.length === 0) {
+      alert(skippedExisting > 0 ? 'O mês a montar já tem todos esses plantões. Nada foi duplicado.' : 'Nenhum plantão pôde ser montado para o mês escolhido.');
+      return;
     }
+
+    const freedTotal = freed.inativo + freed.setor + freed.indisponivel + freed.choque;
+    const freedParts = [
+      freed.indisponivel && `${freed.indisponivel} por férias/indisponibilidade`,
+      freed.choque && `${freed.choque} por choque de horário`,
+      freed.inativo && `${freed.inativo} por profissional inativo`,
+      freed.setor && `${freed.setor} por setor não autorizado`
+    ].filter(Boolean).join(', ');
+    setGeneratorSourceInfo(
+      `Baseado em ${MONTH_NAMES[sM - 1]}/${sY}: ${kept} plantão(ões) com o mesmo profissional` +
+      (freedTotal ? `; ${freedTotal} voltaram a ser vaga (${freedParts})` : '') +
+      (notMapped ? `; ${notMapped} não existem neste mês (${duplicateConfig.mode === 'semana' ? '5ª semana' : 'dia 31'})` : '') + '.'
+    );
+    setGeneratorSkippedCount(skippedExisting);
+    setGeneratedAllocationRows(rows);
+    setBulkAllocationDraft(draft);
+    setDuplicateModalOpen(false);
+    setBulkAllocationOpen(true);
   };
 
   const [selectedDays, setSelectedDays] = useState([]);
@@ -646,6 +661,14 @@ const closeTvMode = async () => {
 
   const sectorMap = useMemo(() => { const m = {}; (sectors || []).forEach(s => { if(s) m[String(s.id)] = s; }); return m; }, [sectors]);
   const companyShifts = useMemo(() => (allCompanyShifts.length ? allCompanyShifts : shifts) || [], [allCompanyShifts, shifts]);
+  const workloadRules = useMemo(() => getWorkloadRules(company), [company]);
+  // Avisos de carga (semana acima do limite, plantões emendados) para alocar profId em candidate.
+  // extraShifts: plantões ainda em rascunho (gerador) atribuídos ao mesmo profissional.
+  const workloadWarningsFor = (profId, candidate, extraShifts = []) => {
+    if (!profId || !candidate) return [];
+    const mine = companyShifts.filter(s => s && String(s.professional_id) === String(profId) && !isVacant(s));
+    return checkWorkload(candidate, [...mine, ...extraShifts], workloadRules);
+  };
   const allSectorsMap = useMemo(() => { const m = {}; (allCompanySectors || []).forEach(s => { if (s) m[String(s.id)] = s; }); return m; }, [allCompanySectors]);
   // "Setor" ou "Setor — Outro Hospital" quando o plantão é de outra unidade.
   const describeShiftPlace = (shift) => {
@@ -1073,7 +1096,8 @@ const conflict = checkProfessionalConflict(
           conflictReason: `Alocado em ${conflictSec} (${conflict.conflictShift?.start_time} - ${conflict.conflictShift?.end_time})`
         });
       } else {
-        available.push(prof);
+        const warnings = workloadWarningsFor(prof.id, { id: editingShiftId || 'novo', date: formData.date, start_time: formData.start_time, end_time: formData.end_time });
+        available.push(warnings.length ? { ...prof, workloadWarning: warnings.map(w => w.message).join('; ') } : prof);
       }
     });
 
@@ -1220,6 +1244,7 @@ const conflict = checkProfessionalConflict(
       return;
     }
 
+    setGeneratorSourceInfo('');
     setGeneratorSkippedCount(skippedExisting);
     setGeneratedAllocationRows(rows);
     setBulkAllocationDraft(prev => {
@@ -1277,7 +1302,15 @@ const conflict = checkProfessionalConflict(
         return !prof.specialty || normalize(prof.specialty) === requiredSpecialty || requiredSpecialty === 'geral';
       })
       .filter(prof => !getBulkDraftConflict(shift, prof.id, draft))
-      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
+      .map(prof => {
+        const draftShifts = Object.entries(draft || {})
+          .filter(([rowId, profId]) => profId && String(profId) === String(prof.id) && String(rowId) !== String(shift.id))
+          .map(([rowId]) => generatedRowsById[String(rowId)])
+          .filter(Boolean);
+        const warnings = workloadWarningsFor(prof.id, shift, draftShifts);
+        return warnings.length ? { ...prof, workloadWarning: warnings.map(w => w.message).join('; ') } : prof;
+      })
+      .sort((a, b) => Boolean(a.workloadWarning) - Boolean(b.workloadWarning) || String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
   };
 
   const autoFillBulkAllocation = () => {
@@ -1293,6 +1326,7 @@ const conflict = checkProfessionalConflict(
       .forEach(row => {
         if (draft[String(row.id)]) return;
         const candidate = getBulkCandidates(row, draft)
+          .filter(prof => !prof.workloadWarning)
           .sort((a, b) => (load[String(a.id)] || 0) - (load[String(b.id)] || 0))[0];
         if (!candidate) return;
         draft[String(row.id)] = String(candidate.id);
@@ -1640,6 +1674,12 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
         return;
       }
 
+      const loadWarnings = workloadWarningsFor(prof.id, { id: candidate.id, date: d, start_time: startTime, end_time: endTime });
+      if (loadWarnings.length && !confirm(`Atenção à carga de ${prof.name || 'profissional'}: ${loadWarnings.map(w => w.message).join('; ')}.\n\nEscalar mesmo assim em ${formatDateBR(d)}?`)) {
+        setDraggingProfId(null);
+        return;
+      }
+
       const away = findUnavailability(prof, d);
       if (away && !confirm(`${prof.name || 'O profissional'} informou indisponibilidade: ${describeUnavailability(away)}.\n\nEscalar mesmo assim em ${formatDateBR(d)}?`)) {
         setDraggingProfId(null);
@@ -1743,6 +1783,9 @@ if (!isMural && formData.professional_id &&
 }
 
 if (!isMural && formData.professional_id) {
+      const loadWarnings = workloadWarningsFor(formData.professional_id, { id: editingShiftId || 'novo', date: formData.date, start_time: formData.start_time, end_time: formData.end_time });
+      if (loadWarnings.length && !confirm(`Atenção à carga de ${selectedProfessional?.name || 'profissional'}: ${loadWarnings.map(w => w.message).join('; ')}.\n\nEscalar mesmo assim?`)) return;
+
       const away = findUnavailability(selectedProfessional, formData.date);
       if (away && !confirm(`${selectedProfessional?.name || 'O profissional'} informou indisponibilidade: ${describeUnavailability(away)}.\n\nEscalar mesmo assim?`)) return;
 
@@ -2291,7 +2334,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
           {isManager && (
             <>
               <Button onClick={() => setDuplicateModalOpen(true)} variant="outline" className="h-9 text-indigo-600 hover:bg-indigo-50 border-indigo-200 font-black text-xs px-4 rounded-2xl shadow-sm gap-1.5 cursor-pointer">
-                <Copy className="w-4 h-4" /> Duplicar Mês
+                <Copy className="w-4 h-4" /> Montar mês seguinte
               </Button>
               <Button onClick={() => { setGeneratorConfig(prev => ({ ...prev, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '') })); setGeneratorModalOpen(true); }} className="h-9 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs px-4 rounded-2xl shadow-sm gap-1.5 shrink-0 cursor-pointer">
                 <SlidersHorizontal className="w-4 h-4" /> Montar escala
@@ -2863,7 +2906,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                       <optgroup label="🟢 PROFISSIONAIS DISPONÍVEIS">
                         {categorizedProfessionalsForModal.available.map(p => (
                           <option key={p.id} value={String(p.id)} className="bg-slate-900 text-white py-1.5">
-                            ✓ {p.name} • {p.specialty || 'Geral'} ({p.document || 'CRM'})
+                            {p.workloadWarning ? '⚠' : '✓'} {p.name} • {p.specialty || 'Geral'} ({p.document || 'CRM'}){p.workloadWarning ? ` — ${p.workloadWarning}` : ''}
                           </option>
                         ))}
                       </optgroup>
@@ -3102,7 +3145,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
         <DialogContent className="w-[96vw] sm:max-w-5xl max-h-[92vh] flex flex-col bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-5 sm:p-6">
           <DialogHeader className="border-b border-slate-800 pb-4 shrink-0">
             <DialogTitle className="text-lg font-bold flex items-center gap-2 text-sky-400">
-              <HeartPulse className="w-5 h-5" /> Montar escala · {sectorMap[String(generatedAllocationRows[0]?.sector_id)]?.name || 'Setor'}
+              <HeartPulse className="w-5 h-5" /> Montar escala · {new Set((generatedAllocationRows || []).map(r => String(r.sector_id))).size > 1 ? `${new Set((generatedAllocationRows || []).map(r => String(r.sector_id))).size} setores` : (sectorMap[String(generatedAllocationRows[0]?.sector_id)]?.name || 'Setor')}
             </DialogTitle>
             <ol className="flex items-center gap-2 pt-3 text-[11px] font-semibold" aria-label="Etapas">
                 {['Grade', 'Profissionais', 'Salvar e publicar'].map((label, i) => (
@@ -3131,6 +3174,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 shrink-0">
                   <div className="text-xs text-slate-300">
                     <b className="text-white">{rows.length}</b> plantões · <b className="text-emerald-300">{assignedCount}</b> com profissional · <b className="text-amber-300">{rows.length - assignedCount}</b> vagas abertas
+                    {generatorSourceInfo && <span className="block text-[11px] text-sky-300">{generatorSourceInfo}</span>}
                     {generatorSkippedCount > 0 && <span className="block text-[11px] text-slate-500">{generatorSkippedCount} plantão(ões) desse período já existiam e não serão duplicados.</span>}
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -3171,7 +3215,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                         )}
                         <div className="grid grid-cols-[88px_minmax(0,1fr)] sm:grid-cols-[110px_minmax(0,180px)_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-3 py-2 border-b border-slate-800/70 last:border-b-0">
                           <span className="font-mono text-xs text-slate-200 whitespace-nowrap">{row.start_time}–{row.end_time}</span>
-                          <span className="text-[11px] text-slate-400 truncate">{extractSpecialty(row)}</span>
+                          <span className="text-[11px] text-slate-400 truncate">{extractSpecialty(row)}{new Set((generatedAllocationRows || []).map(r => String(r.sector_id))).size > 1 ? ` · ${sectorMap[String(row.sector_id)]?.name || ''}` : ''}</span>
                           <select
                             value={assignedId}
                             onChange={e => setBulkAllocationDraft(prev => ({ ...prev, [String(row.id)]: e.target.value }))}
@@ -3184,7 +3228,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                             )}
                             {candidates.map(p => (
                               <option key={p.id} value={String(p.id)}>
-                                {p.name}{load[String(p.id)] ? ` · ${load[String(p.id)]} plantão(ões)` : ''}
+                                {p.workloadWarning ? '⚠ ' : ''}{p.name}{load[String(p.id)] ? ` · ${load[String(p.id)]} plantão(ões)` : ''}{p.workloadWarning ? ` — ${p.workloadWarning}` : ''}
                               </option>
                             ))}
                           </select>
@@ -3286,13 +3330,13 @@ const handleAssignLegacyShiftUnit = async (shift) => {
         <DialogContent className="w-[95vw] sm:max-w-md bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-6">
           <DialogHeader className="border-b border-slate-800 pb-4">
             <DialogTitle className="text-lg font-black flex items-center gap-2 text-indigo-400">
-              <Copy className="w-5 h-5" /> Duplicar Escala
+              <Copy className="w-5 h-5" /> Montar mês seguinte
             </DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleExecuteDuplicate} className="space-y-4 py-2">
             <p className="text-xs text-slate-400 leading-relaxed">
-              Copia toda a estrutura de plantões (vagas e alocações) de um mês anterior para um novo mês, mantendo os mesmos dias e profissionais.
+              Usa um mês como modelo. Quem ainda pode assumir continua no mesmo plantão; quem está de férias, em choque de horário ou inativo vira vaga. Você revisa antes de salvar ou publicar.
             </p>
 
             <div className="space-y-1.5">
@@ -3310,19 +3354,32 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-300">Mês de Origem</Label>
+                <Label className="text-xs font-bold text-slate-300">Mês modelo</Label>
                 <Input type="month" value={duplicateConfig.source_date} onChange={e => setDuplicateConfig({ ...duplicateConfig, source_date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl cursor-pointer" required />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-300">Mês de Destino</Label>
+                <Label className="text-xs font-bold text-slate-300">Mês a montar</Label>
                 <Input type="month" value={duplicateConfig.target_date} onChange={e => setDuplicateConfig({ ...duplicateConfig, target_date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl cursor-pointer" required />
               </div>
             </div>
 
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-300">Como repetir os dias</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {[{ id: 'semana', label: 'Mesmo dia da semana', desc: '2ª segunda continua 2ª segunda' }, { id: 'dia', label: 'Mesmo dia do mês', desc: 'Dia 15 continua dia 15' }].map(opt => (
+                  <button key={opt.id} type="button" onClick={() => setDuplicateConfig(prev => ({ ...prev, mode: opt.id }))}
+                    className={`text-left rounded-xl border p-2.5 cursor-pointer ${duplicateConfig.mode === opt.id ? 'border-sky-500 bg-sky-500/10' : 'border-slate-700 bg-slate-900'}`}>
+                    <span className="block text-xs font-bold text-white">{opt.label}</span>
+                    <span className="block text-[11px] text-slate-400">{opt.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <DialogFooter className="pt-4 border-t border-slate-800">
-              <Button type="button" variant="outline" onClick={() => setDuplicateModalOpen(false)} className="h-11 border-slate-700 text-slate-300 rounded-xl cursor-pointer">Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="h-11 bg-indigo-600 hover:bg-indigo-500 text-white font-black px-6 rounded-xl shadow-lg shadow-indigo-500/20 cursor-pointer">
-                Processar Cópia
+              <Button type="button" variant="outline" onClick={() => setDuplicateModalOpen(false)} className="h-11 border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl cursor-pointer">Cancelar</Button>
+              <Button type="submit" disabled={submitting} className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-bold px-6 rounded-xl cursor-pointer">
+                Revisar escala <ArrowRight className="w-4 h-4 ml-1.5" />
               </Button>
             </DialogFooter>
           </form>

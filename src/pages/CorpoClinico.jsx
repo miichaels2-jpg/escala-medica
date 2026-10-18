@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { USER_PUBLIC_COLUMNS, useAppData } from '@/lib/useAppData';
 import { authorizedSectorIdsFor, blockedSectorsFrom } from '@/lib/sectorAccess';
+import { SCREENS, defaultCanEditForRole, defaultScreensForRole } from '@/lib/accessControl';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -154,7 +155,7 @@ export default function CorpoClinico() {
     name: '', username: '', category: 'medico', document: '',
     registration_id: '', main_sector: '', specialty: '', rqe: '', cbo: '',
     cpf: '', email: '', phone: '', unit_id: '', birth_date: '',
-    status: 'ativo', app_role: 'assistencial', 
+    status: 'ativo', app_role: 'assistencial', screen_access: defaultScreensForRole('assistencial'), can_edit: false,
     remuneration_type: 'plantao', // NOVO: plantao, mensal ou produtividade
     monthly_salary: '',
     unit_monthly_salaries: {},
@@ -188,7 +189,7 @@ export default function CorpoClinico() {
       registration_id: generatedMatricula,       main_sector: allCompanySectors[0]?.name || 'UTI Geral',
       specialty: '', rqe: '', cbo: '', cpf: '', email: '', phone: '', birth_date: '',
       unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
-      status: 'ativo', app_role: 'assistencial', 
+      status: 'ativo', app_role: 'assistencial', screen_access: defaultScreensForRole('assistencial'), can_edit: false,
       remuneration_type: 'plantao', monthly_salary: '', unit_monthly_salaries: {}, unit_rates: {},
       coop_tax_rate: 0, pix_type: 'CPF',
       pix_key: '', bank_info: '', password: '',
@@ -240,6 +241,8 @@ export default function CorpoClinico() {
       unit_id: primaryUnitId || selectedUnitId,
       status: profStatus,
       app_role: meta.app_role || prof.app_role || 'assistencial',
+      screen_access: Array.isArray(meta.screen_access) ? meta.screen_access.map(String) : defaultScreensForRole(meta.app_role || prof.app_role || 'assistencial'),
+      can_edit: typeof meta.can_edit === 'boolean' ? meta.can_edit : defaultCanEditForRole(meta.app_role || prof.app_role || 'assistencial'),
       remuneration_type: meta.remuneration_type || 'plantao',
       monthly_salary: String(safeNumber(legacyMonthlySalary, 0)),
       unit_monthly_salaries: savedMonthlySalaries,
@@ -758,6 +761,10 @@ export default function CorpoClinico() {
     e.preventDefault();
     if (!formData.name.trim()) return;
 
+    if (!(formData.screen_access || []).length) {
+      alert('Libere pelo menos uma tela para este profissional.');
+      return;
+    }
     if (formData.allowed_unit_ids.length === 0) {
       alert('Selecione pelo menos um hospital/unidade para o profissional.');
       return;
@@ -812,6 +819,7 @@ export default function CorpoClinico() {
         pix_type: formData.pix_type, bank_info: formData.bank_info.trim(), pix_key: formData.pix_key.trim(),
         document_expiry: formData.document_expiry, status: formData.status,
         authorized_sectors: authorizedSectors, allowed_unit_ids: formData.allowed_unit_ids,
+        screen_access: formData.screen_access, can_edit: Boolean(formData.can_edit),
         blocked_sectors: blockedSectorsFrom(authorizedSectors, allCompanySectors || [], formData.allowed_unit_ids),
         birth_date: formData.birth_date, cpf: formData.cpf
       };
@@ -846,6 +854,9 @@ export default function CorpoClinico() {
         selected_unit_id: formData.allowed_unit_ids[0],
         allowed_unit_ids: formData.allowed_unit_ids, 
         app_role: formData.app_role,
+        // Telas liberadas uma a uma e poder de alteração (independem do perfil).
+        screen_access: formData.screen_access,
+        can_edit: Boolean(formData.can_edit),
         registration_code: formData.registration_id,
         status: formData.status,
         // Vínculo usado para entregar notificações e montar a "Minha Escala".
@@ -1176,7 +1187,7 @@ export default function CorpoClinico() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {ACCESS_ROLES.map(role => (
-                  <div key={role.id} onClick={() => setFormData({ ...formData, app_role: role.id })} className={`p-3 rounded-xl border cursor-pointer transition-all ${formData.app_role === role.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 shadow-sm ring-1 ring-indigo-500' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800'}`}>
+                  <div key={role.id} onClick={() => setFormData({ ...formData, app_role: role.id, screen_access: defaultScreensForRole(role.id), can_edit: defaultCanEditForRole(role.id) })} className={`p-3 rounded-xl border cursor-pointer transition-all ${formData.app_role === role.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 shadow-sm ring-1 ring-indigo-500' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800'}`}>
                     <div className="flex items-center justify-between mb-1">
                       <span className={`font-black text-xs ${formData.app_role === role.id ? 'text-indigo-700 dark:text-indigo-400' : 'text-slate-900 dark:text-white'}`}>{role.label}</span>
                       {formData.app_role === role.id && <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
@@ -1185,6 +1196,48 @@ export default function CorpoClinico() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <Label className="font-black text-slate-800 dark:text-slate-100">Telas liberadas</Label>
+                  <p className="text-[11px] text-slate-500 mt-1">O perfil acima marca o padrão; ajuste tela por tela se precisar. Vale no próximo acesso do profissional.</p>
+                </div>
+                <div className="flex gap-1.5">
+                  <Button type="button" variant="outline" onClick={() => setFormData(prev => ({ ...prev, screen_access: SCREENS.map(s => s.path) }))} className="h-8 text-xs">Liberar todas</Button>
+                  <Button type="button" variant="ghost" onClick={() => setFormData(prev => ({ ...prev, screen_access: defaultScreensForRole(prev.app_role), can_edit: defaultCanEditForRole(prev.app_role) }))} className="h-8 text-xs">Padrão do perfil</Button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SCREENS.map(screen => {
+                  const enabled = (formData.screen_access || []).includes(screen.path);
+                  return (
+                    <label key={screen.path} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${enabled ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 hover:border-slate-300'}`}>
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={() => setFormData(prev => {
+                          const current = prev.screen_access || [];
+                          return { ...prev, screen_access: enabled ? current.filter(path => path !== screen.path) : [...current, screen.path] };
+                        })}
+                        className="mt-0.5 w-4 h-4 rounded cursor-pointer"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">{screen.label}</span>
+                        <span className="block text-[11px] text-slate-500">{screen.desc}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 cursor-pointer">
+                <input type="checkbox" checked={Boolean(formData.can_edit)} onChange={e => setFormData(prev => ({ ...prev, can_edit: e.target.checked }))} className="mt-0.5 w-4 h-4 rounded cursor-pointer" />
+                <span>
+                  <span className="block text-xs font-bold text-slate-800 dark:text-slate-200">Pode criar e alterar nas telas liberadas</span>
+                  <span className="block text-[11px] text-slate-500">Mesmos poderes do gestor nas telas liberadas: montar, alocar e publicar escalas, aprovar trocas. Sem esta opção, a pessoa vê as escalas mas não altera. Não precisa ser Gestor.</span>
+                </span>
+              </label>
             </div>
 
             <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
