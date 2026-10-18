@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { USER_PUBLIC_COLUMNS, useAppData } from '@/lib/useAppData';
+import { authorizedSectorIdsFor, blockedSectorsFrom } from '@/lib/sectorAccess';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -206,9 +207,7 @@ export default function CorpoClinico() {
     const meta = getProfMeta(prof);
     const generatedMatricula = meta.registration_id || prof.registration_id || `MAT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const expiry = prof.document_expiry || meta.document_expiry || new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0];
-    const authSectors = Array.isArray(meta.authorized_sectors)
-      ? meta.authorized_sectors.map(String)
-      : (allCompanySectors || []).map(s => String(s.id));
+    const authSectors = authorizedSectorIdsFor({ data: meta }, allCompanySectors || []);
     const profStatus = prof.status || meta.status || 'ativo';
 
     const savedUnits = meta.allowed_unit_ids || prof.unit_ids || (prof.unit_id ? [String(prof.unit_id)] : [String(units[0]?.id || '')]);
@@ -294,9 +293,17 @@ export default function CorpoClinico() {
       const nextLegacySalary = Object.prototype.hasOwnProperty.call(prev.unit_monthly_salaries, nextPrimary)
         ? prev.unit_monthly_salaries[nextPrimary]
         : '';
+      // Ao liberar uma unidade, todos os setores dela já entram marcados.
+      const unitSectorIds = (allCompanySectors || [])
+        .filter(sector => String(sector.unit_id) === String(unitId))
+        .map(sector => String(sector.id));
+      const nextAuthorizedSectors = checked
+        ? [...new Set([...(prev.authorized_sectors || []).map(String), ...unitSectorIds])]
+        : prev.authorized_sectors;
       return {
         ...prev,
         allowed_unit_ids: nextAllowedUnits,
+        authorized_sectors: nextAuthorizedSectors,
         unit_id: nextPrimary,
         monthly_salary: nextPrimary === String(prev.unit_id) ? prev.monthly_salary : nextLegacySalary
       };
@@ -623,6 +630,7 @@ export default function CorpoClinico() {
       status: statusAliases[statusInput] || 'ativo',
       authorized_sectors: authorizedSectors,
       allowed_unit_ids: allowedUnitIds,
+      blocked_sectors: row.setores_autorizados ? blockedSectorsFrom(authorizedSectors, sectors || [], allowedUnitIds) : [],
       birth_date: birthDate || '',
       cpf
     };
@@ -804,6 +812,7 @@ export default function CorpoClinico() {
         pix_type: formData.pix_type, bank_info: formData.bank_info.trim(), pix_key: formData.pix_key.trim(),
         document_expiry: formData.document_expiry, status: formData.status,
         authorized_sectors: authorizedSectors, allowed_unit_ids: formData.allowed_unit_ids,
+        blocked_sectors: blockedSectorsFrom(authorizedSectors, allCompanySectors || [], formData.allowed_unit_ids),
         birth_date: formData.birth_date, cpf: formData.cpf
       };
 
@@ -1208,7 +1217,7 @@ export default function CorpoClinico() {
                   Setores autorizados para alocação
                 </Label>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  O profissional só poderá ser selecionado em plantões dos setores marcados.
+                  O profissional só poderá ser selecionado em plantões dos setores marcados. Setores criados depois já entram marcados para quem atende a unidade.
                 </p>
               </div>
               {(allCompanySectors || []).length === 0 ? (
@@ -1216,8 +1225,18 @@ export default function CorpoClinico() {
                   Cadastre os setores da unidade antes de definir as permissões por setor.
                 </p>
               ) : (
+                <div className="space-y-3">
+                  {(units || [])
+                    .filter(unit => (formData.allowed_unit_ids || []).some(id => String(id) === String(unit.id)))
+                    .map(unit => ({ unit, unitSectors: (allCompanySectors || []).filter(sector => String(sector.unit_id) === String(unit.id)) }))
+                    .map(({ unit, unitSectors }) => (
+                  <div key={unit.id} className="space-y-1.5">
+                    <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">{unit.name}</p>
+                    {unitSectors.length === 0 ? (
+                      <p className="text-[11px] text-slate-500">Nenhum setor cadastrado nesta unidade ainda.</p>
+                    ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {(allCompanySectors || []).map(sector => {
+                  {unitSectors.map(sector => {
                     const isAuthorized = (formData.authorized_sectors || [])
                       .some(sectorId => String(sectorId) === String(sector.id));
                     return (
@@ -1236,6 +1255,10 @@ export default function CorpoClinico() {
                       </label>
                     );
                   })}
+                </div>
+                    )}
+                  </div>
+                    ))}
                 </div>
               )}
             </div>

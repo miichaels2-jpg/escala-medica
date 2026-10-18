@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
+import { getProfessionalUnitIds, isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { supabase } from '@/lib/supabase';
 import { getShiftDateTimeRange } from '@/lib/shiftLiveStatus';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
@@ -7,7 +8,7 @@ import { isVacancyRelevantFor } from '@/components/NotificationCenter';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
-  Flame, Calendar, 
+  Flame, Calendar, Building2, 
   CheckCircle2, Check, Trash2, ArrowRightLeft, Stethoscope, Filter, XCircle,
   Clock3, ShieldCheck, History, ArrowRight
 } from 'lucide-react';
@@ -52,14 +53,6 @@ function getLocalDateString(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function isProfessionalAuthorizedForSector(professional, sectorId) {
-  if (!sectorId) return true;
-  const authorizedSectors = professional?.data?.authorized_sectors
-    ?? professional?.metadata?.authorized_sectors
-    ?? professional?.authorized_sectors;
-  if (!Array.isArray(authorizedSectors)) return true;
-  return authorizedSectors.some(id => String(id) === String(sectorId));
-}
 
 function parseShiftAudit(shift) {
   const notes = String(shift?.notes || '');
@@ -129,6 +122,7 @@ export default function Trocas() {
     allCompanySectors = [],
     currentProfessional, 
     selectedUnitId,
+    units = [],
     company,
     user,
     isManager, 
@@ -168,16 +162,29 @@ export default function Trocas() {
     }]);
   };
 
+  // Setores de todas as unidades (o plantonista vê vagas de vários hospitais).
   const sectorMap = useMemo(() => {
     const m = {};
-    (sectors || []).forEach(s => { if (s?.id) m[String(s.id)] = s; });
+    [...(allCompanySectors || []), ...(sectors || [])].forEach(s => { if (s?.id) m[String(s.id)] = s; });
     return m;
-  }, [sectors]);
+  }, [allCompanySectors, sectors]);
 
-  // Isola as escalas da unidade atual selecionada
+  const unitNameById = useMemo(() => {
+    const m = {};
+    (units || []).forEach(u => { if (u?.id) m[String(u.id)] = u.name; });
+    return m;
+  }, [units]);
+
+  // Gestor: unidade selecionada. Plantonista: todas as unidades em que atua,
+  // num único login, sem precisar trocar de unidade.
+  const myUnitIds = useMemo(() => getProfessionalUnitIds(myProf), [myProf]);
+  const showUnitName = !isManager && myUnitIds.length > 1;
   const unitShifts = useMemo(() => {
-    return (shifts || []).filter(s => !selectedUnitId || String(s.unit_id) === String(selectedUnitId));
-  }, [shifts, selectedUnitId]);
+    if (isManager) return (shifts || []).filter(s => !selectedUnitId || String(s.unit_id) === String(selectedUnitId));
+    const source = allCompanyShifts.length ? allCompanyShifts : shifts || [];
+    if (myUnitIds.length === 0) return source;
+    return source.filter(s => myUnitIds.includes(String(s.unit_id)));
+  }, [isManager, shifts, allCompanyShifts, selectedUnitId, myUnitIds]);
 
   const myAllocatedShifts = useMemo(() => {
     if (!myProf?.id && !user?.full_name) return [];
@@ -516,7 +523,7 @@ export default function Trocas() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Mural de vagas</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          {isManager ? 'Vagas abertas, pedidos de troca e histórico de repasses.' : 'Vagas que você pode assumir, sem choque com a sua escala.'}
+          {isManager ? 'Vagas abertas, pedidos de troca e histórico de repasses.' : `Vagas que você pode assumir, sem choque com a sua escala${myUnitIds.length > 1 ? `, em todas as suas unidades (${myUnitIds.length})` : ''}.`}
         </p>
       </div>
 
@@ -629,6 +636,11 @@ export default function Trocas() {
                           <div className="min-w-0 flex-1 space-y-1.5">
                             <div className="sm:hidden font-mono text-sm font-semibold text-slate-900 dark:text-white">{shift.start_time || '07:00'}–{shift.end_time || '19:00'}</div>
                             <div className="font-semibold text-slate-900 dark:text-white truncate">{sector?.name || 'Setor'}</div>
+                            {showUnitName && unitNameById[String(shift.unit_id)] && (
+                              <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 truncate">
+                                <Building2 className="w-3.5 h-3.5 shrink-0" /> {unitNameById[String(shift.unit_id)]}
+                              </div>
+                            )}
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="inline-flex h-6 items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-200">
                                 <Stethoscope className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" /> {realSpecialty}

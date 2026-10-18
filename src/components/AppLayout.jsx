@@ -173,7 +173,8 @@ export default function AppLayout({ children }) {
     medico: 'Médico'
   }[userAppRole] || 'Profissional';
 
-  const currentHospitalName = units?.find(u => String(u.id) === String(selectedUnitId))?.name || company?.name || 'Hospital Principal';
+  const isFieldProfessional = ['assistencial', 'medico'].includes(userAppRole);
+  const selectedHospitalName = units?.find(u => String(u.id) === String(selectedUnitId))?.name || company?.name || 'Hospital Principal';
 
   // Mesma regra do Login: fora do administrador, só aparecem os hospitais liberados para o usuário.
   const allowedUnitIds = Array.isArray(user?.data?.allowed_unit_ids) ? user.data.allowed_unit_ids.map(String) : [];
@@ -182,8 +183,15 @@ export default function AppLayout({ children }) {
     allowedUnitIds.includes(String(u.id)) || String(u.id) === String(selectedUnitId)
   );
 
+  // O plantonista vê Minha Escala e Mural de todas as unidades juntas; o seletor
+  // de unidade só aparece para ele na grade de Escalas (que é por hospital).
+  const professionalSeesAllUnits = isFieldProfessional && selectableUnits.length > 1;
+  const showUnitSelector = !professionalSeesAllUnits || location.pathname.startsWith('/escalas');
+  const currentHospitalName = professionalSeesAllUnits && !location.pathname.startsWith('/escalas')
+    ? `Todas as suas unidades (${selectableUnits.length})`
+    : selectedHospitalName;
+
   // Barra inferior do celular: o plantonista começa pela própria escala.
-  const isFieldProfessional = ['assistencial', 'medico'].includes(userAppRole);
   const mobileTabs = [
     isFieldProfessional
       ? { label: 'Minha Escala', path: '/minha-escala', icon: Activity }
@@ -281,7 +289,12 @@ export default function AppLayout({ children }) {
               </div>
             </div>
 
-            <div className="hidden sm:flex items-center gap-2">
+            {!showUnitSelector && (
+              <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                <Hospital className="w-3.5 h-3.5 text-sky-600 dark:text-sky-500" /> {currentHospitalName}
+              </span>
+            )}
+            {showUnitSelector && <div className="hidden sm:flex items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
                 <Hospital className="w-3.5 h-3.5 text-sky-600 dark:text-sky-500" /> Unidade:
               </span>
@@ -297,7 +310,7 @@ export default function AppLayout({ children }) {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </div>}
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -398,7 +411,7 @@ export default function AppLayout({ children }) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
-            <div className="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+            {showUnitSelector && <div className="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
               <Label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Hospital Atual</Label>
               <Select value={selectedUnitId} onValueChange={handleUnitChange}>
                 <SelectTrigger className="h-10 w-full text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl cursor-pointer">
@@ -412,7 +425,7 @@ export default function AppLayout({ children }) {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </div>}
             
             {navItems.map(item => (
               <NavLink

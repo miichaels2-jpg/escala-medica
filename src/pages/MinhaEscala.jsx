@@ -86,7 +86,9 @@ const MONTH_NAMES = [
 ];
 
 export default function MinhaEscala() {
-  const { user, company, units, allCompanyProfessionals = [], sectors = [], selectedUnitId, loading: appLoading, syncGlobalData } = useAppData();
+  // Minha Escala mostra os plantões de TODAS as unidades do profissional, sem trocar de unidade.
+  const { user, company, units, allCompanyProfessionals = [], allCompanySectors = [], selectedUnitId, loading: appLoading, syncGlobalData } = useAppData();
+  const sectors = allCompanySectors;
   const navigate = useNavigate();
 
   const [shifts, setShifts] = useState([]);
@@ -280,6 +282,7 @@ export default function MinhaEscala() {
       const sectorName = s.sector_name || sectorMap[s.sector_id]?.name || 'Setor Hospitalar';
       const unitObj = (units || []).find(u => String(u.id) === String(s.unit_id));
       const unitName = unitObj ? unitObj.name : (company?.name || 'Unidade Principal');
+      const unitAddress = String(unitObj?.address || unitObj?.data?.address || '').trim();
 
       const checkinMatch = notesStr.match(/\[CHECKIN:([^\]]+)\]/);
       const checkoutMatch = notesStr.match(/\[CHECKOUT:([^\]]+)\]/);
@@ -292,6 +295,7 @@ export default function MinhaEscala() {
         ...s,
         sectorName,
         unitName,
+        unitAddress,
         state,
         isPendingApproval,
         duration,
@@ -636,6 +640,11 @@ export default function MinhaEscala() {
                 <span className="hidden sm:inline text-slate-400">·</span>
                 <span className="text-sm font-bold">{formatDateBR(featuredShift.date)} · {featuredShift.start_time}–{featuredShift.end_time}</span>
               </h3>
+              {featuredShift.unitAddress && (
+                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(featuredShift.unitAddress)}`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-sky-700 dark:hover:text-sky-300 hover:underline">
+                  <MapPin className="w-3.5 h-3.5 shrink-0" /> {featuredShift.unitAddress} · <span className="text-sky-700 dark:text-sky-300">Como chegar</span>
+                </a>
+              )}
               <p className={`text-[11px] font-semibold mt-1 flex items-center gap-1 ${
                 featuredShiftHasCoordinates ? 'text-slate-500 dark:text-slate-400' : 'text-amber-700 dark:text-amber-300'
               }`}>
@@ -821,6 +830,11 @@ export default function MinhaEscala() {
                       <span className="text-slate-300 dark:text-slate-700">•</span>
                       <span>{shift.sectorName}</span>
                     </div>
+                    {shift.unitAddress && (
+                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(shift.unitAddress)}`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-sky-700 dark:hover:text-sky-300 hover:underline">
+                  <MapPin className="w-3.5 h-3.5 shrink-0" /> {shift.unitAddress} · <span className="text-sky-700 dark:text-sky-300">Como chegar</span>
+                </a>
+              )}
 
                     <div className="flex items-center justify-between text-xs text-slate-500 font-mono">
                       <span>Horário: <b>{shift.start_time} às {shift.end_time}</b></span>

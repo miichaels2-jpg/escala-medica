@@ -9,6 +9,19 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.1.9 — 18/10/2026
+
+- **Várias unidades num único login (profissional):** Minha Escala, Mural e o sino mostram plantões e vagas
+  de todas as unidades em que o profissional atua, sem trocar de unidade. Cada vaga indica o hospital; os
+  cartões da Minha Escala mostram endereço e "Como chegar". O cabeçalho mostra "Todas as suas unidades";
+  o seletor de unidade só aparece para ele na grade de Escalas. O gestor continua trocando de unidade.
+- **Setores autorizados:** setor criado depois do cadastro já fica liberado para quem atende a unidade
+  (o cadastro passa a guardar os setores *vetados*, `blocked_sectors`). Antes, setor novo — como a CTI 2 do
+  Hospital Vida & Saúde Dois — não aparecia para ninguém na alocação. Os 8 cadastros existentes foram
+  convertidos sem vetar nenhum setor. Ao liberar uma unidade no Corpo Clínico, os setores dela já vêm
+  marcados, e a lista aparece agrupada por unidade.
+- Regra centralizada em `src/lib/sectorAccess.js` (com testes).
+
 ## V0.1.8 — 18/10/2026
 
 - **Correção em Setores & Especialidades:** salvar um setor dava "Could not find the 'status' column of

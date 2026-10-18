@@ -4,6 +4,7 @@ import { Bell, CheckCheck, CheckCircle2, ChevronRight, Flame, Megaphone, ShieldC
 import { Button } from '@/components/ui/button';
 import { fetchMyNotifications, markNotificationsRead } from '@/lib/notifications';
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
+import { getProfessionalUnitIds, isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 
 const READ_VACANCIES_KEY = 'scale_read_notifs';
 const REFRESH_MS = 60_000;
@@ -37,8 +38,7 @@ function getShiftSpecialty(shift) {
 // Vaga relevante para o profissional: setor autorizado e especialidade compatível.
 export function isVacancyRelevantFor(shift, professional) {
   if (!professional) return true;
-  const authorized = professional?.data?.authorized_sectors ?? professional?.authorized_sectors;
-  if (Array.isArray(authorized) && !authorized.some(id => String(id) === String(shift.sector_id))) return false;
+  if (!isProfessionalAuthorizedForSector(professional, shift.sector_id)) return false;
   const required = normalize(getShiftSpecialty(shift));
   const mine = normalize(professional.specialty);
   if (!required || required === 'geral' || !mine) return true;
@@ -81,11 +81,17 @@ export function useNotificationCenter({ user, currentProfessional, shifts, compa
       .filter(Boolean);
   }, [companyShifts, shifts, professionalId]);
 
+  // Gestor: vagas da unidade selecionada. Plantonista: vagas de todas as unidades em que atua.
+  const myUnitIds = useMemo(() => getProfessionalUnitIds(currentProfessional), [currentProfessional]);
   const vacancies = useMemo(() => {
     const now = new Date();
-    return (shifts || [])
+    const source = isManager ? (shifts || []) : (companyShifts?.length ? companyShifts : shifts || []);
+    return source
       .filter(s => {
-        if (!s || String(s.unit_id) !== String(selectedUnitId)) return false;
+        if (!s) return false;
+        if (isManager) {
+          if (String(s.unit_id) !== String(selectedUnitId)) return false;
+        } else if (myUnitIds.length && !myUnitIds.includes(String(s.unit_id))) return false;
         if (normalize(s.status).includes('cancel') || !isShiftVacant(s)) return false;
         const range = getShiftDateTimeRange(s);
         if (!range || range.end <= now) return false;
@@ -94,7 +100,7 @@ export function useNotificationCenter({ user, currentProfessional, shifts, compa
         return !myRanges.some(mine => mine.start < range.end && range.start < mine.end);
       })
       .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start_time).localeCompare(String(b.start_time)));
-  }, [shifts, selectedUnitId, isManager, currentProfessional, myRanges]);
+  }, [shifts, companyShifts, selectedUnitId, isManager, currentProfessional, myRanges, myUnitIds]);
 
   const pendingApprovals = useMemo(() => {
     if (!isManager) return [];
