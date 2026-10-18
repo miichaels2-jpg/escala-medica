@@ -1,6 +1,6 @@
 import React, { Component, useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useAppData } from '@/lib/useAppData';
+import { persistSelectedUnit, useAppData } from '@/lib/useAppData';
 import { supabase } from '@/lib/supabase';
 import { 
   Activity, LayoutDashboard, CalendarDays, Repeat, 
@@ -56,7 +56,9 @@ export default function AppLayout({ children }) {
     company, 
     units, 
     selectedUnitId, 
-    setSelectedUnitId, 
+    setSelectedUnitId,
+    setUnitScope,
+    allUnitsView,
     isManager, 
     isBilling, 
     userAppRole,
@@ -129,24 +131,10 @@ export default function AppLayout({ children }) {
 
   // GARANTE QUE A UNIDADE ESCOLHIDA NÃO MUDE AO TROCAR DE TELA
   const handleUnitChange = async (newUnitId, nextPath) => {
+    // "Todas as unidades" só muda o modo de visão (sem recarregar a página).
+    if (newUnitId === 'todas') { setUnitScope('todas'); return; }
     setSelectedUnitId(newUnitId);
-    try {
-      window.localStorage.setItem('scale_selected_unit', newUnitId);
-      if (user?.id) {
-        // A preferência fica em users.data (a tabela "profiles" não existe neste banco).
-        const nextData = { ...(user.data || {}), selected_unit_id: newUnitId };
-        const { error } = await supabase.from('users').update({ data: nextData }).eq('id', user.id);
-        if (error) throw error;
-        try {
-          const stored = JSON.parse(window.localStorage.getItem('scale_logged_user') || 'null');
-          if (stored && String(stored.id) === String(user.id)) {
-            window.localStorage.setItem('scale_logged_user', JSON.stringify({ ...stored, data: { ...(stored.data || {}), selected_unit_id: newUnitId } }));
-          }
-        } catch {}
-      }
-    } catch (e) {
-      console.error('Erro ao salvar unidade padrão', e);
-    }
+    await persistSelectedUnit(user, newUnitId);
     if (nextPath) window.location.href = nextPath;
     else window.location.reload();
   };
@@ -224,6 +212,9 @@ export default function AppLayout({ children }) {
   // No Painel, o gestor com várias unidades escolhe o escopo nos cartões da própria tela.
   const managerDashboardScope = !isFieldProfessional && selectableUnits.length > 1 && (location.pathname === '/dashboard' || location.pathname === '/');
   const showUnitSelector = !managerDashboardScope && (!professionalSeesAllUnits || location.pathname.startsWith('/escalas'));
+  // Telas que sabem mostrar todas as unidades juntas oferecem essa opção no seletor.
+  const screenSupportsAllUnits = !isFieldProfessional && selectableUnits.length > 1 && ['/trocas', '/historico'].includes(location.pathname);
+  const headerUnitValue = screenSupportsAllUnits && allUnitsView ? 'todas' : selectedUnitId;
   const currentHospitalName = managerDashboardScope
     ? `Gestão · ${selectableUnits.length} unidades`
     : professionalSeesAllUnits && !location.pathname.startsWith('/escalas')
@@ -337,11 +328,14 @@ export default function AppLayout({ children }) {
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
                 <Hospital className="w-3.5 h-3.5 text-sky-600 dark:text-sky-500" /> Unidade:
               </span>
-              <Select value={selectedUnitId} onValueChange={handleUnitChange}>
+              <Select value={headerUnitValue} onValueChange={handleUnitChange}>
                 <SelectTrigger className="h-8 w-64 text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl cursor-pointer">
                   <SelectValue placeholder="Selecione o Hospital..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
+                  {screenSupportsAllUnits && (
+                    <SelectItem value="todas" className="text-xs font-bold cursor-pointer">Todas as unidades ({selectableUnits.length})</SelectItem>
+                  )}
                   {selectableUnits.map(u => (
                     <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold cursor-pointer">
                       {u.name}
@@ -452,11 +446,14 @@ export default function AppLayout({ children }) {
             <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
             {showUnitSelector && <div className="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
               <Label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Hospital Atual</Label>
-              <Select value={selectedUnitId} onValueChange={handleUnitChange}>
+              <Select value={headerUnitValue} onValueChange={handleUnitChange}>
                 <SelectTrigger className="h-10 w-full text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl cursor-pointer">
                   <SelectValue placeholder="Selecione o Hospital..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
+                  {screenSupportsAllUnits && (
+                    <SelectItem value="todas" className="text-xs font-bold cursor-pointer">Todas as unidades ({selectableUnits.length})</SelectItem>
+                  )}
                   {selectableUnits.map(u => (
                     <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold cursor-pointer">
                       {u.name}

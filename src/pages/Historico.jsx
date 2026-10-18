@@ -33,10 +33,10 @@ function dayLabel(iso) {
 
 // Histórico de alterações: quem criou, alocou, trocou, excluiu, publicou ou pagou, e quando.
 export default function Historico() {
-  const { company, units = [], appUsers = [], allCompanyProfessionals = [], allCompanySectors = [] } = useAppData();
+  const { company, units = [], appUsers = [], allCompanyProfessionals = [], allCompanySectors = [], selectedUnitId, allUnitsView, setUnitScope } = useAppData();
   const [period, setPeriod] = useState('7');
   const [type, setType] = useState('todos');
-  const [unitFilter, setUnitFilter] = useState('todas');
+  const unitFilter = units.length > 1 && !allUnitsView ? String(selectedUnitId) : 'todas';
   const [search, setSearch] = useState('');
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -117,12 +117,6 @@ export default function Historico() {
         <div className="inline-flex w-fit rounded-xl bg-slate-200/70 dark:bg-slate-800 p-1" role="tablist" aria-label="Tipo">
           {TYPES.map(o => <button key={o.id} type="button" role="tab" aria-selected={type === o.id} onClick={() => setType(o.id)} className={chip(type === o.id)}>{o.label}</button>)}
         </div>
-        {units.length > 1 && (
-          <select value={unitFilter} onChange={e => setUnitFilter(e.target.value)} aria-label="Unidade" className="h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-sm">
-            <option value="todas">Todas as unidades</option>
-            {units.map(u => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
-          </select>
-        )}
         <div className="relative lg:ml-auto lg:w-72">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar profissional, setor ou autor" className="h-9 pl-9" />

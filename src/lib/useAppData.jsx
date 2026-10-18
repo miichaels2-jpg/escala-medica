@@ -11,6 +11,9 @@ let globalState = {
   company: { id: 'cmp_principal', name: 'Hospital Principal', units: [{ id: 'unit_h1', name: 'Unidade Matriz' }] },
   units: [{ id: 'unit_h1', name: 'Unidade Matriz' }],
   selectedUnitId: 'unit_h1',
+  // Gestor com várias unidades: "Todas as unidades" vale nas telas que mostram tudo junto
+  // (Painel, Mural, Histórico); as telas de um hospital por vez usam selectedUnitId.
+  allUnitsView: (() => { try { return window.localStorage.getItem('scale_all_units_view') === '1'; } catch { return false; } })(),
   professionals: [],
   appUsers: [],
   sectors: [],
@@ -516,6 +519,39 @@ async function loadAllData() {
   }
 }
 
+const ALL_UNITS_VIEW_KEY = 'scale_all_units_view';
+
+// Guarda a unidade escolhida como preferência do usuário (vale no próximo login e em outros aparelhos).
+export async function persistSelectedUnit(user, unitId) {
+  try {
+    window.localStorage.setItem('scale_selected_unit', String(unitId));
+    if (!user?.id) return;
+    const nextData = { ...(user.data || {}), selected_unit_id: String(unitId) };
+    const { error } = await supabase.from('users').update({ data: nextData }).eq('id', user.id);
+    if (error) throw error;
+    const stored = JSON.parse(window.localStorage.getItem('scale_logged_user') || 'null');
+    if (stored && String(stored.id) === String(user.id)) {
+      window.localStorage.setItem('scale_logged_user', JSON.stringify({ ...stored, data: { ...(stored.data || {}), selected_unit_id: String(unitId) } }));
+    }
+  } catch (e) {
+    console.error('Erro ao salvar unidade padrão', e);
+  }
+}
+
+// Uma única escolha para o sistema todo: 'todas' ou o id de um hospital.
+export function setUnitScope(scope) {
+  if (scope === 'todas') {
+    try { window.localStorage.setItem(ALL_UNITS_VIEW_KEY, '1'); } catch { /* sem armazenamento */ }
+    updateGlobal({ allUnitsView: true });
+    return;
+  }
+  if (!globalState.units.some(unit => String(unit.id) === String(scope))) return;
+  try { window.localStorage.setItem(ALL_UNITS_VIEW_KEY, '0'); } catch { /* sem armazenamento */ }
+  const changed = String(globalState.selectedUnitId) !== String(scope);
+  updateGlobal({ selectedUnitId: String(scope), allUnitsView: false });
+  if (changed) persistSelectedUnit(globalState.user, scope);
+}
+
 export function useAppData() {
   const [, setTick] = useState(0);
 
@@ -536,7 +572,8 @@ export function useAppData() {
       return;
     }
     window.localStorage.setItem('scale_selected_unit', String(newId));
-    updateGlobal({ selectedUnitId: String(newId) });
+    try { window.localStorage.setItem(ALL_UNITS_VIEW_KEY, '0'); } catch { /* sem armazenamento */ }
+    updateGlobal({ selectedUnitId: String(newId), allUnitsView: false });
   }, []);
 
   const user = globalState.user;
@@ -616,6 +653,7 @@ export function useAppData() {
     isApproved: true,
     currentProfessional,
     setSelectedUnitId,
+    setUnitScope,
     syncGlobalData,
     refreshAllData: syncGlobalData
   };

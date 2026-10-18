@@ -9,6 +9,16 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.2.5 — 18/10/2026
+
+- **Uma escolha de unidade para o sistema todo:** escolher um hospital nos cartões do Painel ou no seletor do
+  topo vale em todas as telas (antes o Painel tinha uma escolha só dele). "Todas as unidades" vale nas telas
+  que mostram tudo junto — Painel, Mural e Histórico (no Mural e no Histórico a opção fica no seletor do topo);
+  as telas de um hospital por vez (Escalas, Faturamento, Setores, Relatórios, Configurações) seguem o último
+  hospital escolhido, mostrado no topo. A escolha fica salva no aparelho e no cadastro do usuário.
+- Saiu do Mural o botão "Esta unidade / Todas as unidades" (o seletor do topo faz isso) e do Histórico o
+  filtro de unidade duplicado.
+
 ## V0.2.4 — 18/10/2026
 
 - **Calendário da escala, novo visual:** cada dia mostra só o essencial — número (hoje em destaque), barra de

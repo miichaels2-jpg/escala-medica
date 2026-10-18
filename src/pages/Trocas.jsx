@@ -129,6 +129,7 @@ export default function Trocas() {
     currentProfessional, 
     selectedUnitId,
     units = [],
+    allUnitsView,
     company,
     user,
     isManager, 
@@ -140,8 +141,7 @@ export default function Trocas() {
   // Gestor escolhe entre ver todas as vagas (gestão) ou só as que ele mesmo pode assumir.
   // O plantonista vê sempre só as vagas que pode assumir.
   const [managerView, setManagerView] = useState('todas');
-  // Gestor com mais de uma unidade pode ver o mural de todas de uma vez.
-  const [managerAllUnits, setManagerAllUnits] = useState(false);
+
   const [submitting, setSubmitting] = useState(false);
 
   const myProf = useMemo(() => {
@@ -193,6 +193,8 @@ export default function Trocas() {
       .filter(u => user?.role === 'admin' || allowed.length === 0 || allowed.includes(String(u.id)))
       .map(u => String(u.id));
   }, [isManager, units, user]);
+  // Gestor com mais de uma unidade: "Todas as unidades" vem do seletor do topo (escolha global).
+  const managerAllUnits = isManager && managerUnitIds.length > 1 && Boolean(allUnitsView);
   const showUnitName = isManager ? managerAllUnits : myUnitIds.length > 1;
   const unitShifts = useMemo(() => {
     if (isManager && managerAllUnits) {
@@ -610,16 +612,6 @@ export default function Trocas() {
         <div className="space-y-4">
           {isManager && (
             <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2">
-              {managerUnitIds.length > 1 && (
-                <div className="inline-flex rounded-xl bg-slate-200/70 dark:bg-slate-800 p-1" role="tablist" aria-label="Unidades">
-                  {[{ id: false, label: 'Esta unidade' }, { id: true, label: `Todas as unidades (${managerUnitIds.length})` }].map(opt => (
-                    <button key={String(opt.id)} type="button" role="tab" aria-selected={managerAllUnits === opt.id} onClick={() => setManagerAllUnits(opt.id)}
-                      className={`h-8 px-3 rounded-lg text-xs font-medium cursor-pointer ${managerAllUnits === opt.id ? 'bg-white dark:bg-slate-950 shadow-sm text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400'}`}>
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
               <div className="inline-flex rounded-xl bg-slate-200/70 dark:bg-slate-800 p-1" role="tablist" aria-label="Quais vagas mostrar">
                 {[{ id: 'todas', label: `Todas (${muralShifts.length})` }, { id: 'minhas', label: `Que eu posso assumir (${claimableShifts.length})` }].map(opt => (
                   <button key={opt.id} type="button" role="tab" aria-selected={managerView === opt.id} onClick={() => setManagerView(opt.id)}
