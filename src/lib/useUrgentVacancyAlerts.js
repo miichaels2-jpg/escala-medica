@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { findUrgentAlerts, urgentAlertKey } from '@/lib/urgentVacancies';
+import { findShiftReminders, findUrgentAlerts, urgentAlertKey } from '@/lib/urgentVacancies';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
 import { isVacancyRelevantFor } from '@/components/NotificationCenter';
 
@@ -16,7 +16,7 @@ function formatDateBR(value) {
 // aparelho logado com o app aberto confere as vagas a cada 5 minutos e avisa os
 // profissionais compatíveis e livres. A chave única no banco (dedupe_key) garante
 // um aviso por profissional e por vaga, mesmo com vários aparelhos abertos.
-export function useUrgentVacancyAlerts({ enabled, companyId, shifts, professionals, sectors, units }) {
+export function useUrgentVacancyAlerts({ enabled, companyId, shifts, professionals, sectors, units, isPublished }) {
   useEffect(() => {
     if (!enabled || !companyId) return undefined;
 
@@ -31,9 +31,24 @@ export function useUrgentVacancyAlerts({ enabled, companyId, shifts, professiona
       try {
         try { window.localStorage.setItem(LAST_RUN_KEY, String(Date.now())); } catch { /* sem armazenamento */ }
         const alerts = findUrgentAlerts({ shifts, professionals, isRelevant: isVacancyRelevantFor });
-        if (alerts.length === 0) return;
+        const reminders = findShiftReminders({ shifts, isPublished });
+        if (alerts.length === 0 && reminders.length === 0) return;
         const sectorName = id => (sectors || []).find(s => String(s.id) === String(id))?.name || 'Setor';
         const unitName = id => (units || []).find(u => String(u.id) === String(id))?.name || '';
+        const professionalById = id => (professionals || []).find(p => String(p.id) === String(id)) || { id };
+        // Lembrete do próprio plantão (12 h e 1 h antes).
+        await sendNotifications(reminders.map(({ shift, kind, key }) => ({
+          ...recipientFor(professionalById(shift.professional_id)),
+          company_id: companyId,
+          unit_id: shift.unit_id,
+          type: 'lembrete_plantao',
+          category: 'escala',
+          title: `${kind === '1h' ? 'Seu plantão começa em 1 hora' : 'Lembrete: plantão nas próximas 12 h'}`,
+          message: `${sectorName(shift.sector_id)}${unitName(shift.unit_id) ? ` · ${unitName(shift.unit_id)}` : ''} · ${formatDateBR(shift.date)} ${shift.start_time}–${shift.end_time}`,
+          data: { shift_id: shift.id, date: shift.date },
+          dedupe_key: key
+        })));
+        if (alerts.length === 0) return;
         await sendNotifications(alerts.map(({ shift, professional, urgency }) => ({
           ...recipientFor(professional),
           company_id: companyId,
@@ -53,5 +68,6 @@ export function useUrgentVacancyAlerts({ enabled, companyId, shifts, professiona
     run();
     const timer = window.setInterval(run, CHECK_EVERY_MS);
     return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, companyId, shifts, professionals, sectors, units]);
 }

@@ -1,94 +1,99 @@
 import { useMemo } from 'react';
-import { ArrowRight, Building2 } from 'lucide-react';
+import { Building2, Layers } from 'lucide-react';
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { getShiftUrgency } from '@/lib/urgentVacancies';
 
+export const ALL_UNITS = 'todas';
+
+// Pede ao layout para trocar a unidade selecionada (mesma ação do seletor do
+// cabeçalho) e, opcionalmente, abrir uma tela depois: { unitId, path }.
 export const SWITCH_UNIT_EVENT = 'scalemedic:switch-unit';
+export function requestUnitSwitch(unitId, path) {
+  window.dispatchEvent(new CustomEvent(SWITCH_UNIT_EVENT, { detail: { unitId: String(unitId), path } }));
+}
 
 function localDate(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// Visão "Todas as unidades" do gestor: um cartão por hospital com o essencial
-// do momento. "Abrir" troca a unidade selecionada (mesma ação do cabeçalho).
-export default function UnitsOverview({ units, shifts, selectedUnitId, now = new Date() }) {
-  const rows = useMemo(() => {
-    const today = localDate(now);
-    const monthPrefix = today.slice(0, 7);
-    const weekAhead = now.getTime() + 7 * 86400000;
-    return (units || []).map(unit => {
-      const unitShifts = (shifts || []).filter(s => s && String(s.unit_id) === String(unit.id) && !String(s.status || '').toLowerCase().includes('cancel'));
-      const todayShifts = unitShifts.filter(s => String(s.date).slice(0, 10) === today);
-      let openWeek = 0, urgent = 0, missedMonth = 0;
-      unitShifts.forEach(s => {
-        if (!isShiftVacant(s)) return;
-        const range = getShiftDateTimeRange(s);
-        if (!range) return;
-        if (range.end <= now) {
-          if (String(s.date).startsWith(monthPrefix)) missedMonth += 1;
-          return;
-        }
-        if (range.start.getTime() <= weekAhead) openWeek += 1;
-        if (getShiftUrgency(s, now)) urgent += 1;
-      });
-      return {
-        unit,
-        todayFilled: todayShifts.filter(s => !isShiftVacant(s)).length,
-        todayTotal: todayShifts.length,
-        openWeek,
-        urgent,
-        missedMonth
-      };
-    });
+function summarize(shifts, now) {
+  const today = localDate(now);
+  const monthPrefix = today.slice(0, 7);
+  const weekAhead = now.getTime() + 7 * 86400000;
+  const active = (shifts || []).filter(s => s && !String(s.status || '').toLowerCase().includes('cancel'));
+  const todayShifts = active.filter(s => String(s.date).slice(0, 10) === today);
+  let openWeek = 0, urgent = 0, missedMonth = 0;
+  active.forEach(s => {
+    if (!isShiftVacant(s)) return;
+    const range = getShiftDateTimeRange(s);
+    if (!range) return;
+    if (range.end <= now) {
+      if (String(s.date).startsWith(monthPrefix)) missedMonth += 1;
+      return;
+    }
+    if (range.start.getTime() <= weekAhead) openWeek += 1;
+    if (getShiftUrgency(s, now)) urgent += 1;
+  });
+  return { todayFilled: todayShifts.filter(s => !isShiftVacant(s)).length, todayTotal: todayShifts.length, openWeek, urgent, missedMonth };
+}
+
+// Filtro do Painel do gestor: "Todas as unidades" ou um hospital, com o essencial de cada um.
+export default function UnitsOverview({ units, shifts, scope, onScopeChange, now = new Date() }) {
+  const cards = useMemo(() => {
+    const unitIds = (units || []).map(u => String(u.id));
+    const inScope = (shifts || []).filter(s => unitIds.includes(String(s.unit_id)));
+    return [
+      { id: ALL_UNITS, name: `Todas as unidades (${unitIds.length})`, all: true, ...summarize(inScope, now) },
+      ...(units || []).map(unit => ({
+        id: String(unit.id),
+        name: unit.name,
+        ...summarize(inScope.filter(s => String(s.unit_id) === String(unit.id)), now)
+      }))
+    ];
   }, [units, shifts, now]);
 
-  if (rows.length < 2) return null;
-
-  const openUnit = unitId => window.dispatchEvent(new CustomEvent(SWITCH_UNIT_EVENT, { detail: String(unitId) }));
+  if ((units || []).length < 2) return null;
 
   return (
-    <section aria-label="Suas unidades" className="space-y-2">
-      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Suas unidades ({rows.length})</h2>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {rows.map(({ unit, todayFilled, todayTotal, openWeek, urgent, missedMonth }) => {
-          const current = String(unit.id) === String(selectedUnitId);
+    <section aria-label="Unidades do painel" className="space-y-2">
+      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Mostrar no painel</h2>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" role="radiogroup" aria-label="Unidade do painel">
+        {cards.map(card => {
+          const selected = String(scope) === card.id;
+          const Icon = card.all ? Layers : Building2;
           return (
-            <div key={unit.id} className={`rounded-2xl border bg-white dark:bg-slate-900 p-4 shadow-sm ${current ? 'border-sky-400 dark:border-sky-600' : 'border-slate-200 dark:border-slate-800'}`}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
-                  <span className="font-semibold text-slate-900 dark:text-white truncate">{unit.name}</span>
-                </div>
-                {current ? (
-                  <span className="shrink-0 rounded-full bg-sky-100 dark:bg-sky-500/15 px-2 py-0.5 text-xs font-medium text-sky-800 dark:text-sky-300">Aberta agora</span>
-                ) : (
-                  <button type="button" onClick={() => openUnit(unit.id)} className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 dark:text-sky-300 hover:underline cursor-pointer">
-                    Abrir <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                <div>
-                  <dt className="text-slate-500 dark:text-slate-400">Plantões hoje</dt>
-                  <dd className="text-base font-semibold text-slate-900 dark:text-white">{todayFilled}/{todayTotal}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500 dark:text-slate-400">Vagas em 7 dias</dt>
-                  <dd className={`text-base font-semibold ${openWeek ? 'text-amber-700 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>{openWeek}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500 dark:text-slate-400">Urgentes (24 h)</dt>
-                  <dd className={`text-base font-semibold ${urgent ? 'text-rose-700 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>{urgent}</dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500 dark:text-slate-400">Furos no mês</dt>
-                  <dd className={`text-base font-semibold ${missedMonth ? 'text-rose-700 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>{missedMonth}</dd>
-                </div>
-              </dl>
-            </div>
+            <button
+              key={card.id}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onScopeChange(card.id)}
+              className={`text-left rounded-2xl border bg-white dark:bg-slate-900 p-4 shadow-sm transition-colors cursor-pointer ${selected ? 'border-sky-500 ring-2 ring-sky-500/30' : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'}`}
+            >
+              <span className="flex items-center gap-2 min-w-0">
+                <Icon className={`w-4 h-4 shrink-0 ${selected ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'}`} />
+                <span className="font-semibold text-slate-900 dark:text-white truncate">{card.name}</span>
+              </span>
+              <span className="mt-3 grid grid-cols-4 gap-2 text-xs">
+                <Metric label="Hoje" value={`${card.todayFilled}/${card.todayTotal}`} />
+                <Metric label="Vagas 7 d" value={card.openWeek} tone={card.openWeek ? 'amber' : null} />
+                <Metric label="Urgentes" value={card.urgent} tone={card.urgent ? 'rose' : null} />
+                <Metric label="Furos mês" value={card.missedMonth} tone={card.missedMonth ? 'rose' : null} />
+              </span>
+            </button>
           );
         })}
       </div>
     </section>
+  );
+}
+
+function Metric({ label, value, tone }) {
+  const color = tone === 'rose' ? 'text-rose-700 dark:text-rose-400' : tone === 'amber' ? 'text-amber-700 dark:text-amber-400' : 'text-slate-900 dark:text-white';
+  return (
+    <span className="block min-w-0">
+      <span className="block truncate text-slate-500 dark:text-slate-400">{label}</span>
+      <span className={`block text-base font-semibold ${color}`}>{value}</span>
+    </span>
   );
 }

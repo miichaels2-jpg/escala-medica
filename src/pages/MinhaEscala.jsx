@@ -2,13 +2,14 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppData } from '@/lib/useAppData';
 import AvailabilityCard from '@/components/AvailabilityCard';
+import { buildIcs, googleCalendarUrl, shiftEventInfo } from '@/lib/calendarExport';
 import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, normalizeFinancialText, safeFinancialNumber } from '@/lib/financialCalculations';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
   CalendarDays, Clock, Building2, Repeat, CheckCircle2, Loader2, DollarSign, AlertCircle, 
   Radio, Printer, ChevronLeft, ChevronRight, Send, Timer, Sparkles, Flame, ArrowRight, 
-  Layers, CalendarCheck, Zap, ChevronDown, ChevronUp, Clock3, ShieldAlert, LogIn, LogOut, MapPin
+  Layers, CalendarCheck, Zap, ChevronDown, ChevronUp, Clock3, ShieldAlert, LogIn, LogOut, MapPin, CalendarPlus
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { escapeHtml, getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
@@ -272,7 +273,10 @@ export default function MinhaEscala() {
         const countdownDiffMinutes = Math.ceil(startDiffMs / 60000);
         const days = Math.floor(countdownDiffMinutes / 1440);
         const hours = Math.floor((countdownDiffMinutes % 1440) / 60);
-        timeLeftDesc = days > 0 ? `Inicia em ${days}d e ${hours}h` : `Inicia em ${hours}h`;
+        const minutes = countdownDiffMinutes % 60;
+        timeLeftDesc = days > 0
+          ? `Inicia em ${days}d e ${hours}h`
+          : hours > 0 ? `Inicia em ${hours}h${minutes ? ` ${minutes}min` : ''}` : `Inicia em ${minutes} min`;
       } else {
         state = 'concluido';
       }
@@ -321,6 +325,31 @@ export default function MinhaEscala() {
       return { ...item, hasConflict };
     });
   }, [shifts, now, sectorMap, units, company, getShiftValue]);
+
+  const calendarInfo = (shift) => shiftEventInfo(shift, {
+    unitName: shift.unitName,
+    unitAddress: shift.unitAddress,
+    sectorName: shift.sectorName
+  });
+
+  const handleAddToCalendar = () => {
+    const upcoming = enrichedShifts
+      .filter(s => s.state === 'programado' || s.state === 'ativo')
+      .sort((a, b) => a.startDateTime - b.startDateTime);
+    if (upcoming.length === 0) {
+      alert('Você não tem plantões futuros para adicionar à agenda.');
+      return;
+    }
+    const blob = new Blob([buildIcs(upcoming.map(calendarInfo))], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'meus-plantoes-scalemedic.ics';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
 
   const conflictingShiftsCount = useMemo(() => enrichedShifts.filter(s => s.hasConflict).length, [enrichedShifts]);
   
@@ -575,6 +604,14 @@ export default function MinhaEscala() {
             className="h-11 bg-white hover:bg-slate-100 text-slate-900 font-black text-xs px-3 sm:px-5 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105"
           >
             <Printer className="w-4 h-4 text-sky-600" /> Imprimir Espelho
+          </Button>
+
+          <Button
+            onClick={handleAddToCalendar}
+            title="Baixa seus próximos plantões para a agenda do celular, com lembrete 12 h e 1 h antes"
+            className="col-span-2 sm:col-span-1 order-last sm:order-none h-11 bg-white/10 hover:bg-white/20 text-white border border-white/20 font-black text-xs px-3 sm:px-5 rounded-2xl gap-2 cursor-pointer"
+          >
+            <CalendarPlus className="w-4 h-4" /> Adicionar à agenda
           </Button>
 
           <Button 
@@ -838,6 +875,9 @@ export default function MinhaEscala() {
                   <MapPin className="w-3.5 h-3.5 shrink-0" /> {shift.unitAddress} · <span className="text-sky-700 dark:text-sky-300">Como chegar</span>
                 </a>
               )}
+                    <a href={googleCalendarUrl(calendarInfo(shift))} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-sky-700 dark:text-sky-300 hover:underline">
+                      <CalendarPlus className="w-3.5 h-3.5 shrink-0" /> Google Agenda
+                    </a>
 
                     <div className="flex items-center justify-between text-xs text-slate-500 font-mono">
                       <span>Horário: <b>{shift.start_time} às {shift.end_time}</b></span>

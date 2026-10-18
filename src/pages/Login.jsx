@@ -330,6 +330,7 @@ export default function Login() {
               />
               <span className="text-xs font-bold text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Lembrar-me neste dispositivo</span>
             </label>
+            <span className="text-[11px] font-mono font-semibold text-slate-400 dark:text-slate-500" title="Versão do aplicativo">{APP_VERSION}</span>
           </div>
 
           <Button 
@@ -371,7 +372,7 @@ export default function Login() {
           Ao entrar, você concorda com nossos <Link to="/termos-de-uso" className="font-bold text-sky-400 hover:underline">Termos de Uso e LGPD</Link>.
         </p>
         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-          &copy; 2026 ScaleMedic Enterprise · {APP_VERSION}. Todos os direitos reservados.
+          &copy; 2026 ScaleMedic Enterprise. Todos os direitos reservados.
         </p>
       </div>
 
