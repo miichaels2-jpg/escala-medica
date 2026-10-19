@@ -74,7 +74,7 @@ function ChartCard({ title, subtitle, children, className = '' }) {
 
 export default function ManagementBI({
   shifts, isVacant, shiftCost, getShiftHours, isShiftPast, financialSummary, coverageRate,
-  sectorMetrics, professionalMetrics, credentialAudit, periodLabel, hospitalName, filterSummary
+  sectorMetrics, professionalMetrics, credentialAudit, periodLabel, hospitalName, filterSummary, unitBreakdown
 }) {
   const isDark = useIsDark();
   const colors = isDark ? PALETTE.dark : PALETTE.light;
@@ -171,6 +171,36 @@ export default function ManagementBI({
           {isFullscreen ? 'Sair da apresentação' : 'Modo apresentação'}
         </button>
       </div>
+
+      {Array.isArray(unitBreakdown) && unitBreakdown.length > 1 && (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
+            <caption className="px-4 pt-3 text-left text-sm font-semibold text-slate-800 dark:text-slate-100">Por unidade</caption>
+            <thead>
+              <tr className="text-left text-xs text-slate-500 dark:text-slate-400">
+                <th className="px-4 py-2 font-medium">Unidade</th>
+                <th className="px-4 py-2 font-medium text-right">Plantões</th>
+                <th className="px-4 py-2 font-medium text-right">Cobertura</th>
+                <th className="px-4 py-2 font-medium text-right">Vagas</th>
+                <th className="px-4 py-2 font-medium text-right">Horas</th>
+                <th className="px-4 py-2 font-medium text-right">Custo</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {unitBreakdown.map(row => (
+                <tr key={row.id}>
+                  <td className="px-4 py-2 font-medium text-slate-800 dark:text-slate-100">{row.name}</td>
+                  <td className="px-4 py-2 text-right font-mono">{num(row.shifts)}</td>
+                  <td className={`px-4 py-2 text-right font-mono ${row.coverage === null ? 'text-slate-400' : row.coverage >= 98 ? 'text-emerald-700 dark:text-emerald-400' : row.coverage >= 90 ? 'text-amber-700 dark:text-amber-400' : 'text-rose-700 dark:text-rose-400'}`}>{row.coverage === null ? '—' : `${row.coverage}%`}</td>
+                  <td className="px-4 py-2 text-right font-mono">{num(row.vacant)}</td>
+                  <td className="px-4 py-2 text-right font-mono">{num(Math.round(row.hours))}</td>
+                  <td className="px-4 py-2 text-right font-mono">{brl(row.cost)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className={`grid grid-cols-2 md:grid-cols-3 gap-3 ${isFullscreen ? "2xl:grid-cols-6" : ""}`}>
         <Kpi icon={CalendarDays} label="Plantões no período" value={num(shifts.length)} detail={`${num(filled)} preenchidos`} />

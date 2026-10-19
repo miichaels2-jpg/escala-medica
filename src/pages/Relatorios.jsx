@@ -3,6 +3,7 @@ import { useAppData } from '@/lib/useAppData';
 import { DEFAULT_REMUNERATION_TYPE, getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, getShiftDurationHours, safeFinancialNumber } from '@/lib/financialCalculations';
 import { calculateProductivityPoolAllocations, isProductivityDayComplete } from '@/lib/productivityCalculations';
 import { isShiftVacant } from '@/lib/shiftLiveStatus';
+import { getProfessionalUnitIds } from '@/lib/sectorAccess';
 import ManagementBI from '@/components/reports/ManagementBI';
 import { escapeHtml, getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
 import { Card } from '@/components/ui/card';
@@ -239,7 +240,24 @@ const REPORT_NAVIGATION = [
 ];
 
 export default function Relatorios() {
-  const { shifts = [], sectors = [], professionals = [], company, units = [], selectedUnitId } = useAppData();
+  const {
+    shifts: unitShifts = [], sectors: unitSectors = [], professionals: unitProfessionals = [],
+    allCompanyShifts = [], allCompanySectors = [], allCompanyProfessionals = [],
+    allUnitsView, user, company, units = [], selectedUnitId
+  } = useAppData();
+  // "Todas as unidades" (escolha global do topo) junta as unidades que o gestor administra.
+  const managedUnitIds = useMemo(() => {
+    const allowed = Array.isArray(user?.data?.allowed_unit_ids) ? user.data.allowed_unit_ids.map(String) : [];
+    return (units || []).filter(u => user?.role === 'admin' || allowed.length === 0 || allowed.includes(String(u.id))).map(u => String(u.id));
+  }, [units, user]);
+  const isAllUnits = Boolean(allUnitsView) && managedUnitIds.length > 1;
+  const scopeUnitIds = useMemo(() => (isAllUnits ? managedUnitIds : [String(selectedUnitId)]), [isAllUnits, managedUnitIds, selectedUnitId]);
+  const shifts = useMemo(() => (isAllUnits ? allCompanyShifts.filter(s => scopeUnitIds.includes(String(s.unit_id))) : unitShifts), [isAllUnits, allCompanyShifts, scopeUnitIds, unitShifts]);
+  const sectors = useMemo(() => (isAllUnits ? allCompanySectors.filter(s => scopeUnitIds.includes(String(s.unit_id))) : unitSectors), [isAllUnits, allCompanySectors, scopeUnitIds, unitSectors]);
+  const professionals = useMemo(() => (isAllUnits
+    ? allCompanyProfessionals.filter(p => getProfessionalUnitIds(p).some(id => scopeUnitIds.includes(id)))
+    : unitProfessionals), [isAllUnits, allCompanyProfessionals, scopeUnitIds, unitProfessionals]);
+  const unitNameById = useMemo(() => Object.fromEntries((units || []).map(u => [String(u.id), u.name])), [units]);
 
   const [activeTab, setActiveTab] = useState('bi');
   
@@ -352,7 +370,7 @@ export default function Relatorios() {
     const ruleUnitId = rule?.unit_id ? String(rule.unit_id) : '';
     const configuredPool = safeNumber(rule?.daily_amount, 150);
     const dailyPool = Math.round(configuredPool * 100) / 100;
-    if (!hasSearched || !ruleUnitId || ruleUnitId !== String(selectedUnitId)) {
+    if (!hasSearched || !ruleUnitId || !scopeUnitIds.includes(ruleUnitId)) {
       return { configured: Boolean(ruleUnitId), available: false, ruleUnitId, dailyPool, days: [], rows: [], professionalTotals: [], totals: { attendance: 0, pool: 0, shifts: 0, professionals: 0, pendingDays: 0 } };
     }
     if (configuredPool < 0 || !Number.isSafeInteger(Math.round(configuredPool * 100))) {
@@ -511,7 +529,7 @@ export default function Relatorios() {
       configured: true, available: true, ruleUnitId, dailyPool, days: dailyGroups, rows, professionalTotals, totals,
       allocationByKey: allocations.allocationsByDateAndProfessional, shiftCountByKey, completeDates
     };
-  }, [company, selectedUnitId, professionals, shifts, sectors, appliedFilters, hasSearched]);
+  }, [company, scopeUnitIds, professionals, shifts, sectors, appliedFilters, hasSearched]);
 
   const swapsList = useMemo(() => {
     if (!hasSearched) return [];
@@ -669,20 +687,25 @@ export default function Relatorios() {
         if (!isMonthlyType(getRemunerationType(professional))) return;
         if (normalize(professional.status || professional.data?.status || 'ativo') !== 'ativo') return;
         let counted = false;
-        months.forEach(month => {
-          if (monthlyGroups.has(`${professional.id}|${selectedUnitId}|${month}`)) return;
-          const salary = getMonthlySalaryForUnit(professional, selectedUnitId);
-          if (salary.missing) return;
-          const { days, daysInMonth } = monthDaysInPeriod(month, appliedFilters.start, appliedFilters.end);
-          payrollWithoutShifts += salary.value * (days / daysInMonth);
-          counted = true;
-        });
+        const professionalUnits = getProfessionalUnitIds(professional);
+        scopeUnitIds
+          .filter(unitId => !isAllUnits || professionalUnits.length === 0 || professionalUnits.includes(unitId))
+          .forEach(unitId => {
+            months.forEach(month => {
+              if (monthlyGroups.has(`${professional.id}|${unitId}|${month}`)) return;
+              const salary = getMonthlySalaryForUnit(professional, unitId);
+              if (salary.missing) return;
+              const { days, daysInMonth } = monthDaysInPeriod(month, appliedFilters.start, appliedFilters.end);
+              payrollWithoutShifts += salary.value * (days / daysInMonth);
+              counted = true;
+            });
+          });
         if (counted) professionalsWithoutShifts += 1;
       });
     }
 
     return { byShift, missingRate, pendingProduction, payrollWithoutShifts, professionalsWithoutShifts };
-  }, [filteredShifts, getProf, productivityReport, appliedFilters, hasSearched, professionals, selectedUnitId]);
+  }, [filteredShifts, getProf, productivityReport, appliedFilters, hasSearched, professionals, scopeUnitIds, isAllUnits]);
 
   const shiftCost = useCallback(shift => costModel.byShift.get(String(shift.id)) || 0, [costModel]);
 
@@ -838,7 +861,9 @@ export default function Relatorios() {
     ? `${appliedFilters.start ? formatDate(appliedFilters.start) : 'Início'} até ${appliedFilters.end ? formatDate(appliedFilters.end) : 'Hoje'}`
     : 'Todo o período';
   const currentUnitObj = (units || []).find(u => String(u.id) === String(selectedUnitId));
-  const hospitalName = currentUnitObj?.name || company?.name || 'Hospital Principal';
+  const hospitalName = isAllUnits
+    ? `${company?.name || 'Rede'} · Todas as unidades (${scopeUnitIds.length})`
+    : currentUnitObj?.name || company?.name || 'Hospital Principal';
   const appliedSectorName = appliedFilters.sector === 'todos'
     ? 'Todos os setores'
     : sectors.find(sector => String(sector.id) === String(appliedFilters.sector))?.name || 'Setor selecionado';
@@ -1884,7 +1909,7 @@ export default function Relatorios() {
                 {(sectors || []).map(s => {
                   const sName = (s.name || '').trim();
                   if (!sName || sName.toLowerCase() === 'setor' || sName.toLowerCase() === 'setor geral') return null;
-                  return <SelectItem key={s.id} value={String(s.id)}>{sName}</SelectItem>;
+                  return <SelectItem key={s.id} value={String(s.id)}>{sName}{isAllUnits && unitNameById[String(s.unit_id)] ? ` · ${unitNameById[String(s.unit_id)]}` : ''}</SelectItem>;
                 })}
               </SelectContent>
             </Select>
@@ -1961,6 +1986,19 @@ export default function Relatorios() {
             {/* ABA EXECUTIVO */}
             {activeTab === 'bi' && (
               <ManagementBI
+                unitBreakdown={isAllUnits ? scopeUnitIds.map(unitId => {
+                  const list = filteredShifts.filter(s => String(s.unit_id) === unitId);
+                  const filled = list.filter(s => !isVacant(s)).length;
+                  return {
+                    id: unitId,
+                    name: unitNameById[unitId] || 'Unidade',
+                    shifts: list.length,
+                    coverage: list.length ? Math.round((filled / list.length) * 100) : null,
+                    vacant: list.length - filled,
+                    hours: list.reduce((sum, s) => sum + getShiftHours(s), 0),
+                    cost: list.reduce((sum, s) => sum + (isVacant(s) ? 0 : shiftCost(s)), 0)
+                  };
+                }) : null}
                 shifts={filteredShifts}
                 isVacant={isVacant}
                 shiftCost={shiftCost}

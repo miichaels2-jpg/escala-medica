@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.2.6 — 18/10/2026
+
+- **"Todas as unidades" também no Corpo Clínico e nos Relatórios** (opção no seletor do topo). No Corpo
+  Clínico aparece a equipe de todas as unidades administradas, cada profissional com as unidades dele. Nos
+  Relatórios, indicadores, gráficos e exportações somam a rede, com o novo quadro **"Por unidade"** no Painel BI
+  (plantões, cobertura, vagas, horas e custo de cada hospital). O custo de cada plantão segue a unidade dele;
+  a folha de mensalistas sem plantão é calculada unidade por unidade.
+- Escalas, Setores e Faturamento continuam por hospital (montagem, setores e fechamento são de um hospital).
+- O nome mostrado no menu e no topo segue a escolha ("Todas as unidades" quando for o caso).
+- Corpo Clínico: "Setores autorizados" passa a contar pela regra nova (setores vetados), incluindo setores
+  criados depois do cadastro.
+
 ## V0.2.5 — 18/10/2026
 
 - **Uma escolha de unidade para o sistema todo:** escolher um hospital nos cartões do Painel ou no seletor do
