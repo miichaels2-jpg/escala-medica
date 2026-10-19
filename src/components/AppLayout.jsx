@@ -213,11 +213,14 @@ export default function AppLayout({ children }) {
   const managerDashboardScope = !isFieldProfessional && selectableUnits.length > 1 && (location.pathname === '/dashboard' || location.pathname === '/');
   const showUnitSelector = !managerDashboardScope && (!professionalSeesAllUnits || location.pathname.startsWith('/escalas'));
   // Telas que sabem mostrar todas as unidades juntas oferecem essa opção no seletor.
-  const screenSupportsAllUnits = !isFieldProfessional && selectableUnits.length > 1 && ['/trocas', '/historico'].includes(location.pathname);
+  const screenSupportsAllUnits = !isFieldProfessional && selectableUnits.length > 1 && ['/trocas', '/historico', '/corpo-clinico', '/relatorios'].includes(location.pathname);
   const headerUnitValue = screenSupportsAllUnits && allUnitsView ? 'todas' : selectedUnitId;
-  const currentHospitalName = managerDashboardScope
-    ? `Gestão · ${selectableUnits.length} unidades`
-    : professionalSeesAllUnits && !location.pathname.startsWith('/escalas')
+  // Nome mostrado no menu e no topo: segue a escolha global ("Todas" só nas telas que mostram tudo junto).
+  const currentHospitalName = (managerDashboardScope || screenSupportsAllUnits) && allUnitsView
+    ? `Todas as unidades (${selectableUnits.length})`
+    : managerDashboardScope
+      ? selectedHospitalName
+      : professionalSeesAllUnits && !location.pathname.startsWith('/escalas')
       ? `Todas as suas unidades (${selectableUnits.length})`
       : selectedHospitalName;
 

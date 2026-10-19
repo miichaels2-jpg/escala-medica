@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { USER_PUBLIC_COLUMNS, useAppData } from '@/lib/useAppData';
-import { authorizedSectorIdsFor, blockedSectorsFrom } from '@/lib/sectorAccess';
+import { authorizedSectorIdsFor, blockedSectorsFrom, getProfessionalUnitIds } from '@/lib/sectorAccess';
 import { SCREENS, defaultCanEditForRole, defaultScreensForRole } from '@/lib/accessControl';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
@@ -106,15 +106,32 @@ async function autoHealingSave(id, initialPayload) {
 
 export default function CorpoClinico() {
   const {
-    professionals,
+    professionals: unitProfessionals,
     sectors,
     allCompanySectors,
+    allCompanyProfessionals = [],
     units,
     selectedUnitId,
+    allUnitsView,
+    user,
     company,
     isManager,
     syncGlobalData
   } = useAppData();
+  // "Todas as unidades" (escolha global do topo) junta as unidades que o gestor administra.
+  const managedUnitIds = useMemo(() => {
+    const allowed = Array.isArray(user?.data?.allowed_unit_ids) ? user.data.allowed_unit_ids.map(String) : [];
+    return (units || []).filter(u => user?.role === 'admin' || allowed.length === 0 || allowed.includes(String(u.id))).map(u => String(u.id));
+  }, [units, user]);
+  const isAllUnits = Boolean(allUnitsView) && managedUnitIds.length > 1;
+  const scopeUnitIds = useMemo(() => (isAllUnits ? managedUnitIds : [String(selectedUnitId)]), [isAllUnits, managedUnitIds, selectedUnitId]);
+  // Profissionais da unidade escolhida ou, em "Todas", de todas as unidades administradas.
+  const professionals = useMemo(() => (isAllUnits
+    ? allCompanyProfessionals.filter(p => {
+        const ids = getProfessionalUnitIds(p);
+        return ids.length === 0 || ids.some(id => scopeUnitIds.includes(id));
+      })
+    : unitProfessionals || []), [isAllUnits, allCompanyProfessionals, scopeUnitIds, unitProfessionals]);
 
   const [activeTab, setActiveTab] = useState('ativos'); 
   const [searchQuery, setSearchQuery] = useState('');
@@ -1003,7 +1020,9 @@ export default function CorpoClinico() {
           const catId = meta.category || prof.category || 'medico';
           const catObj = allCategories.find(c => c.id === catId) || allCategories[0];
           const profStatus = prof.status || meta.status || 'ativo';
-          const authSectorsCount = (meta.authorized_sectors || (sectors || []).map(s => String(s.id))).length;
+          // Mesma regra da alocação (setores vetados), contando só os setores das unidades do profissional.
+          const profUnitIds = getProfessionalUnitIds(prof);
+          const authSectorsCount = authorizedSectorIdsFor({ data: meta }, (allCompanySectors || []).filter(s => !profUnitIds.length || profUnitIds.includes(String(s.unit_id)))).length;
           const profUnits = meta.allowed_unit_ids || prof.unit_ids || (prof.unit_id ? [String(prof.unit_id)] : []);
           const profUnitsNames = units.filter(u => profUnits.includes(String(u.id))).map(u => u.name).join(', ') || 'Nenhuma unidade vinculada';
           const displayEmail = String(prof.email || '').endsWith('@scalemedic.local') ? 'Não informado' : (prof.email || '—');
