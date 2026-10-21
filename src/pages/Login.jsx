@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { InstallAppDialog } from '@/components/InstallAppGuide';
 import { usePwaInstall } from '@/lib/pwa';
 import { APP_VERSION } from '@/lib/version';
+import { formatLockWait, passwordProblem } from '@/lib/passwordPolicy';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -144,7 +145,14 @@ export default function Login() {
         p_password: password
       });
 
-      if (rpcErr || !userRecord) throw new Error('Usuário não encontrado ou senha incorreta.');
+      if (rpcErr || !userRecord) {
+        // Após 5 senhas erradas seguidas o login fica bloqueado por 15 minutos (regra no banco).
+        const { data: lockSeconds } = await supabase.rpc('login_lock_status', { p_login: cleanInput.toLowerCase() });
+        if (Number(lockSeconds) > 0) {
+          throw new Error(`Muitas tentativas com senha errada. Por segurança, o acesso foi bloqueado por ${formatLockWait(lockSeconds)}.`);
+        }
+        throw new Error('Usuário não encontrado ou senha incorreta.');
+      }
 
       const compId = userRecord.data?.company_id || userRecord.company_id || 'cmp_principal';
       const { data: compData, error: companyError } = await supabase
@@ -189,10 +197,8 @@ export default function Login() {
   const handleChangePassword = async (e) => {
     e.preventDefault();
     setPasswordError('');
-    if (newPassword.length < 6) return setPasswordError('A nova senha deve ter no mínimo 6 caracteres.');
-    if (['123456', '12345678', 'changeme123', 'senha123'].includes(newPassword)) {
-      return setPasswordError('Escolha uma senha pessoal: senhas padrão ou de sequência não são aceitas.');
-    }
+    const problem = passwordProblem(newPassword, { username: pendingUser?.username, email: pendingUser?.email });
+    if (problem) return setPasswordError(problem);
     if (newPassword !== confirmNewPassword) return setPasswordError('As senhas não coincidem. Tente novamente.');
 
     setLoadingAction(true);
@@ -406,7 +412,7 @@ export default function Login() {
                   type="password" 
                   value={newPassword} 
                   onChange={e => setNewPassword(e.target.value)} 
-                  placeholder="Mínimo de 6 caracteres" 
+                  placeholder="8+ caracteres, com letras e números" 
                   className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl font-mono" 
                   required 
                 />

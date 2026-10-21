@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.2.7 — 21/10/2026
+
+- **Ranking de confiabilidade (Relatórios › Confiabilidade, só gestão):** por profissional no período — plantões
+  realizados, horas, vagas cobertas (vagas abertas ou repasses de colegas assumidos), repasses ao Mural, trocas
+  diretas e o índice (plantões mantidos ÷ plantões que eram dele). Destaques de maior índice, mais vagas cobertas
+  e mais repasses. Respeita período, setor e "Todas as unidades". Faltas e ponto não entram (ponto é opcional).
+- **Segurança do login:** 5 senhas erradas seguidas bloqueiam o login por 15 minutos, com aviso na tela (vale
+  também para quem não existe, para não revelar quais logins são válidos). Nova senha precisa ter 8+ caracteres,
+  letras e números, e não pode conter o usuário/e-mail nem ser uma senha comum.
+- **Banco:** migração `20261021120000_login_lockout.sql` (aplicada) — tabela `login_attempts` (sem acesso pelo
+  app), `auth_fallback_login` com bloqueio e `login_lock_status`.
+
 ## V0.2.6 — 18/10/2026
 
 - **"Todas as unidades" também no Corpo Clínico e nos Relatórios** (opção no seletor do topo). No Corpo

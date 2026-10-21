@@ -28,7 +28,7 @@ export const ROADMAP_GROUPS = [
   {
     title: 'Inteligência e controle',
     items: [
-      { id: 9, title: 'Ranking de confiabilidade (só gestor)', detail: 'Quem mais cobre vagas, falta ou troca.', status: 'ideia' },
+      { id: 9, title: 'Ranking de confiabilidade (só gestor)', detail: 'Quem mais cobre vagas, falta ou troca.', status: 'entregue', version: 'V0.2.7' },
       { id: 10, title: 'Limite de carga horária', detail: 'Aviso ao passar de X horas na semana ou emendar plantões sem descanso.', status: 'entregue', version: 'V0.2.2' },
       { id: 11, title: 'Histórico de alterações', detail: 'Quem alocou, trocou, apagou ou publicou, e quando.', status: 'entregue', version: 'V0.2.1' },
       { id: 12, title: 'Relatório mensal automático por e-mail', detail: 'BI do mês anterior para a diretoria todo dia 1º.', status: 'ideia' },
@@ -39,7 +39,7 @@ export const ROADMAP_GROUPS = [
     title: 'Infraestrutura',
     items: [
       { id: 13, title: 'Ambiente de homologação', detail: 'Banco e site de teste separados da produção.', status: 'planejado' },
-      { id: 14, title: 'Segurança do login', detail: 'Trocar a senha-mestre do admin, recuperar senha por e-mail, confirmação em dois passos para gestores.', status: 'ideia' },
+      { id: 14, title: 'Segurança do login', detail: 'Feito: bloqueio após 5 senhas erradas e senha forte. Falta: trocar a senha-mestre do admin, recuperar senha por e-mail e confirmação em dois passos.', status: 'em_andamento', version: 'V0.2.7' },
       { id: 15, title: 'Notificação push real', detail: 'Aviso no celular mesmo com o app fechado.', status: 'ideia' }
     ]
   }
