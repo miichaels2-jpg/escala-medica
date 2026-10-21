@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.2.8 — 21/10/2026
+
+- **Notificação push real:** toda notificação do sino (escala publicada, plantão alocado, vaga urgente,
+  lembrete, trocas) também chega no celular **mesmo com o app fechado**, nos aparelhos em que a pessoa ativou os
+  avisos (sino › "Ativar"). Tocar no aviso abre o app na tela certa. No iPhone, funciona com o app instalado na
+  tela de início (iOS 16.4+); no Android e no computador, direto pelo navegador.
+- Aparelho que desativa os avisos sai sozinho da lista; ao trocar de usuário no mesmo aparelho, os avisos passam
+  a ser do novo usuário.
+- **Supabase:** Edge Function `send-push` (chaves VAPID nos segredos da função) e migração
+  `20261021150000_web_push.sql` (aplicada) — `push_subscriptions` e `app_private_config` sem acesso pelo app,
+  funções `save_push_subscription`/`remove_push_subscription` e gatilho em `notifications` via `pg_net`.
+
 ## V0.2.7 — 21/10/2026
 
 - **Ranking de confiabilidade (Relatórios › Confiabilidade, só gestão):** por profissional no período — plantões

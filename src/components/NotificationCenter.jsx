@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck, CheckCircle2, ChevronRight, Flame, Megaphone, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import PushToggle from '@/components/PushToggle';
 import { fetchMyNotifications, markNotificationsRead } from '@/lib/notifications';
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { getProfessionalUnitIds, isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
@@ -160,6 +161,8 @@ export function NotificationPanel({ center, isManager, onClose }) {
           </button>
         )}
       </div>
+
+      <PushToggle />
 
       <div className="max-h-[60vh] sm:max-h-80 overflow-y-auto space-y-3 pr-1">
         {isEmpty && (
