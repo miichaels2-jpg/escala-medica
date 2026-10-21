@@ -9,6 +9,19 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.2.9 — 21/10/2026
+
+- **Alertas pelo servidor:** vaga urgente (menos de 24 h) e lembretes de plantão (12 h e 1 h antes, só escala
+  publicada) agora são conferidos pelo próprio Supabase a cada 5 minutos (pg_cron), **mesmo com todo mundo
+  deslogado**, e chegam no celular por push. Mesmas regras do app (unidade, setor, especialidade, férias, choque de
+  horário) e o mesmo aviso nunca é enviado duas vezes.
+- **Segurança do login:** removidos o login de emergência embutido no app ("admin" com 123456/admin) e a senha
+  "123456" que valia para qualquer administrador no banco. A conta **admin** é um usuário normal, com senha própria
+  guardada só como hash. Senhas provisórias de novos cadastros e convites passam a ser aleatórias (antes eram
+  "123456" e "changeme123") e aparecem para o gestor ao salvar.
+- **Banco:** migrações `20261021180000_server_shift_alerts.sql` e `20261021190000_remove_admin_master_password.sql`
+  (aplicadas).
+
 ## V0.2.8 — 21/10/2026
 
 - **Notificação push real:** toda notificação do sino (escala publicada, plantão alocado, vaga urgente,

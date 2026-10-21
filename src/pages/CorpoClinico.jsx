@@ -2,6 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import { USER_PUBLIC_COLUMNS, useAppData } from '@/lib/useAppData';
 import { authorizedSectorIdsFor, blockedSectorsFrom, getProfessionalUnitIds } from '@/lib/sectorAccess';
 import { SCREENS, defaultCanEditForRole, defaultScreensForRole } from '@/lib/accessControl';
+import { generateProvisionalPassword } from '@/lib/passwordPolicy';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -103,6 +104,7 @@ async function autoHealingSave(id, initialPayload) {
     throw err;
   }
 }
+
 
 export default function CorpoClinico() {
   const {
@@ -881,6 +883,7 @@ export default function CorpoClinico() {
       };
 
       let userSyncWarning = '';
+      let provisionalNotice = '';
       try {
         const { data: existingUsers, error: lookupError } = await supabase.from('users').select(USER_PUBLIC_COLUMNS).eq('email', finalEmail);
         if (lookupError) throw lookupError;
@@ -904,8 +907,10 @@ export default function CorpoClinico() {
           if (updateError) throw updateError;
           linkedUserId = existingUsers[0].id;
         } else {
-          // Senha provisória (informada ou padrão): o profissional troca no 1º acesso.
-          const finalPass = formData.password || '123456';
+          // Senha provisória: a informada pelo gestor ou uma aleatória (mostrada ao salvar).
+          // O profissional troca no 1º acesso.
+          const finalPass = formData.password || generateProvisionalPassword();
+          if (!formData.password) provisionalNotice = `\n\nSenha provisória de ${cleanUsername}: ${finalPass}\nPasse ao profissional; ele vai trocar no primeiro acesso.`;
           const { data: createdUser, error: insertError } = await supabase.from('users').insert([{
             email: finalEmail, username: cleanUsername, password: finalPass,
             full_name: formData.name,
@@ -922,7 +927,7 @@ export default function CorpoClinico() {
         userSyncWarning = `\n\nAtenção: o acesso ao sistema (login) não foi atualizado: ${uErr?.message || 'erro desconhecido'}.`;
       }
 
-      setModalOpen(false); resetForm(); await syncGlobalData(); alert(`Profissional salvo com sucesso!${userSyncWarning}`);
+      setModalOpen(false); resetForm(); await syncGlobalData(); alert(`Profissional salvo com sucesso!${userSyncWarning}${provisionalNotice}`);
     } catch (err) { alert('Erro ao salvar: ' + err.message); } finally { setSubmitting(false); }
   };
 

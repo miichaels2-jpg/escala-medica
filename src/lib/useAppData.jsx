@@ -578,7 +578,7 @@ export function useAppData() {
 
   const user = globalState.user;
   const userAppRole = user?.data?.app_role || (user?.role === 'admin' ? 'gestor' : 'assistencial');
-  const isAdmin = user?.role === 'admin' || userAppRole === 'gestor' || user?.email === 'admin@admin.com';
+  const isAdmin = user?.role === 'admin' || userAppRole === 'gestor';
   // "Pode criar e alterar" (Corpo Clínico) dá os poderes de edição sem a pessoa ser gestor.
   const isCoordinator = isAdmin || userAppRole === 'coordenador' || user?.data?.can_edit === true;
   const isBilling = isAdmin || userAppRole === 'faturamento';
