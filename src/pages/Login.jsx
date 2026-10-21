@@ -127,18 +127,8 @@ export default function Login() {
         window.localStorage.removeItem('scale_remember_login');
       }
 
-      if ((cleanInput.toLowerCase() === 'admin' || cleanInput.toLowerCase() === 'admin@admin.com') && (password === '123456' || password === 'admin')) {
-        const adminUser = {
-          id: 'admin_master',
-          email: 'admin@admin.com',
-          full_name: 'Administrador Master',
-          role: 'admin',
-          data: { app_role: 'gestor', company_id: 'cmp_principal', selected_unit_id: 'unit_h1', lgpd_accepted: true }
-        };
-        clearTimeout(timeoutId);
-        await proceedWithLogin(adminUser, 'unit_h1');
-        return;
-      }
+      // O login de emergência embutido no app foi removido (V0.2.9): a conta "admin" é um
+      // usuário real do banco, com senha própria guardada só como hash.
 
       const { data: userRecord, error: rpcErr } = await supabase.rpc('auth_fallback_login', {
         p_login: cleanInput.toLowerCase(),

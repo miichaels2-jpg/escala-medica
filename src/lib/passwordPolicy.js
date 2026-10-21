@@ -21,3 +21,11 @@ export function formatLockWait(seconds) {
   const minutes = Math.max(1, Math.ceil(Number(seconds || 0) / 60));
   return `${minutes} minuto${minutes > 1 ? 's' : ''}`;
 }
+
+// Senha provisória aleatória e legível (sem 0/O, 1/l), com letras e números.
+// O profissional troca no primeiro acesso.
+export function generateProvisionalPassword() {
+  const letters = 'abcdefghjkmnpqrstuvwxyz';
+  const pick = (chars, n) => Array.from(globalThis.crypto.getRandomValues(new Uint32Array(n)), v => chars[v % chars.length]).join('');
+  return 'Sm' + pick(letters, 4) + pick('23456789', 4);
+}

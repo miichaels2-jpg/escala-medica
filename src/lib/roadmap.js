@@ -11,7 +11,7 @@ export const ROADMAP_GROUPS = [
     title: 'Para o gestor',
     items: [
       { id: 1, title: 'Visão "Todas as unidades" no Painel e no Mural', detail: 'Vagas, furos e plantões de todos os hospitais numa tela; clicar numa unidade entra nela.', status: 'entregue', version: 'V0.1.10' },
-      { id: 2, title: 'Alerta de furo iminente', detail: 'Vaga sem ninguém a menos de 24 h: destaque "Urgente" e aviso para os profissionais compatíveis e livres.', status: 'entregue', version: 'V0.1.10' },
+      { id: 2, title: 'Alerta de furo iminente', detail: 'Vaga sem ninguém a menos de 24 h: destaque "Urgente" e aviso para os profissionais compatíveis e livres. Desde a V0.2.9 o servidor confere a cada 5 min, mesmo sem ninguém logado.', status: 'entregue', version: 'V0.1.10' },
       { id: 3, title: 'Escala do mês seguinte com 1 clique', detail: 'Sugere a mesma distribuição do mês anterior, descontando férias e choques, para revisar e publicar.', status: 'entregue', version: 'V0.2.2' },
       { id: 4, title: 'Indisponibilidade e férias', detail: 'O profissional marca os dias em que não pode; a alocação e o gerador deixam de sugeri-lo.', status: 'entregue', version: 'V0.1.10' }
     ]
@@ -39,7 +39,7 @@ export const ROADMAP_GROUPS = [
     title: 'Infraestrutura',
     items: [
       { id: 13, title: 'Ambiente de homologação', detail: 'Banco e site de teste separados da produção.', status: 'planejado' },
-      { id: 14, title: 'Segurança do login', detail: 'Feito: bloqueio após 5 senhas erradas e senha forte. Falta: trocar a senha-mestre do admin, recuperar senha por e-mail e confirmação em dois passos.', status: 'em_andamento', version: 'V0.2.7' },
+      { id: 14, title: 'Segurança do login', detail: 'Feito: bloqueio após 5 senhas erradas, senha forte, senha-mestre e login de emergência removidos, senhas provisórias aleatórias. Falta: recuperar senha por e-mail (aguarda domínio) e confirmação em dois passos.', status: 'em_andamento', version: 'V0.2.9' },
       { id: 15, title: 'Notificação push real', detail: 'Aviso no celular mesmo com o app fechado.', status: 'entregue', version: 'V0.2.8' }
     ]
   }

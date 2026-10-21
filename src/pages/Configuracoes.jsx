@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import WorkloadRulesCard from '@/components/WorkloadRulesCard';
+import { generateProvisionalPassword } from '@/lib/passwordPolicy';
 import { 
   Building2, Save, UserPlus, Trash2, 
   Settings, Hospital, ShieldCheck, FileText,
@@ -374,10 +375,12 @@ export default function Configuracoes() {
     if (!inviteEmail.trim()) return;
     setSaving(true);
     try {
+      // Senha provisória aleatória (antes era a mesma para todos os convites).
+      const provisionalPassword = generateProvisionalPassword();
       const payload = {
         email: inviteEmail,
         username: inviteEmail.split('@')[0],
-        password: 'changeme123',
+        password: provisionalPassword,
         full_name: 'Usuário Convidado',
         role: inviteRole === 'admin' ? 'admin' : 'user',
         data: { 
@@ -399,7 +402,7 @@ export default function Configuracoes() {
       loadUsers();
       alert(alreadyExisted
         ? `O e-mail ${inviteEmail} já possui acesso cadastrado. Nada foi alterado.`
-        : `Acesso liberado! ${inviteEmail} já pode entrar na unidade ${currentUnit?.name || 'Hospital Atual'} com a senha provisória changeme123 (o sistema pede a troca no primeiro acesso).`);
+        : `Acesso liberado! ${inviteEmail} já pode entrar na unidade ${currentUnit?.name || 'Hospital Atual'} com a senha provisória ${provisionalPassword} (o sistema pede a troca no primeiro acesso). Anote e passe para a pessoa.`);
     } catch (err) { alert(err.message || 'Erro ao liberar acesso'); } 
     finally { setSaving(false); }
   };
