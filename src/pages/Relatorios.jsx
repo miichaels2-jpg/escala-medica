@@ -4,6 +4,7 @@ import { DEFAULT_REMUNERATION_TYPE, getMonthlySalaryForUnit, getProfessionalFina
 import { calculateProductivityPoolAllocations, isProductivityDayComplete } from '@/lib/productivityCalculations';
 import { isShiftVacant } from '@/lib/shiftLiveStatus';
 import { getProfessionalUnitIds } from '@/lib/sectorAccess';
+import { computeReliability } from '@/lib/reliability';
 import ManagementBI from '@/components/reports/ManagementBI';
 import { escapeHtml, getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
 import { Card } from '@/components/ui/card';
@@ -15,7 +16,7 @@ import {
   BarChart3, Users, DollarSign, Building2,
   CalendarDays, Activity, Printer as PrinterIcon,
   AlertTriangle, Stethoscope, FileSpreadsheet,
-  Filter, Check, Contact2, Gift, ArrowLeftRight, RotateCcw, Presentation
+  Filter, Check, Contact2, Gift, ArrowLeftRight, RotateCcw, Presentation, ShieldCheck
 } from 'lucide-react';
 
 function safeNumber(value, fallback = 0) {
@@ -220,6 +221,7 @@ const REPORT_TITLES = {
   base_profissionais: 'Corpo clínico',
   aniversariantes: 'Aniversariantes',
   profissionais: 'Produtividade profissional',
+  confiabilidade: 'Ranking de confiabilidade',
   produtividade_diaria: 'Apuração diária de produtividade',
   produtividade_profissional: 'Extrato de produtividade por profissional',
   financeiro: 'Análise financeira'
@@ -234,6 +236,7 @@ const REPORT_NAVIGATION = [
   { id: 'base_profissionais', label: 'Corpo clínico', description: 'Cadastro e situação', icon: Contact2 },
   { id: 'aniversariantes', label: 'Aniversariantes', description: 'Datas comemorativas', icon: Gift },
   { id: 'profissionais', label: 'Produtividade', description: 'Atuação profissional', icon: Users },
+  { id: 'confiabilidade', label: 'Confiabilidade', description: 'Cumprimento, coberturas e repasses', icon: ShieldCheck, managerOnly: true },
   { id: 'produtividade_diaria', label: 'Apuração diária', description: 'Atendimentos e rateio', icon: Activity },
   { id: 'produtividade_profissional', label: 'Extrato individual', description: 'Atendimentos e saldo', icon: Stethoscope },
   { id: 'financeiro', label: 'Financeiro', description: 'Custos e orçamento', icon: DollarSign }
@@ -243,8 +246,10 @@ export default function Relatorios() {
   const {
     shifts: unitShifts = [], sectors: unitSectors = [], professionals: unitProfessionals = [],
     allCompanyShifts = [], allCompanySectors = [], allCompanyProfessionals = [],
-    allUnitsView, user, company, units = [], selectedUnitId
+    allUnitsView, user, company, units = [], selectedUnitId, isManager, allCompanySwaps = []
   } = useAppData();
+  // Algumas abas (ex.: Confiabilidade) são só da gestão.
+  const reportNavigation = REPORT_NAVIGATION.filter(report => !report.managerOnly || isManager);
   // "Todas as unidades" (escolha global do topo) junta as unidades que o gestor administra.
   const managedUnitIds = useMemo(() => {
     const allowed = Array.isArray(user?.data?.allowed_unit_ids) ? user.data.allowed_unit_ids.map(String) : [];
@@ -708,6 +713,10 @@ export default function Relatorios() {
   }, [filteredShifts, getProf, productivityReport, appliedFilters, hasSearched, professionals, scopeUnitIds, isAllUnits]);
 
   const shiftCost = useCallback(shift => costModel.byShift.get(String(shift.id)) || 0, [costModel]);
+
+  const reliabilityRows = useMemo(() => (isManager && hasSearched
+    ? computeReliability({ shifts: filteredShifts, professionals, swaps: allCompanySwaps, start: appliedFilters.start, end: appliedFilters.end })
+    : []), [isManager, hasSearched, filteredShifts, professionals, allCompanySwaps, appliedFilters]);
 
   const financialSummary = useMemo(() => {
     let totalCost = 0, executedCost = 0, pendingCost = 0, vacantCost = 0, totalHours = 0;
@@ -1844,7 +1853,7 @@ export default function Relatorios() {
             <h2 className="mt-1 text-sm font-black text-slate-900 dark:text-white">Escolha um relatório</h2>
           </div>
           <nav aria-label="Relatórios disponíveis" className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
-            {REPORT_NAVIGATION.map(({ id, label, description, icon: Icon }) => {
+            {reportNavigation.map(({ id, label, description, icon: Icon }) => {
               const isActive = activeTab === id;
               return (
                 <button
@@ -1876,7 +1885,7 @@ export default function Relatorios() {
             })}
           </nav>
           <p className="hidden border-t border-slate-100 px-3 pt-3 text-[10px] text-slate-400 dark:border-slate-800 lg:block">
-            Um relatório por vez · {REPORT_NAVIGATION.findIndex(report => report.id === activeTab) + 1} de {REPORT_NAVIGATION.length}
+            Um relatório por vez · {reportNavigation.findIndex(report => report.id === activeTab) + 1} de {reportNavigation.length}
           </p>
         </aside>
 
@@ -1976,6 +1985,7 @@ export default function Relatorios() {
                 activeTab === 'base_profissionais' ? `${filteredProfessionals.length} profissionais` :
                 activeTab === 'aniversariantes' ? `${birthDaysList.length} aniversariantes` :
                 activeTab === 'profissionais' ? `${professionalMetrics.length} profissionais` :
+                activeTab === 'confiabilidade' ? `${reliabilityRows.length} profissionais` :
                 activeTab === 'produtividade_diaria' ? `${productivityReport.totals.pendingDays} dia(s) pendente(s) · ${formatCurrency(productivityReport.totals.pool)} rateados` :
                 activeTab === 'financeiro' ? `${formatCurrency(financialSummary.totalCost)} em custos previstos` :
                 `${totalShiftsCount} plantões analisados`}
@@ -2643,6 +2653,71 @@ export default function Relatorios() {
             )}
 
             {/* ABA FINANCEIRO */}
+            {activeTab === 'confiabilidade' && isManager && (() => {
+              const best = reliabilityRows.filter(r => r.index !== null).slice(0, 1)[0];
+              const topCover = [...reliabilityRows].sort((a, b) => b.covered - a.covered)[0];
+              const topRelease = [...reliabilityRows].sort((a, b) => b.released - a.released)[0];
+              const tone = index => index === null ? 'text-slate-400' : index >= 95 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : index >= 85 ? 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300';
+              return (
+                <div className="space-y-4">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    <b>Índice</b> = plantões que a pessoa manteve ÷ plantões que eram dela (mantidos + repassados ao Mural). <b>Vagas cobertas</b> = vagas abertas ou repasses de colegas que ela assumiu. Faltas e ponto não entram (o ponto é opcional). Visível só para a gestão.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {[
+                      { label: 'Maior índice', row: best, value: best ? `${best.index}%` : '—' },
+                      { label: 'Mais vagas cobertas', row: topCover?.covered ? topCover : null, value: topCover?.covered ? `${topCover.covered} vaga(s)` : '—' },
+                      { label: 'Mais repasses', row: topRelease?.released ? topRelease : null, value: topRelease?.released ? `${topRelease.released} repasse(s)` : '—' }
+                    ].map(card => (
+                      <Card key={card.label} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">{card.label}</span>
+                        <span className="mt-1 block text-lg font-semibold text-slate-900 dark:text-white truncate">{card.row ? card.row.name : 'Ninguém no período'}</span>
+                        <span className="text-sm text-slate-600 dark:text-slate-300">{card.value}</span>
+                      </Card>
+                    ))}
+                  </div>
+                  <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                    <table className="w-full min-w-[720px] text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
+                          <th className="px-4 py-2.5 font-medium">#</th>
+                          <th className="px-4 py-2.5 font-medium">Profissional</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Realizados</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Horas</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Vagas cobertas</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Repasses</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Trocas diretas</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Índice</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {reliabilityRows.length === 0 && (
+                          <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500">Nenhum plantão de profissional no período.</td></tr>
+                        )}
+                        {reliabilityRows.map((row, index) => (
+                          <tr key={row.id}>
+                            <td className="px-4 py-2.5 text-slate-400">{index + 1}</td>
+                            <td className="px-4 py-2.5">
+                              <span className="block font-medium text-slate-900 dark:text-white">{row.name}</span>
+                              {row.specialty && <span className="block text-xs text-slate-500">{row.specialty}</span>}
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-mono">{row.done}<span className="text-slate-400"> / {row.scheduled}</span></td>
+                            <td className="px-4 py-2.5 text-right font-mono">{row.hours}</td>
+                            <td className="px-4 py-2.5 text-right font-mono">{row.covered}</td>
+                            <td className="px-4 py-2.5 text-right font-mono">{row.released}</td>
+                            <td className="px-4 py-2.5 text-right font-mono">{row.directSwaps}</td>
+                            <td className="px-4 py-2.5 text-right">
+                              <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${tone(row.index)}`}>{row.index === null ? '—' : `${row.index}%`}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+
             {activeTab === 'financeiro' && (
               <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
