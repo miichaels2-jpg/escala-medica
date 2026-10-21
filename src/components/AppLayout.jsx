@@ -14,6 +14,7 @@ import { NotificationPanel, useNotificationCenter } from '@/components/Notificat
 import { usePwaInstall } from '@/lib/pwa';
 import { APP_VERSION } from '@/lib/version';
 import { useUrgentVacancyAlerts } from '@/lib/useUrgentVacancyAlerts';
+import { refreshPushOwner } from '@/lib/push';
 import { SWITCH_UNIT_EVENT } from '@/components/UnitsOverview';
 import { canAccessRoute } from '@/lib/accessControl';
 import { Button } from '@/components/ui/button';
@@ -149,6 +150,12 @@ export default function AppLayout({ children }) {
     window.addEventListener(SWITCH_UNIT_EVENT, onSwitch);
     return () => window.removeEventListener(SWITCH_UNIT_EVENT, onSwitch);
   });
+
+  // Aparelho com avisos ativados passa a ser do usuário que está logado agora.
+  useEffect(() => {
+    if (!user?.id || user.id === 'usr_guest') return;
+    refreshPushOwner({ userId: user.id, professionalId: currentProfessional?.id && currentProfessional.id !== 'temp_user_id' ? currentProfessional.id : '' });
+  }, [user?.id, currentProfessional?.id]);
 
   const notificationCenter = useNotificationCenter({ user, currentProfessional, shifts, companyShifts: allCompanyShifts, selectedUnitId, isManager });
   const muralBadge = notificationCenter.unreadVacancies.length;

@@ -4,7 +4,7 @@
 //
 // status: 'entregue' | 'em_andamento' | 'planejado' | 'ideia'
 
-export const ROADMAP_UPDATED_AT = '2026-10-18';
+export const ROADMAP_UPDATED_AT = '2026-10-21';
 
 export const ROADMAP_GROUPS = [
   {
@@ -40,7 +40,7 @@ export const ROADMAP_GROUPS = [
     items: [
       { id: 13, title: 'Ambiente de homologação', detail: 'Banco e site de teste separados da produção.', status: 'planejado' },
       { id: 14, title: 'Segurança do login', detail: 'Feito: bloqueio após 5 senhas erradas e senha forte. Falta: trocar a senha-mestre do admin, recuperar senha por e-mail e confirmação em dois passos.', status: 'em_andamento', version: 'V0.2.7' },
-      { id: 15, title: 'Notificação push real', detail: 'Aviso no celular mesmo com o app fechado.', status: 'ideia' }
+      { id: 15, title: 'Notificação push real', detail: 'Aviso no celular mesmo com o app fechado.', status: 'entregue', version: 'V0.2.8' }
     ]
   }
 ];
