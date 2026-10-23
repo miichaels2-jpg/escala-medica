@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { refreshStoredUser } from '@/lib/storedUser';
+import { appUserIdFromSession } from '@/lib/authSession';
 import { inferUnassignedShiftUnitId, resolveUnitId } from '@/lib/unitAssignment';
 import {
   PAYMENTS_STORAGE_KEY, PUBLISHED_STORAGE_PREFIX, paymentKey, publishedKey, readLegacySharedState, sanitizeRanges
@@ -303,13 +304,16 @@ async function loadAllData() {
     if (sessionError) throw sessionError;
     const session = sessionData?.session;
 
-    if (session?.user) {
-      const { data: profile, error: profileError } = await supabase.from('users').select(USER_PUBLIC_COLUMNS).eq('id', session.user.id).single();
+    // Sessão oficial → cadastro pelo app_user_id gravado na conta (o id da conta é outro).
+    const sessionAppUserId = appUserIdFromSession(session);
+    const localSessionActive = (() => { try { return window.localStorage.getItem('escala_medica_session') === 'active'; } catch { return false; } })();
+    if (sessionAppUserId && localSessionActive) {
+      const { data: profile, error: profileError } = await supabase.from('users').select(USER_PUBLIC_COLUMNS).eq('id', sessionAppUserId).single();
       if (profileError && profileError.code !== 'PGRST116') {
         dataWarnings.push(`Perfil do usuário não carregou: ${profileError.message}`);
         console.error('[Supabase] Falha ao carregar perfil do usuário:', profileError);
       }
-      currentUser = { ...session.user, ...(profile || {}) };
+      currentUser = profile || null;
     }
 
     if (!currentUser) {
