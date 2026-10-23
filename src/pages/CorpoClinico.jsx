@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import { USER_PUBLIC_COLUMNS, useAppData } from '@/lib/useAppData';
 import { authorizedSectorIdsFor, blockedSectorsFrom, getProfessionalUnitIds } from '@/lib/sectorAccess';
 import { SCREENS, defaultCanEditForRole, defaultScreensForRole } from '@/lib/accessControl';
-import { generateProvisionalPassword } from '@/lib/passwordPolicy';
+import { birthDatePassword, generateProvisionalPassword } from '@/lib/passwordPolicy';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -398,10 +398,7 @@ export default function CorpoClinico() {
       alert('⚠️ Preencha o Nome e a Data de Nascimento para gerar a senha padrão!');
       return;
     }
-    const [y, m, d] = formData.birth_date.split('-');
-    const firstLetter = formData.name.charAt(0).toLowerCase();
-    const defaultPass = `${d}${m}${y}${firstLetter}`;
-    setFormData(p => ({ ...p, password: defaultPass }));
+    setFormData(p => ({ ...p, password: birthDatePassword(formData.name, formData.birth_date) }));
   };
 
   const handleSendWhatsApp = () => {
@@ -907,10 +904,13 @@ export default function CorpoClinico() {
           if (updateError) throw updateError;
           linkedUserId = existingUsers[0].id;
         } else {
-          // Senha provisória: a informada pelo gestor ou uma aleatória (mostrada ao salvar).
-          // O profissional troca no 1º acesso.
-          const finalPass = formData.password || generateProvisionalPassword();
-          if (!formData.password) provisionalNotice = `\n\nSenha provisória de ${cleanUsername}: ${finalPass}\nPasse ao profissional; ele vai trocar no primeiro acesso.`;
+          // Senha do primeiro acesso: a informada pelo gestor ou a padrão (nascimento DDMMAAAA +
+          // inicial do nome). Sem data de nascimento, uma aleatória. O profissional troca no 1º acesso.
+          const finalPass = formData.password || birthDatePassword(formData.name, formData.birth_date) || generateProvisionalPassword();
+          if (!formData.password) {
+            const isBirthDefault = birthDatePassword(formData.name, formData.birth_date) === finalPass;
+            provisionalNotice = `\n\nSenha do primeiro acesso de ${cleanUsername}: ${finalPass}${isBirthDefault ? ' (padrão: data de nascimento + inicial do nome)' : ''}\nO sistema obriga a troca no primeiro acesso.`;
+          }
           const { data: createdUser, error: insertError } = await supabase.from('users').insert([{
             email: finalEmail, username: cleanUsername, password: finalPass,
             full_name: formData.name,
