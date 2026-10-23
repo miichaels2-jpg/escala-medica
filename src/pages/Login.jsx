@@ -4,6 +4,7 @@ import { InstallAppDialog } from '@/components/InstallAppGuide';
 import { usePwaInstall } from '@/lib/pwa';
 import { APP_VERSION } from '@/lib/version';
 import { formatLockWait, passwordProblem } from '@/lib/passwordPolicy';
+import { openOfficialSession } from '@/lib/authSession';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -143,6 +144,9 @@ export default function Login() {
         }
         throw new Error('Usuário não encontrado ou senha incorreta.');
       }
+
+      // Login oficial do Supabase (fase 1): abre a sessão que, na fase 2, o banco vai exigir.
+      await openOfficialSession(userRecord.email, password);
 
       const compId = userRecord.data?.company_id || userRecord.company_id || 'cmp_principal';
       const { data: compData, error: companyError } = await supabase

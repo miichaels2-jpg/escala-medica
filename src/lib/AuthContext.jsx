@@ -32,13 +32,17 @@ export const AuthProvider = ({ children }) => {
     checkAppState();
   }, []);
 
+  // Sessão oficial → cadastro do ScaleMedic pelo app_user_id (sem vínculo, segue o login local).
   const fetchUserProfile = async (authUser) => {
-    if (!authUser) return null;
+    const appUserId = authUser?.app_metadata?.app_user_id;
+    if (!appUserId) return null;
     try {
-      const { data: profile } = await supabase.from('users').select(USER_PUBLIC_COLUMNS).eq('id', authUser.id).single();
-      return { ...authUser, ...(profile || {}) };
+      const { data: profile } = await supabase.from('users').select(USER_PUBLIC_COLUMNS).eq('id', appUserId).single();
+      if (!profile) return null;
+      const isSessionActive = window.localStorage.getItem('escala_medica_session') === 'active';
+      return isSessionActive ? profile : null;
     } catch {
-      return authUser;
+      return null;
     }
   };
 

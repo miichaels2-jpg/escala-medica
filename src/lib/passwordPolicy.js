@@ -29,3 +29,14 @@ export function generateProvisionalPassword() {
   const pick = (chars, n) => Array.from(globalThis.crypto.getRandomValues(new Uint32Array(n)), v => chars[v % chars.length]).join('');
   return 'Sm' + pick(letters, 4) + pick('23456789', 4);
 }
+
+// Senha padrão do primeiro acesso no Corpo Clínico: data de nascimento completa
+// (DDMMAAAA) + inicial do nome em minúscula. Ex.: Yasmin, 12/03/1995 → 12031995y.
+// Retorna '' se faltar nome ou data. O sistema obriga a troca no primeiro acesso.
+export function birthDatePassword(name, birthDate) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(birthDate || ''));
+  const initial = String(name || '').trim().charAt(0).toLowerCase();
+  if (!match || !initial) return '';
+  const [, y, m, d] = match;
+  return `${d}${m}${y}${initial}`;
+}

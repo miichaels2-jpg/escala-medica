@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.2.10 — 23/10/2026
+
+- **Login oficial do Supabase (fase 1):** cada usuário ganhou uma conta no sistema de login do próprio Supabase,
+  com **a mesma senha de hoje** (ninguém precisa trocar nada). Ao entrar, o app abre também essa sessão oficial,
+  que é o que vai permitir **trancar o banco** na próxima etapa (cada empresa só enxerga os próprios dados).
+  Trocas de senha, e-mail, perfil e desativação de conta são copiadas para a conta oficial automaticamente.
+- **Senha padrão do primeiro acesso:** todo novo cadastro no Corpo Clínico sem senha digitada recebe
+  **data de nascimento completa + inicial do nome** (ex.: 12031995y), igual ao botão "Gerar senha padrão";
+  o sistema obriga a troca no primeiro acesso.
+- **Menu lateral:** o administrador aparece como "Gestor Geral" (antes aparecia "Profissional").
+- **Banco:** migração `20261023120000_auth_accounts.sql` (aplicada).
+
 ## V0.2.9 — 21/10/2026
 
 - **Alertas pelo servidor:** vaga urgente (menos de 24 h) e lembretes de plantão (12 h e 1 h antes, só escala
