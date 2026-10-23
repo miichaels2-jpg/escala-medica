@@ -197,6 +197,7 @@ export default function AppLayout({ children }) {
 
   const roleBadgeLabel = {
     gestor: 'Gestor Geral',
+    manager: 'Gestor Geral',
     coordenador: 'Coordenador',
     faturamento: 'Faturamento',
     assistencial: 'Plantonista',

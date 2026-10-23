@@ -39,7 +39,7 @@ export const ROADMAP_GROUPS = [
     title: 'Infraestrutura',
     items: [
       { id: 13, title: 'Ambiente de homologação', detail: 'Banco e site de teste separados da produção.', status: 'planejado' },
-      { id: 14, title: 'Segurança do login', detail: 'Feito: bloqueio após 5 senhas erradas, senha forte, senha-mestre e login de emergência removidos, senhas provisórias aleatórias. Falta: recuperar senha por e-mail (aguarda domínio) e confirmação em dois passos.', status: 'em_andamento', version: 'V0.2.9' },
+      { id: 14, title: 'Segurança do login', detail: 'Feito: bloqueio após 5 senhas erradas, senha forte, senha-mestre e login de emergência removidos, senhas provisórias aleatórias (V0.2.9); login oficial do Supabase para todos os usuários (V0.2.10). Falta: trancar o banco por empresa, confirmação em dois passos e recuperar senha por e-mail (aguarda domínio).', status: 'em_andamento', version: 'V0.2.10' },
       { id: 15, title: 'Notificação push real', detail: 'Aviso no celular mesmo com o app fechado.', status: 'entregue', version: 'V0.2.8' }
     ]
   }
