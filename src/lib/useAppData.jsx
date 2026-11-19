@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { refreshStoredUser } from '@/lib/storedUser';
-import { appUserIdFromSession } from '@/lib/authSession';
+import { resolveSignedInUser } from '@/lib/authSession';
 import { inferUnassignedShiftUnitId, resolveUnitId } from '@/lib/unitAssignment';
 import {
   PAYMENTS_STORAGE_KEY, PUBLISHED_STORAGE_PREFIX, paymentKey, publishedKey, readLegacySharedState, sanitizeRanges
@@ -299,32 +298,8 @@ async function loadAllData() {
   const dataWarnings = [];
 
   try {
-    let currentUser = null;
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
-    const session = sessionData?.session;
-
-    // Sessão oficial → cadastro pelo app_user_id gravado na conta (o id da conta é outro).
-    const sessionAppUserId = appUserIdFromSession(session);
-    const localSessionActive = (() => { try { return window.localStorage.getItem('escala_medica_session') === 'active'; } catch { return false; } })();
-    if (sessionAppUserId && localSessionActive) {
-      const { data: profile, error: profileError } = await supabase.from('users').select(USER_PUBLIC_COLUMNS).eq('id', sessionAppUserId).single();
-      if (profileError && profileError.code !== 'PGRST116') {
-        dataWarnings.push(`Perfil do usuário não carregou: ${profileError.message}`);
-        console.error('[Supabase] Falha ao carregar perfil do usuário:', profileError);
-      }
-      currentUser = profile || null;
-    }
-
-    if (!currentUser) {
-      try {
-        const localUserStr = window.localStorage.getItem('scale_logged_user');
-        const isSessionActive = window.localStorage.getItem('escala_medica_session') === 'active';
-        if (localUserStr && isSessionActive) {
-          currentUser = await refreshStoredUser(JSON.parse(localUserStr), USER_PUBLIC_COLUMNS);
-        }
-      } catch {}
-    }
+    // Sessão oficial obrigatória: sem ela o banco não devolve dados (V0.3.1).
+    let currentUser = await resolveSignedInUser(USER_PUBLIC_COLUMNS);
 
     if (!currentUser) {
       currentUser = {

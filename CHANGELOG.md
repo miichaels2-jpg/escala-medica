@@ -9,6 +9,24 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.3.1 — 19/11/2026
+
+- **Banco trancado (segurança):** até aqui, a chave de acesso que vai dentro do app permitia que qualquer pessoa
+  que a copiasse do navegador lesse, alterasse ou apagasse dados direto no banco, sem passar pelo login. Agora o
+  banco só responde para quem entrou no ScaleMedic com usuário e senha, e **cada empresa só enxerga os próprios
+  dados**. Sem login, só funcionam a tela de entrada e o formulário "Solicite seu credenciamento" (que apenas
+  cria uma ficha pendente).
+- **Ninguém se promove sozinho:** quem não é gestor não consegue mudar o próprio perfil, as próprias permissões,
+  unidades ou empresa, nem mesmo chamando o banco por fora do app. Senhas continuam guardadas só como hash.
+- **Funções internas fechadas:** os alertas automáticos de plantão e a sincronização de contas só podem ser
+  disparados pelo próprio banco.
+- **Entrar de novo uma vez:** quem estava conectado numa versão antiga volta para a tela de login e entra com o
+  mesmo usuário e senha. Se a sessão expirar com o app aberto, ele também volta ao login (antes ficaria com
+  telas vazias).
+- **Alerta do Supabase resolvido:** a tabela de especialidades estava sem proteção ("Table publicly accessible").
+- **Banco:** migrações `20261119120000_specialties_rls.sql`, `20261119130000_company_rls_authenticated.sql` e
+  `20261119140000_close_public_access.sql` (aplicadas).
+
 ## V0.2.10 — 23/10/2026
 
 - **Login oficial do Supabase (fase 1):** cada usuário ganhou uma conta no sistema de login do próprio Supabase,

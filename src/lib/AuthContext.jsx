@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { USER_PUBLIC_COLUMNS } from '@/lib/useAppData';
-import { refreshStoredUser } from '@/lib/storedUser';
+import { clearStoredSession, resolveSignedInUser } from '@/lib/authSession';
 
 const defaultAuthState = {
   user: null,
@@ -30,21 +30,16 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     checkAppState();
+    // Sessão oficial encerrada (expirou ou foi revogada) com o app aberto: volta ao login.
+    // Sem chamadas ao Supabase aqui dentro (o aviso chega com a trava da sessão ainda presa).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== 'SIGNED_OUT') return;
+      if (window.localStorage.getItem('escala_medica_session') !== 'active') return;
+      clearStoredSession();
+      window.location.href = '/login';
+    });
+    return () => subscription.unsubscribe();
   }, []);
-
-  // Sessão oficial → cadastro do ScaleMedic pelo app_user_id (sem vínculo, segue o login local).
-  const fetchUserProfile = async (authUser) => {
-    const appUserId = authUser?.app_metadata?.app_user_id;
-    if (!appUserId) return null;
-    try {
-      const { data: profile } = await supabase.from('users').select(USER_PUBLIC_COLUMNS).eq('id', appUserId).single();
-      if (!profile) return null;
-      const isSessionActive = window.localStorage.getItem('escala_medica_session') === 'active';
-      return isSessionActive ? profile : null;
-    } catch {
-      return null;
-    }
-  };
 
   const checkAppState = async () => {
     try {
@@ -54,24 +49,8 @@ export const AuthProvider = ({ children }) => {
 
       let authenticatedUser = null;
       
-      // 1. Tenta pegar a sessão oficial do Supabase
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          authenticatedUser = await fetchUserProfile(session.user);
-        }
-      } catch (err) {}
-
-      // 2. Fallback de Segurança Inteligente: Pega a sessão local validada pela página de Login
-      if (!authenticatedUser) {
-        try {
-          const localUserStr = window.localStorage.getItem('scale_logged_user');
-          const isSessionActive = window.localStorage.getItem('escala_medica_session') === 'active';
-          if (localUserStr && isSessionActive) {
-            authenticatedUser = await refreshStoredUser(JSON.parse(localUserStr), USER_PUBLIC_COLUMNS);
-          }
-        } catch (e) {}
-      }
+      // Só entra quem tem a sessão oficial (o banco não responde sem ela).
+      authenticatedUser = await resolveSignedInUser(USER_PUBLIC_COLUMNS);
 
       if (authenticatedUser) {
         setUser(authenticatedUser);
@@ -97,18 +76,7 @@ export const AuthProvider = ({ children }) => {
       setIsLoadingAuth(true);
       let authenticatedUser = null;
       
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        authenticatedUser = await fetchUserProfile(session.user);
-      }
-
-      if (!authenticatedUser) {
-        const localUserStr = window.localStorage.getItem('scale_logged_user');
-        const isSessionActive = window.localStorage.getItem('escala_medica_session') === 'active';
-        if (localUserStr && isSessionActive) {
-          authenticatedUser = JSON.parse(localUserStr);
-        }
-      }
+      authenticatedUser = await resolveSignedInUser(USER_PUBLIC_COLUMNS);
 
       if (authenticatedUser) {
         setUser(authenticatedUser);
@@ -131,8 +99,7 @@ export const AuthProvider = ({ children }) => {
   const logout = async (shouldRedirect = true) => {
     setUser(null);
     setIsAuthenticated(false);
-    window.localStorage.removeItem('scale_logged_user');
-    window.localStorage.removeItem('escala_medica_session');
+    clearStoredSession();
     try {
       await supabase.auth.signOut();
     } catch (e) {}
