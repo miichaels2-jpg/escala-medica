@@ -145,8 +145,10 @@ export default function Login() {
         throw new Error('Usuário não encontrado ou senha incorreta.');
       }
 
-      // Login oficial do Supabase (fase 1): abre a sessão que, na fase 2, o banco vai exigir.
-      await openOfficialSession(userRecord.email, password);
+      // Sessão oficial do Supabase: desde a V0.3.1 o banco só responde com ela.
+      if (!(await openOfficialSession(userRecord.email, password))) {
+        throw new Error('Não foi possível abrir sua sessão segura. Tente de novo; se continuar, procure a coordenação.');
+      }
 
       const compId = userRecord.data?.company_id || userRecord.company_id || 'cmp_principal';
       const { data: compData, error: companyError } = await supabase
