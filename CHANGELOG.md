@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.3.7 — 20/11/2026
+
+- **Especialidade / área de atuação com seletor novo:** no lugar da lista de sugestões do navegador, opções em botões
+  (pílulas) **só da categoria escolhida**: enfermeiro vê só áreas de enfermagem, fisioterapeuta só de fisioterapia etc.
+  Primeiro "Usadas em <hospital>" (os nomes que o hospital já usa nas vagas), depois as demais; busca quando a lista é
+  grande e "Outra" para digitar. Nomes que não são área de saúde (ex.: "Administrativo") não aparecem, e variações do
+  mesmo nome ("Cardiologista" × "Cardiologia") não se repetem. Trocar de categoria limpa a escolha anterior.
+- **Banco:** migração `20261120210000_registration_specialties_by_category.sql` (aplicada).
+
 ## V0.3.6 — 20/11/2026
 
 - **Código do hospital separado do link:** a Plataforma e Configurações › Equipe & Acessos mostram o **código** (com
