@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { USER_PUBLIC_COLUMNS, useAppData } from '@/lib/useAppData';
 import { authorizedSectorIdsFor, blockedSectorsFrom, getProfessionalUnitIds } from '@/lib/sectorAccess';
+import { maskCNPJ } from '@/lib/brDocs';
 import { SCREENS, defaultCanEditForRole, defaultScreensForRole } from '@/lib/accessControl';
 import { birthDatePassword, generateProvisionalPassword } from '@/lib/passwordPolicy';
 import { supabase } from '@/lib/supabase';
@@ -128,12 +129,15 @@ export default function CorpoClinico() {
   const isAllUnits = Boolean(allUnitsView) && managedUnitIds.length > 1;
   const scopeUnitIds = useMemo(() => (isAllUnits ? managedUnitIds : [String(selectedUnitId)]), [isAllUnits, managedUnitIds, selectedUnitId]);
   // Profissionais da unidade escolhida ou, em "Todas", de todas as unidades administradas.
-  const professionals = useMemo(() => (isAllUnits
-    ? allCompanyProfessionals.filter(p => {
-        const ids = getProfessionalUnitIds(p);
-        return ids.length === 0 || ids.some(id => scopeUnitIds.includes(id));
-      })
-    : unitProfessionals || []), [isAllUnits, allCompanyProfessionals, scopeUnitIds, unitProfessionals]);
+  // Quem ainda não tem unidade (ficha do link de credenciamento) aparece em qualquer unidade,
+  // senão a ficha pendente sumia até o gestor abrir "Todas as unidades".
+  const professionals = useMemo(() => {
+    const source = allCompanyProfessionals.length ? allCompanyProfessionals : (unitProfessionals || []);
+    return source.filter(p => {
+      const ids = getProfessionalUnitIds(p);
+      return ids.length === 0 || ids.some(id => scopeUnitIds.includes(id)) || scopeUnitIds.includes(String(p.unit_id));
+    });
+  }, [allCompanyProfessionals, scopeUnitIds, unitProfessionals]);
 
   const [activeTab, setActiveTab] = useState('ativos'); 
   const [searchQuery, setSearchQuery] = useState('');
@@ -181,6 +185,7 @@ export default function CorpoClinico() {
     unit_rates: {}, // NOVO: Matriz de valores por unidade
     coop_tax_rate: 0, pix_type: 'CPF',
     pix_key: '', bank_info: '', password: '',
+    receipt_type: 'pf', cnpj: '', legal_name: '',
     document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
     authorized_sectors: [],
     allowed_unit_ids: [] 
@@ -212,6 +217,7 @@ export default function CorpoClinico() {
       remuneration_type: 'plantao', monthly_salary: '', unit_monthly_salaries: {}, unit_rates: {},
       coop_tax_rate: 0, pix_type: 'CPF',
       pix_key: '', bank_info: '', password: '',
+      receipt_type: 'pf', cnpj: '', legal_name: '',
       document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
       authorized_sectors: (allCompanySectors || []).map(s => String(s.id)),
       allowed_unit_ids: [String(selectedUnitId || units[0]?.id || 'unit_h1')] 
@@ -270,6 +276,9 @@ export default function CorpoClinico() {
       pix_type: meta.pix_type || 'CPF',
       pix_key: meta.pix_key || '',
       bank_info: meta.bank_info || '',
+      receipt_type: meta.receipt_type || 'pf',
+      cnpj: meta.cnpj || '',
+      legal_name: meta.legal_name || '',
       password: '',
       document_expiry: expiry,
       authorized_sectors: authSectors,
@@ -833,6 +842,9 @@ export default function CorpoClinico() {
         unit_monthly_salaries: unitMonthlySalaries,
         unit_rates: formData.unit_rates, // MATRIZ SALVA!
         pix_type: formData.pix_type, bank_info: formData.bank_info.trim(), pix_key: formData.pix_key.trim(),
+        receipt_type: formData.receipt_type || 'pf',
+        cnpj: formData.receipt_type === 'pj' ? formData.cnpj : '',
+        legal_name: formData.receipt_type === 'pj' ? formData.legal_name.trim() : '',
         document_expiry: formData.document_expiry, status: formData.status,
         authorized_sectors: authorizedSectors, allowed_unit_ids: formData.allowed_unit_ids,
         screen_access: formData.screen_access, can_edit: Boolean(formData.can_edit),
@@ -1533,6 +1545,30 @@ export default function CorpoClinico() {
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-3">
               <div className="flex items-center gap-2 font-black text-xs uppercase text-emerald-700 dark:text-emerald-400 border-b border-slate-200 dark:border-slate-800 pb-2">
                 <DollarSign className="w-4 h-4" /> Dados para Recebimento / PIX
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <Label className="text-[11px] font-bold">Recebe como</Label>
+                <div className="inline-flex rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-1">
+                  {[['pf', 'Pessoa física'], ['pj', 'Pessoa jurídica']].map(([id, label]) => (
+                    <button key={id} type="button" onClick={() => setFormData({ ...formData, receipt_type: id })}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${(formData.receipt_type || 'pf') === id ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white' : 'text-slate-500'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {formData.receipt_type === 'pj' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold">CNPJ</Label>
+                      <Input value={formData.cnpj} onChange={e => setFormData({ ...formData, cnpj: maskCNPJ(e.target.value) })} placeholder="00.000.000/0000-00" className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold">Razão social</Label>
+                      <Input value={formData.legal_name} onChange={e => setFormData({ ...formData, legal_name: e.target.value })} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">

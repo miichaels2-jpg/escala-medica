@@ -1,404 +1,399 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { 
-  Activity, Loader2, AlertCircle, CheckCircle2, ArrowLeft, 
-  ShieldCheck, HeartPulse, DollarSign, Landmark, KeyRound
-} from 'lucide-react';
+import { UFS, isValidCNPJ, isValidCPF, isValidPhone, maskCNPJ, maskCPF, maskPhone, onlyDigits } from '@/lib/brDocs';
+import { AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, HeartPulse, Loader2 } from 'lucide-react';
 
+// Categoria → conselho, CBO sugerido e áreas mais comuns (o hospital pode ter outras).
 const CATEGORIES = [
-  { id: 'medico', label: 'Médico(a)', council: 'CRM' },
-  { id: 'enfermeiro', label: 'Enfermeiro(a)', council: 'COREN' },
-  { id: 'fisioterapeuta', label: 'Fisioterapeuta', council: 'CREFITO' },
-  { id: 'tecnico_enfermagem', label: 'Téc. Enfermagem', council: 'COREN' },
-  { id: 'farmaceutico', label: 'Farmacêutico(a)', council: 'CRF' },
-  { id: 'nutricionista', label: 'Nutricionista', council: 'CRN' },
-  { id: 'psicologo', label: 'Psicólogo(a)', council: 'CRP' },
-  { id: 'biomedico', label: 'Biomédico(a)', council: 'CRBM' }
+  { id: 'medico', label: 'Médico(a)', council: 'CRM', cbo: '225125', area: 'Especialidade', rqe: true,
+    areas: ['Clínica Médica', 'Cirurgia Geral', 'Pediatria', 'Ginecologia e Obstetrícia', 'Anestesiologia', 'Ortopedia e Traumatologia',
+      'Cardiologia', 'Medicina Intensiva', 'Medicina de Emergência', 'Neonatologia', 'Neurologia', 'Psiquiatria', 'Radiologia',
+      'Medicina de Família e Comunidade', 'Infectologia', 'Nefrologia'] },
+  { id: 'enfermeiro', label: 'Enfermeiro(a)', council: 'COREN', cbo: '223505', area: 'Área de atuação',
+    areas: ['Enfermagem Geral', 'Terapia Intensiva', 'Urgência e Emergência', 'Centro Cirúrgico', 'Obstetrícia', 'Neonatologia', 'Pediatria'] },
+  { id: 'tecnico_enfermagem', label: 'Téc. de Enfermagem', council: 'COREN', cbo: '322205', area: 'Área de atuação',
+    areas: ['Técnico de Enfermagem', 'Terapia Intensiva', 'Urgência e Emergência', 'Centro Cirúrgico'] },
+  { id: 'fisioterapeuta', label: 'Fisioterapeuta', council: 'CREFITO', cbo: '223605', area: 'Área de atuação',
+    areas: ['Fisioterapia Intensiva', 'Fisioterapia Respiratória', 'Fisioterapia Motora', 'Fisioterapia Neonatal'] },
+  { id: 'farmaceutico', label: 'Farmacêutico(a)', council: 'CRF', cbo: '223405', area: 'Área de atuação',
+    areas: ['Farmácia Hospitalar', 'Farmácia Clínica'] },
+  { id: 'nutricionista', label: 'Nutricionista', council: 'CRN', cbo: '223710', area: 'Área de atuação',
+    areas: ['Nutrição Clínica', 'Terapia Nutricional'] },
+  { id: 'psicologo', label: 'Psicólogo(a)', council: 'CRP', cbo: '251510', area: 'Área de atuação',
+    areas: ['Psicologia Hospitalar'] },
+  { id: 'biomedico', label: 'Biomédico(a)', council: 'CRBM', cbo: '221205', area: 'Área de atuação',
+    areas: ['Análises Clínicas', 'Imagem'] }
 ];
 
-export default function Register() {
-  const [formData, setFormData] = useState({
-    category: 'medico',
-    name: '',
-    username: '', // NOVO CAMPO: Login desejado
-    specialty: '',
-    rqe: '',
-    cbo: '',
-    cpf: '',
-    birth_date: '',
-    document: '',
-    document_expiry: '',
-    phone: '',
-    email: '',
-    pix_type: 'CPF',
-    pix_key: '',
-    bank_info: ''
-  });
+const PIX_TYPES = [
+  { id: 'CPF', label: 'CPF' }, { id: 'CNPJ', label: 'CNPJ' }, { id: 'Email', label: 'E-mail' },
+  { id: 'Telefone', label: 'Telefone' }, { id: 'Aleatoria', label: 'Chave aleatória' }
+];
 
+const STEPS = ['Você', 'Registro profissional', 'Recebimento'];
+
+const EMPTY = {
+  name: '', cpf: '', birth_date: '', phone: '', email: '', username: '',
+  category: 'medico', council_number: '', council_uf: '', document_expiry: '', specialty: '', rqe: '', cbo: '225125',
+  receipt_type: 'pf', cnpj: '', legal_name: '', pix_type: 'CPF', pix_key: '', bank_info: '', lgpd: false
+};
+
+function suggestUsername(name) {
+  const parts = String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z\s]/g, '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  return parts.length === 1 ? parts[0] : `${parts[0]}.${parts[parts.length - 1]}`;
+}
+
+// Chave PIX sugerida a partir do que a pessoa já informou.
+function pixFrom(form, type) {
+  if (type === 'CPF') return form.cpf;
+  if (type === 'CNPJ') return form.cnpj;
+  if (type === 'Email') return form.email;
+  if (type === 'Telefone') return form.phone;
+  return '';
+}
+
+const selectClass = 'h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40';
+const inputClass = 'h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-sm';
+
+function Field({ label, required, error, hint, children, className = '' }) {
+  return (
+    <div className={`space-y-1.5 ${className}`}>
+      <Label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">{label}{required && <span className="text-rose-500"> *</span>}</Label>
+      {children}
+      {error ? <p className="text-[11px] font-semibold text-rose-600">{error}</p> : hint ? <p className="text-[11px] text-slate-500">{hint}</p> : null}
+    </div>
+  );
+}
+
+export default function Register() {
+  const [form, setForm] = useState(EMPTY);
+  const [step, setStep] = useState(0);
+  const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [usernameTouched, setUsernameTouched] = useState(false);
+  const [pixTouched, setPixTouched] = useState(false);
 
   // Cada empresa tem o seu link de credenciamento (/register?empresa=código). Sem o link, a
   // pessoa digita o código que a coordenação passou.
   const [hospitalCode, setHospitalCode] = useState(() => {
     try { return new URLSearchParams(window.location.search).get('empresa') || ''; } catch { return ''; }
   });
-  const [hospitalName, setHospitalName] = useState('');
+  const [hospital, setHospital] = useState(null); // { name, specialties }
   const [codeFromLink] = useState(() => Boolean(hospitalCode));
 
   useEffect(() => {
     const code = hospitalCode.trim().toLowerCase();
-    setHospitalName('');
+    setHospital(null);
     if (code.length < 6) return undefined;
     let cancelled = false;
     const timer = setTimeout(async () => {
       const { data } = await supabase.rpc('registration_company', { p_code: code });
-      if (!cancelled) setHospitalName(data?.name || '');
+      if (!cancelled) setHospital(data?.name ? data : null);
     }, 350);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [hospitalCode]);
 
+  const category = CATEGORIES.find(c => c.id === form.category) || CATEGORIES[0];
+  // Especialidades do hospital primeiro (são as que o Mural usa), depois as comuns da categoria.
+  const areaOptions = useMemo(() => {
+    const own = Array.isArray(hospital?.specialties) ? hospital.specialties : [];
+    return [...new Set([...own, ...category.areas])];
+  }, [hospital, category]);
+
+  const set = (key, value) => {
+    setForm(prev => {
+      const next = { ...prev, [key]: value };
+      if (key === 'name' && !usernameTouched) next.username = suggestUsername(value);
+      if (key === 'category') {
+        const cat = CATEGORIES.find(c => c.id === value);
+        if (!prev.cbo || prev.cbo === category.cbo) next.cbo = cat.cbo;
+        if (!cat.rqe) next.rqe = '';
+      }
+      if (key === 'receipt_type') {
+        next.pix_type = value === 'pj' ? 'CNPJ' : 'CPF';
+        if (!pixTouched) next.pix_key = pixFrom(next, next.pix_type);
+      }
+      if (key === 'pix_type' && !pixTouched) next.pix_key = pixFrom(next, value);
+      if (['cpf', 'cnpj', 'email', 'phone'].includes(key) && !pixTouched) next.pix_key = pixFrom(next, next.pix_type);
+      return next;
+    });
+    setErrors(prev => ({ ...prev, [key]: undefined }));
+  };
+
+  const validate = index => {
+    const e = {};
+    if (index === 0) {
+      if (!hospital) e.hospital = 'Informe o código do hospital (está no link enviado pela coordenação).';
+      if (form.name.trim().split(/\s+/).length < 2) e.name = 'Informe o nome completo.';
+      if (!isValidCPF(form.cpf)) e.cpf = 'CPF inválido. Confira os números.';
+      if (!form.birth_date) e.birth_date = 'Informe a data de nascimento.';
+      if (!isValidPhone(form.phone)) e.phone = 'Telefone com DDD, ex.: (21) 98765-4321.';
+      if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = 'E-mail inválido.';
+      if (form.username.replace(/[^a-z0-9.]/g, '').length < 3) e.username = 'Escolha um usuário com pelo menos 3 letras.';
+    }
+    if (index === 1) {
+      if (!onlyDigits(form.council_number)) e.council_number = `Informe o número do ${category.council}.`;
+      if (!form.council_uf) e.council_uf = 'Escolha o estado.';
+      if (!form.specialty.trim()) e.specialty = `Escolha a ${category.area.toLowerCase()}.`;
+    }
+    if (index === 2) {
+      if (form.receipt_type === 'pj') {
+        if (!isValidCNPJ(form.cnpj)) e.cnpj = 'CNPJ inválido. Confira os números.';
+        if (!form.legal_name.trim()) e.legal_name = 'Informe a razão social.';
+      }
+      if (!form.pix_key.trim() && !form.bank_info.trim()) e.pix_key = 'Informe a chave PIX ou os dados bancários.';
+      if (!form.lgpd) e.lgpd = 'É preciso aceitar para enviar a ficha.';
+    }
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const next = () => { if (validate(step)) { setStep(s => s + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); } };
+  const back = () => { setErrors({}); setStep(s => s - 1); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (step < STEPS.length - 1) return next();
+    if (!validate(step)) return;
     setError('');
-    
-    if (!hospitalName) {
-      setError('Informe o código do hospital (está no link enviado pela coordenação).');
-      return;
-    }
-
-    if (!formData.name || !formData.username || !formData.cpf || !formData.birth_date || !formData.phone || !formData.document) {
-      setError('Preencha todos os campos obrigatórios (*).');
-      return;
-    }
-
     setLoading(true);
     try {
-      // Limpeza final do usuário de login para evitar bugs de espaço e caracteres
-      const cleanUsername = formData.username.trim().toLowerCase().replace(/[^a-z0-9.]/g, '');
-      const finalEmail = formData.email.trim() ? formData.email.trim().toLowerCase() : `${cleanUsername}.${Date.now()}@scalemedic.local`;
-
+      const cleanUsername = form.username.trim().toLowerCase().replace(/[^a-z0-9.]/g, '');
+      const finalEmail = form.email.trim() ? form.email.trim().toLowerCase() : `${cleanUsername}.${Date.now()}@scalemedic.local`;
+      const councilNumber = onlyDigits(form.council_number);
       const payload = {
-        name: formData.name.trim(),
-        specialty: formData.specialty.trim(),
-        rqe: formData.rqe.trim(),
-        cbo: formData.cbo.trim(),
-        cpf: formData.cpf.trim(),
-        birth_date: formData.birth_date,
-        document: formData.document.trim(),
-        document_expiry: formData.document_expiry,
-        phone: formData.phone.trim(),
+        name: form.name.trim(),
+        specialty: form.specialty.trim(),
+        rqe: form.rqe.trim(),
+        cbo: form.cbo.trim(),
+        cpf: form.cpf,
+        birth_date: form.birth_date,
+        document: `${councilNumber} - ${form.council_uf}`,
+        document_uf: form.council_uf,
+        document_expiry: form.document_expiry,
+        phone: form.phone,
         email: finalEmail,
-        // status "pendente": quem define é o banco 
+        // status "pendente": quem define é o banco
         data: {
-          category: formData.category,
-          username: cleanUsername, // Enviando o usuário desejado para a aba "Pendentes"
-          app_role: 'assistencial', 
-          birth_date: formData.birth_date,
-          cpf: formData.cpf,
-          rqe: formData.rqe,
-          pix_type: formData.pix_type,
-          pix_key: formData.pix_key.trim(),
-          bank_info: formData.bank_info.trim()
+          category: form.category,
+          council: category.council,
+          council_uf: form.council_uf,
+          username: cleanUsername, // usuário desejado, aparece na aba "Pendentes"
+          birth_date: form.birth_date,
+          cpf: form.cpf,
+          rqe: form.rqe.trim(),
+          cbo: form.cbo.trim(),
+          receipt_type: form.receipt_type,
+          ...(form.receipt_type === 'pj' ? { cnpj: form.cnpj, legal_name: form.legal_name.trim() } : {}),
+          pix_type: form.pix_type,
+          pix_key: form.pix_key.trim(),
+          bank_info: form.bank_info.trim(),
+          lgpd_consent: true
         }
       };
 
       const { error: insertErr } = await supabase.rpc('submit_registration', { p_code: hospitalCode.trim().toLowerCase(), p_payload: payload });
       if (insertErr) throw insertErr;
-
       setSuccess(true);
     } catch (err) {
-      setError(/hospital|nome completo/i.test(err?.message || '') ? err.message : 'Erro ao enviar solicitação. Verifique se o CPF ou E-mail já estão cadastrados.');
+      setError(/hospital|nome completo|LGPD/i.test(err?.message || '') ? err.message : 'Não foi possível enviar a ficha. Confira se o CPF ou o e-mail já não estão cadastrados e tente de novo.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4 py-12 relative overflow-hidden transition-colors duration-500 font-sans">
-      
-      {/* FUNDO PREMIUM */}
-      <div className="absolute inset-0 z-0 pointer-events-none fixed">
-        <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M28 20h4v8h8v4h-8v-8h-4v-8h-8v-4h8v-8z\' fill=\'%230ea5e9\' fill-opacity=\'0.03\' fill-rule=\'evenodd\'/%3E%3C/svg%3E')] opacity-100" />
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[60%] bg-sky-600/20 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[60%] bg-indigo-600/15 rounded-full blur-[120px]" />
-      </div>
-
-      <div className="w-full max-w-3xl bg-white/95 dark:bg-slate-900/90 backdrop-blur-2xl border border-white/20 dark:border-slate-800/50 rounded-3xl p-6 sm:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-10 relative my-auto">
-        
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center p-4 py-8 sm:py-12 font-sans">
+      <div className="w-full max-w-2xl bg-white dark:bg-slate-950 border border-slate-200/10 rounded-3xl p-5 sm:p-10 shadow-xl">
         {success ? (
-          <div className="flex flex-col items-center justify-center text-center py-10 space-y-4 animate-in zoom-in-95 duration-500">
-            <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mb-2 ring-8 ring-emerald-50 dark:ring-emerald-950">
-              <CheckCircle2 className="w-10 h-10 text-emerald-600 dark:text-emerald-400" />
+          <div className="flex flex-col items-center text-center py-10 space-y-4">
+            <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center">
+              <CheckCircle2 className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Ficha Recebida com Sucesso!</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
-              Seus dados foram enviados para o departamento de Recursos Humanos e Coordenação Médica. 
-              <br/><br/>
-              Assim que seu perfil for aprovado e as escalas e unidades vinculadas, <b>você receberá suas credenciais de acesso oficiais.</b>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Ficha enviada!</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md leading-relaxed">
+              Seus dados chegaram à coordenação de <b className="text-slate-700 dark:text-slate-200">{hospital?.name || 'seu hospital'}</b>. Assim que o cadastro for aprovado, você recebe o usuário e a senha para entrar.
             </p>
-            <Link to="/login" className="mt-8 inline-block">
-              <Button className="h-11 bg-slate-900 hover:bg-slate-800 text-white font-black text-sm px-8 rounded-xl shadow-lg cursor-pointer transition-all">
-                Voltar à Tela de Login
-              </Button>
+            <Link to="/login" className="pt-4">
+              <Button className="h-11 px-8 rounded-xl font-semibold">Ir para a tela de entrada</Button>
             </Link>
           </div>
         ) : (
-          <>
-            <div className="flex flex-col items-center mb-8">
-              <div className="w-12 h-12 bg-sky-600 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-600/30 mb-4 ring-2 ring-white/50 dark:ring-slate-800">
-                <HeartPulse className="w-6 h-6 text-white" />
+          <form onSubmit={handleSubmit} noValidate className="space-y-7">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 bg-sky-600 rounded-2xl flex items-center justify-center shrink-0">
+                <HeartPulse className="w-5 h-5 text-white" />
               </div>
-              <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Credenciamento Médico</h1>
-              <p className="text-xs text-slate-500 font-bold mt-2 text-center max-w-sm">
-                Preencha seus dados profissionais abaixo. O RH validará suas informações para a liberação das escalas.
-              </p>
+              <div className="min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Credenciamento profissional</h1>
+                <p className="text-xs sm:text-sm text-slate-500 truncate">
+                  {hospital ? <>Para <b className="text-slate-700 dark:text-slate-200">{hospital.name}</b> · leva uns 3 minutos</> : 'Leva uns 3 minutos. A coordenação confere e libera seu acesso.'}
+                </p>
+              </div>
             </div>
 
-            {error && (
-              <div className="mb-6 p-4 rounded-xl bg-rose-50/80 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex items-start gap-3 animate-in fade-in">
-                <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-                <p className="text-xs font-bold text-rose-800 dark:text-rose-300 leading-relaxed">{error}</p>
+            {!(codeFromLink && hospital) && (
+              <Field label="Código do hospital" required error={errors.hospital}
+                hint={hospital ? `Hospital: ${hospital.name}` : hospitalCode.trim().length >= 6 ? 'Código não encontrado.' : 'Está no link enviado pela coordenação.'}>
+                <Input value={hospitalCode} onChange={e => { setHospitalCode(e.target.value); setErrors(p => ({ ...p, hospital: undefined })); }} className={inputClass} autoComplete="off" />
+              </Field>
+            )}
+
+            {/* Etapas */}
+            <ol className="grid grid-cols-3 gap-2" aria-label="Etapas">
+              {STEPS.map((label, i) => (
+                <li key={label} className="space-y-1.5">
+                  <div className={`h-1.5 rounded-full ${i <= step ? 'bg-sky-600' : 'bg-slate-200 dark:bg-slate-800'}`} />
+                  <p className={`text-[11px] font-semibold flex items-center gap-1 ${i === step ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
+                    {i < step ? <Check className="w-3 h-3" /> : <span>{i + 1}.</span>} {label}
+                  </p>
+                </li>
+              ))}
+            </ol>
+
+            {step === 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Nome completo" required error={errors.name} className="sm:col-span-2">
+                  <Input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Como está no documento" className={inputClass} autoComplete="name" />
+                </Field>
+                <Field label="CPF" required error={errors.cpf}>
+                  <Input value={form.cpf} onChange={e => set('cpf', maskCPF(e.target.value))} placeholder="000.000.000-00" inputMode="numeric" className={inputClass} />
+                </Field>
+                <Field label="Data de nascimento" required error={errors.birth_date}>
+                  <Input type="date" value={form.birth_date} onChange={e => set('birth_date', e.target.value)} className={inputClass} autoComplete="bday" />
+                </Field>
+                <Field label="Celular / WhatsApp" required error={errors.phone}>
+                  <Input value={form.phone} onChange={e => set('phone', maskPhone(e.target.value))} placeholder="(00) 90000-0000" inputMode="tel" className={inputClass} autoComplete="tel" />
+                </Field>
+                <Field label="E-mail" error={errors.email} hint="Opcional, mas ajuda a recuperar o acesso.">
+                  <Input type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="voce@email.com" className={inputClass} autoComplete="email" />
+                </Field>
+                <Field label="Usuário para entrar no sistema" required error={errors.username} hint="Sugerido pelo seu nome. Pode trocar." className="sm:col-span-2">
+                  <Input value={form.username} onChange={e => { setUsernameTouched(true); set('username', e.target.value.toLowerCase().replace(/[^a-z0-9.]/g, '')); }} placeholder="nome.sobrenome" className={`${inputClass} sm:w-72`} autoCapitalize="none" />
+                </Field>
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {codeFromLink && hospitalName ? (
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Credenciamento para <span className="text-slate-900 dark:text-white">{hospitalName}</span>
+            {step === 1 && (
+              <div className="space-y-5">
+                <Field label="Categoria" required>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {CATEGORIES.map(cat => (
+                      <button key={cat.id} type="button" onClick={() => set('category', cat.id)} aria-pressed={form.category === cat.id}
+                        className={`rounded-xl border px-2 py-2.5 text-center text-xs transition-colors ${form.category === cat.id
+                          ? 'border-sky-600 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 font-bold'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'}`}>
+                        {cat.label}
+                        <span className="block text-[10px] font-normal opacity-60">{cat.council}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <Field label={`Número do ${category.council}`} required error={errors.council_number}>
+                    <Input value={form.council_number} onChange={e => set('council_number', e.target.value.replace(/[^\dA-Za-z-]/g, ''))} placeholder="Ex.: 123456" inputMode="numeric" className={inputClass} />
+                  </Field>
+                  <Field label="Estado" required error={errors.council_uf}>
+                    <select value={form.council_uf} onChange={e => set('council_uf', e.target.value)} className={selectClass}>
+                      <option value="">UF</option>
+                      {UFS.map(uf => <option key={uf} value={uf}>{uf}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Validade do registro" hint="Se a carteira tiver validade." className="col-span-2 sm:col-span-1">
+                    <Input type="date" value={form.document_expiry} onChange={e => set('document_expiry', e.target.value)} className={inputClass} />
+                  </Field>
                 </div>
+                <Field label={category.area} required error={errors.specialty} hint="Escolha da lista: é por ela que você vê as vagas certas no Mural.">
+                  <Input list="areas" value={form.specialty} onChange={e => set('specialty', e.target.value)} placeholder="Toque para ver a lista" className={inputClass} autoComplete="off" />
+                  <datalist id="areas">{areaOptions.map(a => <option key={a} value={a} />)}</datalist>
+                </Field>
+                <div className="grid grid-cols-2 gap-4">
+                  {category.rqe && (
+                    <Field label="RQE" hint="Registro de especialista, se tiver.">
+                      <Input value={form.rqe} onChange={e => set('rqe', e.target.value.replace(/\D/g, ''))} inputMode="numeric" className={inputClass} />
+                    </Field>
+                  )}
+                  <Field label="CBO" hint="Já preenchido pela categoria.">
+                    <Input value={form.cbo} onChange={e => set('cbo', e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" className={inputClass} />
+                  </Field>
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-5">
+                <Field label="Recebo como" required>
+                  <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-900 p-1">
+                    {[['pf', 'Pessoa física'], ['pj', 'Pessoa jurídica (CNPJ)']].map(([id, label]) => (
+                      <button key={id} type="button" onClick={() => set('receipt_type', id)} aria-pressed={form.receipt_type === id}
+                        className={`px-3 sm:px-4 py-2 rounded-lg text-xs font-semibold ${form.receipt_type === id ? 'bg-white dark:bg-slate-800 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                {form.receipt_type === 'pj' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="CNPJ" required error={errors.cnpj}>
+                      <Input value={form.cnpj} onChange={e => set('cnpj', maskCNPJ(e.target.value))} placeholder="00.000.000/0000-00" inputMode="numeric" className={inputClass} />
+                    </Field>
+                    <Field label="Razão social" required error={errors.legal_name}>
+                      <Input value={form.legal_name} onChange={e => set('legal_name', e.target.value)} placeholder="Nome da empresa" className={inputClass} />
+                    </Field>
+                  </div>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <Field label="Tipo de chave PIX">
+                    <select value={form.pix_type} onChange={e => set('pix_type', e.target.value)} className={selectClass}>
+                      {PIX_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Chave PIX" error={errors.pix_key} className="sm:col-span-2">
+                    <Input value={form.pix_key} onChange={e => { setPixTouched(true); set('pix_key', e.target.value); }} className={inputClass} autoComplete="off" />
+                  </Field>
+                </div>
+                <Field label="Dados bancários" hint="Só se não receber por PIX. Ex.: Banco, agência e conta.">
+                  <Input value={form.bank_info} onChange={e => set('bank_info', e.target.value)} placeholder="Banco Itaú, agência 0000, conta 00000-0" className={inputClass} />
+                </Field>
+                <div className="space-y-1.5">
+                  <label className="flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-800 p-3 cursor-pointer">
+                    <input type="checkbox" checked={form.lgpd} onChange={e => set('lgpd', e.target.checked)} className="mt-0.5 h-4 w-4 accent-sky-600" />
+                    <span className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                      Autorizo o uso dos meus dados para cadastro, escalas e pagamentos, conforme os{' '}
+                      <Link to="/termos-de-uso" target="_blank" className="font-semibold text-sky-600 underline">Termos de Uso e LGPD</Link>.
+                    </span>
+                  </label>
+                  {errors.lgpd && <p className="text-[11px] font-semibold text-rose-600">{errors.lgpd}</p>}
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div role="alert" className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <p className="text-xs font-semibold text-rose-800 dark:text-rose-300">{error}</p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800 pt-5">
+              {step === 0 ? (
+                <Link to="/login"><Button type="button" variant="ghost" className="h-11 text-xs font-semibold text-slate-500"><ArrowLeft className="w-4 h-4 mr-1.5" /> Voltar ao login</Button></Link>
               ) : (
-                <div className="space-y-2">
-                  <Label className="text-xs font-black uppercase text-slate-500">Código do hospital *</Label>
-                  <Input
-                    value={hospitalCode}
-                    onChange={(e) => setHospitalCode(e.target.value)}
-                    placeholder="Está no link enviado pela coordenação"
-                    className="h-11 rounded-xl text-xs font-semibold"
-                    autoComplete="off"
-                  />
-                  {hospitalName && <p className="text-[11px] font-bold text-emerald-600">{hospitalName}</p>}
-                  {!hospitalName && hospitalCode.trim().length >= 6 && <p className="text-[11px] font-bold text-slate-500">Código não encontrado.</p>}
-                </div>
+                <Button type="button" variant="ghost" onClick={back} className="h-11 text-xs font-semibold text-slate-500"><ArrowLeft className="w-4 h-4 mr-1.5" /> Voltar</Button>
               )}
-              
-              <div className="space-y-2">
-                <Label className="text-xs font-black uppercase text-slate-500">1. Categoria Profissional *</Label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {CATEGORIES.map(cat => (
-                    <div 
-                      key={cat.id} 
-                      onClick={() => setFormData({ ...formData, category: cat.id })} 
-                      className={`p-2 rounded-xl border cursor-pointer text-center transition-all flex flex-col justify-center ${
-                        formData.category === cat.id 
-                          ? 'border-sky-600 bg-sky-50 dark:bg-sky-900/20 font-black shadow-sm ring-1 ring-sky-600 text-sky-700 dark:text-sky-400' 
-                          : 'bg-slate-50/50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-white'
-                      }`}
-                    >
-                      <span className="text-[11px] block truncate px-1">{cat.label}</span>
-                      <span className="text-[10px] opacity-60 px-1 truncate">Conselho: {cat.council}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <Label className="text-xs font-black uppercase text-slate-500">2. Dados Pessoais & Registro</Label>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1.5 sm:col-span-2">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Nome Completo Oficial *</Label>
-                    <Input 
-                      value={formData.name} 
-                      onChange={e => setFormData({...formData, name: e.target.value})} 
-                      placeholder="Ex: Carlos Eduardo Silva" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
-                      required 
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <KeyRound className="w-3.5 h-3.5 text-sky-500" /> Usuário Desejado *
-                    </Label>
-                    <Input 
-                      value={formData.username} 
-                      onChange={e => setFormData({...formData, username: e.target.value.toLowerCase().replace(/[^a-z0-9.]/g, '')})} 
-                      placeholder="Ex: carlos" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-bold text-sky-600 focus:bg-white dark:focus:bg-slate-900 transition-colors" 
-                      required 
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Especialidade Principal *</Label>
-                    <Input 
-                      value={formData.specialty} 
-                      onChange={e => setFormData({...formData, specialty: e.target.value})} 
-                      placeholder="Ex: Clínica Médica" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
-                      required 
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">RQE</Label>
-                    <Input 
-                      value={formData.rqe} 
-                      onChange={e => setFormData({...formData, rqe: e.target.value})} 
-                      placeholder="Ex: 12345" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">CBO</Label>
-                    <Input 
-                      value={formData.cbo} 
-                      onChange={e => setFormData({...formData, cbo: e.target.value})} 
-                      placeholder="Ex: 225125" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">CPF *</Label>
-                    <Input 
-                      value={formData.cpf} 
-                      onChange={e => setFormData({...formData, cpf: e.target.value})} 
-                      placeholder="000.000.000-00" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
-                      required 
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Data de Nasc. *</Label>
-                    <Input 
-                      type="date" 
-                      value={formData.birth_date} 
-                      onChange={e => setFormData({...formData, birth_date: e.target.value})} 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors cursor-pointer" 
-                      required 
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Conselho (Ex: CRM) *</Label>
-                    <Input 
-                      value={formData.document} 
-                      onChange={e => setFormData({...formData, document: e.target.value})} 
-                      placeholder="Ex: 1234 - RJ" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
-                      required 
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Validade Cred.</Label>
-                    <Input 
-                      type="date" 
-                      value={formData.document_expiry} 
-                      onChange={e => setFormData({...formData, document_expiry: e.target.value})} 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors cursor-pointer" 
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Telefone / WhatsApp *</Label>
-                    <Input 
-                      value={formData.phone} 
-                      onChange={e => setFormData({...formData, phone: e.target.value})} 
-                      placeholder="(00) 90000-0000" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
-                      required 
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">E-mail Profissional</Label>
-                    <Input 
-                      type="email" 
-                      value={formData.email} 
-                      onChange={e => setFormData({...formData, email: e.target.value})} 
-                      placeholder="email@exemplo.com" 
-                      className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors" 
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* DADOS BANCÁRIOS / PIX */}
-              <div className="space-y-3 pt-2">
-                <Label className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-500 flex items-center gap-1.5">
-                  <DollarSign className="w-4 h-4" /> 3. Faturamento & Recebimento
-                </Label>
-                
-                <div className="p-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-900/30 space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Tipo Chave PIX</Label>
-                      <Select value={formData.pix_type} onValueChange={v => setFormData({...formData, pix_type: v})}>
-                        <SelectTrigger className="h-11 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="z-[99999]">
-                          <SelectItem value="CPF">CPF</SelectItem>
-                          <SelectItem value="CNPJ">CNPJ</SelectItem>
-                          <SelectItem value="Email">E-mail</SelectItem>
-                          <SelectItem value="Telefone">Telefone</SelectItem>
-                          <SelectItem value="Aleatoria">Aleatória</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Chave PIX para Repasse Honorários</Label>
-                      <Input 
-                        value={formData.pix_key} 
-                        onChange={e => setFormData({...formData, pix_key: e.target.value})} 
-                        className="h-11 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-mono" 
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <Landmark className="w-3.5 h-3.5 text-slate-400" /> Dados Bancários (Caso não receba via PIX)
-                    </Label>
-                    <Input 
-                      value={formData.bank_info} 
-                      onChange={e => setFormData({...formData, bank_info: e.target.value})} 
-                      placeholder="Ex: Banco Itaú, Agência 0000, Conta Corrente 00000-0" 
-                      className="h-11 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl text-xs" 
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-3 bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/50 rounded-xl flex items-start gap-2 mt-4">
-                <ShieldCheck className="w-4 h-4 text-sky-600 mt-0.5 shrink-0" />
-                <p className="text-[11px] text-sky-800 dark:text-sky-300 leading-tight font-medium">
-                  Seus dados são protegidos sob a LGPD. As senhas de acesso serão configuradas pela coordenação e você poderá alterá-las em seu primeiro login.
-                </p>
-              </div>
-
-              <div className="pt-4 flex flex-col-reverse sm:flex-row items-center justify-between gap-4 border-t border-slate-100 dark:border-slate-800/60 mt-2">
-                <Link to="/login" className="w-full sm:w-auto">
-                  <Button type="button" variant="ghost" className="w-full h-11 text-xs font-bold text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer">
-                    <ArrowLeft className="w-4 h-4 mr-1.5" /> Voltar ao Login
-                  </Button>
-                </Link>
-                <Button type="submit" disabled={loading} className="w-full sm:w-auto h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-sm px-8 rounded-xl shadow-lg shadow-sky-600/20 cursor-pointer transition-all">
-                  {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processando...</> : 'Enviar Solicitação'}
-                </Button>
-              </div>
-            </form>
-          </>
+              <Button type="submit" disabled={loading} className="h-11 px-6 sm:px-8 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold">
+                {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Enviando...</>
+                  : step < STEPS.length - 1 ? <>Continuar <ArrowRight className="w-4 h-4 ml-1.5" /></> : 'Enviar ficha'}
+              </Button>
+            </div>
+          </form>
         )}
       </div>
     </div>

@@ -9,6 +9,22 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.3.5 — 20/11/2026
+
+- **Credenciamento novo, em 3 etapas** (Você · Registro profissional · Recebimento), com barra de progresso e erros
+  mostrados no próprio campo. Chama-se agora "Credenciamento profissional" (vale para toda a equipe, não só médicos).
+- **Muda conforme a categoria:** conselho certo (CRM, COREN, CREFITO, CRF, CRN, CRP, CRBM) com número e estado
+  separados, RQE só para médico, CBO já preenchido.
+- **Especialidade escolhida da lista:** primeiro as que o hospital já usa (as mesmas do Mural), depois as mais comuns
+  da categoria. Assim o profissional passa a ver as vagas certas no Mural.
+- **CPF, CNPJ e celular** com máscara e conferência dos dígitos; usuário de login sugerido pelo nome.
+- **Recebimento:** "Pessoa física" ou "Pessoa jurídica" (CNPJ e razão social); a chave PIX já vem preenchida com o
+  CPF/CNPJ. PF/PJ, CNPJ e razão social aparecem na ficha do Corpo Clínico para o RH conferir e editar.
+- **LGPD:** aceite obrigatório antes de enviar, com data e hora gravadas na ficha.
+- **Correção:** ficha que chega pelo link (ainda sem hospital definido) agora aparece na aba "Pendentes" do Corpo
+  Clínico em qualquer hospital selecionado. Antes só aparecia na visão "Todas as unidades".
+- **Banco:** migração `20261120190000_registration_form_v2.sql` (aplicada).
+
 ## V0.3.4 — 20/11/2026
 
 - **Plataforma › Adicionar hospital:** cada empresa tem agora a lista de hospitais no próprio cartão e o botão
