@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -44,10 +44,35 @@ export default function Register() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
+  // Cada empresa tem o seu link de credenciamento (/register?empresa=código). Sem o link, a
+  // pessoa digita o código que a coordenação passou.
+  const [hospitalCode, setHospitalCode] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('empresa') || ''; } catch { return ''; }
+  });
+  const [hospitalName, setHospitalName] = useState('');
+  const [codeFromLink] = useState(() => Boolean(hospitalCode));
+
+  useEffect(() => {
+    const code = hospitalCode.trim().toLowerCase();
+    setHospitalName('');
+    if (code.length < 6) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const { data } = await supabase.rpc('registration_company', { p_code: code });
+      if (!cancelled) setHospitalName(data?.name || '');
+    }, 350);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [hospitalCode]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     
+    if (!hospitalName) {
+      setError('Informe o código do hospital (está no link enviado pela coordenação).');
+      return;
+    }
+
     if (!formData.name || !formData.username || !formData.cpf || !formData.birth_date || !formData.phone || !formData.document) {
       setError('Preencha todos os campos obrigatórios (*).');
       return;
@@ -60,7 +85,6 @@ export default function Register() {
       const finalEmail = formData.email.trim() ? formData.email.trim().toLowerCase() : `${cleanUsername}.${Date.now()}@scalemedic.local`;
 
       const payload = {
-        company_id: 'cmp_principal',
         name: formData.name.trim(),
         specialty: formData.specialty.trim(),
         rqe: formData.rqe.trim(),
@@ -71,7 +95,7 @@ export default function Register() {
         document_expiry: formData.document_expiry,
         phone: formData.phone.trim(),
         email: finalEmail,
-        status: 'pendente', 
+        // status "pendente": quem define é o banco 
         data: {
           category: formData.category,
           username: cleanUsername, // Enviando o usuário desejado para a aba "Pendentes"
@@ -85,12 +109,12 @@ export default function Register() {
         }
       };
 
-      const { error: insertErr } = await supabase.from('professionals').insert([payload]);
+      const { error: insertErr } = await supabase.rpc('submit_registration', { p_code: hospitalCode.trim().toLowerCase(), p_payload: payload });
       if (insertErr) throw insertErr;
 
       setSuccess(true);
     } catch (err) {
-      setError('Erro ao enviar solicitação. Verifique se o CPF ou E-mail já estão cadastrados.');
+      setError(/hospital|nome completo/i.test(err?.message || '') ? err.message : 'Erro ao enviar solicitação. Verifique se o CPF ou E-mail já estão cadastrados.');
     } finally {
       setLoading(false);
     }
@@ -145,6 +169,24 @@ export default function Register() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              {codeFromLink && hospitalName ? (
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Credenciamento para <span className="text-slate-900 dark:text-white">{hospitalName}</span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label className="text-xs font-black uppercase text-slate-500">Código do hospital *</Label>
+                  <Input
+                    value={hospitalCode}
+                    onChange={(e) => setHospitalCode(e.target.value)}
+                    placeholder="Está no link enviado pela coordenação"
+                    className="h-11 rounded-xl text-xs font-semibold"
+                    autoComplete="off"
+                  />
+                  {hospitalName && <p className="text-[11px] font-bold text-emerald-600">{hospitalName}</p>}
+                  {!hospitalName && hospitalCode.trim().length >= 6 && <p className="text-[11px] font-bold text-slate-500">Código não encontrado.</p>}
+                </div>
+              )}
               
               <div className="space-y-2">
                 <Label className="text-xs font-black uppercase text-slate-500">1. Categoria Profissional *</Label>
