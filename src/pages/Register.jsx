@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { UFS, isValidCNPJ, isValidCPF, isValidPhone, maskCNPJ, maskCPF, maskPhone, onlyDigits } from '@/lib/brDocs';
-import { AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, HeartPulse, Loader2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, HeartPulse, Loader2, Plus, Search } from 'lucide-react';
 
 // Categoria → conselho, CBO sugerido e áreas mais comuns (o hospital pode ter outras).
 const CATEGORIES = [
@@ -60,6 +60,86 @@ function pixFrom(form, type) {
 const selectClass = 'h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40';
 const inputClass = 'h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-sm';
 
+const normalize = text => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+// Mesma área com outra terminação ("Cardiologista" × "Cardiologia", "Cirurgião" × "Cirurgia").
+const areaStem = text => normalize(text).split(/\s+/).map(w => w.replace(/(ista|iao|ia|ao|o|a)$/, '')).join(' ');
+
+// Nomes que o hospital já usa vêm sem categoria confiável: encaixa pelo nome. A ordem importa
+// ("técnico de enfermagem" antes de "enfermagem", "análises clínicas" antes de "clínica").
+// O que não parece área de saúde (ex.: "Administrativo") fica de fora.
+const AREA_KEYWORDS = [
+  ['tecnico_enfermagem', ['tecnic']],
+  ['enfermeiro', ['enferm']],
+  ['fisioterapeuta', ['fisio']],
+  ['farmaceutico', ['farmac']],
+  ['nutricionista', ['nutri']],
+  ['psicologo', ['psicolog']],
+  ['biomedico', ['biomed', 'analises', 'laborat']],
+  ['medico', ['medic', 'clinic', 'cirurg', 'cardio', 'pediat', 'obstet', 'gineco', 'materni', 'anestes', 'ortoped', 'traumat',
+    'neuro', 'psiquiat', 'radiolog', 'intensiv', 'emergen', 'infect', 'nefro', 'neonat', 'urolog', 'gastro', 'pneumo',
+    'endocrin', 'dermat', 'oftalm', 'otorrino', 'oncolog', 'hematolog', 'geriatr', 'reumat', 'familia', 'plantonista']]
+];
+
+function categoryOfArea(name) {
+  const n = normalize(name);
+  const hit = AREA_KEYWORDS.find(([, words]) => words.some(w => n.includes(w)));
+  return hit ? hit[0] : null;
+}
+
+// Seletor de especialidade / área: opções só da categoria escolhida, em botões.
+function AreaPicker({ hospitalName, own, common, value, onChange }) {
+  const [query, setQuery] = useState('');
+  const [typing, setTyping] = useState(false);
+  const all = [...own, ...common];
+  const isCustom = Boolean(value) && !all.some(a => normalize(a) === normalize(value));
+  const q = normalize(query);
+  const filter = list => (q ? list.filter(a => normalize(a).includes(q)) : list);
+  const chip = (a) => {
+    const selected = normalize(a) === normalize(value);
+    return (
+      <button key={a} type="button" onClick={() => { setTyping(false); onChange(a); }} aria-pressed={selected}
+        className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-medium transition-colors ${selected
+          ? 'border-sky-600 bg-sky-600 text-white'
+          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-sky-400'}`}>
+        {selected && <Check className="w-3.5 h-3.5" />} {a}
+      </button>
+    );
+  };
+  const ownShown = filter(own);
+  const commonShown = filter(common);
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-3 sm:p-4 space-y-3">
+      {all.length > 8 && (
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar" className="h-10 pl-9 rounded-xl text-sm" />
+        </div>
+      )}
+      {ownShown.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold text-slate-500">Usadas em {hospitalName || 'este hospital'}</p>
+          <div className="flex flex-wrap gap-2">{ownShown.map(chip)}</div>
+        </div>
+      )}
+      {commonShown.length > 0 && (
+        <div className="space-y-2">
+          {ownShown.length > 0 && <p className="text-[11px] font-semibold text-slate-500">Outras</p>}
+          <div className="flex flex-wrap gap-2">{commonShown.map(chip)}</div>
+        </div>
+      )}
+      {ownShown.length + commonShown.length === 0 && <p className="text-xs text-slate-500">Nada encontrado com "{query}".</p>}
+      {typing || isCustom ? (
+        <Input autoFocus value={value} onChange={e => onChange(e.target.value)} placeholder="Digite a sua" className="h-10 rounded-xl text-sm" />
+      ) : (
+        <button type="button" onClick={() => { setTyping(true); onChange(''); }}
+          className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-slate-300 dark:border-slate-700 px-3.5 py-2 text-xs font-medium text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
+          <Plus className="w-3.5 h-3.5" /> Outra
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Aceita o código ou o link inteiro colado no campo (…/register?empresa=código).
 function extractHospitalCode(value) {
   const text = String(value || '').trim();
@@ -108,10 +188,12 @@ export default function Register() {
   }, [hospitalCode]);
 
   const category = CATEGORIES.find(c => c.id === form.category) || CATEGORIES[0];
-  // Especialidades do hospital primeiro (são as que o Mural usa), depois as comuns da categoria.
+  // Só as da categoria escolhida: primeiro as que o hospital já usa (as do Mural), depois as comuns.
   const areaOptions = useMemo(() => {
-    const own = Array.isArray(hospital?.specialties) ? hospital.specialties : [];
-    return [...new Set([...own, ...category.areas])];
+    const names = (Array.isArray(hospital?.specialties) ? hospital.specialties : []).map(s => (typeof s === 'string' ? s : s?.name)).filter(Boolean);
+    const own = [...new Map(names.filter(n => categoryOfArea(n) === category.id).map(n => [normalize(n), n])).values()];
+    const ownKeys = new Set(own.map(areaStem));
+    return { own, common: category.areas.filter(a => !ownKeys.has(areaStem(a))) };
   }, [hospital, category]);
 
   const set = (key, value) => {
@@ -122,6 +204,7 @@ export default function Register() {
         const cat = CATEGORIES.find(c => c.id === value);
         if (!prev.cbo || prev.cbo === category.cbo) next.cbo = cat.cbo;
         if (!cat.rqe) next.rqe = '';
+        if (value !== prev.category) next.specialty = '';
       }
       if (key === 'receipt_type') {
         next.pix_type = value === 'pj' ? 'CNPJ' : 'CPF';
@@ -317,9 +400,9 @@ export default function Register() {
                     <Input type="date" value={form.document_expiry} onChange={e => set('document_expiry', e.target.value)} className={inputClass} />
                   </Field>
                 </div>
-                <Field label={category.area} required error={errors.specialty} hint="Escolha da lista: é por ela que você vê as vagas certas no Mural.">
-                  <Input list="areas" value={form.specialty} onChange={e => set('specialty', e.target.value)} placeholder="Toque para ver a lista" className={inputClass} autoComplete="off" />
-                  <datalist id="areas">{areaOptions.map(a => <option key={a} value={a} />)}</datalist>
+                <Field label={category.area} required error={errors.specialty} hint="É por ela que você vê as vagas certas no Mural.">
+                  <AreaPicker key={category.id} hospitalName={hospital?.name} own={areaOptions.own} common={areaOptions.common}
+                    value={form.specialty} onChange={v => set('specialty', v)} />
                 </Field>
                 <div className="grid grid-cols-2 gap-4">
                   {category.rqe && (
