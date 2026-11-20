@@ -9,6 +9,13 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.3.4 — 20/11/2026
+
+- **Plataforma › Adicionar hospital:** cada empresa tem agora a lista de hospitais no próprio cartão e o botão
+  "Adicionar hospital", para entregar uma rede já montada antes de o gestor entrar. O hospital novo já fica liberado
+  para os gestores gerais da empresa (mesmo login). Nome repetido na mesma empresa é recusado.
+- **Banco:** migração `20261120170000_platform_add_unit.sql` (aplicada).
+
 ## V0.3.3 — 20/11/2026
 
 - **Empresa com mais de um hospital:** quando o gestor cadastra um novo hospital em Configurações › Gerenciar
