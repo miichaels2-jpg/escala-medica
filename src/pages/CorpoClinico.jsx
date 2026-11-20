@@ -359,6 +359,20 @@ export default function CorpoClinico() {
     }
   };
 
+  // Ficha pendente recusada: apaga de vez (LGPD: sem aprovação, não há motivo para guardar CPF,
+  // dados bancários etc.). Só vale para pendentes; profissional aprovado continua com "Desativar".
+  const handleRejectPending = async (prof) => {
+    if (!window.confirm(`Recusar a ficha de ${prof.name}?\n\nOs dados enviados serão apagados e não dá para desfazer. Se a pessoa quiser tentar de novo, precisa preencher o credenciamento outra vez.`)) return;
+    try {
+      const { error } = await supabase.from('professionals').delete().eq('id', prof.id).in('status', ['pendente', 'em_analise']);
+      if (error) throw error;
+      try { window.localStorage.removeItem(`prof_meta_${prof.id}`); } catch {}
+      await syncGlobalData();
+    } catch (err) {
+      alert('Não foi possível recusar a ficha: ' + err.message);
+    }
+  };
+
   const handleToggleSectorAuth = (secId) => {
     setFormData(prev => {
       const normalizedSectorId = String(secId);
@@ -1103,6 +1117,11 @@ export default function CorpoClinico() {
                         <Power className="w-3.5 h-3.5" /> {profStatus === 'ativo' ? 'Desativar' : 'Ativar'}
                       </Button>
                     )}
+                    {isManager && (profStatus === 'pendente' || profStatus === 'em_analise') && (
+                      <Button size="sm" variant="outline" onClick={() => handleRejectPending(prof)} title="Recusar e apagar a ficha" className="h-9 px-3 text-xs font-bold rounded-xl cursor-pointer gap-1 border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30">
+                        <Trash2 className="w-3.5 h-3.5" /> Recusar
+                      </Button>
+                    )}
                     {prof.phone && (
                       <Button size="sm" variant="outline" onClick={() => handleOpenProfessionalWhatsApp(prof)} aria-label={`Abrir WhatsApp de ${prof.name}`} title="Enviar mensagem pelo WhatsApp" className="h-9 px-3 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50 cursor-pointer">
                         <MessageSquare className="w-4 h-4" />
@@ -1167,6 +1186,12 @@ export default function CorpoClinico() {
                 {isManager && (
                   <Button size="sm" variant="outline" onClick={() => handleToggleStatusQuick(prof)} title={profStatus === 'ativo' ? 'Desativar profissional' : 'Ativar profissional'} className={`h-9 px-3 text-xs font-bold rounded-xl cursor-pointer gap-1 ${profStatus === 'ativo' ? 'border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30' : 'border-slate-300 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
                     <Power className="w-3.5 h-3.5" /> {profStatus === 'ativo' ? 'Desativar' : 'Ativar'}
+                  </Button>
+                )}
+
+                {isManager && (profStatus === 'pendente' || profStatus === 'em_analise') && (
+                  <Button size="sm" variant="outline" onClick={() => handleRejectPending(prof)} title="Recusar e apagar a ficha" className="h-9 px-3 text-xs font-bold rounded-xl cursor-pointer gap-1 border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30">
+                    <Trash2 className="w-3.5 h-3.5" /> Recusar
                   </Button>
                 )}
 
