@@ -9,6 +9,21 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.3.2 — 20/11/2026
+
+- **Pronto para vender a vários hospitais (mesmo banco, dados separados):** nova tela **Plataforma**, que só o dono
+  do ScaleMedic vê. Nela ficam todas as empresas clientes com unidades, usuários, profissionais e plantões, e dá para:
+  criar uma **empresa nova** já com a primeira unidade e o **primeiro gestor** (senha do 1º acesso = data de
+  nascimento + inicial do nome, troca obrigatória), adicionar gestores e **redefinir a senha** de um gestor. A janela
+  final traz os dados prontos para copiar e mandar ao cliente.
+- **Link de credenciamento por empresa:** cada empresa tem o seu link (`/register?empresa=código`), que aparece na
+  Plataforma e em Configurações › Equipe & Acessos. A ficha cai direto na aba "Pendentes" da empresa certa. Sem o link,
+  o formulário pede o código do hospital. A ficha pública nunca traz permissões: entra sempre como plantonista pendente.
+- **Correções para mais de uma empresa:** só um gestor da mesma empresa aprova troca de plantão; o aviso no celular só
+  pode ser ativado em nome de quem está logado; o alerta automático de vaga urgente só vai para profissionais da
+  empresa da vaga.
+- **Banco:** migração `20261120120000_platform_multi_company.sql` (aplicada).
+
 ## V0.3.1 — 19/11/2026
 
 - **Banco trancado (segurança):** até aqui, a chave de acesso que vai dentro do app permitia que qualquer pessoa

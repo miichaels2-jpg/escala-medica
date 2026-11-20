@@ -853,6 +853,23 @@ export default function Configuracoes() {
         {activeTab === 'usuarios' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
             <div className="lg:col-span-1 space-y-6">
+              {company?.registration_code && (
+                <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm space-y-3">
+                  <div>
+                    <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                      <Copy className="w-5 h-5 text-slate-400" /> Link de credenciamento
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-1">Envie aos profissionais: a ficha preenchida chega na aba "Pendentes" do Corpo Clínico.</p>
+                  </div>
+                  <code className="block truncate rounded-lg bg-slate-50 dark:bg-slate-900 px-3 py-2 text-xs">{`${window.location.origin}/register?empresa=${company.registration_code}`}</code>
+                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={async () => {
+                    const link = `${window.location.origin}/register?empresa=${company.registration_code}`;
+                    try { await navigator.clipboard.writeText(link); alert('Link copiado.'); } catch { window.prompt('Copie o link:', link); }
+                  }}>
+                    <Copy className="w-3.5 h-3.5" /> Copiar link
+                  </Button>
+                </Card>
+              )}
               <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
                 <div className="border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
                   <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">

@@ -7,7 +7,7 @@ import {
   DollarSign, Users, Building2, LogOut, Menu, X, 
   AlertTriangle, Sun, Moon, Settings, FileBarChart,
   Clock, Hospital, Bell, Flame, CheckCircle2, ChevronRight, CheckCheck, Smartphone,
-  ListChecks, History
+  ListChecks, History, Globe
 } from 'lucide-react';
 import { InstallAppBanner, InstallAppDialog } from '@/components/InstallAppGuide';
 import { NotificationPanel, useNotificationCenter } from '@/components/NotificationCenter';
@@ -87,6 +87,14 @@ export default function AppLayout({ children }) {
   }, [location.pathname]);
   const [theme, setTheme] = useState('dark');
   const [currentTime, setCurrentTime] = useState(() => new Date());
+  // Dono da plataforma (Michael): vê a tela "Plataforma", com todas as empresas clientes.
+  const [isPlatformOwner, setIsPlatformOwner] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc('sm_auth_is_platform_owner').then(({ data }) => { if (!cancelled) setIsPlatformOwner(data === true); });
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -191,6 +199,8 @@ export default function AppLayout({ children }) {
     { label: 'Histórico de alterações', path: '/historico', icon: History, visible: isManager },
     { label: 'Configurações', path: '/configuracoes', icon: Settings, visible: isManager },
     { label: 'Planejamento (temporário)', path: '/planejamento', icon: ListChecks, visible: isManager }, // TEMPORÁRIO
+    // Só o dono da plataforma (o campo "visible" acima não filtra o menu; quem filtra é canAccessRoute).
+    ...(isPlatformOwner ? [{ label: 'Plataforma', path: '/plataforma', icon: Globe, visible: true }] : []),
   ].filter(item => canAccessRoute(user, item.path))
     // Plantonista: a própria agenda vem primeiro.
     .sort((a, b) => ['assistencial', 'medico'].includes(userAppRole) ? (b.path === '/minha-escala') - (a.path === '/minha-escala') : 0);

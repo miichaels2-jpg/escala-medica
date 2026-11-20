@@ -21,6 +21,7 @@ import Configuracoes from '@/pages/Configuracoes';
 import MinhaEscala from '@/pages/MinhaEscala';
 import Trocas from '@/pages/Trocas';
 import Planejamento from '@/pages/Planejamento'; // TEMPORÁRIO
+import Plataforma from '@/pages/Plataforma';
 import Historico from '@/pages/Historico';
 import AutoLogout from '@/components/AutoLogout'; 
 import ContractGuard from '@/components/ContractGuard';
@@ -70,6 +71,7 @@ const AuthenticatedApp = () => {
             <Route path="/trocas" element={<Trocas />} />
             <Route path="/historico" element={<Historico />} />
             <Route path="/planejamento" element={<Planejamento />} /> {/* TEMPORÁRIO */}
+            <Route path="/plataforma" element={<Plataforma />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
           </Route>
         </Route>
