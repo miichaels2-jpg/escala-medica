@@ -859,15 +859,29 @@ export default function Configuracoes() {
                     <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
                       <Copy className="w-5 h-5 text-slate-400" /> Link de credenciamento
                     </h3>
-                    <p className="text-[11px] text-slate-500 mt-1">Envie aos profissionais: a ficha preenchida chega na aba "Pendentes" do Corpo Clínico.</p>
+                    <p className="text-[11px] text-slate-500 mt-1">Envie o link aos profissionais (ou o código, para quem abrir pela tela de entrada). A ficha chega na aba "Pendentes" do Corpo Clínico.</p>
                   </div>
-                  <code className="block truncate rounded-lg bg-slate-50 dark:bg-slate-900 px-3 py-2 text-xs">{`${window.location.origin}/register?empresa=${company.registration_code}`}</code>
-                  <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={async () => {
-                    const link = `${window.location.origin}/register?empresa=${company.registration_code}`;
-                    try { await navigator.clipboard.writeText(link); alert('Link copiado.'); } catch { window.prompt('Copie o link:', link); }
-                  }}>
-                    <Copy className="w-3.5 h-3.5" /> Copiar link
-                  </Button>
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-bold text-slate-500">Código do hospital</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 rounded-lg bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm font-bold tracking-wider">{company.registration_code}</code>
+                      <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 shrink-0" onClick={async () => {
+                        try { await navigator.clipboard.writeText(company.registration_code); alert('Código copiado.'); } catch { window.prompt('Copie o código:', company.registration_code); }
+                      }}>
+                        <Copy className="w-3.5 h-3.5" /> Copiar código
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-bold text-slate-500">Link (já abre com o hospital preenchido)</p>
+                    <code className="block truncate rounded-lg bg-slate-50 dark:bg-slate-900 px-3 py-2 text-xs">{`${window.location.origin}/register?empresa=${company.registration_code}`}</code>
+                    <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={async () => {
+                      const link = `${window.location.origin}/register?empresa=${company.registration_code}`;
+                      try { await navigator.clipboard.writeText(link); alert('Link copiado.'); } catch { window.prompt('Copie o link:', link); }
+                    }}>
+                      <Copy className="w-3.5 h-3.5" /> Copiar link
+                    </Button>
+                  </div>
                 </Card>
               )}
               <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">

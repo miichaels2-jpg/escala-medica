@@ -9,6 +9,13 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.3.6 — 20/11/2026
+
+- **Código do hospital separado do link:** a Plataforma e Configurações › Equipe & Acessos mostram o **código** (com
+  "Copiar código") e o **link** (com "Copiar link"). O link já abre o formulário com o hospital preenchido; o código é
+  para quem abrir o formulário pela tela de entrada. Os dados copiados para enviar ao cliente trazem os dois.
+- **Formulário aceita o link inteiro:** quem colar o link completo no campo "Código do hospital" também é reconhecido.
+
 ## V0.3.5 — 20/11/2026
 
 - **Credenciamento novo, em 3 etapas** (Você · Registro profissional · Recebimento), com barra de progresso e erros

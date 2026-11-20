@@ -173,7 +173,8 @@ export default function Plataforma() {
     `Endereço: ${window.location.origin}`,
     r.manager && `Usuário: ${r.manager.username}`,
     r.manager && `Senha do primeiro acesso: ${r.manager.password} (o sistema pede para trocar ao entrar)`,
-    `Link de credenciamento dos profissionais: ${registrationLink(r.code)}`
+    `Link de credenciamento dos profissionais: ${registrationLink(r.code)}`,
+    `Código do hospital (para quem abrir o formulário pela tela de entrada): ${r.code}`
   ].filter(Boolean).join('\n');
 
   if (isOwner === false) {
@@ -258,11 +259,18 @@ export default function Plataforma() {
               </div>
 
               <div className="space-y-1.5">
-                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Link de credenciamento</h3>
+                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Credenciamento de profissionais</h3>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 min-w-0 truncate rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-xs">{registrationLink(company.registration_code)}</code>
-                  <CopyButton text={registrationLink(company.registration_code)} />
+                  <span className="w-12 shrink-0 text-xs text-slate-500">Código</span>
+                  <code className="flex-1 min-w-0 rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-sm font-bold tracking-wider">{company.registration_code}</code>
+                  <CopyButton text={company.registration_code} label="Copiar código" />
                 </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-12 shrink-0 text-xs text-slate-500">Link</span>
+                  <code className="flex-1 min-w-0 truncate rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-xs">{registrationLink(company.registration_code)}</code>
+                  <CopyButton text={registrationLink(company.registration_code)} label="Copiar link" />
+                </div>
+                <p className="text-[11px] text-slate-500">O link já abre o formulário com o hospital preenchido. O código serve para quem abrir o formulário pela tela de entrada.</p>
               </div>
             </section>
           ))}

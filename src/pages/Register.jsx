@@ -60,6 +60,13 @@ function pixFrom(form, type) {
 const selectClass = 'h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40';
 const inputClass = 'h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-sm';
 
+// Aceita o código ou o link inteiro colado no campo (…/register?empresa=código).
+function extractHospitalCode(value) {
+  const text = String(value || '').trim();
+  const fromLink = text.match(/[?&]empresa=([^&#\s]+)/i);
+  return (fromLink ? decodeURIComponent(fromLink[1]) : text).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 function Field({ label, required, error, hint, children, className = '' }) {
   return (
     <div className={`space-y-1.5 ${className}`}>
@@ -89,7 +96,7 @@ export default function Register() {
   const [codeFromLink] = useState(() => Boolean(hospitalCode));
 
   useEffect(() => {
-    const code = hospitalCode.trim().toLowerCase();
+    const code = extractHospitalCode(hospitalCode);
     setHospital(null);
     if (code.length < 6) return undefined;
     let cancelled = false;
@@ -199,7 +206,7 @@ export default function Register() {
         }
       };
 
-      const { error: insertErr } = await supabase.rpc('submit_registration', { p_code: hospitalCode.trim().toLowerCase(), p_payload: payload });
+      const { error: insertErr } = await supabase.rpc('submit_registration', { p_code: extractHospitalCode(hospitalCode), p_payload: payload });
       if (insertErr) throw insertErr;
       setSuccess(true);
     } catch (err) {
@@ -241,7 +248,7 @@ export default function Register() {
 
             {!(codeFromLink && hospital) && (
               <Field label="Código do hospital" required error={errors.hospital}
-                hint={hospital ? `Hospital: ${hospital.name}` : hospitalCode.trim().length >= 6 ? 'Código não encontrado.' : 'Está no link enviado pela coordenação.'}>
+                hint={hospital ? `Hospital: ${hospital.name}` : extractHospitalCode(hospitalCode).length >= 6 ? 'Código não encontrado.' : 'Cole o link enviado pela coordenação ou só o código.'}>
                 <Input value={hospitalCode} onChange={e => { setHospitalCode(e.target.value); setErrors(p => ({ ...p, hospital: undefined })); }} className={inputClass} autoComplete="off" />
               </Field>
             )}
