@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Building2, Check, Copy, KeyRound, Loader2, Plus, RefreshCw, UserPlus } from 'lucide-react';
+import { Building2, Check, Copy, Hospital, KeyRound, Loader2, Plus, RefreshCw, UserPlus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { birthDatePassword, generateProvisionalPassword } from '@/lib/passwordPolicy';
 import { Button } from '@/components/ui/button';
@@ -84,7 +84,7 @@ export default function Plataforma() {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [dialog, setDialog] = useState(null); // { type: 'company' } | { type: 'manager', company }
+  const [dialog, setDialog] = useState(null); // { type: 'company' } | { type: 'manager' | 'unit', company }
   const [form, setForm] = useState(EMPTY_COMPANY);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -106,6 +106,7 @@ export default function Plataforma() {
 
   const openCompany = () => { setForm(EMPTY_COMPANY); setFormError(''); setDialog({ type: 'company' }); };
   const openManager = company => { setForm({ ...EMPTY_MANAGER }); setFormError(''); setDialog({ type: 'manager', company }); };
+  const openUnit = company => { setForm({ ...EMPTY_COMPANY, unit_name: '' }); setFormError(''); setDialog({ type: 'unit', company }); };
 
   const createManager = async (companyId, manager) => {
     const password = firstAccessPassword(manager);
@@ -120,9 +121,18 @@ export default function Plataforma() {
   const submit = async e => {
     e.preventDefault();
     setFormError('');
-    if (!form.full_name.trim() || !form.username.trim()) return setFormError('Informe o nome e o usuário do gestor.');
+    if (dialog.type !== 'unit' && (!form.full_name.trim() || !form.username.trim())) return setFormError('Informe o nome e o usuário do gestor.');
     setSaving(true);
     try {
+      if (dialog.type === 'unit') {
+        // Hospital a mais na empresa: já fica liberado para os gestores gerais dela.
+        if (!form.unit_name.trim()) throw new Error('Informe o nome do hospital.');
+        const { error: rpcError } = await supabase.rpc('platform_add_unit', { p_company_id: dialog.company.id, p_name: form.unit_name.trim() });
+        if (rpcError) throw rpcError;
+        setDialog(null);
+        load();
+        return;
+      }
       if (dialog.type === 'company') {
         if (!form.name.trim() || !form.unit_name.trim()) throw new Error('Informe o nome da empresa e da primeira unidade.');
         const { data: company, error: rpcError } = await supabase.rpc('platform_create_company', {
@@ -201,7 +211,7 @@ export default function Plataforma() {
                 <div className="min-w-0">
                   <h2 className="text-lg font-bold truncate">{company.name}</h2>
                   <p className="text-xs text-slate-500">
-                    {planLabel(company.plan)} · desde {new Date(company.created_date).toLocaleDateString('pt-BR')} · {company.units.map(u => u.name).join(', ') || 'sem unidades'}
+                    {planLabel(company.plan)} · desde {new Date(company.created_date).toLocaleDateString('pt-BR')}
                   </p>
                 </div>
               </div>
@@ -214,6 +224,21 @@ export default function Plataforma() {
                   </div>
                 ))}
               </dl>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Hospitais</h3>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => openUnit(company)} className="h-8 gap-1.5"><Plus className="w-3.5 h-3.5" /> Adicionar hospital</Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {company.units.length === 0 && <p className="text-sm text-slate-500">Nenhum hospital ainda.</p>}
+                  {company.units.map(u => (
+                    <span key={u.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-800 px-2.5 py-1 text-xs font-medium">
+                      <Hospital className="w-3.5 h-3.5 text-slate-400" /> {u.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -247,7 +272,7 @@ export default function Plataforma() {
       <Dialog open={Boolean(dialog)} onOpenChange={open => { if (!open && !saving) setDialog(null); }}>
         <DialogContent className="sm:max-w-lg max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{dialog?.type === 'company' ? 'Nova empresa' : `Novo gestor · ${dialog?.company?.name || ''}`}</DialogTitle>
+            <DialogTitle>{dialog?.type === 'company' ? 'Nova empresa' : dialog?.type === 'unit' ? `Novo hospital · ${dialog?.company?.name || ''}` : `Novo gestor · ${dialog?.company?.name || ''}`}</DialogTitle>
           </DialogHeader>
           <form onSubmit={submit} className="space-y-5">
             {dialog?.type === 'company' && (
@@ -272,12 +297,19 @@ export default function Plataforma() {
                 </div>
               </div>
             )}
+            {dialog?.type === 'unit' && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Nome do hospital *</Label>
+                <Input value={form.unit_name} onChange={e => setForm({ ...form, unit_name: e.target.value })} placeholder="Ex.: Hospital Bom Jesus Zona Sul" autoFocus />
+                <p className="text-[11px] text-slate-500">Os gestores gerais da empresa passam a ver este hospital no mesmo login. CNPJ, endereço e logo o gestor completa em Configurações.</p>
+              </div>
+            )}
             {dialog?.type === 'company' && <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Primeiro gestor</h3>}
-            <ManagerFields value={form} onChange={next => setForm({ ...form, ...next })} />
+            {dialog?.type !== 'unit' && <ManagerFields value={form} onChange={next => setForm({ ...form, ...next })} />}
             {formError && <p role="alert" className="text-sm text-rose-600">{formError}</p>}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialog(null)} disabled={saving}>Cancelar</Button>
-              <Button type="submit" disabled={saving} className="gap-1.5">{saving && <Loader2 className="w-4 h-4 animate-spin" />} {dialog?.type === 'company' ? 'Criar empresa' : 'Criar gestor'}</Button>
+              <Button type="submit" disabled={saving} className="gap-1.5">{saving && <Loader2 className="w-4 h-4 animate-spin" />} {dialog?.type === 'company' ? 'Criar empresa' : dialog?.type === 'unit' ? 'Adicionar hospital' : 'Criar gestor'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
