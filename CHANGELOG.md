@@ -9,6 +9,12 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.3.8 — 20/11/2026
+
+- **Corpo Clínico › Recusar ficha:** fichas pendentes (do link de credenciamento) ganharam o botão "Recusar", que
+  pede confirmação e **apaga a ficha** (LGPD: sem aprovação, não há motivo para guardar CPF e dados bancários).
+  Profissional já aprovado não tem o botão; para ele continua "Desativar", que preserva o histórico.
+
 ## V0.3.7 — 20/11/2026
 
 - **Especialidade / área de atuação com seletor novo:** no lugar da lista de sugestões do navegador, opções em botões
