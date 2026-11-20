@@ -9,6 +9,14 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.3.3 — 20/11/2026
+
+- **Empresa com mais de um hospital:** quando o gestor cadastra um novo hospital em Configurações › Gerenciar
+  Hospitais, ele já fica liberado para os gestores gerais da empresa. Eles veem os dois no mesmo login (escolha na
+  entrada, troca pelo seletor do topo e visão "Todas as unidades"), sem sair e entrar de novo. Antes, o gestor criado
+  pela tela Plataforma só enxergava os hospitais que existiam quando foi criado.
+- **Banco:** migração `20261120150000_new_unit_for_managers.sql` (aplicada).
+
 ## V0.3.2 — 20/11/2026
 
 - **Pronto para vender a vários hospitais (mesmo banco, dados separados):** nova tela **Plataforma**, que só o dono
