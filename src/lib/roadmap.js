@@ -4,7 +4,7 @@
 //
 // status: 'entregue' | 'em_andamento' | 'planejado' | 'ideia'
 
-export const ROADMAP_UPDATED_AT = '2026-10-21';
+export const ROADMAP_UPDATED_AT = '2026-11-21';
 
 export const ROADMAP_GROUPS = [
   {
@@ -36,10 +36,21 @@ export const ROADMAP_GROUPS = [
     ]
   },
   {
+    title: 'Aparência e primeiros passos',
+    items: [
+      { id: 20, title: 'Marca nova', detail: 'Ícone "grade de plantões" (os dias do meio formam a cruz da saúde) no celular, navegador, login e menu.', status: 'entregue', version: 'V0.3.10' },
+      { id: 21, title: 'Acabamento visual das telas', detail: 'Um só padrão de letras, cores, cartões e botões em todas as telas, no tom calmo da marca.', status: 'em_andamento' },
+      { id: 22, title: 'Primeiros passos para empresa nova', detail: 'Lista no Painel: setores, equipe (ou link de credenciamento), primeira escala, publicar.', status: 'planejado' },
+      { id: 23, title: 'Abrir mais rápido no celular', detail: 'Dividir o app em partes para o login e a Minha Escala carregarem primeiro.', status: 'planejado' }
+    ]
+  },
+  {
     title: 'Infraestrutura',
     items: [
       { id: 13, title: 'Ambiente de homologação', detail: 'Banco e site de teste separados da produção.', status: 'planejado' },
-      { id: 14, title: 'Segurança do login', detail: 'Feito: bloqueio após 5 senhas erradas, senha forte, senha-mestre e login de emergência removidos, senhas provisórias aleatórias (V0.2.9); login oficial do Supabase para todos os usuários (V0.2.10); banco trancado, cada empresa só vê os próprios dados (V0.3.1). Falta: confirmação em dois passos e recuperar senha por e-mail (aguarda domínio).', status: 'em_andamento', version: 'V0.3.1' },
+      { id: 14, title: 'Segurança do login e do banco', detail: 'Bloqueio após 5 senhas erradas, senha forte, fim da senha-mestre (V0.2.9); login oficial do Supabase (V0.2.10); banco trancado por empresa (V0.3.1); permissões por perfil no próprio banco (V0.3.9).', status: 'entregue', version: 'V0.3.9' },
+      { id: 18, title: 'Confirmação em dois passos', detail: 'Código de 6 dígitos de um app no celular (Google/Microsoft Authenticator), sem e-mail nem custo. Obrigatório para admin e gestores, opcional para profissionais; o dono zera pela Plataforma se a pessoa perder o celular.', status: 'planejado' },
+      { id: 19, title: 'Domínio e e-mails', detail: 'Depois do 1º contrato: comprar scalemedic.com.br no Registro.br; caixa de e-mail para pessoas (Google Workspace, Microsoft 365 ou Zoho) e envio pelo sistema com Resend (recuperar senha, relatório mensal); site em app.scalemedic.com.br. Só colar os registros de DNS que o Claude passar.', status: 'planejado' },
       { id: 17, title: 'Várias empresas no mesmo sistema', detail: 'Tela Plataforma (só o dono): criar empresa, primeiro gestor, redefinir senha; link de credenciamento por empresa. Falta: plano pago do Supabase com backup diário antes do primeiro cliente.', status: 'entregue', version: 'V0.3.2' },
       { id: 15, title: 'Notificação push real', detail: 'Aviso no celular mesmo com o app fechado.', status: 'entregue', version: 'V0.2.8' }
     ]

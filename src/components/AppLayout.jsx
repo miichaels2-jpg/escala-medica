@@ -17,6 +17,7 @@ import { useUrgentVacancyAlerts } from '@/lib/useUrgentVacancyAlerts';
 import { refreshPushOwner } from '@/lib/push';
 import { SWITCH_UNIT_EVENT } from '@/components/UnitsOverview';
 import { canAccessRoute } from '@/lib/accessControl';
+import { BrandAppIcon, BrandWordmark } from '@/components/BrandMark';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -260,12 +261,10 @@ export default function AppLayout({ children }) {
       {/* SIDEBAR DESKTOP */}
       <aside className="hidden md:flex w-64 flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 select-none shadow-xl print:hidden transition-colors">
         <div className="p-4 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-sky-500/20 shrink-0 ring-1 ring-white/20">
-            <Activity className="w-5 h-5" />
-          </div>
+          <BrandAppIcon size={40} />
           <div className="min-w-0">
-            <h1 className="text-base font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-1">
-              ScaleMedic <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-600 dark:text-sky-400 font-mono">PRO</span>
+            <h1 className="text-base text-slate-900 dark:text-white">
+              <BrandWordmark />
             </h1>
             <p className="text-[10px] text-slate-400 font-bold truncate">{currentHospitalName}</p>
           </div>
@@ -331,11 +330,9 @@ export default function AppLayout({ children }) {
 
           <div className="flex items-center gap-3 min-w-0">
             <div className="md:hidden flex items-center gap-2.5 min-w-0">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-sky-600/30 shrink-0">
-                <Activity className="w-4 h-4" />
-              </div>
+              <BrandAppIcon size={36} />
               <div className="min-w-0 leading-tight">
-                <span className="font-black text-sm text-slate-900 dark:text-white block">ScaleMedic</span>
+                <BrandWordmark className="text-sm text-slate-900 dark:text-white block" />
                 <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block truncate max-w-[170px]">{currentHospitalName}</span>
               </div>
             </div>

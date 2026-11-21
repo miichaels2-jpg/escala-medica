@@ -5,6 +5,7 @@ import { usePwaInstall } from '@/lib/pwa';
 import { APP_VERSION } from '@/lib/version';
 import { formatLockWait, passwordProblem } from '@/lib/passwordPolicy';
 import { openOfficialSession } from '@/lib/authSession';
+import { BrandAppIcon, BrandWordmark } from '@/components/BrandMark';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -267,10 +268,8 @@ export default function Login() {
 
       <div className="w-full max-w-md bg-white/95 dark:bg-slate-900/90 backdrop-blur-2xl border border-white/20 dark:border-slate-800/50 rounded-3xl p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-10 relative">
         <div className="flex flex-col items-center mb-6 sm:mb-8">
-          <div className="w-14 h-14 bg-sky-600 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-600/30 mb-4 ring-2 ring-white/50 dark:ring-slate-800">
-            <Activity className="w-7 h-7 text-white" />
-          </div>
-          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">ScaleMedic</h1>
+          <BrandAppIcon size={56} className="mb-4 shadow-lg shadow-sky-600/25" />
+          <h1 className="text-2xl text-slate-900 dark:text-white"><BrandWordmark /></h1>
           <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mt-1 text-center">Gestão Hospitalar</p>
         </div>
 
