@@ -9,6 +9,19 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.3.9 — 21/11/2026
+
+- **Permissões por perfil também no banco:** antes, dentro da mesma empresa, qualquer pessoa logada conseguiria
+  alterar dados chamando o banco por fora do app (a tela só escondia os botões). Agora o próprio banco garante:
+  - **Gestor / coordenador / quem tem "pode editar":** tudo dentro da empresa, como antes.
+  - **Faturamento:** também lança pagamentos, faturamento e produtividade.
+  - **Profissional:** só o que é dele — assumir vaga sem ninguém (no próprio nome), pedir ou cancelar a liberação do
+    próprio plantão no Mural, registrar entrada/saída, propor/aceitar/recusar/cancelar troca (aprovar, não), marcar a
+    própria indisponibilidade e mandar notificações. Não cria nem apaga plantão, não mexe no plantão ou na ficha de
+    outro, não muda o próprio valor ou setores, não publica escala nem marca pagamento.
+  - **Notificações:** cada pessoa só lê as suas. **Histórico de alterações:** só a gestão.
+- **Banco:** migração `20261121120000_role_based_rules.sql` (aplicada).
+
 ## V0.3.8 — 20/11/2026
 
 - **Corpo Clínico › Recusar ficha:** fichas pendentes (do link de credenciamento) ganharam o botão "Recusar", que
