@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { UFS, isValidCNPJ, isValidCPF, isValidPhone, maskCNPJ, maskCPF, maskPhone, onlyDigits } from '@/lib/brDocs';
-import { AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, HeartPulse, Loader2, Plus, Search } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, Loader2, Plus, Search } from 'lucide-react';
+import { BrandAppIcon } from '@/components/BrandMark';
 
 // Categoria → conselho, CBO sugerido e áreas mais comuns (o hospital pode ter outras).
 const CATEGORIES = [
@@ -318,9 +319,7 @@ export default function Register() {
         ) : (
           <form onSubmit={handleSubmit} noValidate className="space-y-7">
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 bg-sky-600 rounded-2xl flex items-center justify-center shrink-0">
-                <HeartPulse className="w-5 h-5 text-white" />
-              </div>
+              <BrandAppIcon size={44} />
               <div className="min-w-0">
                 <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Credenciamento profissional</h1>
                 <p className="text-xs sm:text-sm text-slate-500 truncate">

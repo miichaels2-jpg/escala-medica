@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.3.10 — 21/11/2026
+
+- **Marca nova:** ícone "grade de plantões" (uma grade de escala 3×3 em que os dias do meio formam a cruz da saúde) e
+  o nome Scale**Medic** com a nova letra, no ícone do app (celular e computador), na aba do navegador, na tela de
+  entrada, no menu lateral, no topo do celular e no credenciamento. Quem já instalou o app no celular vê o ícone novo
+  ao reinstalar (o Android costuma atualizar sozinho em alguns dias).
+- **Planejamento:** entram "Confirmação em dois passos", "Domínio e e-mails" e as próximas etapas de aparência
+  (acabamento visual, primeiros passos para empresa nova e abrir mais rápido no celular).
+
 ## V0.3.9 — 21/11/2026
 
 - **Permissões por perfil também no banco:** antes, dentro da mesma empresa, qualquer pessoa logada conseguiria
