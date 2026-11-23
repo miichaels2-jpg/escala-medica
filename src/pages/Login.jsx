@@ -285,7 +285,6 @@ export default function Login() {
             <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Usuário ou E-mail</Label>
             <Input 
               type="text" 
-              placeholder="Ex: dr.carlos"
               value={loginId}
               onChange={(e) => setLoginId(e.target.value)}
               className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors"
@@ -304,7 +303,6 @@ export default function Login() {
             <div className="relative">
               <Input 
                 type={showPassword ? "text" : "password"}
-                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl pr-10 text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors"
