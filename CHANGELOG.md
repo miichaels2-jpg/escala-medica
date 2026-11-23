@@ -9,6 +9,17 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.5.9 — 23/11/2026
+
+- **Nova tela "Como usar"** (menu): vídeos curtos, sem som, com cursor e legendas na própria tela do ScaleMedic.
+  Gestão: montar o mês com os turnos padrão, escalar alguém pela Grade e publicar a escala. Plantonista (formato de
+  celular): Minha Escala e pegar uma vaga no Mural. O plantonista vê só os vídeos dele.
+- **Primeiros passos do Painel:** "Ver como fazer" nos passos de setores, escala e publicação abre o vídeo certo.
+- **Gravador dos vídeos** em `scripts/tutoriais/` (`node scripts/tutoriais/gravar.mjs`): grava pelo próprio Chrome,
+  sem ffmpeg, e devolve a demo ao estado original no fim. Quando uma tela mudar, regrava em minutos.
+- Janela "Publicar e Oficializar Escala" e botão do Modo TV: os botões "7 Dias", "15 Dias", "Mês Inteiro" e
+  "Cancelar" ficavam ilegíveis no tema claro.
+
 ## V0.5.8 — 23/11/2026
 
 - **Relatórios com mês quase vazio:** no começo do mês, quando "Este mês" tem poucos plantões, aparece "Este mês tem

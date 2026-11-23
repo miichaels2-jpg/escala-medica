@@ -2178,7 +2178,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
         <div className="border-t border-slate-800 pt-3 shrink-0 flex items-center justify-between text-xs text-slate-400 font-medium">
           <div>ScaleMedic Enterprise CCO • {units?.find(u => String(u.id) === String(selectedUnitId))?.name || company?.name || 'Hospital Principal'}</div>
-          <Button onClick={closeTvMode} variant="outline" className="h-8 text-xs border-slate-700 text-slate-300 cursor-pointer">
+          <Button onClick={closeTvMode} variant="outline" className="h-8 text-xs border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer">
             Fechar Modo TV
           </Button>
         </div>
@@ -3170,9 +3170,9 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             </div>
 
             <div className="flex gap-2">
-              <Button type="button" onClick={() => handleApplyQuickRange('7days')} variant="outline" className="flex-1 h-8 text-[10px] font-semibold border-slate-700 text-slate-300 cursor-pointer">7 Dias</Button>
-              <Button type="button" onClick={() => handleApplyQuickRange('15days')} variant="outline" className="flex-1 h-8 text-[10px] font-semibold border-slate-700 text-slate-300 cursor-pointer">15 Dias</Button>
-              <Button type="button" onClick={() => handleApplyQuickRange('month')} variant="outline" className="flex-1 h-8 text-[10px] font-semibold border-slate-700 text-slate-300 cursor-pointer">Mês Inteiro</Button>
+              <Button type="button" onClick={() => handleApplyQuickRange('7days')} variant="outline" className="flex-1 h-8 text-[10px] font-semibold border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer">7 Dias</Button>
+              <Button type="button" onClick={() => handleApplyQuickRange('15days')} variant="outline" className="flex-1 h-8 text-[10px] font-semibold border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer">15 Dias</Button>
+              <Button type="button" onClick={() => handleApplyQuickRange('month')} variant="outline" className="flex-1 h-8 text-[10px] font-semibold border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white cursor-pointer">Mês Inteiro</Button>
             </div>
 
             {existingPublishedOverlaps.length > 0 && (
@@ -3184,7 +3184,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
           </div>
 
           <DialogFooter className="pt-4 border-t border-slate-800">
-            <Button type="button" variant="outline" onClick={() => setPublishModalOpen(false)} className="h-11 border-slate-700 text-slate-300 rounded-xl cursor-pointer">Cancelar</Button>
+            <Button type="button" variant="outline" onClick={() => setPublishModalOpen(false)} className="h-11 border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl cursor-pointer">Cancelar</Button>
             <Button type="button" onClick={handleExecutePublishSector} disabled={submitting || !publishConfig.sector_id} className="h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-6 rounded-xl shadow-sm cursor-pointer">
               Oficializar Escala
             </Button>
