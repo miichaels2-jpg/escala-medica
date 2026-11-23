@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { escapeHtml, getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import PageHero from '@/components/PageHero';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
@@ -1178,45 +1179,31 @@ export default function Faturamento() {
     <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
       
       {/* BANNER PRINCIPAL */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Faturamento e repasse</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Apuração inteligente baseada na matriz de remuneração (Fixo, Produtividade ou Plantão Dinâmico).
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Button 
-            onClick={handleExportExcel}
-            variant="outline"
-            className="h-10 font-medium text-sm px-4 rounded-xl gap-2 cursor-pointer"
-            title="Baixar Relatório em Excel (Abre formatado no Excel)"
-          >
-            <Download className="w-4 h-4" /> Exportar Planilha (.xls)
-          </Button>
-
-          <Button 
-            onClick={handlePrintConsolidatedReport}
-            variant="outline"
-            className="h-10 font-medium text-sm px-4 rounded-xl gap-2 cursor-pointer"
-          >
-            <Printer className="w-4 h-4" /> Imprimir Fechamento
-          </Button>
-
-          <div className="flex items-center bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-1 rounded-xl gap-2">
-            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-lg text-slate-500 cursor-pointer">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-sm font-medium px-2 cursor-default text-slate-700 dark:text-slate-200">
-              {MONTH_NAMES[currentMonth]} {currentYear}
-            </span>
-            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-lg text-slate-500 cursor-pointer">
-              <ChevronRight className="w-4 h-4" />
-            </button>
+      <PageHero
+        title="Faturamento e repasse"
+        subtitle="Apuração baseada na matriz de remuneração (fixo, produtividade ou plantão dinâmico)."
+        actions={t => (
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <Button onClick={handleExportExcel} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`} title="Baixar Relatório em Excel (Abre formatado no Excel)">
+              <Download className={`w-4 h-4 ${t.outlineIcon}`} /> Exportar planilha
+            </Button>
+            <Button onClick={handlePrintConsolidatedReport} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}>
+              <Printer className={`w-4 h-4 ${t.outlineIcon}`} /> Imprimir fechamento
+            </Button>
+            <div className={`flex items-center p-1 rounded-xl gap-2 ${t.pill}`}>
+              <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} aria-label="Mês anterior" className={`p-1.5 rounded-lg cursor-pointer ${t.pillButton}`}>
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm font-medium px-2 cursor-default text-white">
+                {MONTH_NAMES[currentMonth]} {currentYear}
+              </span>
+              <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} aria-label="Próximo mês" className={`p-1.5 rounded-lg cursor-pointer ${t.pillButton}`}>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-        </div>
-      </div>
+        )}
+      />
 
       {/* CARDS EXECUTIVOS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

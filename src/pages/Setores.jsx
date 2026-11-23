@@ -3,6 +3,7 @@ import { useAppData } from '@/lib/useAppData';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import PageHero from '@/components/PageHero';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -124,25 +125,15 @@ export default function Setores() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans transition-colors duration-300">
       
       {/* HEADER EXECUTIVO */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 flex flex-col xl:flex-row xl:items-center justify-between gap-4 sm:gap-6">
-        <div className="space-y-1">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
-            Cadastro de Setor
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
-            Cadastre as unidades de atendimento e alas hospitalares para organização das escalas.
-          </p>
-        </div>
-
-        <div className="shrink-0">
-          <Button 
-            onClick={() => handleOpenModal()} 
-            className="w-full sm:w-auto h-12 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-semibold text-xs px-6 rounded-2xl shadow-sm gap-2 cursor-pointer transition-all border border-sky-500 dark:border-cyan-500/50"
-          >
-            <Plus className="w-4 h-4" /> Novo Setor
+      <PageHero
+        title="Setores e especialidades"
+        subtitle="Cadastre as alas e unidades de atendimento para organizar as escalas."
+        actions={t => (
+          <Button onClick={() => handleOpenModal()} className={`w-full sm:w-auto font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none font-semibold shrink-0 ${t.primary}`}>
+            <Plus className="w-4 h-4" /> Novo setor
           </Button>
-        </div>
-      </div>
+        )}
+      />
 
       {/* MÉTRICAS (CARDS) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-in fade-in zoom-in-95 duration-300">

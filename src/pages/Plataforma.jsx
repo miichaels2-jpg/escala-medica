@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Building2, Check, Copy, Hospital, KeyRound, Loader2, Plus, RefreshCw, UserPlus } from 'lucide-react';
+import { Check, Copy, Hospital, KeyRound, Loader2, Plus, RefreshCw, UserPlus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { birthDatePassword, generateProvisionalPassword } from '@/lib/passwordPolicy';
 import { Button } from '@/components/ui/button';
+import PageHero from '@/components/PageHero';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -187,18 +188,18 @@ export default function Plataforma() {
 
   return (
     <div className="min-h-full bg-slate-100 dark:bg-slate-950 p-4 md:p-8 space-y-5 text-slate-900 dark:text-slate-100">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Building2 className="w-6 h-6 text-slate-400" /> Plataforma</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Empresas clientes, seus gestores e os links de credenciamento. Cada empresa só enxerga os próprios dados.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" onClick={load} disabled={loading} className="h-9 gap-1.5">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Atualizar
-          </Button>
-          <Button type="button" onClick={openCompany} className="h-9 gap-1.5"><Plus className="w-4 h-4" /> Nova empresa</Button>
-        </div>
-      </div>
+      <PageHero
+        title="Plataforma"
+        subtitle="Empresas clientes, seus gestores e os links de credenciamento. Cada empresa só enxerga os próprios dados."
+        actions={t => (
+          <div className="flex gap-2">
+            <Button type="button" onClick={load} disabled={loading} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}>
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Atualizar
+            </Button>
+            <Button type="button" onClick={openCompany} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none font-semibold ${t.primary}`}><Plus className="w-4 h-4" /> Nova empresa</Button>
+          </div>
+        )}
+      />
 
       {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">{error}</p>}
 

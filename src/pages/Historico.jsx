@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { History, RefreshCw, Search } from 'lucide-react';
+import { RefreshCw, Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAppData } from '@/lib/useAppData';
 import { describeAuditEntry, isInternalOnly } from '@/lib/auditLog';
 import { Button } from '@/components/ui/button';
+import PageHero from '@/components/PageHero';
 import { Input } from '@/components/ui/input';
 
 const PERIODS = [
@@ -100,15 +101,15 @@ export default function Historico() {
 
   return (
     <div className="min-h-full bg-slate-100 dark:bg-slate-950 p-4 md:p-8 space-y-5 text-slate-900 dark:text-slate-100">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2"><History className="w-6 h-6 text-slate-400" /> Histórico de alterações</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Quem criou, alocou, trocou, excluiu, publicou, aprovou troca ou marcou pagamento, e quando.</p>
-        </div>
-        <Button type="button" variant="outline" onClick={load} disabled={loading} className="h-9 gap-1.5">
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Atualizar
-        </Button>
-      </div>
+      <PageHero
+        title="Histórico de alterações"
+        subtitle="Quem criou, alocou, trocou, excluiu, publicou, aprovou troca ou marcou pagamento, e quando."
+        actions={t => (
+          <Button type="button" onClick={load} disabled={loading} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none shrink-0 ${t.outline}`}>
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Atualizar
+          </Button>
+        )}
+      />
 
       <div className="flex flex-col lg:flex-row lg:items-center gap-2">
         <div className="inline-flex w-fit rounded-xl bg-slate-200/70 dark:bg-slate-800 p-1" role="tablist" aria-label="Período">

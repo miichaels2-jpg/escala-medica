@@ -10,6 +10,7 @@ import { isVacancyRelevantFor } from '@/components/NotificationCenter';
 import { ManagerSwapApprovals, MySwapsList, SwapProposalDialog, useDirectSwaps } from '@/components/DirectSwaps';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import PageHero from '@/components/PageHero';
 import { 
   Flame, Calendar, Building2, 
   CheckCircle2, Check, Trash2, ArrowRightLeft, Stethoscope, Filter, XCircle,
@@ -561,12 +562,10 @@ export default function Trocas() {
     <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100 transition-colors">
       
       {/* 1. CABEÇALHO */}
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Mural de vagas</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          {isManager ? 'Vagas abertas, pedidos de troca e histórico de repasses.' : `Vagas que você pode assumir, sem choque com a sua escala${myUnitIds.length > 1 ? `, em todas as suas unidades (${myUnitIds.length})` : ''}.`}
-        </p>
-      </div>
+      <PageHero
+        title="Mural de vagas"
+        subtitle={isManager ? 'Vagas abertas, pedidos de troca e histórico de repasses.' : `Vagas que você pode assumir, sem choque com a sua escala${myUnitIds.length > 1 ? `, em todas as suas unidades (${myUnitIds.length})` : ''}.`}
+      />
 
       {myPendingShifts.length > 0 && !isManager && (
         <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-amber-900 dark:text-amber-200 flex items-start gap-3">

@@ -1,14 +1,17 @@
 import { BrandMark } from '@/components/BrandMark';
 
-// Topo de destaque das telas de entrada (Minha Escala, Painel): faixa azul da marca com o símbolo ao fundo.
+// Topo de todas as telas: faixa azul da marca com o símbolo ao fundo.
 // As cores do botão principal vão em hexadecimal porque o tema escuro reescreve bg-white e text-sky-*.
 const HERO = {
-  outline: 'bg-white/10 hover:bg-white/20 text-white border border-white/30',
+  outline: 'bg-white/10 hover:bg-white/20 text-white border border-white/30 disabled:opacity-60',
   outlineIcon: 'text-white',
-  primary: 'bg-[#fff] hover:bg-[#f0f9ff] text-[#0369a1]'
+  primary: 'bg-[#fff] hover:bg-[#f0f9ff] text-[#0369a1] disabled:opacity-60',
+  // seletor de mês e afins
+  pill: 'bg-white/10 border border-white/25',
+  pillButton: 'hover:bg-white/15 text-white'
 };
 
-export default function PageHero({ title, subtitle, actions }) {
+export default function PageHero({ title, subtitle, actions, children }) {
   return (
     <div className="relative overflow-hidden rounded-2xl p-5 sm:p-7 bg-sky-600 dark:bg-sky-700 text-white border border-sky-600 dark:border-sky-700">
       <BrandMark size={150} tone="white" className="pointer-events-none absolute -right-8 -top-10 w-28 h-28 sm:w-[150px] sm:h-[150px] opacity-20" />
@@ -18,6 +21,7 @@ export default function PageHero({ title, subtitle, actions }) {
             {title}
           </h1>
           {subtitle && <p className="text-sm text-sky-100">{subtitle}</p>}
+          {children}
         </div>
         {actions && actions(HERO)}
       </div>

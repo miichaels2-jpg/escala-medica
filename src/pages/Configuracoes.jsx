@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { USER_PUBLIC_COLUMNS, useAppData } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import PageHero from '@/components/PageHero';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -425,16 +426,10 @@ export default function Configuracoes() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans transition-colors duration-300">
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 flex flex-col xl:flex-row xl:items-center justify-between gap-4 sm:gap-6">
-        <div className="space-y-1">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
-            Painel de Configurações
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
-            Gerencie o contrato da sua empresa com o ScaleMedic, edite os dados do Hospital selecionado ou convide sua equipe.
-          </p>
-        </div>
-      </div>
+      <PageHero
+        title="Configurações"
+        subtitle="Contrato da empresa com o ScaleMedic, dados do hospital selecionado e acessos da equipe."
+      />
 
       <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide">
         {[

@@ -9,6 +9,7 @@ import { getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } fro
 import { recipientFor, sendNotifications } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
+import PageHero from '@/components/PageHero';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -2186,6 +2187,10 @@ const handleAssignLegacyShiftUnit = async (shift) => {
   // =========================================================================
   return (
     <div className="relative p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+      <PageHero
+        title="Escalas e plantões"
+        subtitle={isManager ? 'Monte, publique e acompanhe os plantões de cada setor, mês a mês.' : 'Os plantões de cada setor, mês a mês.'}
+      />
       
       {isManager && unassignedShifts.length > 0 && (
         <div className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-sm dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between print:hidden">
