@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.5.1 — 23/11/2026
+
+- **Painel enxuto:** saem a faixa de vagas, o anel "Eficiência de cobertura", o gráfico de horas (vazios quando não há
+  plantão) e o cartão fixo de corpo clínico. Fica:
+  - **Precisa de você:** só o que pede ação — vagas sem profissional nos próximos 7 dias (um toque abre a vaga na
+    escala), furos do mês, setores com a escala do mês em rascunho e plantões de hoje sem valor ou aguardando
+    produção. Sem pendências, uma linha só: "Tudo em dia".
+  - **Números do dia:** em andamento agora, plantões hoje, cobertura do mês e custo de hoje.
+  - **Hoje por setor:** só os setores com plantão hoje, com quem está, quem entra e vagas (junta a antiga cobertura
+    por setor com a lista de plantões do dia).
+  - No celular, sem o botão "Modo TV".
+
 ## V0.4.10 — 23/11/2026
 
 - **LGPD na prática:**

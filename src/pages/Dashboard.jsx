@@ -1,15 +1,13 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { DEFAULT_REMUNERATION_TYPE, getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
 import OnboardingChecklist from '@/components/OnboardingChecklist';
-import { 
-  CalendarDays, Users, Clock, Minimize2, AlertTriangle, CheckCircle2,
-  ArrowRightLeft, DollarSign, Building2, ShieldAlert,
-  Radio, TrendingUp, Flame, ChevronRight, ChevronDown, ChevronUp, X, Send
+import { Minimize2, AlertTriangle, CheckCircle2,
+  ArrowRightLeft, DollarSign, Building2,
+  Radio, X, Send
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import UnitsOverview, { ALL_UNITS, requestUnitSwitch } from '@/components/UnitsOverview';
@@ -123,7 +121,6 @@ export default function Painel() {
   const [tvMode, setTvMode] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [showAllVacantShifts, setShowAllVacantShifts] = useState(false);
-  const [showDraftSectors, setShowDraftSectors] = useState(false);
 
   const unitId = (multiUnit && !isAllUnits ? effectiveScope : null) || selectedUnitId || user?.data?.selected_unit_id || company?.selected_unit_id || 'unit_h1';
   const currentUnit = units.find(u => String(u.id) === String(unitId));
@@ -276,7 +273,11 @@ export default function Painel() {
           : (a.date || '').localeCompare(b.date || '') || String(a.start_time || '').localeCompare(String(b.start_time || ''))));
   // Reavalia por minuto (não a cada segundo do relógio).
   }, [monthlyShifts, sectors, currentMinute]);
-  const visibleVacantShifts = showAllVacantShifts ? vacantShifts : vacantShifts.slice(0, 6);
+  // Vagas que ainda dá para preencher nos próximos 7 dias, e furos do mês (já passaram sem ninguém).
+  const nextWeekLimit = useMemo(() => { const d = new Date(currentTime); d.setDate(d.getDate() + 7); return getLocalDateString(d); }, [todayStr]); // eslint-disable-line react-hooks/exhaustive-deps
+  const upcomingVacancies = useMemo(() => vacantShifts.filter(v => !v.isOverdue && String(v.date || '').slice(0, 10) <= nextWeekLimit), [vacantShifts, nextWeekLimit]);
+  const overdueVacancies = useMemo(() => vacantShifts.filter(v => v.isOverdue), [vacantShifts]);
+  const visibleVacantShifts = showAllVacantShifts ? upcomingVacancies : upcomingVacancies.slice(0, 5);
 
   const todayFinancials = useMemo(() => {
     let executedValue = 0; let plannedValue = 0; let shiftsMissingRate = 0; let shiftsAwaitingProduction = 0;
@@ -337,21 +338,6 @@ export default function Painel() {
     return Math.round(((monthlyShifts.length - vacantMonthCount) / monthlyShifts.length) * 100);
   }, [monthlyShifts, vacantShifts]);
 
-  const hourlyCurveData = useMemo(() => {
-    const buckets = [ 
-      { label: '06h', count: 0 }, { label: '08h', count: 0 }, { label: '10h', count: 0 }, 
-      { label: '12h', count: 0 }, { label: '14h', count: 0 }, { label: '16h', count: 0 }, 
-      { label: '18h', count: 0 }, { label: '20h', count: 0 }, { label: '22h', count: 0 }, 
-      { label: '00h', count: 0 }, { label: '02h', count: 0 }, { label: '04h', count: 0 } 
-    ];
-    todayShifts.forEach(s => { 
-      const h = parseInt((s.start_time || '07:00').split(':')[0], 10); 
-      const idx = Math.min(11, Math.max(0, Math.floor((h >= 6 ? h - 6 : h + 18) / 2))); 
-      buckets[idx].count += 1; 
-    });
-    const max = Math.max(1, ...buckets.map(b => b.count));
-    return buckets.map(b => ({ ...b, height: Math.round((b.count / max) * 100) }));
-  }, [todayShifts]);
 
   // Escalas é por hospital: se o item for de outra unidade, troca a unidade e abre Escalas.
   const openEscalasFor = (targetUnitId) => {
@@ -478,9 +464,9 @@ export default function Painel() {
 
       <PageHero
         title={dashboardTitle}
-        subtitle={`Monitoramento em tempo real de escalas, cobertura médica hospitalar e custo operacional diário ${isAllUnits ? 'de todas as unidades' : 'da unidade selecionada'}.`}
+        subtitle={`${fmtDate(todayStr)} · o que precisa de atenção e quem está de plantão${isAllUnits ? ' em todas as unidades' : ''}.`}
         actions={t => (
-          <Button onClick={openTvMode} className={`font-medium text-sm h-11 px-4 rounded-xl gap-2 shrink-0 cursor-pointer shadow-none ${t.outline}`}>
+          <Button onClick={openTvMode} className={`hidden sm:inline-flex font-medium text-sm h-11 px-4 rounded-xl gap-2 shrink-0 cursor-pointer shadow-none ${t.outline}`}>
             <Radio className={`w-4 h-4 ${t.outlineIcon}`} /> Modo TV
           </Button>
         )}
@@ -500,299 +486,151 @@ export default function Painel() {
 
       {multiUnit && <UnitsOverview units={managedUnits} shifts={allCompanyShifts} scope={effectiveScope} onScopeChange={changeScope} now={currentTime} />}
 
-      {unsubmittedSectors.length > 0 && isManager && (
-        <div className="p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
-          <div className="flex items-start sm:items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-amber-500 text-white shrink-0 shadow-sm"><AlertTriangle className="w-5 h-5" /></div>
-            <div>
-              <strong className="text-xs font-semibold text-amber-700 dark:text-amber-300 block">
-                {unsubmittedSectors.length} Setor(es) com Escala Pendente de Publicação em {MONTH_NAMES[currentMonth]}
-              </strong>
-              <button type="button" onClick={() => setShowDraftSectors(v => !v)} aria-expanded={showDraftSectors} className="mt-1 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:underline cursor-pointer inline-flex items-center gap-1">
-                {showDraftSectors ? 'Ocultar setores' : 'Ver quais setores'} {showDraftSectors ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-              </button>
-              {showDraftSectors && <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                {unsubmittedSectors.map(s => (
-                  <button key={s.id} onClick={() => handleNavigateToSectorScale(s.id)} className="text-xs font-semibold px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-800 dark:text-amber-200 hover:bg-amber-500/30 transition-all cursor-pointer border border-amber-500/30">{s.name}</button>
-                ))}
-              </div>}
+      {isManager && (() => {
+        const attention = upcomingVacancies.length + overdueVacancies.length + unsubmittedSectors.length + todayFinancials.shiftsMissingRate + todayFinancials.shiftsAwaitingProduction;
+        if (!attention) {
+          return monthlyShifts.length > 0 ? (
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <p className="text-sm text-slate-700 dark:text-slate-200"><b className="font-semibold">Tudo em dia.</b> Sem vagas nos próximos 7 dias, sem furos e com a escala do mês publicada.</p>
             </div>
-          </div>
-          <Button onClick={() => navigate('/escalas')} className="h-9 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs px-4 rounded-xl shadow-sm shrink-0 cursor-pointer gap-1.5"><Send className="w-3.5 h-3.5" /> Abrir Escalas</Button>
-        </div>
-      )}
+          ) : null;
+        }
+        return (
+          <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Precisa de você</h2>
+            <ul className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
+              {upcomingVacancies.length > 0 && (
+                <li className="py-3">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-1 w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-slate-900 dark:text-white">{upcomingVacancies.length} vaga(s) sem profissional nos próximos 7 dias</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {visibleVacantShifts.map(vs => (
+                          <button key={vs.id} type="button" onClick={() => handleResolveAlert(vs)}
+                            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-200 hover:border-slate-400 dark:hover:border-slate-500 cursor-pointer">
+                            <b className="font-semibold">{vs.sectorName}</b> · {vs.formattedDate} · {vs.start_time}–{vs.end_time}
+                          </button>
+                        ))}
+                        {upcomingVacancies.length > 5 && (
+                          <button type="button" onClick={() => setShowAllVacantShifts(v => !v)} className="px-2 text-xs font-medium text-sky-700 dark:text-sky-300 hover:underline cursor-pointer">
+                            {showAllVacantShifts ? 'Mostrar menos' : `Ver mais ${upcomingVacancies.length - 5}`}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              )}
+              {overdueVacancies.length > 0 && (
+                <li className="py-3 flex items-start gap-3">
+                  <span className="mt-1 w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                  <div className="min-w-0 flex-1 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm text-slate-900 dark:text-white"><b className="font-medium">{overdueVacancies.length} furo(s) em {MONTH_NAMES[currentMonth].toLowerCase()}</b> <span className="text-slate-500 dark:text-slate-400">— plantões que passaram sem ninguém. Corrija na escala ou registre quem cobriu.</span></p>
+                    <Button type="button" variant="outline" onClick={() => handleResolveAlert(overdueVacancies[0])} className="h-8 px-3 rounded-lg text-xs cursor-pointer">Abrir na escala</Button>
+                  </div>
+                </li>
+              )}
+              {unsubmittedSectors.length > 0 && (
+                <li className="py-3 flex items-start gap-3">
+                  <span className="mt-1 w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-slate-900 dark:text-white">{unsubmittedSectors.length} setor(es) com a escala de {MONTH_NAMES[currentMonth].toLowerCase()} ainda em rascunho</p>
+                      <Button type="button" variant="outline" onClick={() => navigate('/escalas')} className="h-8 px-3 rounded-lg text-xs gap-1.5 cursor-pointer"><Send className="w-3.5 h-3.5" /> Abrir escala</Button>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      {unsubmittedSectors.map((sec, idx) => (
+                        <span key={sec.id}>{idx > 0 && ' · '}<button type="button" onClick={() => handleNavigateToSectorScale(sec.id)} className="hover:underline cursor-pointer">{sec.name}</button></span>
+                      ))}
+                    </p>
+                  </div>
+                </li>
+              )}
+              {(todayFinancials.shiftsMissingRate > 0 || todayFinancials.shiftsAwaitingProduction > 0) && (
+                <li className="py-3 flex items-start gap-3">
+                  <span className="mt-1 w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                  <div className="min-w-0 flex-1 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm text-slate-900 dark:text-white">
+                      {todayFinancials.shiftsMissingRate > 0 && <span className="font-medium">{todayFinancials.shiftsMissingRate} plantão(ões) de hoje sem valor cadastrado. </span>}
+                      {todayFinancials.shiftsAwaitingProduction > 0 && <span className="font-medium">{todayFinancials.shiftsAwaitingProduction} aguardando o lançamento da produção. </span>}
+                      <span className="text-slate-500 dark:text-slate-400">O custo do dia fica incompleto até isso ser resolvido.</span>
+                    </p>
+                    <Button type="button" variant="outline" onClick={() => navigate('/faturamento')} className="h-8 px-3 rounded-lg text-xs cursor-pointer">Abrir faturamento</Button>
+                  </div>
+                </li>
+              )}
+            </ul>
+          </section>
+        );
+      })()}
 
-      {vacantShifts.length > 0 ? (
-        <div className="p-5 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-900 dark:text-rose-200 shadow-sm space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0 font-semibold shadow-sm"><Flame className="w-5 h-5" /></div>
-              <div>
-                <strong className="text-sm font-semibold flex items-center gap-2">{vacantShifts.length} vaga(s) sem profissional neste mês</strong>
-                <span className="text-xs text-rose-700 dark:text-rose-300">Próximas primeiro. Toque em uma vaga para preencher.</span>
-              </div>
-            </div>
-            {vacantShifts.length > 6 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-expanded={showAllVacantShifts}
-                onClick={() => setShowAllVacantShifts(value => !value)}
-                className="h-8 shrink-0 self-start text-xs font-semibold text-rose-700 hover:bg-rose-500/10 hover:text-rose-900 dark:text-rose-300 dark:hover:bg-rose-500/20 dark:hover:text-rose-100 sm:self-auto"
-              >
-                {showAllVacantShifts ? (
-                  <span className="flex items-center gap-1">Mostrar menos <ChevronUp className="h-3.5 w-3.5" /></span>
-                ) : (
-                  <span className="flex items-center gap-1">Ver mais {vacantShifts.length - 6} vagas <ChevronDown className="h-3.5 w-3.5" /></span>
-                )}
-              </Button>
-            )}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          ['Em andamento agora', String(activeNowList.length), activeNowList.length ? 'plantão(ões) acontecendo' : 'ninguém de plantão agora'],
+          ['Plantões hoje', String(todayShifts.length), `${upcomingList.length} a iniciar · ${concludedList.length} concluído(s)`],
+          [`Cobertura de ${MONTH_NAMES[currentMonth].toLowerCase()}`, globalFillRate === null ? '—' : `${globalFillRate}%`, globalFillRate === null ? 'sem plantões no mês' : `${vacantShifts.length} vaga(s) sem profissional`],
+          ['Custo de hoje', `R$ ${todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, `previsto no dia: R$ ${todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`]
+        ].map(([label, value, hint]) => (
+          <div key={label} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 min-w-0">
+            <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
+            <div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900 dark:text-white truncate">{value}</div>
+            <div className="mt-0.5 text-xs leading-snug text-slate-500 dark:text-slate-400">{hint}</div>
           </div>
-          <div className="flex flex-wrap gap-2 pt-2 border-t border-rose-200 dark:border-rose-900/50">
-            {visibleVacantShifts.map((vs) => (
-              <button key={vs.id} onClick={() => handleResolveAlert(vs)} className="cursor-pointer px-3.5 py-2 rounded-xl bg-white dark:bg-rose-950/70 border border-rose-300 dark:border-rose-800 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2 hover:bg-rose-50 dark:hover:bg-rose-900 transition-all shadow-sm">
-                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /><span><b>{vs.sectorName}</b> • {vs.start_time} às {vs.end_time} ({vs.formattedDate})</span><ArrowRightLeft className="w-3 h-3 opacity-60 ml-1" />
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : monthlyShifts.length > 0 ? (
-        <div className="p-4 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-emerald-600 text-white font-semibold"><CheckCircle2 className="w-4 h-4" /></div>
-            <div><strong className="text-xs font-semibold block">Nenhuma vaga descoberta neste mês</strong><span className="text-[11px] text-emerald-700 dark:text-emerald-400">Todos os plantões cadastrados no período possuem profissional alocado. A publicação da escala é acompanhada separadamente.</span></div>
-          </div>
-          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums px-3 py-1 rounded-xl bg-emerald-500/20">SEM VAGAS</span>
-        </div>
-      ) : (
-        <div className="p-4 rounded-3xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 flex items-center gap-3 shadow-sm">
-          <CalendarDays className="w-5 h-5 text-slate-500 shrink-0" />
-          <div>
-            <strong className="text-xs font-semibold block">Nenhum plantão cadastrado neste mês</strong>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">A cobertura mensal será calculada quando houver plantões na escala.</span>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="p-5 rounded-3xl border border-emerald-200 dark:border-emerald-800/60 bg-gradient-to-br from-white to-emerald-50/40 dark:from-slate-900 dark:to-emerald-950/20 shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between"><span className="text-xs font-semibold text-emerald-800 dark:text-emerald-400">Profissionais com Plantão Ativo</span><span className="p-2 rounded-xl bg-emerald-600 text-white shadow-sm animate-pulse"><Clock className="w-4 h-4" /></span></div>
-          <div className="text-3xl font-semibold text-slate-900 dark:text-white mt-3">{activeNowList.length} <span className="text-sm font-medium text-slate-500">em andamento</span></div>
-          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-semibold">Plantões cujo horário está ativo na escala</p>
-        </Card>
-        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="flex items-center justify-between"><span className="text-xs font-medium text-slate-500">Plantões do Dia</span><span className="p-2 rounded-xl bg-sky-50 dark:bg-sky-950 text-sky-600 dark:text-sky-400"><CalendarDays className="w-4 h-4" /></span></div>
-          <div className="text-3xl font-semibold text-slate-900 dark:text-white mt-3">{todayShifts.length} <span className="text-sm font-medium text-slate-500">turnos</span></div>
-          <p className="text-[11px] text-slate-500 mt-1 font-medium">{upcomingList.length} a iniciar · {concludedList.length} concluídos</p>
-        </Card>
-        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="flex items-center justify-between"><span className="text-xs font-medium text-slate-500">Corpo Clínico Credenciado</span><span className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400"><Users className="w-4 h-4" /></span></div>
-          <div className="text-3xl font-semibold text-slate-900 dark:text-white mt-3">{professionals.length} <span className="text-sm font-medium text-slate-500">profissionais</span></div>
-          <p className="text-[11px] text-slate-500 mt-1 font-medium">Equipe vinculada às escalas</p>
-        </Card>
-        <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="flex items-center justify-between"><span className="text-xs font-medium text-slate-500">Custo Operacional Hoje</span><span className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400"><DollarSign className="w-4 h-4" /></span></div>
-          <div className="text-3xl font-semibold text-slate-900 dark:text-white mt-3 tabular-nums">R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-          <p className="text-[11px] text-slate-500 mt-1 font-medium">Previsão 24h: <b>R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p>
-          {todayFinancials.shiftsMissingRate > 0 && <p className="mt-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">{todayFinancials.shiftsMissingRate} plantão(ões) sem tarifa ou cadastro financeiro</p>}
-          {todayFinancials.shiftsAwaitingProduction > 0 && <p className="mt-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">{todayFinancials.shiftsAwaitingProduction} plantão(ões) aguardam lançamento da produção</p>}
-        </Card>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm lg:col-span-2 space-y-5">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-            <div>
-              <h3 className="font-semibold text-base text-slate-900 dark:text-white flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-sky-600" /> Cobertura da Escala por Setor
-              </h3>
-              <p className="text-xs text-slate-500">Plantões descobertos, em andamento, a iniciar ou concluídos hoje ({fmtDate(todayStr)})</p>
-            </div>
-            <span className="text-xs font-semibold px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-              {sectorsCoverage.filter(sec => sec.total > 0).length} de {sectorsCoverage.length} com plantão hoje
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {sectorsCoverage.filter(sec => sec.total > 0).length === 0 && (
-              <p className="sm:col-span-2 text-sm text-slate-500 dark:text-slate-400">Nenhum setor tem plantão hoje.</p>
-            )}
-            {sectorsCoverage.filter(sec => sec.total > 0).map((sec) => {
-              const hasShifts = sec.total > 0;
-              const percent = hasShifts ? Math.round((sec.active / sec.total) * 100) : 0;
-              const hasVacant = sec.vacant > 0;
-
-              return (
-                <div 
-                  key={sec.id}
-                  className={`p-4 rounded-2xl border transition-all ${
-                    hasVacant
-                      ? 'border-rose-300 bg-rose-50/50 dark:border-rose-900/60 dark:bg-rose-950/20 shadow-sm'
-                      : sec.active > 0
-                      ? 'border-emerald-200 bg-emerald-50/30 dark:border-emerald-900/50 dark:bg-emerald-950/20'
-                      : 'border-slate-200 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <strong className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-                      {sec.name}
-                    </strong>
-                    <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${
-                      hasVacant 
-                        ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' 
-                        : sec.active > 0 
-                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' 
-                        : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                    }`}>
-                      {hasShifts ? `${sec.active} ativo(s)` : 'Sem escala hoje'}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs text-slate-500 mt-2.5 font-medium">
-                    <span>Ocupação do posto</span>
-                    <span className="tabular-nums font-semibold text-slate-900 dark:text-white">
-                      {hasShifts ? `${sec.active} de ${sec.total} turnos (${percent}%)` : '0 / 0'}
-                    </span>
-                  </div>
-
-                  <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full mt-2 overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-500 ${hasVacant ? 'bg-rose-500' : sec.active > 0 ? 'bg-emerald-500' : 'bg-transparent'}`}
-                      style={{ width: `${hasShifts ? Math.min(100, Math.max(5, percent)) : 0}%` }}
-                    />
-                  </div>
-
-                  {hasVacant ? (
-                    <div className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold mt-2 flex items-center gap-1 animate-pulse">
-                      <AlertTriangle className="w-3.5 h-3.5" /> {sec.vacant} vaga(s) com desfalque médico
-                    </div>
-                  ) : hasShifts ? (
-                    <div className="text-[10px] text-slate-400 mt-2 font-medium">
-                      {sec.upcoming} plantonista(s) a assumir a seguir
-                    </div>
-                  ) : (
-                    <div className="text-[10px] text-slate-400 mt-2 italic">
-                      Nenhum plantão agendado para este setor hoje
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          {sectorsCoverage.some(sec => sec.total === 0) && (
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              <span className="font-medium text-slate-600 dark:text-slate-300">Sem plantão hoje:</span>{' '}
-              {sectorsCoverage.filter(sec => sec.total === 0).map(sec => sec.name).join(' · ')}
-            </p>
-          )}
-        </Card>
-
-        <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4">
-          <div>
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-              <h3 className="font-semibold text-base text-slate-900 dark:text-white flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-emerald-600" /> Eficiência de Cobertura
-              </h3>
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Neste Mês</span>
-            </div>
-
-            <div className="py-6 flex flex-col items-center justify-center relative">
-              <svg className="w-44 h-44 transform -rotate-90" viewBox="0 0 120 120">
-                <circle cx="60" cy="60" r="48" className="text-slate-100 dark:text-slate-800" strokeWidth="12" stroke="currentColor" fill="transparent" />
-                <circle 
-                  cx="60" cy="60" r="48" 
-                  className={globalFillRate === null ? "text-slate-300 dark:text-slate-700" : globalFillRate === 100 ? "text-emerald-500" : "text-sky-500"}
-                  strokeWidth="12" 
-                  strokeDasharray={2 * Math.PI * 48}
-                  strokeDashoffset={globalFillRate === null ? 2 * Math.PI * 48 : 2 * Math.PI * 48 * (1 - globalFillRate / 100)}
-                  strokeLinecap="round" stroke="currentColor" fill="transparent" 
-                />
-              </svg>
-              <div className="absolute flex flex-col items-center justify-center text-center">
-                <span className="text-4xl font-semibold tabular-nums tracking-tight text-slate-900 dark:text-white">{globalFillRate === null ? '—' : `${globalFillRate}%`}</span>
-                <span className="text-xs font-medium text-slate-400 mt-0.5">{globalFillRate === null ? 'Sem escala' : 'Cobertura'}</span>
-              </div>
-            </div>
-
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between items-center p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850/50 font-medium">
-                <span className="text-slate-500">Plantões em andamento:</span>
-                <strong className="text-emerald-600 tabular-nums font-semibold">{activeNowList.length} turnos</strong>
-              </div>
-              <div className="flex justify-between items-center p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850/50 font-medium">
-                <span className="text-slate-500">Vagas Descobertas:</span>
-                <strong className={vacantShifts.length > 0 ? "text-rose-600 tabular-nums font-semibold" : "text-slate-400 tabular-nums"}>{vacantShifts.length} postos</strong>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
-            <span className="text-xs font-medium text-slate-400 block mb-2">Distribuição da Carga Horária 24h</span>
-            <div className="flex items-stretch justify-between h-20 gap-1">
-              {hourlyCurveData.map((b, i) => (
-                <div key={i} className="flex-1 h-full flex flex-col items-center gap-1">
-                  <div className="w-full flex-1 flex items-end">
-                    <div className="w-full rounded-t-sm bg-sky-600 dark:bg-sky-500" style={{ height: b.count ? `${Math.max(8, b.height)}%` : '2px', opacity: b.count ? 1 : 0.35 }} title={`${b.label}: ${b.count} plantão(ões)`} />
-                  </div>
-                  <span className="text-[10px] tabular-nums text-slate-400">{b.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* PLANTÕES DE HOJE */}
-      <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-          <div>
-            <h3 className="font-semibold text-base text-slate-900 dark:text-white">Plantões em Atendimento Hoje</h3>
-            <p className="text-xs text-slate-500">Escala de {fmtDate(todayStr)} (Ativos no momento, programados e concluídos)</p>
-          </div>
-          <span className="text-xs font-semibold px-3 py-1 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
-            {todayShifts.length} turno(s) na unidade
-          </span>
+      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Hoje por setor</h2>
+          <span className="text-xs text-slate-500 dark:text-slate-400">{sectorsCoverage.filter(sec => sec.total > 0).length} de {sectorsCoverage.length} setor(es) com plantão hoje</span>
         </div>
-
         {todayShifts.length === 0 ? (
-          <div className="py-12 text-center text-sm text-slate-400">
-            Nenhum plantão ativo ou agendado para a data de hoje nesta unidade.
-          </div>
+          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Nenhum plantão hoje{isAllUnits ? ' nas unidades' : ' nesta unidade'}.</p>
         ) : (
-          <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-            {todayShifts.map((shift) => {
-              const state = shift.lifecycle.state;
-              const isActive = state === 'active';
-              const isFinished = state === 'concluded';
-              const isVago = isVacantShift(shift);
-
+          <div className="mt-3 space-y-3">
+            {sectorsCoverage.filter(sec => sec.total > 0).map(sec => {
+              const secShifts = todayShifts.filter(sh => String(sh.sector_id || 'sem_setor') === String(sec.id));
               return (
-                <div
-                  key={shift.id}
-                  className={`p-4 rounded-2xl border transition-all ${
-                    isVago ? 'border-rose-400 bg-rose-50/60 dark:bg-rose-950/20 shadow-sm' : isActive ? 'border-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/20 shadow-sm ring-1 ring-emerald-400/40' : isFinished ? 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-850/40 opacity-70' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="text-xs font-medium tabular-nums text-slate-600 dark:text-slate-300">{shift.start_time} às {shift.end_time}</span>
-                    <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${isVago ? 'bg-rose-600 text-white animate-pulse' : isActive ? 'bg-emerald-600 text-white animate-pulse' : isFinished ? 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300' : 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'}`}>
-                      {isVago ? '⚠️ Vaga Aberta' : isActive ? '● Ativo no Plantão' : isFinished ? '✓ Concluído' : '⏳ Programado'}
+                <div key={sec.id} className="rounded-xl border border-slate-200 dark:border-slate-800">
+                  <button type="button" onClick={() => handleNavigateToSectorScale(sec.id)} className="w-full flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded-t-xl">
+                    <span className="text-sm font-semibold text-slate-900 dark:text-white">{sec.name}</span>
+                    <span className="flex flex-wrap items-center gap-1.5 text-xs">
+                      {sec.active > 0 && <span className="rounded-full px-2 py-0.5 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">{sec.active} em andamento</span>}
+                      {sec.upcoming > 0 && <span className="rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{sec.upcoming} a iniciar</span>}
+                      {sec.vacant > 0 && <span className="rounded-full px-2 py-0.5 bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">{sec.vacant} vaga(s)</span>}
+                      {sec.concluded > 0 && !sec.active && !sec.upcoming && !sec.vacant && <span className="rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">concluído</span>}
                     </span>
-                  </div>
-                  <div className="font-semibold text-sm text-slate-900 dark:text-white truncate">
-                    {isVago ? <span className="text-rose-600">Vaga em Aberto</span> : toTitleCase(shift.professional_name)}
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
-                    <span className="truncate">{toTitleCase(shift.sector_name || sectors.find(sec => String(sec.id) === String(shift.sector_id))?.name) || 'Setor não informado'}{isAllUnits && unitNameById[String(shift.unit_id)] ? ` · ${unitNameById[String(shift.unit_id)]}` : ''}</span>
-                    <span className="text-[10px] font-medium text-slate-400">{shift.lifecycle.detail}</span>
-                  </div>
+                  </button>
+                  <ul className="divide-y divide-slate-100 dark:divide-slate-800 border-t border-slate-100 dark:border-slate-800">
+                    {secShifts.map(shift => {
+                      const vago = isVacantShift(shift);
+                      const st = shift.lifecycle.state;
+                      return (
+                        <li key={shift.id} className={`flex items-center gap-3 px-4 py-2 text-sm ${st === 'concluded' && !vago ? 'opacity-60' : ''}`}>
+                          <span className="w-24 shrink-0 tabular-nums text-xs text-slate-500 dark:text-slate-400">{shift.start_time}–{shift.end_time}</span>
+                          <span className={`flex-1 min-w-0 truncate ${vago ? 'text-rose-700 dark:text-rose-300' : 'text-slate-900 dark:text-white'}`}>
+                            {vago ? 'Sem profissional' : toTitleCase(shift.professional_name)}
+                            {isAllUnits && unitNameById[String(shift.unit_id)] ? <span className="text-slate-400"> · {unitNameById[String(shift.unit_id)]}</span> : null}
+                          </span>
+                          <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400 shrink-0">{vago ? 'vaga aberta' : st === 'active' ? 'em andamento' : st === 'concluded' ? 'concluído' : 'a iniciar'}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </div>
               );
             })}
+            {sectorsCoverage.some(sec => sec.total === 0) && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-medium text-slate-600 dark:text-slate-300">Sem plantão hoje:</span>{' '}
+                {sectorsCoverage.filter(sec => sec.total === 0).map(sec => sec.name).join(' · ')}
+              </p>
+            )}
           </div>
         )}
-      </Card>
+      </section>
     </div>
   );
 }
