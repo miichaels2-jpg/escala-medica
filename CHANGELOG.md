@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.4.10 — 23/11/2026
+
+- **LGPD na prática:**
+  - **Aceite dos termos gravado pelo banco**, com a data do servidor e a versão dos termos (antes vinha do relógio do
+    celular, e uma falha na gravação deixava a pessoa entrar sem o aceite registrado — agora ela não entra). Quando os
+    termos mudarem, basta subir a versão: cada pessoa aceita de novo no próximo login. A página dos termos mostra a
+    versão.
+  - **Minha Escala › Seus dados (LGPD):** quando aceitou os termos, **baixar meus dados** (cadastro, plantões,
+    notificações e registros de privacidade num arquivo) e **pedir exclusão dos meus dados**.
+  - **Pedido de exclusão:** avisa os gestores da empresa no sino e aparece no Corpo Clínico com o prazo de 15 dias,
+    até o gestor marcar como atendido.
+
 ## V0.4.9 — 23/11/2026
 
 - **Histórico com autor garantido pelo banco:** o "quem fez" passa a vir do login oficial, descoberto pelo próprio

@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
+import PrivacyRequestsBanner from '@/components/PrivacyRequestsBanner';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -1015,6 +1016,8 @@ export default function CorpoClinico() {
           </div>
         )) : null}
       />
+
+      {isManager && <PrivacyRequestsBanner />}
 
       <input ref={importInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleImportFile} />
 
