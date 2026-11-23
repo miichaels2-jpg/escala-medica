@@ -190,7 +190,7 @@ export default function AppLayout({ children }) {
 
   const navItems = [
     { label: 'Painel Geral', path: '/dashboard', icon: LayoutDashboard, visible: true },
-    { label: 'Escalas & Plantões', path: '/escalas', icon: CalendarDays, visible: true },
+    { label: 'Escala', path: '/escalas', icon: CalendarDays, visible: true },
     { label: 'Mural de Oportunidades', path: '/trocas', icon: Flame, visible: true, badge: muralBadge },
     { label: 'Minha Escala', path: '/minha-escala', icon: Activity, visible: true },
     { label: 'Corpo Clínico', path: '/corpo-clinico', icon: Users, visible: isManager || isBilling },
@@ -248,7 +248,7 @@ export default function AppLayout({ children }) {
     isFieldProfessional
       ? { label: 'Minha Escala', path: '/minha-escala', icon: Activity }
       : { label: 'Painel', path: '/dashboard', icon: LayoutDashboard },
-    { label: 'Escalas', path: '/escalas', icon: CalendarDays },
+    { label: 'Escala', path: '/escalas', icon: CalendarDays },
     { label: 'Mural', path: '/trocas', icon: Flame, badge: muralBadge }
   ].filter(tab => canAccessRoute(user, tab.path));
   const mobileGridCols = ['grid-cols-2', 'grid-cols-2', 'grid-cols-3', 'grid-cols-4'][mobileTabs.length] || 'grid-cols-4';

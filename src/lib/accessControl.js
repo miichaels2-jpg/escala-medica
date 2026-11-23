@@ -65,7 +65,7 @@ export const ROUTE_PRIORITY = ['/minha-escala', '/trocas', '/escalas', '/dashboa
 // Telas que podem ser liberadas uma a uma (ordem do menu).
 export const SCREENS = [
   { path: '/dashboard', label: 'Painel Geral', desc: 'Visão do dia, vagas, custos e unidades' },
-  { path: '/escalas', label: 'Escalas & Plantões', desc: 'Grade, alocação, geração e publicação' },
+  { path: '/escalas', label: 'Escala', desc: 'Grade do mês, alocação, turnos e publicação' },
   { path: '/trocas', label: 'Mural de Oportunidades', desc: 'Vagas abertas, trocas e repasses' },
   { path: '/minha-escala', label: 'Minha Escala', desc: 'Os próprios plantões, agenda e disponibilidade' },
   { path: '/corpo-clinico', label: 'Corpo Clínico', desc: 'Cadastro de profissionais e acessos' },
