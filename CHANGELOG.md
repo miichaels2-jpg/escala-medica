@@ -9,6 +9,11 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.4.8 — 23/11/2026
+
+- **Planejamento:** entra o item 41 — tela "Como usar" com vídeos narrados (voz feminina em português e legenda) de
+  cada tela e tarefa, botão "?" em cada tela e "ver como fazer" nos Primeiros passos. Começa por um vídeo piloto.
+
 ## V0.4.7 — 23/11/2026
 
 - **Planejamento:** entram os próximos passos da varredura completa do app, em três prioridades — segurança e
