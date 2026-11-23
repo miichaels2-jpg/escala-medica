@@ -6,6 +6,7 @@ import { APP_VERSION } from '@/lib/version';
 import { formatLockWait, passwordProblem } from '@/lib/passwordPolicy';
 import { openOfficialSession } from '@/lib/authSession';
 import { TERMS_VERSION, needsTermsAcceptance } from '@/lib/terms';
+import { isManagerUser } from '@/lib/accessControl';
 import { BrandAppIcon, BrandWordmark } from '@/components/BrandMark';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
@@ -95,14 +96,15 @@ export default function Login() {
       setShowLgpdModal(true);
       return;
     }
-    if (uList.length > 1) {
+    if (uList.length > 1 && isManagerUser(uRec)) {
       setPendingUser(uRec);
       setAvailableUnits(uList);
       setSelectedUnitForLogin(uList[0].id);
       setShowUnitModal(true);
       return;
     }
-    proceedWithLogin(uRec, uList[0]?.id || uRec.data?.selected_unit_id);
+    const lastUnit = uList.find(u => String(u.id) === String(uRec.data?.selected_unit_id));
+    proceedWithLogin(uRec, lastUnit?.id || uList[0]?.id || uRec.data?.selected_unit_id);
   };
 
   const handleLogin = async (e) => {
@@ -381,15 +383,14 @@ export default function Login() {
       <Dialog open={showPasswordChangeModal} onOpenChange={(open) => !open && resetModals()}>
         <DialogContent className="max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-3xl p-6 shadow-2xl z-[9999]">
           <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-4 mb-4">
-            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-rose-500">
-              <KeyRound className="w-6 h-6" /> Atualização de Segurança
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-slate-900 dark:text-white">
+              <KeyRound className="w-6 h-6 text-sky-600 dark:text-sky-400" /> Crie sua senha
             </DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleChangePassword} className="space-y-4">
             <p className="text-sm text-slate-600 dark:text-slate-400 font-medium leading-relaxed">
-              Olá, <strong>{pendingUser?.full_name?.split(' ')[0]}</strong>. Por motivos de segurança, você está utilizando uma senha provisória de primeiro acesso. 
-              Por favor, cadastre a sua nova senha pessoal abaixo para continuar.
+              Olá, <strong>{pendingUser?.full_name?.split(' ')[0]}</strong>. Você entrou com a senha provisória. Crie agora a sua senha pessoal; ela vale a partir do próximo acesso.
             </p>
 
             {passwordError && (
@@ -425,9 +426,9 @@ export default function Login() {
 
             <DialogFooter className="pt-4 mt-2 border-t border-slate-100 dark:border-slate-800">
               <Button type="button" variant="outline" onClick={resetModals} className="h-11 w-full text-xs font-medium border-slate-200 dark:border-slate-700 text-slate-500 cursor-pointer">
-                Cancelar e Sair
+                Sair
               </Button>
-              <Button type="submit" disabled={loadingAction} className="h-11 w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-sm cursor-pointer transition-all">
+              <Button type="submit" disabled={loadingAction} className="h-11 w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-sm cursor-pointer transition-all">
                 {loadingAction ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Salvando...</> : <><Check className="w-4 h-4 mr-1.5" /> Salvar e Continuar</>}
               </Button>
             </DialogFooter>
@@ -489,15 +490,13 @@ export default function Login() {
         <DialogContent className="max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-3xl p-6 shadow-2xl z-[9999]">
           <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-4 mb-4">
             <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-sky-600 dark:text-sky-400">
-              <Building2 className="w-6 h-6" /> Portal das Unidades
+              <Building2 className="w-6 h-6" /> Escolha o hospital
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             <p className="text-sm text-slate-600 dark:text-slate-400 font-medium leading-relaxed">
-              Olá, <strong>Dr(a). {pendingUser?.full_name?.split(' ')[0] || 'Profissional'}</strong>. Identificamos que seu perfil possui acesso a múltiplas unidades hospitalares. 
-              <br/><br/>
-              <b>Selecione em qual hospital você deseja entrar agora:</b>
+              Olá, <strong>{pendingUser?.full_name?.split(' ')[0] || 'Gestor'}</strong>. Você administra mais de um hospital. Em qual quer entrar agora? Dá para trocar depois no topo da tela.
             </p>
 
             <div className="grid gap-2.5 max-h-60 overflow-y-auto pr-1">
@@ -513,17 +512,7 @@ export default function Login() {
                 >
                   <div className="flex items-center gap-3">
                     <Hospital className={`w-5 h-5 ${selectedUnitForLogin === u.id ? 'text-sky-600' : 'text-slate-400'}`} />
-                    <div className="flex flex-col">
-                      <span className="text-sm font-semibold truncate">{u.name}</span>
-                      <span
-                        title={String(u.id)}
-                        className={`block max-w-[260px] break-all text-[10px] tabular-nums ${selectedUnitForLogin === u.id ? 'text-sky-600/80' : 'text-slate-400'}`}
-                      >
-                        {String(u.id).match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
-                          ? `ID: ${u.id}`
-                          : `ID legado (migração pendente): ${u.id}`}
-                      </span>
-                    </div>
+                    <span className="text-sm font-semibold truncate">{u.name}</span>
                   </div>
                   {selectedUnitForLogin === u.id && <CheckCircle2 className="w-5 h-5 text-sky-600" />}
                 </div>
@@ -535,8 +524,8 @@ export default function Login() {
             <Button type="button" variant="outline" onClick={resetModals} className="h-11 w-full text-xs font-medium border-slate-200 dark:border-slate-700 text-slate-500 cursor-pointer">
               Voltar
             </Button>
-            <Button type="button" onClick={handleSelectUnitAndEnter} disabled={!selectedUnitForLogin || loadingAction} className="h-11 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-sm cursor-pointer transition-all">
-              {loadingAction ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Conectando...</> : <><Check className="w-4 h-4 mr-1.5" /> Acessar Escalas</>}
+            <Button type="button" onClick={handleSelectUnitAndEnter} disabled={!selectedUnitForLogin || loadingAction} className="h-11 w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-sm cursor-pointer transition-all">
+              {loadingAction ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Conectando...</> : <><Check className="w-4 h-4 mr-1.5" /> Entrar</>}
             </Button>
           </DialogFooter>
         </DialogContent>

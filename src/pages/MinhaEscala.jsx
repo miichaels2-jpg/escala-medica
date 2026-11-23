@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
 import { 
   Clock, Building2, Repeat, CheckCircle2, Loader2, DollarSign, AlertCircle, 
-  Radio, Printer, ChevronLeft, ChevronRight, Send, Timer, Sparkles, Flame, ArrowRight, 
+  Radio, ChevronLeft, ChevronRight, Send, Timer, Sparkles, Flame, ArrowRight, 
   Layers, CalendarCheck, Zap, ChevronDown, ChevronUp, Clock3, ShieldAlert, LogIn, LogOut, MapPin, CalendarPlus
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -382,11 +382,12 @@ export default function MinhaEscala() {
 
   const monthShifts = useMemo(() => enrichedShifts.filter(s => (s.date || '').startsWith(monthPrefix)), [enrichedShifts, monthPrefix]);
 
-  const upcomingMonthShifts = useMemo(() => monthShifts.filter(s => s.state === 'programado' || s.state === 'ativo').sort((a, b) => {
+  // Próximos plantões de qualquer mês, do mais perto ao mais longe.
+  const upcomingShifts = useMemo(() => enrichedShifts.filter(s => s.state === 'programado' || s.state === 'ativo').sort((a, b) => {
     const cmp = (a.date || '').localeCompare(b.date || '');
     if (cmp !== 0) return cmp;
     return (a.start_time || '').localeCompare(b.start_time || '');
-  }), [monthShifts]);
+  }), [enrichedShifts]);
 
   const completedMonthShifts = useMemo(() => monthShifts.filter(s => s.state === 'concluido').sort((a, b) => {
     const cmp = (b.date || '').localeCompare(a.date || '');
@@ -626,17 +627,13 @@ export default function MinhaEscala() {
       
       <PageHero
         title={<>Olá, Dr(a). {currentProfessional?.name ? currentProfessional.name.split(' ')[0] : user?.full_name?.split(' ')[0] || 'Profissional'}!</>}
-        subtitle="Consulte seus plantões, acompanhe horários e, se desejar, registre check-in e check-out."
+        subtitle="Seus próximos plantões, ganhos do mês e vagas para pegar."
         actions={t => (
           <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
-            <Button onClick={handlePrintMyStatement} className={`h-11 font-medium text-sm px-3 sm:px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}>
-              <Printer className={`w-4 h-4 ${t.outlineIcon}`} /> Imprimir espelho
-            </Button>
-
             <Button
               onClick={handleAddToCalendar}
               title="Baixa seus próximos plantões para a agenda do celular, com lembrete 12 h e 1 h antes"
-              className={`col-span-2 sm:col-span-1 order-last sm:order-none h-11 font-medium text-sm px-3 sm:px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}
+              className={`h-11 font-medium text-sm px-3 sm:px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}
             >
               <CalendarPlus className={`w-4 h-4 ${t.outlineIcon}`} /> Adicionar à agenda
             </Button>
@@ -708,17 +705,16 @@ export default function MinhaEscala() {
                   <MapPin className="w-3.5 h-3.5 shrink-0" /> {featuredShift.unitAddress} · <span className="text-sky-700 dark:text-sky-300">Como chegar</span>
                 </a>
               )}
-              <p className={`text-[11px] font-semibold mt-1 flex items-center gap-1 ${
-                featuredShiftHasCoordinates ? 'text-slate-500 dark:text-slate-400' : 'text-amber-700 dark:text-amber-300'
-              }`}>
-                <MapPin className="w-3 h-3 shrink-0" />
-                {featuredShiftHasCoordinates
-                  ? 'Ponto opcional: GPS a até 100 m, disponível 15 min antes/depois do horário.'
-                    : 'Ponto indisponível: coordenadas da unidade ausentes ou inválidas.'}
-              </p>
+              {featuredShiftHasCoordinates && (
+                <p className="text-[11px] font-semibold mt-1 flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                  <MapPin className="w-3 h-3 shrink-0" />
+                  Ponto opcional: GPS a até 100 m, disponível 15 min antes/depois do horário.
+                </p>
+              )}
             </div>
           </div>
 
+          {featuredShiftHasCoordinates && (
           <div className="grid grid-cols-2 sm:flex sm:flex-col sm:min-w-44 gap-2 shrink-0">
             {locationError && <span className="col-span-2 text-[10px] text-rose-600 dark:text-rose-400 font-semibold leading-tight">{locationError}</span>}
             <Button 
@@ -751,10 +747,24 @@ export default function MinhaEscala() {
                 : 'Check-in/out libera até 15 min antes ou depois.'}
             </span>
           </div>
+          )}
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Resumo do mês</h2>
+        <div className="flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-1 rounded-2xl gap-1">
+          <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} aria-label="Mês anterior" className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-500 cursor-pointer">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="text-xs font-semibold px-1 tabular-nums min-w-28 text-center">{MONTH_NAMES[currentMonth]} {currentYear}</span>
+          <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} aria-label="Próximo mês" className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-slate-500 cursor-pointer">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 !mt-3">
         <Card className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs sm:text-xs font-medium text-slate-400">Plantões cumpridos</span>
@@ -808,13 +818,13 @@ export default function MinhaEscala() {
 
         <Card className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs sm:text-xs font-medium text-slate-400">Próximos plantões</span>
+            <span className="text-xs sm:text-xs font-medium text-slate-400">A fazer em {MONTH_NAMES[currentMonth]}</span>
             <CalendarCheck className="w-4 h-4 text-slate-400" />
           </div>
           <div className="text-3xl font-semibold text-slate-900 dark:text-white mt-3">
             {monthMetrics.futuros}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1 font-medium">Agendados no mês vigente</p>
+          <p className="text-[11px] text-slate-500 mt-1 font-medium">{upcomingShifts.length ? `${upcomingShifts.length} no total · o próximo em ${formatDateBR(upcomingShifts[0].date).slice(0, 5)}` : 'Nenhum plantão marcado'}</p>
         </Card>
       </div>
 
@@ -826,24 +836,12 @@ export default function MinhaEscala() {
             <div className="flex items-center gap-2">
 
               <h2 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">
-                Plantões a realizar
+                Próximos plantões{upcomingShifts.length ? ` (${upcomingShifts.length})` : ''}
               </h2>
             </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Turnos que faltam cumprir em {MONTH_NAMES[currentMonth]} {currentYear}, ordenados a partir da data atual.
+              Do mais perto ao mais longe, em todas as suas unidades.
             </p>
-          </div>
-
-          <div className="flex items-center justify-between sm:justify-start bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-1 rounded-2xl gap-2">
-            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} aria-label="Mês anterior" className="p-2.5 sm:p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500 cursor-pointer">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-xs font-semibold px-2 tabular-nums">
-              {MONTH_NAMES[currentMonth]} {currentYear}
-            </span>
-            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} aria-label="Próximo mês" className="p-2.5 sm:p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500 cursor-pointer">
-              <ChevronRight className="w-4 h-4" />
-            </button>
           </div>
         </div>
 
@@ -860,7 +858,7 @@ export default function MinhaEscala() {
           <div className="py-16 text-center text-slate-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />Carregando...</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {upcomingMonthShifts.map(shift => {
+            {upcomingShifts.map(shift => {
               const isAtivo = shift.state === 'ativo';
               const isPending = shift.isPendingApproval;
               const hasConflict = shift.hasConflict;
@@ -876,9 +874,7 @@ export default function MinhaEscala() {
                       ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-sm ring-1 ring-emerald-500/40' 
                       : isPending
                       ? 'border-amber-300 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/20'
-                      : isNext
-                      ? 'border-indigo-400 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 shadow-sm ring-1 ring-indigo-300/50'
-                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:border-sky-400'
+                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm'
                   }`}
                 >
                   <div className="space-y-2">
@@ -903,11 +899,9 @@ export default function MinhaEscala() {
                             ? 'bg-emerald-600 text-white animate-pulse' 
                             : isPending
                             ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
-                            : isNext
-                            ? 'bg-indigo-600 text-white'
-                            : 'bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                         }`}>
-                          {isAtivo ? '● Ao Vivo' : isPending ? '⏳ Em Análise' : isNext ? 'Próximo plantão' : 'Programado'}
+                          {isAtivo ? '● Ao vivo' : isPending ? 'Em análise' : isNext ? 'Próximo' : 'Marcado'}
                         </span>
                       </div>
                     </div>
@@ -931,7 +925,7 @@ export default function MinhaEscala() {
                       <span>{shift.duration}h</span>
                     </div>
 
-                    {shift.shiftValue?.type === 'valor' && (
+                    {shift.shiftValue?.type === 'valor' && shift.shiftValue.value > 0 && (
                       <div className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 pt-1 border-t border-slate-100 dark:border-slate-800">
                         <DollarSign className="w-3.5 h-3.5" />
                         Valor Previsto: {formatCurrency(shift.shiftValue.value)}
@@ -951,7 +945,7 @@ export default function MinhaEscala() {
                           variant="outline" 
                           onClick={() => handlePassShiftToMural(shift)}
                           disabled={submitting}
-                          className="h-10 sm:h-8 w-full sm:w-auto text-[11px] font-semibold border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl gap-1.5 cursor-pointer"
+                          className="h-10 sm:h-8 w-full sm:w-auto text-[11px] font-semibold rounded-xl gap-1.5 cursor-pointer"
                         >
                           <Flame className="w-3.5 h-3.5" /> Passar no Mural
                         </Button>
@@ -961,11 +955,11 @@ export default function MinhaEscala() {
                 </div>
               );
             })}
-            {upcomingMonthShifts.length === 0 && (
+            {upcomingShifts.length === 0 && (
               <div className="md:col-span-2 lg:col-span-3 py-10 text-center rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
                 <CalendarCheck className="w-8 h-8 mx-auto mb-2 text-slate-400" />
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Nenhum plantão futuro nesta competência</p>
-                <p className="text-xs text-slate-500 mt-1">Use as setas para consultar outros meses. O próximo plantão, quando houver, aparece em destaque acima.</p>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Nenhum plantão marcado</p>
+                <p className="text-xs text-slate-500 mt-1">Quando a coordenação te escalar, aparece aqui. Vagas abertas ficam no <button type="button" onClick={() => navigate('/trocas')} className="font-semibold text-sky-700 dark:text-sky-300 hover:underline cursor-pointer">Mural</button>.</p>
               </div>
             )}
           </div>
@@ -977,7 +971,7 @@ export default function MinhaEscala() {
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-slate-400" />
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-              Plantões Já Concluídos ({completedMonthShifts.length})
+              Concluídos em {MONTH_NAMES[currentMonth]} ({completedMonthShifts.length})
             </h3>
           </div>
 
@@ -997,7 +991,7 @@ export default function MinhaEscala() {
 
         {showPastShifts && (
           completedMonthShifts.length === 0 ? (
-            <p className="text-xs text-slate-400 py-4 text-center">Nenhum plantão concluído até o momento nesta competência.</p>
+            <p className="text-xs text-slate-400 py-4 text-center">Nenhum plantão concluído neste mês.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 opacity-85">
               {completedMonthShifts.map(shift => (
@@ -1022,7 +1016,7 @@ export default function MinhaEscala() {
                   
                   <div className="flex items-center justify-between text-[10px] text-slate-400 tabular-nums mt-1 border-t border-slate-200 dark:border-slate-800 pt-1.5">
                     <span>{shift.start_time} - {shift.end_time} ({shift.duration}h)</span>
-                    {shift.shiftValue?.type === 'valor' && (
+                    {shift.shiftValue?.type === 'valor' && shift.shiftValue.value > 0 && (
                       <span className="font-semibold text-emerald-600">{formatCurrency(shift.shiftValue.value)}</span>
                     )}
                   </div>
