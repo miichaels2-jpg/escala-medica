@@ -20,7 +20,7 @@ export default function OnboardingChecklist({ companyId, user, units = [], secto
   const steps = [
     { id: 'hospital', done: units.length > 0 && units.every(u => u.cnpj), title: 'Completar os dados do hospital', hint: 'Nome, CNPJ, telefone e logomarca saem nos relatórios.', path: '/configuracoes' },
     { id: 'setores', done: sectors.length > 0, title: 'Cadastrar os setores', hint: 'UTI, Emergência, Enfermaria… cada setor tem a sua escala.', path: '/setores' },
-    { id: 'equipe', done: team.length > 0, title: 'Trazer a equipe', hint: 'Cadastre os profissionais ou envie o link de cadastro (em Configurações).', path: '/corpo-clinico' },
+    { id: 'equipe', done: team.length > 0, title: 'Trazer a equipe', hint: 'Cadastre os profissionais ou mande o link de cadastro (botão “Convidar equipe”).', path: '/corpo-clinico' },
     { id: 'escala', done: shifts.length > 0, title: 'Montar a primeira escala', hint: 'Lance os plantões do mês na grade.', path: '/escalas' },
     { id: 'publicar', done: hasPublished, title: 'Publicar a escala', hint: 'Depois de publicada, cada profissional vê os seus plantões no celular.', path: '/escalas' }
   ];

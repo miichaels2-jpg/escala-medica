@@ -191,15 +191,15 @@ export default function AppLayout({ children }) {
   const formattedTime = currentTime.toLocaleTimeString('pt-BR');
 
   const navItems = [
-    { label: 'Painel Geral', path: '/dashboard', icon: LayoutDashboard, visible: true },
+    { label: 'Painel', path: '/dashboard', icon: LayoutDashboard, visible: true },
     { label: 'Escala', path: '/escalas', icon: CalendarDays, visible: true },
-    { label: 'Mural de Oportunidades', path: '/trocas', icon: Flame, visible: true, badge: muralBadge },
+    { label: 'Mural', path: '/trocas', icon: Flame, visible: true, badge: muralBadge },
     { label: 'Minha Escala', path: '/minha-escala', icon: Activity, visible: true },
     { label: 'Corpo Clínico', path: '/corpo-clinico', icon: Users, visible: isManager || isBilling },
-    { label: 'Setores & Especialidades', path: '/setores', icon: Building2, visible: isManager },
+    { label: 'Setores', path: '/setores', icon: Building2, visible: isManager },
     { label: 'Relatórios', path: '/relatorios', icon: FileBarChart, visible: isManager || isBilling },
-    { label: 'Faturamento & Repasse', path: '/faturamento', icon: DollarSign, visible: isManager || isBilling },
-    { label: 'Histórico de alterações', path: '/historico', icon: History, visible: isManager },
+    { label: 'Faturamento', path: '/faturamento', icon: DollarSign, visible: isManager || isBilling },
+    { label: 'Histórico', path: '/historico', icon: History, visible: isManager },
     { label: 'Configurações', path: '/configuracoes', icon: Settings, visible: isManager },
     { label: 'Planejamento', path: '/planejamento', icon: ListChecks, visible: isManager }, // TEMPORÁRIO
     // Só o dono da plataforma (o campo "visible" acima não filtra o menu; quem filtra é canAccessRoute).

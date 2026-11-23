@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
 import PrivacyRequestsBanner from '@/components/PrivacyRequestsBanner';
+import InviteTeamDialog from '@/components/InviteTeamDialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -141,7 +142,8 @@ export default function CorpoClinico() {
     });
   }, [allCompanyProfessionals, scopeUnitIds, unitProfessionals]);
 
-  const [activeTab, setActiveTab] = useState('ativos'); 
+  const [activeTab, setActiveTab] = useState('ativos');
+  const [inviteOpen, setInviteOpen] = useState(false); 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('todas');
   const [viewMode, setViewMode] = useState('list');
@@ -1010,6 +1012,9 @@ export default function CorpoClinico() {
             <Button onClick={() => importInputRef.current?.click()} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}>
               <Upload className={`w-4 h-4 ${t.outlineIcon}`} /> Importar planilha
             </Button>
+            <Button onClick={() => setInviteOpen(true)} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}>
+              <Send className={`w-4 h-4 ${t.outlineIcon}`} /> Convidar equipe
+            </Button>
             <Button onClick={handleOpenNew} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none font-semibold shrink-0 ${t.primary}`}>
               <UserPlus className="w-4 h-4" /> Novo profissional
             </Button>
@@ -1018,6 +1023,7 @@ export default function CorpoClinico() {
       />
 
       {isManager && <PrivacyRequestsBanner />}
+      <InviteTeamDialog open={inviteOpen} onOpenChange={setInviteOpen} code={company?.registration_code} />
 
       <input ref={importInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleImportFile} />
 

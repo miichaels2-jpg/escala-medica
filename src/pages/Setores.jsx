@@ -126,7 +126,7 @@ export default function Setores() {
       
       {/* HEADER EXECUTIVO */}
       <PageHero
-        title="Setores e especialidades"
+        title="Setores"
         subtitle="Cadastre as alas e unidades de atendimento para organizar as escalas."
         actions={t => (
           <Button onClick={() => handleOpenModal()} className={`w-full sm:w-auto font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none font-semibold shrink-0 ${t.primary}`}>

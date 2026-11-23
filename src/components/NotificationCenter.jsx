@@ -244,7 +244,7 @@ export function NotificationPanel({ center, isManager, onClose }) {
         onClick={() => go('/trocas')}
         className="w-full h-9 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs rounded-xl cursor-pointer"
       >
-        Abrir o Mural de Oportunidades <ChevronRight className="w-3.5 h-3.5 ml-1" />
+        Abrir o Mural <ChevronRight className="w-3.5 h-3.5 ml-1" />
       </Button>
     </div>
   );

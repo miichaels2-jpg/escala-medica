@@ -29,7 +29,7 @@ export default function Planejamento() {
   return (
     <div className="min-h-full bg-slate-100 dark:bg-slate-950 p-4 md:p-8 space-y-6 text-slate-900 dark:text-slate-100">
       <PageHero
-        title="Planejamento de melhorias"
+        title="Planejamento"
         subtitle={`${delivered} de ${allItems.length} entregues · versão atual ${APP_VERSION} · atualizado em ${ROADMAP_UPDATED_AT.split('-').reverse().join('/')} · tela temporária, some quando terminarmos`}
       >
         <div className="pt-1.5 h-2 w-full max-w-md" aria-hidden="true">

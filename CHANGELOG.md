@@ -9,6 +9,17 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.5.2 — 23/11/2026
+
+- **Mesmos nomes em todo o app:** menu e topo de cada tela com o mesmo nome curto — Painel, Escala, Mural, Minha
+  Escala, Corpo Clínico, Setores, Relatórios, Faturamento, Histórico, Configurações (antes: "Painel Geral", "Mural de
+  Oportunidades" × "Mural de vagas", "Setores & Especialidades", "Faturamento & Repasse"…). A lista de telas
+  liberadas no Corpo Clínico usa os mesmos nomes.
+- **Acessos num lugar só (Corpo Clínico):** novo botão "Convidar equipe" com o link e o código de credenciamento. Saiu
+  a aba "Equipe & Acessos" das Configurações — o "Liberar acesso" de lá criava logins genéricos ("Usuário
+  Convidado") sem cadastro de profissional; quem cria acesso agora é sempre o "Novo profissional", com nome, perfil e
+  telas. Configurações ficam com hospital, contrato, hospitais e regras da escala.
+
 ## V0.5.1 — 23/11/2026
 
 - **Painel enxuto:** saem a faixa de vagas, o anel "Eficiência de cobertura", o gráfico de horas (vazios quando não há
