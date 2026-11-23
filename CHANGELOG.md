@@ -9,6 +9,11 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.4.3 — 22/11/2026
+
+- **Entrada:** os campos de usuário e senha ficam em branco. Saíram o exemplo "Ex: dr.carlos" e as bolinhas que
+  pareciam uma senha já preenchida.
+
 ## V0.4.2 — 22/11/2026
 
 - **Topo azul em todas as telas:** a faixa no azul da marca, que estava só na Minha Escala e no Painel, agora abre
