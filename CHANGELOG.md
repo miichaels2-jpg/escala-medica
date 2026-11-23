@@ -9,6 +9,14 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.4.7 — 23/11/2026
+
+- **Planejamento:** entram os próximos passos da varredura completa do app, em três prioridades — segurança e
+  confiança (histórico com autor garantido pelo banco, backup, testes antes de publicar, aviso de erro, LGPD), dia a
+  dia mais simples (Painel enxuto, turnos padrão por setor, acessos num lugar só, mesmos nomes em todo o app,
+  Faturamento mais claro, cadastro em passos, visão do plantonista) e acabamento (código mais leve, avisos antigos,
+  tema claro como padrão).
+
 ## V0.4.6 — 23/11/2026
 
 - **Escala, acabamento:** siglas da Grade sem repetição (duas pessoas com as mesmas iniciais viram, por exemplo,
