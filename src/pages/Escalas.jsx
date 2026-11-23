@@ -126,6 +126,30 @@ function sentenceCase(label) {
   return t.charAt(0).toLocaleUpperCase('pt-BR') + t.slice(1);
 }
 
+// Siglas da Grade sem repetição: "CS" vira "CSi" e "CSo" quando há Carlos Silva e Carlos Souza.
+function buildShortLabels(people) {
+  const parts = (name) => String(name || '').trim().split(/\s+/).filter(w => w.length > 2 || /^[A-ZÀ-Ú]/.test(w));
+  const base = (p, n) => {
+    const w = parts(p.name);
+    if (!w.length) return '?';
+    const first = w[0][0].toUpperCase();
+    const last = w.length > 1 ? w[w.length - 1] : w[0].slice(1);
+    return first + (last.slice(0, n).charAt(0).toUpperCase() + last.slice(1, n).toLowerCase());
+  };
+  const labels = {};
+  let pending = people.filter(p => p?.id);
+  for (let n = 1; n <= 3 && pending.length; n++) {
+    const groups = {};
+    pending.forEach(p => { const k = base(p, n); (groups[k] = groups[k] || []).push(p); });
+    pending = [];
+    Object.entries(groups).forEach(([k, list]) => {
+      if (list.length === 1 || n === 3) list.forEach((p, i) => { labels[String(p.id)] = list.length > 1 ? `${k.slice(0, 2)}${i + 1}` : k; });
+      else pending.push(...list);
+    });
+  }
+  return labels;
+}
+
 // Duração do plantão em horas (o noturno que vira o dia conta certo).
 function shiftHours(shift) {
   const [sh, sm] = String(shift.start_time || '07:00').split(':').map(Number);
@@ -1440,46 +1464,6 @@ const conflict = checkProfessionalConflict(
     return days;
   }, [currentYear, currentMonth, startDateFilter, monthlyView]);
 
-  const getStatusBadge = (shift) => {
-    const isVago = isVacant(shift);
-    const life = computeShiftHospitalLifecycle(shift, liveNow);
-
-    if (isVago) {
-      if (isShiftPast(shift, liveNow)) {
-        return { dot: 'bg-rose-700', label: 'FURO / FALTA', text: 'text-rose-700 dark:text-rose-500', wrapper: 'border-l-rose-700 bg-rose-100 dark:bg-rose-950/50 opacity-90', icon: <AlertTriangle className="w-3 h-3 text-rose-700" /> };
-      }
-      return { dot: 'bg-amber-500 animate-pulse', label: 'VAGA ABERTA', text: 'text-amber-600 dark:text-amber-400', wrapper: 'border-l-amber-500 bg-amber-50 dark:bg-amber-950/30', icon: <Flame className="w-3 h-3 text-amber-500 animate-pulse" /> };
-    }
-    
-    if (life.isLive) {
-      return { 
-        dot: 'bg-emerald-500 animate-ping', 
-        label: life.statusText, 
-        text: 'text-emerald-600 dark:text-emerald-400', 
-        wrapper: 'border-l-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 ring-1 ring-emerald-500/50', 
-        icon: <Radio className="w-3 h-3 text-emerald-500 animate-ping" /> 
-      };
-    }
-
-    if (life.isConcluded) {
-      return { 
-        dot: 'bg-slate-400', 
-        label: 'CONCLUÍDO', 
-        text: 'text-slate-500 dark:text-slate-400', 
-        wrapper: 'border-l-slate-300 bg-slate-100 dark:bg-slate-800/40 opacity-70 grayscale hover:grayscale-0', 
-        icon: <CheckCircle2 className="w-3 h-3 text-slate-400" /> 
-      };
-    }
-
-    return { 
-      dot: 'bg-sky-500', 
-      label: life.statusText, 
-      text: 'text-sky-600 dark:text-sky-400', 
-      wrapper: 'border-l-sky-400 bg-sky-50 dark:bg-sky-900/10', 
-      icon: <CalendarIcon className="w-3 h-3 text-sky-500" /> 
-    };
-  };
-
   const isShiftMatchingTurno = (shift, filter) => {
     if (filter === 'todos') return true;
     const sType = shift.shift_type || (shift.start_time >= '18:00' || shift.start_time < '06:00' ? 'noturno' : 'diurno');
@@ -1535,6 +1519,16 @@ const conflict = checkProfessionalConflict(
     const total = scheduleVisibleShifts.length;
     return { total, filled, open, furos, hours: Math.round(hours), coverage: total ? Math.round((filled / total) * 100) : null };
   }, [scheduleVisibleShifts, liveNow]);
+  // Abas de setor: as 5 primeiras (mais a escolhida, se estiver depois) e o resto no "+N".
+  const { visibleSectorTabs, hiddenSectorTabs } = useMemo(() => {
+    const list = sectors || [];
+    const LIMIT = 5;
+    if (list.length <= LIMIT + 1) return { visibleSectorTabs: list, hiddenSectorTabs: [] };
+    const visible = list.slice(0, LIMIT);
+    const chosen = list.find(sec => String(sec.id) === String(selectedSectorId));
+    if (chosen && !visible.includes(chosen)) visible.push(chosen);
+    return { visibleSectorTabs: visible, hiddenSectorTabs: list.filter(sec => !visible.includes(sec)) };
+  }, [sectors, selectedSectorId]);
   const draftSectorIds = useMemo(() => new Set((unsubmittedSectors || []).map(sec => String(sec.id))), [unsubmittedSectors]);
   const gridSectors = useMemo(() => (selectedSectorId === 'todos' ? (sectors || []) : (sectors || []).filter(sec => String(sec.id) === String(selectedSectorId))), [sectors, selectedSectorId]);
 
@@ -1772,7 +1766,10 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
     setGeneratorModalOpen(true);
   };
 
+  const shortLabels = useMemo(() => buildShortLabels(professionals || []), [professionals]);
+
   const gridHelpers = {
+    shortLabel: (s) => shortLabels[String(s.professional_id)] || getInitials(professionalMap[String(s.professional_id)]?.name || getShiftName(s)),
     isVacant,
     isShiftPast: (s) => isShiftPast(s, liveNow),
     extractSpecialty: (s) => extractSpecialty(s, professionalMap[String(s.professional_id)]),
@@ -2057,9 +2054,24 @@ const handleAssignLegacyShiftUnit = async (shift) => {
     );
   };
 
+  // Selo curto do plantão (cor só para status).
+  const PILL_TONES = {
+    rose: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
+    amber: 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300',
+    emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+    slate: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+  };
+  const shiftPill = (shift) => {
+    if (isVacant(shift)) return isShiftPast(shift, liveNow) ? { label: 'Furo', tone: 'rose' } : { label: 'Vaga aberta', tone: 'amber' };
+    const life = computeShiftHospitalLifecycle(shift, liveNow);
+    if (life.isLive) return { label: life.isHandover ? 'Passagem de plantão' : 'Em andamento', tone: 'emerald' };
+    if (life.isConcluded) return { label: 'Concluído', tone: 'slate' };
+    return { label: 'Programado', tone: 'slate' };
+  };
+
   const renderShiftCard = (shift, dateStr) => {
     const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
-    const status = getStatusBadge(shift);
+    const pill = shiftPill(shift);
     const realSpec = extractSpecialty(shift, prof);
     const validName = prof?.name || shift.professional_name;
     const isOpen = isVacant(shift);
@@ -2096,27 +2108,21 @@ const handleAssignLegacyShiftUnit = async (shift) => {
           });
           setModalOpen(true);
         }}
-        className={`rounded-xl border border-l-4 shadow-sm cursor-pointer transition-all hover:brightness-95 ${monthlyView === 'lista' ? 'p-3 min-h-[78px]' : 'p-2 min-w-0'} ${status.wrapper} ${draggingProfId && isOpen ? 'ring-2 ring-sky-500 ring-offset-1' : ''}`}
-        title={isOpen ? 'Arraste um profissional para alocar neste horário' : 'Horário já preenchido'}
+        className={`rounded-xl border cursor-pointer transition-colors p-3 min-w-0 ${isOpen ? (pill.tone === 'rose' ? 'border-dashed border-rose-300 dark:border-rose-500/40 bg-rose-50/50 dark:bg-rose-500/5' : 'border-dashed border-amber-300 dark:border-amber-500/40 bg-amber-50/50 dark:bg-amber-500/5') : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'} ${draggingProfId && isOpen ? 'ring-2 ring-sky-500 ring-offset-1' : ''}`}
+        title={isOpen ? 'Vaga aberta: clique para escalar ou arraste um profissional' : 'Clique para editar'}
       >
-        <div className={`flex items-center justify-between gap-2 tabular-nums mb-1 ${monthlyView === 'lista' ? 'text-[11px]' : 'text-[10px]'}`}>
-          <span className="font-semibold text-slate-700 dark:text-slate-200">{shift.start_time}–{shift.end_time}</span>
-          <span className={`font-medium flex items-center gap-1 ${status.text}`}>{status.icon} {sentenceCase(status.label)}</span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">{shift.start_time}–{shift.end_time}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${PILL_TONES[pill.tone]}`}>{pill.label}</span>
         </div>
-        <div className="flex items-start gap-2">
-          <div className={`mt-0.5 shrink-0 rounded-full flex items-center justify-center font-semibold ${isOpen ? 'w-7 h-7 bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300' : 'w-8 h-8 bg-white/80 dark:bg-slate-950/60 text-sky-700 dark:text-sky-300'} ${monthlyView === 'lista' ? 'text-[10px]' : 'text-[10px]'}`}>
-            {isOpen ? <AlertTriangle className="w-3.5 h-3.5" /> : getInitials(validName)}
-          </div>
+        <div className="mt-2 flex items-center gap-2.5 min-w-0">
+          <span className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-[11px] font-semibold ${isOpen ? 'border border-dashed border-current text-amber-600 dark:text-amber-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200'}`}>
+            {isOpen ? <Plus className="w-3.5 h-3.5" /> : getInitials(validName)}
+          </span>
           <div className="min-w-0 flex-1">
-            <div className={`font-semibold leading-snug break-words text-slate-900 dark:text-white ${monthlyView === 'lista' ? 'text-sm' : 'text-[11px]'}`}>
-              {isOpen ? sentenceCase(status.label) : (monthlyView === 'lista' ? validName : formatFullName(validName))}
-            </div>
-            <div className={`mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-medium text-slate-600 dark:text-slate-300 ${monthlyView === 'lista' ? 'text-[11px]' : 'text-[10px]'}`}>
-              <span className="break-words">{realSpec}</span>
-              {!selectedSectorObj && <span className="text-slate-500">{sectorMap[String(shift.sector_id)]?.name}</span>}
-              {!isOpen && professionalMap[String(shift.professional_id)]?.document && (
-                <span className="tabular-nums text-slate-500">{professionalMap[String(shift.professional_id)].document}</span>
-              )}
+            <div className="text-sm font-medium leading-snug text-slate-900 dark:text-white truncate">{isOpen ? 'Sem profissional' : formatFullName(validName)}</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+              {realSpec}{!selectedSectorObj && sectorMap[String(shift.sector_id)]?.name ? ` · ${sectorMap[String(shift.sector_id)].name}` : ''}
             </div>
           </div>
         </div>
@@ -2274,16 +2280,16 @@ const handleAssignLegacyShiftUnit = async (shift) => {
           <div className="flex flex-wrap items-center gap-2">
             <div className={`flex items-center p-1 rounded-xl gap-1 ${t.pill}`}>
               <button type="button" onClick={handlePrevMonth} aria-label="Mês anterior" title="Mês anterior" className={`p-1.5 rounded-lg cursor-pointer ${t.pillButton}`}><ChevronLeft className="w-4 h-4" /></button>
-              <button type="button" onClick={handleToday} title="Voltar para o mês atual" className="px-2 text-sm font-medium text-white cursor-pointer min-w-[128px] text-center">{MONTH_NAMES[currentMonth]} {currentYear}</button>
+              <button type="button" onClick={handleToday} title="Voltar para o mês atual" className="px-1 sm:px-2 text-sm font-medium text-white cursor-pointer min-w-[112px] sm:min-w-[128px] text-center">{MONTH_NAMES[currentMonth]} {currentYear}</button>
               <button type="button" onClick={handleNextMonth} aria-label="Próximo mês" title="Próximo mês" className={`p-1.5 rounded-lg cursor-pointer ${t.pillButton}`}><ChevronRight className="w-4 h-4" /></button>
             </div>
             {isManager && (
               <>
-                <Button onClick={() => setDuplicateModalOpen(true)} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}>
+                <Button onClick={() => setDuplicateModalOpen(true)} className={`hidden sm:inline-flex font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}>
                   <Copy className={`w-4 h-4 ${t.outlineIcon}`} /> Copiar mês anterior
                 </Button>
                 <Button onClick={openPublishModal} className={`font-semibold text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.primary}`}>
-                  <Send className="w-4 h-4" /> Publicar {MONTH_NAMES[currentMonth].toLowerCase()}
+                  <Send className="w-4 h-4" /> <span>Publicar<span className="hidden sm:inline"> {MONTH_NAMES[currentMonth].toLowerCase()}</span></span>
                 </Button>
               </>
             )}
@@ -2347,28 +2353,43 @@ const handleAssignLegacyShiftUnit = async (shift) => {
       )}
 
       {/* LINHA DE CONTROLES: setores, turno, busca, visão e "Mais" */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2.5 sm:p-3 flex flex-col xl:flex-row xl:items-center gap-2.5 print:hidden">
-        <nav aria-label="Setores" className="flex gap-1 overflow-x-auto min-w-0 flex-1">
-          {[{ id: 'todos', name: 'Todos' }, ...(sectors || [])].map(sec => {
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2.5 sm:p-3 flex flex-col gap-2.5 print:hidden">
+        <nav aria-label="Setores" className="flex items-center gap-1 overflow-x-auto min-w-0 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+          {[{ id: 'todos', name: 'Todos' }, ...visibleSectorTabs].map(sec => {
             const active = String(selectedSectorId) === String(sec.id);
             const draft = sec.id !== 'todos' && draftSectorIds.has(String(sec.id));
             return (
               <button key={sec.id} type="button" onClick={() => handleSelectSector(String(sec.id))} aria-current={active ? 'page' : undefined}
                 title={draft ? `${sec.name}: rascunho em ${MONTH_NAMES[currentMonth].toLowerCase()}` : sec.name}
                 className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm cursor-pointer transition-colors ${active ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 font-medium' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                {sec.name}
-                {draft && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-label="rascunho" />}
+                <span className="max-w-[170px] truncate">{sec.name}</span>
+                {draft && <span className="w-1.5 h-1.5 shrink-0 rounded-full bg-amber-500" aria-label="rascunho" />}
               </button>
             );
           })}
+          {hiddenSectorTabs.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" className="shrink-0 px-3 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">+{hiddenSectorTabs.length}</button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="z-[99999] max-h-72 overflow-y-auto">
+                {hiddenSectorTabs.map(sec => (
+                  <DropdownMenuItem key={sec.id} onClick={() => handleSelectSector(String(sec.id))} className="cursor-pointer flex items-center gap-2">
+                    {sec.name}
+                    {draftSectorIds.has(String(sec.id)) && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-label="rascunho" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </nav>
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <div className="relative">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[160px] max-w-xs">
             <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <Input placeholder="Buscar profissional" value={scheduleProfessionalSearch} onChange={e => setScheduleProfessionalSearch(e.target.value)}
-              className="pl-8 h-9 w-44 text-sm bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-lg" aria-label="Buscar profissional na escala" />
+              className="pl-8 h-9 w-full text-sm bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 rounded-lg" aria-label="Buscar profissional na escala" />
           </div>
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg" role="group" aria-label="Turno">
+          <div className="sm:ml-auto flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg" role="group" aria-label="Turno">
             {[['todos', 'Todos'], ['diurno', 'Dia'], ['noturno', 'Noite']].map(([id, label]) => (
               <button key={id} type="button" onClick={() => setFilterTurno(id)} aria-pressed={filterTurno === id}
                 className={`px-2.5 py-1 rounded-md text-xs cursor-pointer ${filterTurno === id ? 'bg-white dark:bg-slate-950 text-slate-900 dark:text-white font-medium shadow-sm' : 'text-slate-500'}`}>{label}</button>
@@ -2387,6 +2408,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               <Button variant="outline" className="h-9 px-3 rounded-lg text-sm gap-1.5 cursor-pointer"><MoreHorizontal className="w-4 h-4" /> Mais</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60 z-[99999]">
+              {isManager && <DropdownMenuItem onClick={() => setDuplicateModalOpen(true)} className="cursor-pointer sm:hidden"><Copy className="w-4 h-4 mr-2" /> Copiar mês anterior</DropdownMenuItem>}
               {isManager && <DropdownMenuItem onClick={() => openNewShift()} className="cursor-pointer"><Plus className="w-4 h-4 mr-2" /> Plantão avulso</DropdownMenuItem>}
               {isManager && <DropdownMenuItem onClick={() => openGenerator()} className="cursor-pointer"><SlidersHorizontal className="w-4 h-4 mr-2" /> Montar turnos do mês</DropdownMenuItem>}
               {isManager && <DropdownMenuSeparator />}
@@ -2668,60 +2690,49 @@ const handleAssignLegacyShiftUnit = async (shift) => {
       {/* ========================================================================= */}
       {activeTab === 'dia' && (
         <div className="space-y-5 animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
-                <span className="text-xs font-semibold text-sky-600 dark:text-sky-400 block">Escala Oficial Diária</span>
-                <h3 className="text-xl font-semibold text-slate-900 dark:text-white mt-0.5">
-                  Plantões de Hoje ({liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })})
-                </h3>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Plantão do dia</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{sentenceCase(liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }))}</p>
               </div>
-              <Button onClick={handlePrintA4Landscape} className="h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 text-xs font-semibold px-5 rounded-2xl gap-2 shadow-sm cursor-pointer">
-                <Printer className="w-4 h-4" /> Imprimir Plantão do Dia (A4 Paisagem)
+              <Button onClick={handlePrintA4Landscape} variant="outline" className="h-10 text-sm font-medium px-4 rounded-xl gap-2 cursor-pointer">
+                <Printer className="w-4 h-4" /> Imprimir (A4 deitado)
               </Button>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 text-xs font-semibold border-b border-slate-200 dark:border-slate-800">
+              <table className="w-full text-left text-sm">
+                <thead className="text-slate-500 dark:text-slate-400 text-xs font-medium border-b border-slate-200 dark:border-slate-800">
                   <tr>
-                    <th className="py-3 px-4">Seção / Setor</th>
-                    <th className="py-3 px-4 text-center">Data & Horário</th>
-                    <th className="py-3 px-4">Profissional Escalado</th>
-                    <th className="py-3 px-4">Especialidade / Atuação</th>
-                    <th className="py-3 px-4 text-center">Situação / Status</th>
+                    <th className="py-2.5 px-3">Setor</th>
+                    <th className="py-2.5 px-3">Horário</th>
+                    <th className="py-2.5 px-3">Profissional</th>
+                    <th className="py-2.5 px-3">Especialidade</th>
+                    <th className="py-2.5 px-3">Situação</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {tvData.tableDayShifts.length === 0 ? (
                     <tr><td colSpan="5" className="py-8 text-center text-slate-400">Nenhum plantão registrado tocando o dia de hoje.</td></tr>
                   ) : (
                     tvData.tableDayShifts.map(shift => {
                       const prof = shift.professional_id ? professionalMap[String(shift.professional_id)] : null;
                       const sector = sectorMap[String(shift.sector_id)];
-                      const status = getStatusBadge(shift);
                       const realSpecialty = extractSpecialty(shift, prof);
                       const validName = prof?.name || shift.professional_name;
 
                       const [sYear, sMonth, sDay] = (shift.date || '').split('-');
                       const formattedDate = sDay && sMonth ? `${sDay}/${sMonth}/${sYear}` : shift.date;
 
+                      const pill = shiftPill(shift);
                       return (
-                        <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
-                          <td className="py-3 px-4 font-semibold text-slate-900 dark:text-white">{sector?.name || 'Setor'}</td>
-                          <td className="py-3 px-4 tabular-nums font-semibold text-sky-600 dark:text-sky-400 text-center whitespace-nowrap">
-                            {formattedDate}<br />
-                            <span className="text-[10px] text-slate-400">{shift.start_time} às {shift.end_time}</span>
-                          </td>
-                          <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">
-                            {status.label.includes('FALTA') || status.label.includes('VAGA') ? <span className="text-rose-600 dark:text-rose-400">{sentenceCase(status.label)}</span> : formatFullName(validName)}
-                          </td>
-                          <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-semibold">{realSpecialty}</td>
-                          <td className="py-3 px-4 text-center">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold ${status.wrapper} ${status.text} border-none`}>
-                              {status.icon} {sentenceCase(status.label)}
-                            </span>
-                          </td>
+                        <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                          <td className="py-2.5 px-3 font-medium text-slate-900 dark:text-white">{sector?.name || 'Setor'}</td>
+                          <td className="py-2.5 px-3 tabular-nums text-slate-600 dark:text-slate-300 whitespace-nowrap">{formattedDate.slice(0, 5)} · {shift.start_time}–{shift.end_time}</td>
+                          <td className="py-2.5 px-3 text-slate-900 dark:text-slate-100">{isVacant(shift) ? <span className="text-slate-500">Sem profissional</span> : formatFullName(validName)}</td>
+                          <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300">{realSpecialty}</td>
+                          <td className="py-2.5 px-3"><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${PILL_TONES[pill.tone]}`}>{pill.label}</span></td>
                         </tr>
                       );
                     })
