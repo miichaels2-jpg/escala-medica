@@ -9,6 +9,22 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.5.7 — 23/11/2026
+
+- **Impressos no mesmo padrão** (`src/lib/printLayout.js`): cabeçalho com as logos da empresa e da unidade, nome do
+  hospital e tipo de documento; rodapé em toda folha com "Página X de Y" e quem emitiu e quando; tabelas leves.
+- **Recibo e demonstrativo:** com logos, bruto / retenção / líquido em destaque, "Falta PIX ou conta" quando faltar e
+  sem a matrícula provisória "MAT-XXXX". Marca d'água com sentido: "NÃO COMPROVA PAGAMENTO" no demonstrativo e a
+  logo no recibo pago.
+- **Escala do mês em quadro para o mural:** uma folha por setor, dias × turnos, VAGA/FURO marcados e "RASCUNHO" ao
+  fundo no setor ainda não publicado (outubro da demo: de ~6 folhas de lista para 3).
+- **Plantão do dia:** agrupado por setor, com vagas e as linhas de assinatura.
+- **Fechamento do Faturamento:** total no pé da tabela, situação (pago / a pagar / esperando produção), "Falta PIX ou
+  conta" e assinaturas do faturamento e da direção.
+- **Espelho do profissional:** valor por plantão, resumo do mês e unidade em cada linha quando atende em mais de uma.
+- **Relatórios:** mesmo cabeçalho e rodapé; o relatório completo não abre cada seção em folha nova nem imprime seções
+  vazias (6 → 2 folhas na demo); nomes como "Maternidade e Obstetrícia" e "UCO" sem maiúscula errada.
+
 ## V0.5.6 — 23/11/2026
 
 - **Cadastro de profissional em 3 passos** (Corpo Clínico › Novo profissional): **Dados** (categoria, nome,

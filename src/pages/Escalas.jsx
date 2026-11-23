@@ -6,7 +6,7 @@ import { mapDateToMonth } from '@/lib/scheduleCopy';
 import { checkWorkload, getWorkloadRules } from '@/lib/workload';
 import { getSectorTemplates, templatesToSlots, withSectorTemplates } from '@/lib/sectorTemplates';
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
-import { getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
+import { buildPrintDocument, openPrintWindow, printHeader, printLogos, printWatermark, shortPersonName } from '@/lib/printLayout';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -728,255 +728,149 @@ const closeTvMode = async () => {
     return { emAndamento, programadosHoje, tableDayShifts };
   }, [shifts, selectedSectorId, liveNow, todayLocalStr]);
 
+  // Plantão do dia (A4 deitado): quem está em cada setor hoje, com vagas e linhas de assinatura.
   const handlePrintA4Landscape = () => {
-    const printWindow = window.open('', '_blank', 'width=1100,height=800');
-    if (!printWindow) {
-      alert('Permita pop-ups para abrir a impressão.');
-      return;
-    }
-
-    const hospitalName = company?.name || 'HOSPITAL PRINCIPAL';
-    const dataVigencia = liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-    const dataEmissao = liveNow.toLocaleDateString('pt-BR') + ' às ' + liveNow.toLocaleTimeString('pt-BR');
-
     const currentUnitObj = units?.find(u => String(u.id) === String(selectedUnitId));
-    const unitName = currentUnitObj?.name || hospitalName;
-    const companyLogoUrl = getCompanyLogoUrl(company);
-    const unitLogoUrl = getUnitLogoUrl(currentUnitObj);
-    const companyLogoHtml = companyLogoUrl
-      ? `<img src="${escapeHtml(companyLogoUrl)}" alt="" class="print-logo company-logo" />`
-      : `<div class="logo-fallback">${escapeHtml((hospitalName[0] || 'H').toUpperCase())}</div>`;
-    const unitLogoHtml = unitLogoUrl
-      ? `<img src="${escapeHtml(unitLogoUrl)}" alt="" class="print-logo unit-logo" />`
-      : '';
+    const unitName = currentUnitObj?.name || company?.name || '';
+    const dayLabel = sentenceCase(liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }));
+    const isDatePublished = shift => getPublishedRanges(selectedUnitId, shift.sector_id, ...String(shift.date).split('-').slice(0, 2).map(Number))
+      .some(r => shift.date >= r.start_date && shift.date <= r.end_date);
 
-    const activeShiftsOnly = tvData.tableDayShifts.filter(shift => !isVacant(shift));
+    const dayShifts = tvData.tableDayShifts.slice().sort((a, b) =>
+      String(sectorMap[String(a.sector_id)]?.name || '').localeCompare(String(sectorMap[String(b.sector_id)]?.name || '')) ||
+      String(a.start_time).localeCompare(String(b.start_time)));
+    const draftCount = dayShifts.filter(s => !isDatePublished(s)).length;
 
-    const tableRowsHtml = activeShiftsOnly.length === 0
-      ? `<tr><td colspan="6" style="padding: 24px; text-align: center; color: #666; font-size: 11px;">Nenhum profissional escalado e ativo para esta data.</td></tr>`
-      : activeShiftsOnly.map((shift, idx) => {
-          const prof = professionalMap[String(shift.professional_id)];
-          const sector = sectorMap[String(shift.sector_id)];
-          const realSpecialty = extractSpecialty(shift, prof);
-          const bg = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
-          const profNome = `Dr(a). ${escapeHtml(prof?.name || shift.professional_name)}`;
-          const conselho = escapeHtml(prof?.document || '—');
+    let lastSector = null;
+    const rows = dayShifts.map(shift => {
+      const prof = professionalMap[String(shift.professional_id)];
+      const sectorName = sectorMap[String(shift.sector_id)]?.name || 'Setor';
+      const firstOfSector = sectorName !== lastSector;
+      lastSector = sectorName;
+      const who = isVacant(shift)
+        ? `<span class="vaga">${isShiftPast(shift, liveNow) ? 'FURO' : 'VAGA'}</span>`
+        : `<b>${escapeHtml(prof?.name || getShiftName(shift) || 'Profissional')}</b>`;
+      return `<tr class="${firstOfSector ? 'first' : ''}">
+        <td class="sector">${firstOfSector ? `${escapeHtml(sectorName)}${isDatePublished(shift) ? '' : ' <span class="pl-muted">(rascunho)</span>'}` : ''}</td>
+        <td class="pl-num">${escapeHtml(shift.start_time)}–${escapeHtml(shift.end_time)}</td>
+        <td>${who}</td>
+        <td>${escapeHtml(extractSpecialty(shift, prof))}</td>
+        <td>${escapeHtml(isVacant(shift) ? '' : (prof?.document || ''))}</td>
+      </tr>`;
+    }).join('');
 
-          const [sYear, sMonth, sDay] = (shift.date || '').split('-');
-          const formattedDate = escapeHtml(sDay && sMonth ? `${sDay}/${sMonth}/${sYear}` : shift.date);
+    const body = `<section class="pl-sheet">
+      ${dayShifts.length && draftCount === dayShifts.length ? printWatermark({ text: 'RASCUNHO' }) : ''}
+      ${printHeader({
+        logos: printLogos({ company, unit: currentUnitObj }),
+        orgName: unitName,
+        title: 'Plantão do dia',
+        subtitle: dayLabel,
+        meta: [['Plantões', String(dayShifts.length)], ['Vagas', String(dayShifts.filter(isVacant).length)]]
+      })}
+      <table class="pl-table day">
+        <thead><tr><th style="width:22%">Setor</th><th style="width:12%">Horário</th><th style="width:30%">Profissional</th><th style="width:20%">Especialidade</th><th style="width:16%">Registro</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5" class="pl-muted" style="text-align:center;padding:18px">Nenhum plantão nesta data.</td></tr>'}</tbody>
+      </table>
+      <div class="pl-signatures"><div>Diretoria clínica / RT médica</div><div>Gerência de enfermagem / RT assistencial</div></div>
+    </section>`;
 
-          const life = computeShiftHospitalLifecycle(shift, liveNow);
-
-          const statusHtml = life.isLive
-            ? `<span style="font-weight: bold; color: #0369a1; background-color: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-size: 9px;">● EM ANDAMENTO</span>`
-            : life.isConcluded
-            ? `<span style="font-weight: bold; color: #166534; background-color: #dcfce7; padding: 2px 6px; border-radius: 4px; font-size: 9px;">✓ CONCLUÍDO</span>`
-            : `<span style="color: #475569; background-color: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 9px;">PROGRAMADO</span>`;
-
-          return `
-            <tr style="background-color: ${bg};">
-              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold; text-transform: uppercase;">${escapeHtml(sector?.name || 'Setor')}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; font-weight: bold; text-align: center; white-space: nowrap;">
-                ${formattedDate}<br><span style="color: #334155; font-size: 10px;">${escapeHtml(shift.start_time)} às ${escapeHtml(shift.end_time)}</span>
-              </td>
-              <td style="border: 1px solid #111; padding: 7px 10px; font-weight: bold;">${profNome}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px;">${escapeHtml(realSpecialty)}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px; font-family: monospace; text-align: center;">${conselho}</td>
-              <td style="border: 1px solid #111; padding: 7px 10px; text-align: center;">${statusHtml}</td>
-            </tr>
-          `;
-        }).join('');
-
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="utf-8">
-        <title>Escala Oficial - ${escapeHtml(unitName)}</title>
-        <style>
-          @page { size: A4 landscape; margin: 8mm; }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, Helvetica, sans-serif; background: #fff !important; color: #000 !important; padding: 15px; font-size: 11px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-          .header-box { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 66px; border-bottom: 2px solid #000; padding: 0 0 10px; margin-bottom: 12px; break-inside: avoid; page-break-inside: avoid; }
-          .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-          .logos { display: flex; align-items: center; flex: 0 0 auto; }
-          .print-logo { display: block; width: 82px; height: 46px; object-fit: contain; }
-          .company-logo { margin-right: 8px; }
-          .unit-logo { margin-left: 8px; padding-left: 8px; border-left: 1px solid #cbd5e1; }
-          .logo-fallback { display: flex; width: 46px; height: 46px; align-items: center; justify-content: center; border: 2px solid #000; border-radius: 8px; margin-right: 8px; font-size: 23px; font-weight: 900; }
-          .header-info { min-width: 0; }
-          .header-info h1 { margin: 0 0 3px; color: #000; font-size: 18px; font-weight: 900; line-height: 1.15; text-transform: uppercase; }
-          .header-info p { margin: 0; color: #000; font-size: 9px; font-weight: 700; line-height: 1.3; }
-          .header-info .validity { margin-top: 3px; color: #000; font-size: 9px; line-height: 1.3; }
-          .document-meta { flex: 0 0 auto; text-align: right; color: #000; font-size: 9.5px; line-height: 1.5; }
-          .document-label { display: inline-block; margin-bottom: 3px; padding: 3px 8px; border: 1px solid #000; font-size: 9px; font-weight: 900; }
-          table { width: 100%; table-layout: fixed; border-collapse: collapse; border: 2px solid #000; margin: 0 0 20px; font-size: 10px; }
-          thead { display: table-header-group; }
-          tr { break-inside: avoid; page-break-inside: avoid; }
-          th { background-color: #f3f4f6; border: 1px solid #000; padding: 6px 8px; color: #000; text-align: left; font-size: 9px; font-weight: 900; text-transform: uppercase; }
-          td { overflow-wrap: anywhere; border: 1px solid #000 !important; padding: 6px 8px !important; line-height: 1.3; }
-          .signatures-area { display: flex; justify-content: space-around; gap: 24px; margin-top: 24px; break-inside: avoid; page-break-inside: avoid; }
-          .sig-box { text-align: center; width: 42%; }
-          .sig-line { height: 28px; border-bottom: 1px solid #000; margin-bottom: 6px; }
-        </style>
-      </head>
-      <body>
-        <div class="header-box">
-          <div class="brand">
-            <div class="logos">${companyLogoHtml}${unitLogoHtml}</div>
-            <div class="header-info">
-              <h1>${escapeHtml(unitName)}</h1>
-              <p>ESCALA OFICIAL DE PLANTÃO • MURAL HOSPITALAR</p>
-              <div class="validity">Vigência: <b>${dataVigencia}</b></div>
-            </div>
-          </div>
-          <div class="document-meta">
-            <div class="document-label">ESCALA OFICIAL</div>
-            <div>Emitida em ${escapeHtml(dataEmissao)}</div>
-          </div>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 17%;">Seção / Setor</th>
-              <th style="width: 17%; text-align: center;">Data & Horário</th>
-              <th style="width: 24%;">Profissional Escalado</th>
-              <th style="width: 18%;">Especialidade / Atuação</th>
-              <th style="width: 10%; text-align: center;">Conselho</th>
-              <th style="width: 14%; text-align: center;">Situação / Status</th>
-            </tr>
-          </thead>
-          <tbody>${tableRowsHtml}</tbody>
-        </table>
-        <div class="signatures-area">
-          <div class="sig-box"><div class="sig-line"></div><div style="font-weight: 900; text-transform: uppercase;">Diretoria Clínica / RT Médica</div></div>
-          <div class="sig-box"><div class="sig-line"></div><div style="font-weight: 900; text-transform: uppercase;">Gerência de Enfermagem / RT Assistencial</div></div>
-        </div>
-        ${PRINT_WHEN_IMAGES_READY_SCRIPT}
-      </body>
-      </html>
-    `;
-
-    printWindow.document.open();
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    const html = buildPrintDocument({
+      docTitle: `Plantão do dia · ${unitName} · ${formatDateBR(getLocalDateString(liveNow))}`,
+      orientation: 'landscape',
+      issuedBy: user?.full_name || '',
+      css: `
+        .day { table-layout: fixed; font-size: 10px; }
+        .day tr.first td { border-top: 1px solid #94a3b8; }
+        .day td.sector { font-weight: 600; }
+        .vaga { display: inline-block; padding: 0 6px; border: 1px solid #b45309; border-radius: 3px; color: #b45309; font-weight: 700; font-size: 8px; letter-spacing: .04em; }
+      `,
+      body
+    });
+    if (!openPrintWindow(html)) alert('Permita pop-ups para abrir a impressão.');
   };
 
+  // Escala do mês para o mural: uma página por setor, dias nas linhas e turnos nas colunas.
   const handlePrintMonthlySchedule = () => {
-    const printWindow = window.open('', '_blank', 'width=1200,height=850');
-    if (!printWindow) {
-      alert('Permita pop-ups para abrir a impressão da escala mensal.');
-      return;
-    }
-
     const unit = units?.find(item => String(item.id) === String(selectedUnitId));
-    const title = `Escala médica • ${MONTH_NAMES[currentMonth]} ${currentYear}`;
-    const sectorName = selectedSectorObj?.name || 'Todos os setores';
-    const rows = scheduleVisibleShifts
-      .slice()
-      .sort((a, b) =>
-        String(a.date).localeCompare(String(b.date)) ||
-        String(a.start_time).localeCompare(String(b.start_time)) ||
-        String(sectorMap[String(a.sector_id)]?.name || '').localeCompare(String(sectorMap[String(b.sector_id)]?.name || ''))
-      )
-      .map(shift => {
-        const professional = professionalMap[String(shift.professional_id)];
-        const professionalName = isVacant(shift)
-          ? (isShiftPast(shift, liveNow) ? 'VAGA DESCOBERTA / FALTA' : 'VAGA ABERTA')
-          : (professional?.name || getShiftName(shift) || 'Profissional');
-        const specialty = extractSpecialty(shift, professional);
-        const lifecycle = computeShiftHospitalLifecycle(shift, liveNow);
-        const status = isVacant(shift)
-          ? (isShiftPast(shift, liveNow) ? 'FALTA / DESCOBERTO' : 'VAGA ABERTA')
-          : lifecycle.statusText;
-        const statusClass = isVacant(shift)
-          ? (isShiftPast(shift, liveNow) ? 'vacant overdue' : 'vacant')
-          : (lifecycle.isLive ? 'live' : lifecycle.isConcluded ? 'concluded' : 'scheduled');
+    const monthLabel = `${MONTH_NAMES[currentMonth]} ${currentYear}`;
+    const logos = printLogos({ company, unit });
+    const hh = time => String(time || '').replace(/:00$/, '');
 
-        return `<tr class="${statusClass}">
-          <td>${escapeHtml(formatDateBR(shift.date))}</td>
-          <td class="time">${escapeHtml(shift.start_time)}–${escapeHtml(shift.end_time)}</td>
-          <td class="professional">${escapeHtml(professionalName)}</td>
-          <td>${escapeHtml(specialty)}</td>
-          <td>${escapeHtml(sectorMap[String(shift.sector_id)]?.name || 'Setor')}</td>
-          <td><span class="status">${escapeHtml(status)}</span></td>
-        </tr>`;
+    const bySector = new Map();
+    scheduleVisibleShifts.forEach(shift => {
+      const key = String(shift.sector_id);
+      if (!bySector.has(key)) bySector.set(key, []);
+      bySector.get(key).push(shift);
+    });
+    const orderedSectors = [
+      ...(sectors || []).filter(sec => bySector.has(String(sec.id))),
+      ...[...bySector.keys()].filter(id => !sectorMap[id]).map(id => ({ id, name: 'Setor' }))
+    ];
+
+    const sections = orderedSectors.map((sector, index) => {
+      const list = bySector.get(String(sector.id)) || [];
+      const turns = [...new Map(list.map(s => [`${s.start_time}|${s.end_time}`, { start: s.start_time, end: s.end_time }])).values()]
+        .sort((a, b) => String(a.start).localeCompare(String(b.start)));
+      const published = getSectorPublishedRanges(sector.id).length > 0;
+      const vacancies = list.filter(isVacant).length;
+
+      const rows = daysInMonth.map(dateObj => {
+        const dateStr = getLocalDateString(dateObj);
+        const weekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+        const cells = turns.map(turn => {
+          const names = list
+            .filter(s => s.date === dateStr && s.start_time === turn.start && s.end_time === turn.end)
+            .map(s => isVacant(s)
+              ? `<span class="vaga">${isShiftPast(s, liveNow) ? 'FURO' : 'VAGA'}</span>`
+              : escapeHtml(shortPersonName(professionalMap[String(s.professional_id)]?.name || getShiftName(s) || 'Profissional')));
+          return `<td>${names.join(' · ')}</td>`;
+        }).join('');
+        return `<tr class="${weekend ? 'weekend' : ''}"><td class="day"><b>${String(dateObj.getDate()).padStart(2, '0')}</b> ${WEEKDAYS[dateObj.getDay()].short}</td>${cells}</tr>`;
       }).join('');
 
-    const emptyState = `<tr><td colspan="6" class="empty">Nenhum plantão corresponde aos filtros atuais.</td></tr>`;
-    // Mesma composição do impresso diário: logo da matriz + logo da unidade.
-    const companyLogoUrl = getCompanyLogoUrl(company);
-    const unitLogoUrl = getUnitLogoUrl(unit);
-    const companyLogo = (companyLogoUrl
-      ? `<img src="${escapeHtml(companyLogoUrl)}" alt="" class="logo" />`
-      : `<div class="logo-fallback">${escapeHtml((company?.name || 'E').slice(0, 1))}</div>`) +
-      (unitLogoUrl ? `<img src="${escapeHtml(unitLogoUrl)}" alt="" class="logo" />` : '');
-    const issueDate = liveNow.toLocaleDateString('pt-BR');
+      return `<section class="pl-sheet sector${index ? ' next' : ''}">
+        ${published ? '' : printWatermark({ text: 'RASCUNHO' })}
+        ${printHeader({
+          logos,
+          orgName: unit?.name || company?.name || '',
+          title: `Escala · ${sector.name}`,
+          subtitle: monthLabel,
+          meta: [['Plantões', String(list.length)], ['Vagas', String(vacancies)], ['Situação', published ? 'Publicada' : 'Rascunho']]
+        })}
+        <table class="pl-table grid">
+          <thead><tr><th class="day">Dia</th>${turns.map(t => `<th>${escapeHtml(hh(t.start))}–${escapeHtml(hh(t.end))} <span>${String(t.start) >= '18:00' || String(t.start) < '06:00' ? 'noite' : 'dia'}</span></th>`).join('')}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p class="pl-note">VAGA = turno ainda sem profissional · FURO = turno passado que ficou sem ninguém.</p>
+      </section>`;
+    }).join('');
 
-    const htmlContent = `<!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="utf-8" />
-        <title>${escapeHtml(title)}</title>
-        <style>
-          @page { size: A4 landscape; margin: 10mm; }
-          * { box-sizing: border-box; }
-          body { margin: 0; color: #172033; font: 10px Arial, sans-serif; }
-          .page { width: 100%; }
-          header { display: flex; align-items: center; gap: 12px; padding-bottom: 10px; border-bottom: 2px solid #0f172a; margin-bottom: 12px; }
-          .logo, .logo-fallback { width: 42px; height: 42px; object-fit: contain; flex: 0 0 42px; }
-          .logo-fallback { display: grid; place-items: center; border: 2px solid #0f172a; border-radius: 8px; font-size: 20px; font-weight: 800; }
-          .heading { flex: 1; min-width: 0; }
-          h1 { margin: 0 0 3px; font-size: 17px; text-transform: uppercase; }
-          .subtitle { color: #475569; font-size: 10px; }
-          .meta { text-align: right; color: #475569; font-size: 9px; line-height: 1.5; }
-          .filters { margin: 0 0 9px; color: #334155; font-size: 9px; }
-          table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-          thead { display: table-header-group; }
-          tr { break-inside: avoid; page-break-inside: avoid; }
-          th { padding: 7px 8px; background: #e2e8f0; border: 1px solid #64748b; text-align: left; font-size: 8px; text-transform: uppercase; }
-          td { padding: 6px 8px; border: 1px solid #cbd5e1; overflow-wrap: anywhere; vertical-align: middle; }
-          tbody tr:nth-child(even) { background: #f8fafc; }
-          .time { white-space: nowrap; font-family: monospace; font-weight: 700; }
-          .professional { font-size: 11px; font-weight: 700; }
-          .status { display: inline-block; padding: 3px 6px; border-radius: 10px; background: #e2e8f0; font-size: 7px; font-weight: 800; }
-          .live .status { color: #075985; background: #e0f2fe; }
-          .concluded .status { color: #166534; background: #dcfce7; }
-          .vacant .status { color: #92400e; background: #fef3c7; }
-          .overdue .status { color: #991b1b; background: #fee2e2; }
-          .empty { padding: 24px; text-align: center; color: #64748b; }
-          footer { margin-top: 10px; padding-top: 7px; border-top: 1px solid #cbd5e1; color: #64748b; font-size: 8px; }
-          @media screen { body { padding: 18px; } }
-        </style>
-      </head>
-      <body>
-        <div class="page">
-          <header>
-            ${companyLogo}
-            <div class="heading">
-              <h1>${escapeHtml(unit?.name || company?.name || 'Escala médica')}</h1>
-              <div class="subtitle">${escapeHtml(title)}</div>
-            </div>
-            <div class="meta">${escapeHtml(sectorName)}<br />Emitida em ${escapeHtml(issueDate)}</div>
-          </header>
-          <p class="filters">Plantões: ${scheduleVisibleShifts.length} • Filtros de período, turno, setor, especialidade e profissional aplicados conforme a tela.</p>
-          <table>
-            <colgroup>
-              <col style="width: 12%" /><col style="width: 14%" /><col style="width: 27%" />
-              <col style="width: 19%" /><col style="width: 16%" /><col style="width: 12%" />
-            </colgroup>
-            <thead><tr><th>Data</th><th>Horário</th><th>Profissional</th><th>Especialidade</th><th>Setor</th><th>Situação</th></tr></thead>
-            <tbody>${rows || emptyState}</tbody>
-          </table>
-          <footer>Documento de apoio para conferência da escala. Plantões descobertos estão destacados para revisão da coordenação.</footer>
-        </div>
-        ${PRINT_WHEN_IMAGES_READY_SCRIPT}
-      </body>
-      </html>`;
+    const body = sections || printHeader({ logos, orgName: unit?.name || company?.name || '', title: 'Escala do mês', subtitle: monthLabel }) +
+      '<p class="pl-note">Nenhum plantão corresponde aos filtros atuais.</p>';
 
-    printWindow.document.open();
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    const html = buildPrintDocument({
+      docTitle: `Escala · ${monthLabel}`,
+      orientation: 'landscape',
+      issuedBy: user?.full_name || '',
+      margin: '9mm 10mm 13mm',
+      css: `
+        .sector.next { break-before: page; page-break-before: always; }
+        .sector .pl-header { margin-bottom: 8px; padding-bottom: 7px; }
+        .sector .pl-logo { height: 32px; }
+        .grid { table-layout: fixed; font-size: 8.5px; }
+        .grid th { text-align: center; }
+        .grid th span { font-weight: 500; color: #64748b; text-transform: none; letter-spacing: 0; }
+        .grid td { padding: 2.6px 6px; text-align: center; border: 1px solid #e2e8f0; line-height: 1.3; }
+        .grid .day { width: 52px; text-align: left; white-space: nowrap; color: #475569; }
+        .grid .day b { color: #0f172a; font-variant-numeric: tabular-nums; }
+        .grid tr.weekend td { background: #f8fafc; }
+        .vaga { display: inline-block; padding: 0 5px; border: 1px solid #b45309; border-radius: 3px; color: #b45309; font-weight: 700; font-size: 7.5px; letter-spacing: .04em; }
+        .pl-note { margin-top: 5px; }
+      `,
+      body
+    });
+    if (!openPrintWindow(html, 'width=1200,height=850')) alert('Permita pop-ups para abrir a impressão da escala mensal.');
   };
 
   // Alocação feita numa data já publicada avisa o profissional na hora.

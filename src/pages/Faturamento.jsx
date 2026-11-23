@@ -3,7 +3,8 @@ import { useAppData } from '@/lib/useAppData';
 import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
 import { calculateProductivityPoolAllocations } from '@/lib/productivityCalculations';
 import { supabase } from '@/lib/supabase';
-import { escapeHtml, getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
+import { escapeHtml } from '@/lib/printBranding';
+import { buildPrintDocument, firstLogoUrl, openPrintWindow, printHeader, printLogos, printWatermark } from '@/lib/printLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
@@ -935,244 +936,149 @@ export default function Faturamento() {
   };
 
   const handlePrintConsolidatedReport = () => {
-    const printWindow = window.open('', '_blank', 'width=1100,height=800');
-    if (!printWindow) {
-      alert('Permita os pop-ups para abrir o relatório.');
-      return;
-    }
-
-    const hospitalName = currentUnitName;
-    const logoLetter = hospitalName[0] || 'H';
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
-    const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR');
+    const anyProductivity = filteredReport.some(item => item.remunType === 'produtividade');
+    const paidCount = filteredReport.filter(item => item.isPago && !item.awaitingProduction).length;
 
-    const companyLogoUrl = getCompanyLogoUrl(company);
-    const unitLogoUrl = getUnitLogoUrl(currentUnitObj);
-    const companyLogoHtml = companyLogoUrl ? `<img src="${escapeHtml(companyLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />` : `<div class="logo-badge">${escapeHtml(logoLetter)}</div>`;
-    const unitLogoHtml = unitLogoUrl ? `<img src="${escapeHtml(unitLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` : '';
-
-    const rowsHtml = filteredReport.map((item, idx) => {
-      const formaPagto = item.chavePix ? `PIX: ${item.chavePix}` : (item.banco ? `Banco: ${item.banco}` : 'Pendente');
-      const statusPago = item.awaitingProduction
-        ? `<span style="color: #b45309; font-weight: bold;">Apuração pendente</span>`
-        : item.isPago ? `<span style="color: #166534; font-weight: bold;">[ PAGO ]</span>` : `<span style="color: #64748b;">Pendente</span>`;
-      const regime = item.remunType === 'mensal' ? 'Fixo Mensal' : item.remunType === 'produtividade' ? 'Produtividade' : 'Por Plantão';
-
-      return `
-        <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f9fafb'};">
-          <td style="border: 1px solid #111; padding: 6px 8px; font-weight: bold;">${escapeHtml(item.prof.name)}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace;">${escapeHtml(item.matricula)}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px;">${escapeHtml(item.prof.specialty || 'Geral')}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; font-size: 9px;">${regime}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.plantõesRealizados}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${item.remunType === 'produtividade' ? item.atendimentosApurados : ''}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; font-family: monospace; font-size: 9px;">${escapeHtml(formaPagto)}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-align: right;">${formatCurrency(item.valorBruto)}${item.awaitingProduction ? ' (PARCIAL)' : ''}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-align: right; font-weight: bold;">${formatCurrency(item.valorLiquido)}${item.awaitingProduction ? ' (PARCIAL)' : ''}</td>
-          <td style="border: 1px solid #111; padding: 6px 8px; text-align: center;">${statusPago}</td>
-        </tr>
-      `;
+    const rowsHtml = filteredReport.map(item => {
+      const registration = item.matricula && item.matricula !== 'MAT-XXXX' ? item.matricula : '';
+      const payTo = item.chavePix ? `PIX ${item.chavePix}` : item.banco ? item.banco : '<span class="missing">Falta PIX ou conta</span>';
+      const status = item.awaitingProduction
+        ? '<span class="st wait">Esperando produção</span>'
+        : item.isPago ? '<span class="st paid">Pago</span>' : '<span class="st due">A pagar</span>';
+      const regime = item.remunType === 'mensal' ? 'Fixo mensal' : item.remunType === 'produtividade' ? 'Produtividade' : 'Por plantão';
+      return `<tr>
+        <td><b>${escapeHtml(item.prof.name)}</b>${registration ? `<div class="pl-muted">${escapeHtml(registration)}</div>` : ''}</td>
+        <td>${escapeHtml(item.prof.specialty || '—')}<div class="pl-muted">${regime}</div></td>
+        <td class="pl-num">${item.plantõesRealizados}</td>
+        ${anyProductivity ? `<td class="pl-num">${item.remunType === 'produtividade' ? item.atendimentosApurados : ''}</td>` : ''}
+        <td class="pay">${item.chavePix || item.banco ? escapeHtml(payTo) : payTo}</td>
+        <td class="pl-num">${formatCurrency(item.valorBruto)}${item.awaitingProduction ? '<div class="pl-muted">parcial</div>' : ''}</td>
+        <td class="pl-num"><b>${formatCurrency(item.valorLiquido)}</b></td>
+        <td>${status}</td>
+      </tr>`;
     }).join('');
 
-    const html = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="utf-8">
-        <title>Fechamento de Honorários - ${competencia}</title>
-        <style>
-          @page { size: A4 landscape; margin: 8mm; }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000 !important; padding: 15px; font-size: 11px; }
-          .header-box { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 15px; }
-          .logo-badge { width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px; }
-          .header-info h1 { font-size: 18px; text-transform: uppercase; font-weight: 900; margin-bottom: 2px; }
-          table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-bottom: 20px; font-size: 10px; }
-          th { background: #f3f4f6; border: 1px solid #000; padding: 6px 8px; text-transform: uppercase; font-size: 9px; text-align: left; }
-          .totals { display: flex; justify-content: flex-end; gap: 30px; font-size: 12px; margin-top: 10px; font-weight: bold; border-top: 2px solid #000; padding-top: 10px; }
-        </style>
-      </head>
-      <body>
-        <div class="header-box">
-          <div style="display: flex; align-items: center;">
-            ${companyLogoHtml}
-            ${unitLogoHtml}
-            <div class="header-info" style="${unitLogoHtml ? 'margin-left: 15px;' : ''}">
-              <h1>${escapeHtml(hospitalName)}</h1>
-              <p>FECHAMENTO DE HONORÁRIOS E REPASSE DE PLANTÕES REALIZADOS</p>
-              <div style="margin-top: 4px;">Competência: <b>${competencia}</b></div>
-            </div>
-          </div>
-          <div style="text-align: right; font-size: 9.5px;">
-            <div style="border: 1px solid #000; padding: 3px 8px; font-weight: 900; display: inline-block;">DOCUMENTO OFICIAL AUDITÁVEL</div>
-            <div style="margin-top: 4px;">Emissão: ${emissao}</div>
-          </div>
-        </div>
+    const body = `<section class="pl-sheet">
+      ${printHeader({
+        logos: printLogos({ company, unit: currentUnitObj }),
+        orgName: currentUnitName,
+        title: 'Fechamento de honorários',
+        subtitle: `Competência ${competencia}`,
+        meta: [['Profissionais', String(filteredReport.length)], ['Pagos', `${paidCount} de ${filteredReport.length}`]]
+      })}
+      <table class="pl-table closing">
+        <thead><tr>
+          <th>Profissional</th><th>Especialidade · regime</th><th class="pl-num">Plantões</th>
+          ${anyProductivity ? '<th class="pl-num">Atend.</th>' : ''}
+          <th>Pagar em</th><th class="pl-num">Bruto</th><th class="pl-num">Líquido</th><th>Situação</th>
+        </tr></thead>
+        <tbody>${rowsHtml || `<tr><td colspan="${anyProductivity ? 8 : 7}" class="pl-muted" style="text-align:center;padding:18px">Nenhum profissional com produção neste mês.</td></tr>`}</tbody>
+        <tfoot><tr>
+          <td colspan="2"><b>Total</b></td>
+          <td class="pl-num"><b>${filteredTotals.plantões}</b></td>
+          ${anyProductivity ? '<td></td>' : ''}
+          <td></td>
+          <td class="pl-num"><b>${formatCurrency(filteredTotals.bruto)}</b></td>
+          <td class="pl-num"><b>${formatCurrency(filteredTotals.liquido)}</b></td>
+          <td></td>
+        </tr></tfoot>
+      </table>
+      ${shiftsAwaitingProduction > 0 ? `<p class="pl-note"><b>Atenção:</b> ${shiftsAwaitingProduction} dia(s) de produtividade ainda sem todos os atendimentos lançados. Para esses profissionais o valor é parcial e inclui só os dias fechados.</p>` : ''}
+      <div class="pl-signatures"><div>Responsável pelo faturamento</div><div>Direção / aprovação</div></div>
+    </section>`;
 
-        <table>
-          <thead>
-            <tr>
-              <th>Profissional</th>
-              <th>Matrícula</th>
-              <th>Especialidade</th>
-              <th>Regime</th>
-              <th style="text-align: center;">Plantões</th>
-              <th style="text-align: center;">Atendimentos Apurados</th>
-              <th>Dados p/ Pagamento</th>
-              <th style="text-align: right;">Bruto Apurado</th>
-              <th style="text-align: right;">Líquido a Pagar</th>
-              <th style="text-align: center;">Status</th>
-            </tr>
-          </thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
-
-        <div class="totals">
-          <span>Plantões Cumpridos: ${filteredTotals.plantões}</span>
-          <span>Total Bruto: ${formatCurrency(filteredTotals.bruto)}</span>
-          <span style="color: #000;">TOTAL LÍQUIDO DOS PROFISSIONAIS LISTADOS: ${formatCurrency(filteredTotals.liquido)}</span>
-        </div>
-        ${shiftsAwaitingProduction > 0 ? `<p style="margin-top: 8px; color: #92400e; font-weight: bold;">Atenção: ${shiftsAwaitingProduction} dia(s) por produtividade aguardam lançamento completo. O valor exibido para esses profissionais é parcial e inclui somente os dias já fechados.</p>` : ''}
-
-        ${PRINT_WHEN_IMAGES_READY_SCRIPT}
-      </body>
-      </html>
-    `;
-
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
+    const html = buildPrintDocument({
+      docTitle: `Fechamento de honorários · ${currentUnitName} · ${competencia}`,
+      orientation: 'landscape',
+      issuedBy: user?.full_name || '',
+      css: `
+        .closing { font-size: 9.5px; }
+        .closing td .pl-muted { font-size: 8.5px; }
+        .closing tfoot td { border-top: 1.5px solid #0f172a; border-bottom: none; padding-top: 7px; font-size: 10.5px; }
+        .closing .pay { max-width: 160px; overflow-wrap: anywhere; font-size: 9px; }
+        .missing { color: #b45309; font-weight: 600; }
+        .st { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 8.5px; font-weight: 600; border: 1px solid; white-space: nowrap; }
+        .st.paid { color: #047857; border-color: #6ee7b7; }
+        .st.due { color: #b45309; border-color: #fcd34d; }
+        .st.wait { color: #475569; border-color: #cbd5e1; }
+      `,
+      body
+    });
+    if (!openPrintWindow(html)) alert('Permita os pop-ups para abrir o relatório.');
   };
 
   const handlePrintIndividualReceipt = (item) => {
-    const printWindow = window.open('', '_blank', 'width=900,height=850');
-    if (!printWindow) {
-      alert('Permita os pop-ups para abrir o recibo.');
-      return;
-    }
-
     const hospitalName = currentUnitName;
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
-    const emissao = new Date().toLocaleDateString('pt-BR');
-
-    let dadosPagamentoHtml = '';
-    if (item.chavePix && item.banco) {
-      dadosPagamentoHtml = `
-        <div class="grid"><span>Chave PIX (${escapeHtml(item.pixTipo)}):</span> <span>${escapeHtml(item.chavePix)}</span></div>
-        <div class="grid"><span>Dados Bancários Físicos:</span> <span>${escapeHtml(item.banco)}</span></div>
-      `;
-    } else if (item.chavePix) {
-      dadosPagamentoHtml = `<div class="grid"><span>Chave PIX (${escapeHtml(item.pixTipo)}):</span> <span>${escapeHtml(item.chavePix)}</span></div>`;
-    } else if (item.banco) {
-      dadosPagamentoHtml = `<div class="grid"><span>Dados Bancários Físicos:</span> <span>${escapeHtml(item.banco)}</span></div>`;
-    } else {
-      dadosPagamentoHtml = `<div class="grid"><span style="color: #b91c1c; font-weight: bold;">Forma de Pagamento:</span> <span style="color: #b91c1c;">Pendente de cadastro</span></div>`;
-    }
-
     const isActuallyPaid = item.isPago && !item.awaitingProduction;
-    const regimeLabel = item.remunType === 'mensal' ? 'Fixo Mensal' : item.remunType === 'produtividade' ? 'Comissionamento/Produtividade' : 'Plantão Dinâmico';
+    const regimeLabel = item.remunType === 'mensal' ? 'Fixo mensal' : item.remunType === 'produtividade' ? 'Produtividade' : 'Por plantão';
+    const docName = item.awaitingProduction ? 'Demonstrativo parcial de honorários' : isActuallyPaid ? 'Recibo de honorários' : 'Demonstrativo de honorários';
+    const logos = printLogos({ company, unit: currentUnitObj });
+    // Marca d'água com sentido: logo no recibo pago; aviso no demonstrativo.
+    const watermark = isActuallyPaid
+      ? printWatermark({ imageUrl: firstLogoUrl({ company, unit: currentUnitObj }) })
+      : printWatermark({ text: 'NÃO COMPROVA PAGAMENTO' });
+    const registration = item.matricula && item.matricula !== 'MAT-XXXX' ? item.matricula : '';
+    const paymentTo = item.chavePix
+      ? `PIX (${item.pixTipo}): ${item.chavePix}${item.banco ? ` · Conta: ${item.banco}` : ''}`
+      : item.banco ? `Conta: ${item.banco}` : '';
 
-    const templateVia = (tituloVia) => `
-      <div class="via-box">
-        <div class="header">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <div>
-              <h1>${escapeHtml(hospitalName)}</h1>
-              <p>${item.awaitingProduction ? 'APURAÇÃO PENDENTE — NÃO COMPROVA PAGAMENTO' : isActuallyPaid ? 'RECIBO DE HONORÁRIOS & REPASSE MÉDICO' : 'DEMONSTRATIVO DE HONORÁRIOS A PAGAR'}</p>
-              <p style="font-size: 9.5px; margin-top: 2px;">Competência: <b>${competencia}</b></p>
-            </div>
-            <div style="text-align: right;">
-              <span class="via-tag">${tituloVia}</span>
-              <div style="font-size: 8.5px; color: #555; margin-top: 3px;">Data: ${emissao}</div>
-            </div>
-          </div>
+    const row = (label, value) => `<tr><td class="pl-muted">${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`;
+    const via = (viaLabel) => `
+      <section class="pl-sheet via">
+        ${watermark}
+        ${printHeader({ logos, orgName: hospitalName, title: docName, subtitle: `Competência ${competencia}`, meta: [['', viaLabel], ['Emissão', new Date().toLocaleDateString('pt-BR')]] })}
+        <table class="facts">
+          ${row('Profissional', item.prof.name)}
+          ${registration ? row('Matrícula', registration) : ''}
+          ${row('Registro / especialidade', [item.prof.document, item.prof.specialty].filter(Boolean).join(' · ') || '—')}
+          ${row('Regime', regimeLabel)}
+          ${row('Trabalhado no mês', `${item.plantõesRealizados} plantão(ões) · ${String(item.horasRealizadas).replace('.', ',')} h`)}
+          ${item.remunType === 'produtividade' ? row('Atendimentos em dias fechados', String(item.atendimentosApurados)) : ''}
+          ${item.awaitingProduction ? row('Dias sem produção lançada', `${item.plantõesAguardandoProducao} — ainda fora do valor`) : ''}
+        </table>
+        <div class="amounts">
+          <div><span>${item.awaitingProduction ? 'Bruto parcial' : 'Bruto'}</span><b>${formatCurrency(item.valorBruto)}</b></div>
+          <div><span>Retenção${item.taxRate > 0 ? ` (${String(item.taxRate).replace('.', ',')}%)` : ''}</span><b>− ${formatCurrency(item.valorDesconto)}</b></div>
+          <div class="net"><span>${item.awaitingProduction ? 'Líquido parcial' : isActuallyPaid ? 'Líquido pago' : 'Líquido a receber'}</span><b>${formatCurrency(item.valorLiquido)}</b></div>
         </div>
+        <p class="pay">${paymentTo ? `<span class="pl-muted">Pagamento em</span> ${escapeHtml(paymentTo)}` : '<span class="missing">Falta cadastrar PIX ou conta bancária do profissional.</span>'}</p>
+        <p class="pl-note">${isActuallyPaid
+          ? `Declaro ter recebido de ${escapeHtml(hospitalName)} o valor líquido acima, referente aos serviços profissionais prestados em ${competencia}, dando plena quitação.`
+          : `Valores apurados pelos serviços profissionais prestados em ${competencia}. Este documento não comprova pagamento nem quitação.`}</p>
+        <div class="pl-signatures"><div>${escapeHtml(hospitalName)}</div><div>${escapeHtml(item.prof.name)}</div></div>
+      </section>`;
 
-        <div class="section">
-          <div class="grid"><span>Profissional:</span> <span>${escapeHtml(item.prof.name)} (ID: ${escapeHtml(item.matricula)})</span></div>
-          <div class="grid"><span>Documento / Especialidade:</span> <span>${escapeHtml(item.prof.document || 'CRM')} • ${escapeHtml(item.prof.specialty || 'Geral')}</span></div>
-          <div class="grid"><span>Regime de Contratação:</span> <span>${regimeLabel}</span></div>
-          <div class="grid"><span>Plantões Cumpridos no Período:</span> <span>${item.plantõesRealizados} plantões (${item.horasRealizadas}h computadas)</span></div>
-          ${item.remunType === 'produtividade' ? `<div class="grid"><span>Atendimentos apurados em dias completos:</span> <span>${item.atendimentosApurados}</span></div>` : ''}
-          ${item.awaitingProduction ? `<div class="grid"><span>Dias pendentes:</span> <span>${item.plantõesAguardandoProducao} — valores desses dias ainda não incluídos</span></div>` : ''}
-        </div>
-
-        <div class="val-box">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span>${item.awaitingProduction ? 'Saldo bruto parcial' : 'Valor Bruto'}: <b>${formatCurrency(item.valorBruto)}</b></span>
-            <span>Retenção/Taxa: <b>- ${formatCurrency(item.valorDesconto)}</b></span>
-            <span style="color: #000; font-size: 13px;">${item.awaitingProduction ? 'SALDO LÍQUIDO PARCIAL' : 'LÍQUIDO A RECEBER'}: <b>${formatCurrency(item.valorLiquido)}</b></span>
-          </div>
-        </div>
-
-        <div class="section" style="margin-top: 6px;">
-          ${dadosPagamentoHtml}
-        </div>
-
-        <p class="termo">
-          ${isActuallyPaid
-            ? `Declaro ter recebido da instituição ${escapeHtml(hospitalName)} a quantia líquida discriminada acima, correspondente à quitação integral dos serviços profissionais prestados no período de ${competencia}, dando plena e geral quitação.`
-            : `Demonstrativo dos valores apurados pelos serviços profissionais prestados no período de ${competencia}. Este documento não comprova pagamento ou quitação.`
-          }
-        </p>
-
-        <div class="signatures">
-          <div class="sig-col">
-            <div class="sig-line"></div>
-            <span>${escapeHtml(hospitalName)}</span>
-          </div>
-          <div class="sig-col">
-            <div class="sig-line"></div>
-            <span>${escapeHtml(item.prof.name)}</span>
-          </div>
-        </div>
-      </div>
-    `;
-
-    const html = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="utf-8">
-        <title>${isActuallyPaid ? 'Recibo Oficial' : 'Demonstrativo de Honorários'} - ${escapeHtml(item.prof.name)}</title>
-        <style>
-          @page { size: A4 portrait; margin: 8mm; }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000000 !important; padding: 5px; font-size: 10px; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .via-box { border: 1.5px solid #000; padding: 14px 18px; border-radius: 4px; height: 47%; display: flex; flex-direction: column; justify-content: space-between; background: #fff; }
-          .header { border-bottom: 1.5px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
-          .header h1 { font-size: 15px; text-transform: uppercase; font-weight: 900; }
-          .header p { font-size: 9px; font-weight: bold; }
-          .via-tag { border: 1px solid #000; padding: 2px 6px; font-weight: 900; font-size: 8.5px; text-transform: uppercase; background: #f3f4f6; }
-          .section { margin-bottom: 6px; }
-          .grid { display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 9.5px; }
-          .grid span:last-child { font-weight: bold; }
-          .val-box { background: #f3f4f6; border: 1px solid #000; padding: 7px 10px; font-size: 11px; margin: 8px 0; }
-          .termo { font-size: 8px; color: #333; text-align: justify; margin: 8px 0; line-height: 1.25; }
-          .signatures { display: flex; justify-content: space-around; margin-top: 24px; text-align: center; }
-          .sig-col { width: 220px; }
-          .sig-line { border-top: 1px solid #000; margin-bottom: 3px; }
-          .cut-divider { border-top: 1.5px dashed #666; margin: 14px 0; text-align: center; position: relative; height: 12px; }
-          .cut-divider span { position: relative; top: -8px; background: #fff; padding: 0 10px; font-size: 8px; color: #666; text-transform: uppercase; font-weight: bold; }
-        </style>
-      </head>
-      <body>
-        ${templateVia('1ª VIA - INSTITUIÇÃO')}
-        
-        <div class="cut-divider">
-          <span>✂ CORTE AQUI ✂</span>
-        </div>
-
-        ${templateVia('2ª VIA - PROFISSIONAL')}
-
-        ${PRINT_WHEN_IMAGES_READY_SCRIPT}
-      </body>
-      </html>
-    `;
-
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
+    const html = buildPrintDocument({
+      docTitle: `${docName} · ${item.prof.name} · ${competencia}`,
+      issuedBy: user?.full_name || '',
+      margin: '10mm 11mm 14mm',
+      css: `
+        .via { height: 128mm; padding: 2mm 1mm 0; overflow: hidden; }
+        .via .pl-watermark span { font-size: 30px; }
+        .via .pl-header { margin-bottom: 8px; padding-bottom: 8px; }
+        .via .pl-logo { height: 32px; }
+        .via .pl-meta div:first-child b { display: inline-block; padding: 2px 7px; border: 1px solid #0f172a; border-radius: 4px; font-size: 8px; letter-spacing: .05em; text-transform: uppercase; }
+        .facts { width: 100%; border-collapse: collapse; font-size: 9.5px; }
+        .facts td { padding: 2.5px 0; border-bottom: 1px solid #f1f5f9; }
+        .facts td:first-child { width: 36%; }
+        .facts td:last-child { font-weight: 600; }
+        .amounts { display: flex; gap: 10px; margin: 10px 0 6px; }
+        .amounts div { flex: 1; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; }
+        .amounts span { display: block; font-size: 8px; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+        .amounts b { font-size: 12px; font-variant-numeric: tabular-nums; }
+        .amounts .net { border-color: #0f172a; }
+        .amounts .net b { font-size: 14px; }
+        .pay { margin: 4px 0 0; font-size: 9.5px; }
+        .missing { color: #b45309; font-weight: 600; }
+        .pl-signatures { margin-top: 22px; }
+        .cut { display: flex; align-items: center; gap: 8px; margin: 3mm 0; color: #94a3b8; font-size: 7.5px; letter-spacing: .08em; text-transform: uppercase; }
+        .cut::before, .cut::after { content: ''; flex: 1; border-top: 1px dashed #94a3b8; }
+      `,
+      body: `${via('1ª via · instituição')}<div class="cut">✂ corte aqui</div>${via('2ª via · profissional')}`
+    });
+    if (!openPrintWindow(html, 'width=900,height=850')) alert('Permita os pop-ups para abrir o recibo.');
   };
 
   const handleSendStatementWhatsApp = (item) => {
