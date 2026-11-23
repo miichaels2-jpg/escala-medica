@@ -9,6 +9,23 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.5.4 — 23/11/2026
+
+Revisão feita logada como plantonista, no celular (login de teste na demo).
+
+- **Primeiro acesso:** a troca da senha provisória virou "Crie sua senha", em azul (antes era um alerta vermelho de
+  "Atualização de Segurança"). Plantonista com mais de uma unidade entra direto, sem a tela de escolher hospital — ele
+  já vê todas as unidades num login só. Para a gestão, a escolha de hospital ficou sem o código interno da unidade.
+- **Minha Escala:** "Próximos plantões" lista todos os plantões marcados, de qualquer mês (antes só o mês corrente:
+  quem tinha plantão só no mês seguinte via "Nenhum plantão futuro nesta competência"). O seletor de mês ficou no
+  "Resumo do mês" (cumpridos, ganhos e concluídos). Um botão de espelho só, cartões neutros (cor só para ao vivo, em
+  análise e choque de horário) e sem "Valor previsto: R$ 0,00".
+- **Ponto por GPS:** quando a unidade não tem coordenadas, o cartão do próximo plantão não mostra mais o aviso amarelo
+  nem botões de check-in que nunca liberariam.
+- **Escala para o plantonista:** mostra só o que a coordenação publicou (antes aparecia o rascunho, com a etiqueta
+  "Rascunho"), sem os números de gestão (cobertura, furos, vagas). Mês sem escala publicada explica onde ver os
+  próprios plantões e as vagas.
+
 ## V0.5.3 — 23/11/2026
 
 - **Turnos padrão por setor:** em Setores, cada setor guarda os horários fixos de todo dia (ex.: UTI — 2 vagas

@@ -1484,9 +1484,12 @@ const conflict = checkProfessionalConflict(
       if (monthlyView === 'lista' && startDateFilter && s.date < startDateFilter) return false;
       if (selectedSectorId !== 'todos' && String(s.sector_id) !== String(selectedSectorId)) return false;
       if (!isShiftMatchingTurno(s, filterTurno)) return false;
+      // Plantonista vê só a escala publicada; rascunho fica com a gestão.
+      if (!isManager && !getPublishedRanges(selectedUnitId, s.sector_id, currentYear, currentMonth + 1).some(r => s.date >= r.start_date && s.date <= r.end_date)) return false;
       return true;
     });
-  }, [shifts, currentYear, currentMonth, selectedSectorId, filterTurno, startDateFilter, monthlyView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shifts, currentYear, currentMonth, selectedSectorId, filterTurno, startDateFilter, monthlyView, isManager, publishedRanges, selectedUnitId]);
 
 
   const scheduleFilteredShifts = useMemo(() => {
@@ -2296,7 +2299,9 @@ const handleAssignLegacyShiftUnit = async (shift) => {
     <div className="relative p-3 md:p-6 space-y-4 font-sans bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
       <PageHero
         title="Escala"
-        subtitle={`${selectedSectorObj ? selectedSectorObj.name : 'Todos os setores'} · ${isCurrentSectorPublished ? 'publicada' : 'rascunho, ainda não publicada'}`}
+        subtitle={isManager
+          ? `${selectedSectorObj ? selectedSectorObj.name : 'Todos os setores'} · ${isCurrentSectorPublished ? 'publicada' : 'rascunho, ainda não publicada'}`
+          : `${selectedSectorObj ? selectedSectorObj.name : 'Todos os setores'} · o que a coordenação já publicou`}
         actions={t => (
           <div className="flex flex-wrap items-center gap-2">
             <div className={`flex items-center p-1 rounded-xl gap-1 ${t.pill}`}>
@@ -2447,7 +2452,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
         </div>
       </div>
 
-      {activeTab === 'mensal' && (
+      {activeTab === 'mensal' && isManager && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 print:hidden">
           {[
             ['Cobertura', monthStats.coverage === null ? '—' : `${monthStats.coverage}%`, ''],
@@ -2682,9 +2687,11 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                           <span className={`text-xs font-semibold  px-2 py-1 rounded-full ${vacancies ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300'}`}>
                             {vacancies} vaga(s) aberta(s)
                           </span>
-                          <span className={`text-xs font-semibold  px-2 py-1 rounded-full ${isPublished ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'}`}>
-                            {isPublished ? 'Publicada' : 'Rascunho'}
-                          </span>
+                          {isManager && (
+                            <span className={`text-xs font-semibold  px-2 py-1 rounded-full ${isPublished ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'}`}>
+                              {isPublished ? 'Publicada' : 'Rascunho'}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2">
@@ -2696,8 +2703,8 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               {scheduleVisibleShifts.length === 0 && (
                 <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-10 text-center">
                   <Search className="w-7 h-7 mx-auto mb-2 text-slate-400" />
-                  <p className="font-semibold text-slate-700 dark:text-slate-200">Nenhum plantão corresponde aos filtros.</p>
-                  <p className="text-xs text-slate-500 mt-1">Tente outro profissional, especialidade, setor ou período.</p>
+                  <p className="font-semibold text-slate-700 dark:text-slate-200">{isManager || monthlyShifts.length ? 'Nenhum plantão corresponde aos filtros.' : 'A escala deste mês ainda não foi publicada.'}</p>
+                  <p className="text-xs text-slate-500 mt-1">{isManager || monthlyShifts.length ? 'Tente outro profissional, especialidade, setor ou período.' : 'Seus plantões já marcados aparecem em Minha Escala. Vagas abertas ficam no Mural.'}</p>
                 </div>
               )}
             </div>
