@@ -9,6 +9,16 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.5.8 — 23/11/2026
+
+- **Relatórios com mês quase vazio:** no começo do mês, quando "Este mês" tem poucos plantões, aparece "Este mês tem
+  só N plantões até agora · Ver o mês passado (X plantões)", que troca o período com um toque. Vale para todos os
+  relatórios.
+- **Confiabilidade mais útil:** o cartão "Maior índice" (quase todo mundo em 100%) virou "Mais plantões cumpridos"
+  (plantões, horas e noites). A tabela ganhou **Noites** e **Fins de semana** cumpridos, para ver quem carrega a escala
+  pesada.
+- Contagens no singular quando é 1 ("1 profissional", "1 plantão").
+
 ## V0.5.7 — 23/11/2026
 
 - **Impressos no mesmo padrão** (`src/lib/printLayout.js`): cabeçalho com as logos da empresa e da unidade, nome do

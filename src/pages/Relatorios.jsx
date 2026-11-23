@@ -74,6 +74,8 @@ const REPORT_PRINT_CSS = `
   .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
 `;
 
+const countLabel = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
 const LOWER_WORDS = new Set(['e', 'de', 'da', 'do', 'das', 'dos', 'em', 'na', 'no', 'a', 'o']);
 function titleCase(str) {
   if (!str) return '';
@@ -755,6 +757,15 @@ export default function Relatorios() {
   }, [filteredShifts, getProf, productivityReport, appliedFilters, hasSearched, professionals, scopeUnitIds, isAllUnits]);
 
   const shiftCost = useCallback(shift => costModel.byShift.get(String(shift.id)) || 0, [costModel]);
+
+  // Período quase vazio (começo do mês): oferece o mês passado.
+  const lastMonthShiftCount = useMemo(() => {
+    const [start, end] = periodRange('mes_passado');
+    return shifts.filter(s => s && normalize(s.status) !== 'cancelado' &&
+      (appliedFilters.sector === 'todos' || String(s.sector_id) === String(appliedFilters.sector)) &&
+      String(s.date || '').slice(0, 10) >= start && String(s.date || '').slice(0, 10) <= end).length;
+  }, [shifts, appliedFilters.sector]);
+  const sparsePeriod = period === 'mes' && filteredShifts.length < 10 && lastMonthShiftCount > filteredShifts.length * 2;
 
   const reliabilityRows = useMemo(() => (isManager && hasSearched
     ? computeReliability({ shifts: filteredShifts, professionals, swaps: allCompanySwaps, start: appliedFilters.start, end: appliedFilters.end })
@@ -1784,17 +1795,17 @@ export default function Relatorios() {
   };
 
   const resultCountLabel =
-    activeTab === 'bi' ? `${filteredShifts.length} plantões no período` :
-    activeTab === 'escalas' ? `${filteredShifts.length} plantões` :
-    activeTab === 'trocas' ? `${swapsList.length} repasses` :
-    activeTab === 'base_setores' ? `${enrichedSectors.length} setores` :
-    activeTab === 'base_profissionais' ? `${filteredProfessionals.length} profissionais` :
-    activeTab === 'aniversariantes' ? `${birthDaysList.length} aniversariantes` :
-    activeTab === 'profissionais' ? `${professionalMetrics.length} profissionais` :
-    activeTab === 'confiabilidade' ? `${reliabilityRows.length} profissionais` :
+    activeTab === 'bi' ? `${countLabel(filteredShifts.length, 'plantão', 'plantões')} no período` :
+    activeTab === 'escalas' ? countLabel(filteredShifts.length, 'plantão', 'plantões') :
+    activeTab === 'trocas' ? countLabel(swapsList.length, 'repasse', 'repasses') :
+    activeTab === 'base_setores' ? countLabel(enrichedSectors.length, 'setor', 'setores') :
+    activeTab === 'base_profissionais' ? countLabel(filteredProfessionals.length, 'profissional', 'profissionais') :
+    activeTab === 'aniversariantes' ? countLabel(birthDaysList.length, 'aniversariante', 'aniversariantes') :
+    activeTab === 'profissionais' ? countLabel(professionalMetrics.length, 'profissional', 'profissionais') :
+    activeTab === 'confiabilidade' ? countLabel(reliabilityRows.length, 'profissional', 'profissionais') :
     activeTab === 'produtividade_diaria' ? `${productivityReport.totals.pendingDays} dia(s) pendente(s) · ${formatCurrency(productivityReport.totals.pool)} rateados` :
     activeTab === 'financeiro' ? `${formatCurrency(financialSummary.totalCost)} em custos previstos` :
-    `${totalShiftsCount} plantões analisados`;
+    `${countLabel(totalShiftsCount, 'plantão', 'plantões')} analisados`;
   const activeGroup = REPORT_GROUPS.find(g => g.reports.includes(activeTab)) || REPORT_GROUPS[0];
   const groupReports = activeGroup.reports.map(id => reportNavigation.find(r => r.id === id)).filter(Boolean);
   const showStatusFilter = REPORTS_WITH_STATUS_FILTER.includes(activeTab);
@@ -1913,6 +1924,12 @@ export default function Relatorios() {
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {periodLabel} · {filterSummary} · <span className="font-medium text-slate-700 dark:text-slate-200">{resultCountLabel}</span>
           </p>
+          {sparsePeriod && (
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              Este mês tem só {countLabel(filteredShifts.length, 'plantão', 'plantões')} até agora.{' '}
+              <button type="button" onClick={() => choosePeriod('mes_passado')} className="font-semibold text-sky-700 dark:text-sky-300 hover:underline cursor-pointer">Ver o mês passado ({lastMonthShiftCount} plantões)</button>
+            </p>
+          )}
         </div>
 
       {!hasSearched ? null : (
@@ -2547,7 +2564,7 @@ export default function Relatorios() {
 
             {/* ABA FINANCEIRO */}
             {activeTab === 'confiabilidade' && isManager && (() => {
-              const best = reliabilityRows.filter(r => r.index !== null).slice(0, 1)[0];
+              const mostDone = [...reliabilityRows].sort((a, b) => b.done - a.done || b.hours - a.hours)[0];
               const topCover = [...reliabilityRows].sort((a, b) => b.covered - a.covered)[0];
               const topRelease = [...reliabilityRows].sort((a, b) => b.released - a.released)[0];
               const tone = index => index === null ? 'text-slate-400' : index >= 95 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : index >= 85 ? 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300' : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300';
@@ -2558,7 +2575,7 @@ export default function Relatorios() {
                   </p>
                   <div className="grid gap-3 sm:grid-cols-3">
                     {[
-                      { label: 'Maior índice', row: best, value: best ? `${best.index}%` : '—' },
+                      { label: 'Mais plantões cumpridos', row: mostDone?.done ? mostDone : null, value: mostDone?.done ? `${mostDone.done} plantão(ões) · ${mostDone.hours} h · ${mostDone.nights} noite(s)` : '—' },
                       { label: 'Mais vagas cobertas', row: topCover?.covered ? topCover : null, value: topCover?.covered ? `${topCover.covered} vaga(s)` : '—' },
                       { label: 'Mais repasses', row: topRelease?.released ? topRelease : null, value: topRelease?.released ? `${topRelease.released} repasse(s)` : '—' }
                     ].map(card => (
@@ -2570,13 +2587,15 @@ export default function Relatorios() {
                     ))}
                   </div>
                   <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-                    <table className="w-full min-w-[720px] text-sm">
+                    <table className="w-full min-w-[860px] text-sm">
                       <thead>
                         <tr className="text-left text-xs text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
                           <th className="px-4 py-2.5 font-medium">#</th>
                           <th className="px-4 py-2.5 font-medium">Profissional</th>
                           <th className="px-4 py-2.5 font-medium text-right">Realizados</th>
                           <th className="px-4 py-2.5 font-medium text-right">Horas</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Noites</th>
+                          <th className="px-4 py-2.5 font-medium text-right">Fins de semana</th>
                           <th className="px-4 py-2.5 font-medium text-right">Vagas cobertas</th>
                           <th className="px-4 py-2.5 font-medium text-right">Repasses</th>
                           <th className="px-4 py-2.5 font-medium text-right">Trocas diretas</th>
@@ -2585,7 +2604,7 @@ export default function Relatorios() {
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                         {reliabilityRows.length === 0 && (
-                          <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500">Nenhum plantão de profissional no período.</td></tr>
+                          <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-500">Nenhum plantão de profissional no período.</td></tr>
                         )}
                         {reliabilityRows.map((row, index) => (
                           <tr key={row.id}>
@@ -2596,6 +2615,8 @@ export default function Relatorios() {
                             </td>
                             <td className="px-4 py-2.5 text-right tabular-nums">{row.done}<span className="text-slate-400"> / {row.scheduled}</span></td>
                             <td className="px-4 py-2.5 text-right tabular-nums">{row.hours}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums">{row.nights}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums">{row.weekends}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums">{row.covered}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums">{row.released}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums">{row.directSwaps}</td>
