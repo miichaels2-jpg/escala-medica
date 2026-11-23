@@ -7,6 +7,37 @@
 export const ROADMAP_UPDATED_AT = '2026-11-23';
 
 export const ROADMAP_GROUPS = [
+  // Varredura completa do app em 23/11/2026 (todas as telas, computador e celular, dados reais da demo).
+  {
+    title: 'Próximos · prioridade 1 · segurança e confiança',
+    items: [
+      { id: 26, title: 'Histórico com autor garantido pelo banco', detail: 'Hoje o "quem fez" vem do navegador e poderia ser forjado por alguém logado; passa a vir do login oficial, direto no banco. Registros antigos ficam como estão.', status: 'planejado' },
+      { id: 27, title: 'Backup diário antes do 1º cliente', detail: 'Assinar o plano pago do Supabase (backup diário e recuperação por data) e fazer um teste de restauração. A assinatura é com o Michael; o teste e o passo a passo, com o Claude.', status: 'planejado' },
+      { id: 28, title: 'Testes automáticos antes de publicar', detail: 'Os 74 testes que já existem ganham um comando próprio e rodam sozinhos a cada envio ao GitHub, junto com a montagem do app; se algo quebrar, a versão não sobe.', status: 'planejado' },
+      { id: 29, title: 'Aviso de erro em produção', detail: 'Quando aparecer a tela "Instabilidade no módulo" para alguém, o erro fica registrado num painel com tela, horário e empresa — para corrigir antes de o cliente ligar.', status: 'planejado' },
+      { id: 30, title: 'LGPD na prática', detail: 'O profissional baixa os próprios dados e pode pedir exclusão; o aceite dos termos fica guardado com data e versão.', status: 'planejado' }
+    ]
+  },
+  {
+    title: 'Próximos · prioridade 2 · dia a dia mais simples',
+    items: [
+      { id: 31, title: 'Painel enxuto', detail: 'Hoje são 11 blocos e vários ficam vazios quando não há plantão (anel "Sem escala", gráfico de horas zerado). Vira: topo, "o que precisa de você hoje" (vagas urgentes, setores em rascunho, pagamentos pendentes), números do dia e cobertura por setor. No celular, sem "Modo TV"; o "Plantão do dia" fica só num lugar.', status: 'planejado' },
+      { id: 32, title: 'Turnos padrão por setor', detail: 'Em Setores, cadastrar os turnos fixos de cada setor (ex.: UTI — 2 de dia 07–19 e 1 de noite 19–07) e montar o mês inteiro com um clique na Escala. Cada cartão de setor passa a mostrar turnos, equipe autorizada e vagas do mês.', status: 'planejado' },
+      { id: 33, title: 'Acessos num lugar só', detail: 'Hoje dá para liberar acesso no Corpo Clínico (telas liberadas) e também em Configurações › Equipe & Acessos. Juntar tudo no Corpo Clínico; Configurações fica com hospital, contrato e regras.', status: 'planejado' },
+      { id: 34, title: 'Mesmos nomes em todo o app', detail: 'Menu diz "Mural de Oportunidades" e a tela "Mural de vagas"; "Setores & Especialidades", "Faturamento & Repasse", "Painel Geral" e o botão "Abrir Escalas" com nomes diferentes das telas. Padronizar: Painel, Escala, Mural, Setores, Faturamento.', status: 'planejado' },
+      { id: 35, title: 'Faturamento mais claro', detail: 'Números sem cores de enfeite (só status), "Pendente de cadastro" explicando o que falta (PIX ou conta), "Marcar como pago" para vários de uma vez e matrícula sem destaque colorido.', status: 'planejado' },
+      { id: 36, title: 'Cadastro de profissional em passos', detail: 'A janela de novo profissional é longa (categoria, perfil, telas, valores numa tela só). Dividir em 3 passos — dados, perfil e acessos, valores — como no credenciamento.', status: 'planejado' },
+      { id: 37, title: 'Revisar a visão do plantonista', detail: 'A varredura foi feita como gestor. Revisar Minha Escala, Mural e trocas logado como profissional, no celular, que é onde ele usa.', status: 'planejado' }
+    ]
+  },
+  {
+    title: 'Próximos · prioridade 3 · acabamento e crescimento',
+    items: [
+      { id: 38, title: 'Escala e Relatórios mais leves por dentro', detail: 'Escala (3.300 linhas) e Relatórios (2.700) divididos em partes menores: fica mais fácil e seguro mexer, e Relatórios baixa menos que os 510 KB de hoje.', status: 'planejado' },
+      { id: 39, title: 'Limpar avisos antigos do código', detail: '59 avisos do verificador (blocos vazios, variáveis sem uso) que vêm de versões antigas.', status: 'planejado' },
+      { id: 40, title: 'Tema claro como padrão?', detail: 'Hoje o app abre no tema escuro para quem entra pela primeira vez. Decidir se novos usuários começam no claro (cada um continua podendo trocar).', status: 'ideia' }
+    ]
+  },
   {
     title: 'Para o gestor',
     items: [
