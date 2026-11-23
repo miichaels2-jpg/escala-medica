@@ -14,7 +14,8 @@ import {
   Layers, CalendarCheck, Zap, ChevronDown, ChevronUp, Clock3, ShieldAlert, LogIn, LogOut, MapPin, CalendarPlus
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { escapeHtml, getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
+import { escapeHtml } from '@/lib/printBranding';
+import { buildPrintDocument, openPrintWindow, printHeader, printLogos } from '@/lib/printLayout';
 
 function safeNumber(val, fb = 0) {
   return safeFinancialNumber(val, fb);
@@ -508,118 +509,63 @@ export default function MinhaEscala() {
   };
 
   const handlePrintMyStatement = () => {
-    const printWindow = window.open('', '_blank', 'width=1000,height=800');
-    if (!printWindow) return alert('Permita pop-ups para imprimir o comprovante.');
-
     const profNome = currentProfessional?.name || user?.full_name || 'Profissional';
-    const matricula = currentProfessional?.registration_id || currentProfessional?.document || 'MAT-XXXX';
+    const registration = profMeta.registration_id || currentProfessional?.registration_id || '';
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
-    const emissao = now.toLocaleDateString('pt-BR') + ' às ' + now.toLocaleTimeString('pt-BR');
+    const regimeLabel = isMonthlyRemuneration ? 'Fixo mensal' : isProductivityRemuneration ? 'Produtividade' : 'Por plantão';
+    const showValue = !isMonthlyRemuneration && !isProductivityRemuneration;
+    const allOrdered = [...monthShifts].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.start_time || '').localeCompare(b.start_time || ''));
+    // O plantonista atende em todas as suas unidades: o espelho leva a marca da empresa.
+    const unitIds = [...new Set(allOrdered.map(s => String(s.unit_id)))];
+    const singleUnit = unitIds.length === 1 ? (units || []).find(u => String(u.id) === unitIds[0]) : null;
 
-    const allOrdered = [...monthShifts].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-
-    const rowsHtml = allOrdered.map((s, idx) => {
-      const statusHtml = s.state === 'concluido' ? 'CONCLUÍDO' : s.state === 'ativo' ? 'EM ATENDIMENTO' : 'PROGRAMADO';
-      const points = (s.checkinTime || s.checkoutTime) ? `<br><span style="font-size:8px; color:#555;">In: ${s.checkinTime||'--'} Out: ${s.checkoutTime||'--'}</span>` : '';
-      
-      return `
-      <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
-        <td style="border: 1px solid #000; padding: 6px 8px; font-weight: bold;">${formatDateBR(s.date)}</td>
-        <td style="border: 1px solid #000; padding: 6px 8px; text-transform: uppercase;"><b>${escapeHtml(s.unitName)}</b> - ${escapeHtml(s.sectorName)}</td>
-        <td style="border: 1px solid #000; padding: 6px 8px; font-family: monospace; text-align: center;">${s.start_time} às ${s.end_time}</td>
-        <td style="border: 1px solid #000; padding: 6px 8px; text-align: center;">${s.duration}h ${points}</td>
-        <td style="border: 1px solid #000; padding: 6px 8px; text-align: center; font-weight: bold;">
-          ${statusHtml}
-        </td>
-      </tr>
-      `;
+    const rowsHtml = allOrdered.map(s => {
+      const state = s.state === 'concluido' ? 'Cumprido' : s.state === 'ativo' ? 'Em andamento' : 'A fazer';
+      const points = (s.checkinTime || s.checkoutTime) ? `<div class="pl-muted">ponto ${s.checkinTime || '--'} → ${s.checkoutTime || '--'}</div>` : '';
+      return `<tr>
+        <td class="pl-num" style="text-align:left">${formatDateBR(s.date)} <span class="pl-muted">${new Date(s.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' })}</span></td>
+        <td>${unitIds.length > 1 ? `<b>${escapeHtml(s.unitName)}</b> · ` : ''}${escapeHtml(s.sectorName)}</td>
+        <td class="pl-num" style="text-align:left">${escapeHtml(s.start_time)}–${escapeHtml(s.end_time)}${points}</td>
+        <td class="pl-num">${String(s.duration).replace('.', ',')} h</td>
+        ${showValue ? `<td class="pl-num">${s.shiftValue?.type === 'valor' && s.shiftValue.value > 0 ? formatCurrency(s.shiftValue.value) : '—'}</td>` : ''}
+        <td>${state}</td>
+      </tr>`;
     }).join('');
 
-    const regimeLabel = profMeta.remuneration_type === 'mensal' ? 'Fixo Mensal' : profMeta.remuneration_type === 'produtividade' ? 'Produtividade' : 'Plantão Dinâmico';
+    const body = `<section class="pl-sheet">
+      ${printHeader({
+        logos: printLogos({ company, unit: singleUnit }),
+        orgName: singleUnit?.name || company?.name || '',
+        title: 'Espelho de plantões',
+        subtitle: `${profNome}${registration ? ` · ${registration}` : ''} · ${regimeLabel}`,
+        meta: [['Competência', competencia]]
+      })}
+      <table class="pl-table">
+        <thead><tr><th>Data</th><th>${unitIds.length > 1 ? 'Unidade · setor' : 'Setor'}</th><th>Horário</th><th class="pl-num">Duração</th>${showValue ? '<th class="pl-num">Valor</th>' : ''}<th>Situação</th></tr></thead>
+        <tbody>${rowsHtml || `<tr><td colspan="${showValue ? 6 : 5}" class="pl-muted" style="text-align:center;padding:18px">Nenhum plantão neste mês.</td></tr>`}</tbody>
+      </table>
+      <div class="summary">
+        <div><span>Cumpridos</span><b>${monthMetrics.cumpridos} de ${monthMetrics.totalMes}</b></div>
+        <div><span>Horas</span><b>${String(monthMetrics.horas).replace('.', ',')} h</b></div>
+        <div><span>${isMonthlyRemuneration ? 'Fixo do mês' : 'Valor apurado'}</span><b>${isProductivityRemuneration ? 'No fechamento' : formatCurrency(monthMetrics.valorBruto)}</b></div>
+      </div>
+      <p class="pl-note">Espelho para conferência. O valor a receber é confirmado no fechamento do mês.</p>
+      <div class="pl-signatures"><div>${escapeHtml(profNome)}</div><div>Coordenação de escala</div></div>
+    </section>`;
 
-    // ----------------------------------------------------
-    // LÓGICA DE INJEÇÃO DAS LOGOS COMO NO FATURAMENTO
-    // ----------------------------------------------------
-    const currentUnitObj = (units || []).find(u => String(u.id) === String(selectedUnitId));
-    const hospitalName = currentUnitObj?.name || company?.name || 'Hospital Principal';
-    const logoLetter = hospitalName[0] || 'H';
-
-    const companyLogoUrl = getCompanyLogoUrl(company);
-    const unitLogoUrl = getUnitLogoUrl(currentUnitObj);
-    const companyLogoHtml = companyLogoUrl
-      ? `<img src="${escapeHtml(companyLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />`
-      : `<div style="width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px;">${escapeHtml(logoLetter)}</div>`;
-
-    const unitLogoHtml = unitLogoUrl
-      ? `<img src="${escapeHtml(unitLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />`
-      : '';
-
-    const html = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="utf-8">
-        <title>Espelho de Plantões - ${escapeHtml(profNome)}</title>
-        <style>
-          @page { size: A4 portrait; margin: 10mm; }
-          body { font-family: Arial, sans-serif; background: #fff; color: #000; padding: 15px; font-size: 11px; }
-          .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
-          table { width: 100%; border-collapse: collapse; border: 2px solid #000; margin-top: 15px; }
-          th { background: #e2e8f0; border: 1px solid #000; padding: 6px 8px; text-transform: uppercase; font-size: 9.5px; }
-          .summary { margin-top: 20px; border-top: 2px solid #000; padding-top: 10px; display: flex; justify-content: space-between; font-size: 12px; font-weight: bold; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div style="display: flex; align-items: center;">
-            ${companyLogoHtml}
-            ${unitLogoHtml}
-            <div style="${unitLogoHtml ? 'margin-left: 15px;' : ''}">
-              <h1 style="font-size: 18px; text-transform: uppercase; margin: 0;">${escapeHtml(hospitalName)}</h1>
-              <p style="margin: 3px 0;">ESPELHO INDIVIDUAL DE PLANTÕES • PRESTAÇÃO DE CONTAS</p>
-              <p style="margin: 3px 0;">Profissional: <b>Dr(a). ${escapeHtml(profNome)}</b> (ID: ${escapeHtml(matricula)})</p>
-              <p style="margin: 3px 0;">Regime: <b>${regimeLabel}</b></p>
-            </div>
-          </div>
-          <div style="text-align: right; font-size: 9.5px;">
-            <p style="margin: 0;">Competência: <b>${competencia}</b></p>
-            <p style="margin: 3px 0;">Emissão: ${emissao}</p>
-          </div>
-        </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 15%;">Data</th>
-              <th style="width: 40%;">Unidade / Setor</th>
-              <th style="width: 15%; text-align: center;">Horário</th>
-              <th style="width: 15%; text-align: center;">Duração/Ponto</th>
-              <th style="width: 15%; text-align: center;">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rowsHtml.length > 0 ? rowsHtml : '<tr><td colspan="5" style="padding: 15px; text-align: center;">Nenhum plantão registrado nesta competência.</td></tr>'}
-          </tbody>
-        </table>
-
-        <div class="summary">
-          <span>Plantões Cumpridos: ${monthMetrics.cumpridos} de ${monthMetrics.totalMes}</span>
-          <span>Horas Efetivadas: ${monthMetrics.horas}h</span>
-          <span>${isMonthlyRemuneration ? 'Folha contratual mensal' : 'Repasse apurado'}: ${isProductivityRemuneration ? 'A Calcular' : formatCurrency(monthMetrics.valorBruto)}</span>
-        </div>
-
-        <div style="margin-top: 50px; display: flex; justify-content: space-around; text-align: center; font-size: 10px;">
-          <div style="width: 220px; border-top: 1px solid #000; padding-top: 4px;">Assinatura do Profissional</div>
-          <div style="width: 220px; border-top: 1px solid #000; padding-top: 4px;">Coordenação de Escala</div>
-        </div>
-        ${PRINT_WHEN_IMAGES_READY_SCRIPT}
-      </body>
-      </html>
-    `;
-
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
+    const html = buildPrintDocument({
+      docTitle: `Espelho de plantões · ${profNome} · ${competencia}`,
+      issuedBy: user?.full_name || '',
+      css: `
+        .summary { display: flex; gap: 10px; margin-top: 12px; }
+        .summary div { flex: 1; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; }
+        .summary span { display: block; font-size: 8px; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+        .summary b { font-size: 12px; font-variant-numeric: tabular-nums; }
+        .pl-signatures { margin-top: 40px; }
+      `,
+      body
+    });
+    if (!openPrintWindow(html, 'width=1000,height=800')) alert('Permita pop-ups para imprimir o espelho.');
   };
 
   return (

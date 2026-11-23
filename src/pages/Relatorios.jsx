@@ -6,7 +6,7 @@ import { isShiftVacant } from '@/lib/shiftLiveStatus';
 import { getProfessionalUnitIds } from '@/lib/sectorAccess';
 import { computeReliability } from '@/lib/reliability';
 import ManagementBI from '@/components/reports/ManagementBI';
-import { escapeHtml, getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
+import { buildPrintDocument, openPrintWindow, printHeader, printLogos } from '@/lib/printLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
@@ -53,9 +53,36 @@ function normalize(value) {
   return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
+// Seções do relatório impresso, no mesmo estilo do modelo único (src/lib/printLayout.js).
+const REPORT_PRINT_CSS = `
+  .section-title { margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #94a3b8; font-size: 12px; font-weight: 700; color: #0f172a; break-after: avoid; page-break-after: avoid; }
+  .section-title.alert { color: #b45309; border-color: #fcd34d; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 8.8px; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  th { padding: 5px 6px; text-align: left; font-size: 7.6px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: #334155; background: #f1f5f9; border-bottom: 1px solid #94a3b8; overflow-wrap: anywhere; }
+  td { padding: 4px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; overflow-wrap: anywhere; }
+  .text-center { text-align: center; } .text-right { text-align: right; font-variant-numeric: tabular-nums; } .font-bold { font-weight: 600; }
+  .furo { color: #b91c1c; font-weight: 600; } .vago { color: #b45309; font-weight: 600; }
+  .grid-4, .grid-cards { display: flex; gap: 8px; margin-bottom: 12px; }
+  .grid-card { flex: 1; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; }
+  .card-title { font-size: 7.8px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #64748b; margin-bottom: 3px; }
+  .card-value { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .card-sub { font-size: 8.5px; margin-top: 2px; color: #475569 !important; }
+  .section-title:first-of-type { margin-top: 4px; }
+  .break-before { margin-top: 24px; }
+  .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
+`;
+
+const LOWER_WORDS = new Set(['e', 'de', 'da', 'do', 'das', 'dos', 'em', 'na', 'no', 'a', 'o']);
 function titleCase(str) {
   if (!str) return '';
-  return str.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  return String(str).split(' ').map((w, i) => {
+    if (/^[A-ZÀ-Ý]{2,4}$/.test(w)) return w; // siglas: UTI, UCO, RJ
+    const lower = w.toLowerCase();
+    if (i > 0 && LOWER_WORDS.has(lower)) return lower;
+    return lower.charAt(0).toUpperCase() + lower.slice(1);
+  }).join(' ');
 }
 
 function getShiftName(shift) {
@@ -1315,86 +1342,13 @@ export default function Relatorios() {
       return;
     }
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Permita pop-ups para abrir o relatório de impressão.');
-      return;
-    }
-
-    const docEmissao = `${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`;
-
-    // Lógica para injetar a logo da Rede e da Unidade
-    const logoLetter = hospitalName[0] || 'H';
-    const companyLogoUrl = getCompanyLogoUrl(company);
-    const unitLogoUrl = getUnitLogoUrl(currentUnitObj);
-    const companyLogoHtml = companyLogoUrl
-      ? `<img src="${escapeHtml(companyLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-right: 15px;" />`
-      : `<div style="width: 55px; height: 55px; border: 2px solid #000; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 900; margin-right: 15px;">${logoLetter}</div>`;
-    
-    const unitLogoHtml = unitLogoUrl
-      ? `<img src="${escapeHtml(unitLogoUrl)}" style="max-height: 55px; max-width: 140px; object-fit: contain; margin-left: 15px; border-left: 2px solid #eee; padding-left: 15px;" />` 
-      : '';
-
-    let printHtml = `
-      <!DOCTYPE html>
-      <html lang="pt-BR">
-      <head>
-        <meta charset="utf-8">
-        <title>${REPORT_TITLES[activeTab] || 'Relatório'} - ${hospitalName}</title>
-        <style>
-          @page { size: A4 ${['produtividade_diaria', 'produtividade_profissional'].includes(activeTab) ? 'landscape' : 'portrait'}; margin: 12mm; }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, Helvetica, sans-serif; background: #ffffff !important; color: #000000 !important; font-size: 11px; padding: 10px; }
-          
-          .header { border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
-          .h-title { font-size: 20px; font-weight: 900; text-transform: uppercase; color: #0f172a; margin-bottom: 2px; }
-          .h-subtitle { font-size: 11px; font-weight: bold; color: #334155; text-transform: uppercase; }
-          .h-info { font-size: 10px; text-align: right; }
-          
-          .section-title { font-size: 13px; font-weight: 900; background-color: #f1f5f9; padding: 8px; border: 1px solid #94a3b8; text-transform: uppercase; margin-bottom: 12px; page-break-after: avoid; }
-          .section-title.alert { background-color: #fee2e2; color: #9f1239; border-color: #fda4af; }
-          
-          table { width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; margin-bottom: 30px; page-break-inside: auto; }
-          thead { display: table-header-group; }
-          tr { page-break-inside: avoid; page-break-after: auto; }
-          th { background-color: #f8fafc; border: 1px solid #94a3b8; padding: 8px; text-align: left; font-size: 9.5px; font-weight: 900; text-transform: uppercase; }
-          td { border: 1px solid #cbd5e1; padding: 8px; vertical-align: middle; }
-          
-          .text-center { text-align: center; }
-          .text-right { text-align: right; }
-          .font-bold { font-weight: bold; }
-          .furo { color: #be123c; font-weight: bold; background-color: #fff1f2; }
-          .vago { color: #d97706; font-weight: bold; background-color: #fffbeb; }
-          
-          .grid-4 { display: table; width: 100%; margin-bottom: 20px; border-collapse: separate; border-spacing: 10px 0; }
-          .grid-card { display: table-cell; border: 1px solid #94a3b8; padding: 12px; border-radius: 6px; width: 25%; }
-          .card-title { font-size: 9px; font-weight: bold; color: #475569; text-transform: uppercase; margin-bottom: 6px; }
-          .card-value { font-size: 18px; font-weight: 900; }
-          .card-sub { font-size: 9px; font-weight: bold; margin-top: 4px; }
-          
-          .footer { margin-top: 40px; padding-top: 15px; border-top: 1px solid #94a3b8; text-align: center; font-size: 9px; color: #64748b; }
-          
-          .break-before { page-break-before: always; }
-          .break-inside-avoid { page-break-inside: avoid; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div style="display: flex; align-items: center;">
-            ${companyLogoHtml}
-            ${unitLogoHtml}
-            <div style="${unitLogoHtml ? 'margin-left: 15px;' : ''}">
-              <div class="h-title">${hospitalName}</div>
-              <div class="h-subtitle">${REPORT_TITLES[activeTab] || 'Relatório gerencial'} · ScaleMedic</div>
-            </div>
-          </div>
-          <div class="h-info">
-            <div style="margin-bottom: 4px;"><b>Período Analisado:</b> ${periodLabel}</div>
-            <div><b>Emissão:</b> ${docEmissao}</div>
-            <div style="margin-top: 4px;"><b>Filtros:</b> ${filterSummary}</div>
-          </div>
-        </div>
-    `;
+    let printHtml = printHeader({
+      logos: printLogos({ company, unit: currentUnitObj }),
+      orgName: hospitalName,
+      title: REPORT_TITLES[activeTab] || 'Relatório gerencial',
+      subtitle: periodLabel,
+      meta: [['Filtros', filterSummary]]
+    });
 
     if (mode === 'all' || activeTab === 'executivo') {
       printHtml += `
@@ -1492,7 +1446,7 @@ export default function Relatorios() {
       printHtml += `</tbody></table>`;
     }
 
-    if (mode === 'all' || activeTab === 'trocas') {
+    if ((mode === 'all' && swapsList.length > 0) || activeTab === 'trocas') {
       printHtml += `
         <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Histórico de Trocas e Repasses (Mural)</div>
         <table>
@@ -1589,7 +1543,7 @@ export default function Relatorios() {
       printHtml += `</tbody></table>`;
     }
 
-    if (mode === 'all' || activeTab === 'aniversariantes') {
+    if ((mode === 'all' && birthDaysList.length > 0) || activeTab === 'aniversariantes') {
       printHtml += `
         <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Aniversariantes do Mês (${birthDaysList.length})</div>
         <table>
@@ -1649,7 +1603,7 @@ export default function Relatorios() {
       printHtml += `</tbody></table>`;
     }
 
-    if (mode === 'all' || activeTab === 'produtividade_diaria') {
+    if ((mode === 'all' && productivityReport.available && productivityReport.days.length > 0) || activeTab === 'produtividade_diaria') {
       printHtml += `
         <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Apuração diária de produtividade</div>
         <p style="font-size:9px; color:#475569; margin-bottom:10px;">
@@ -1819,19 +1773,14 @@ export default function Relatorios() {
       printHtml += `</tbody></table>`;
     }
 
-    printHtml += `
-        <div class="footer">
-          Documento processado eletronicamente pelo ScaleMedic.<br/>
-          Informações confidenciais · Uso autorizado pela unidade.
-        </div>
-        ${PRINT_WHEN_IMAGES_READY_SCRIPT}
-      </body>
-      </html>
-    `;
-
-    printWindow.document.open();
-    printWindow.document.write(printHtml);
-    printWindow.document.close();
+    const html = buildPrintDocument({
+      docTitle: `${REPORT_TITLES[activeTab] || 'Relatório'} · ${hospitalName}`,
+      orientation: ['produtividade_diaria', 'produtividade_profissional'].includes(activeTab) ? 'landscape' : 'portrait',
+      issuedBy: user?.full_name || '',
+      css: REPORT_PRINT_CSS,
+      body: printHtml
+    });
+    if (!openPrintWindow(html)) alert('Permita pop-ups para abrir o relatório de impressão.');
   };
 
   const resultCountLabel =
