@@ -160,7 +160,7 @@ export default function ManagementBI({
             <p className="text-base text-slate-500 dark:text-slate-400">{periodLabel} · {filterSummary}</p>
           </div>
         ) : (
-          <p className="text-sm text-slate-600 dark:text-slate-300">Visão consolidada do período filtrado. Use o modo apresentação para exibir em tela cheia em reuniões.</p>
+          <span />
         )}
         <button
           type="button"
