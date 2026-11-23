@@ -19,7 +19,7 @@ export default function ContractGuard({ children }) {
   if (isBlocked) {
     return (
       <div className="fixed inset-0 z-[99999] bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in duration-500">
-        <div className="max-w-md w-full bg-slate-900 border border-rose-900/50 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+        <div className="max-w-md w-full bg-slate-900 border border-rose-900/50 rounded-3xl p-8 shadow-sm relative overflow-hidden">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-32 bg-rose-600/20 blur-[80px] pointer-events-none" />
 
           <div className="relative z-10 flex flex-col items-center">
@@ -27,7 +27,7 @@ export default function ContractGuard({ children }) {
               <Lock className="w-10 h-10 text-rose-500" />
             </div>
 
-            <h1 className="text-2xl font-black text-white mb-2 tracking-tight">
+            <h1 className="text-2xl font-semibold text-white mb-2 tracking-tight">
               Acesso Suspenso
             </h1>
             
@@ -45,7 +45,7 @@ export default function ContractGuard({ children }) {
             <div className="flex flex-col w-full gap-3">
               <Button 
                 onClick={() => window.open('https://wa.me/5511999999999', '_blank')}
-                className="w-full bg-rose-600 hover:bg-rose-500 text-white font-black text-sm h-12 rounded-xl shadow-lg cursor-pointer"
+                className="w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm h-12 rounded-xl shadow-sm cursor-pointer"
               >
                 <PhoneCall className="w-4 h-4 mr-2" /> Falar com o Financeiro
               </Button>
@@ -53,7 +53,7 @@ export default function ContractGuard({ children }) {
               <Button 
                 variant="ghost" 
                 onClick={() => logout(true)}
-                className="w-full text-slate-500 hover:text-white hover:bg-slate-800 text-xs font-bold h-10 rounded-xl cursor-pointer"
+                className="w-full text-slate-500 hover:text-white hover:bg-slate-800 text-xs font-medium h-10 rounded-xl cursor-pointer"
               >
                 Sair da Conta
               </Button>
@@ -61,7 +61,7 @@ export default function ContractGuard({ children }) {
           </div>
         </div>
         
-        <p className="mt-8 text-[10px] font-bold tracking-widest text-slate-600 uppercase">
+        <p className="mt-8 text-xs font-medium text-slate-600">
           ScaleMedic Enterprise • Security Module
         </p>
       </div>

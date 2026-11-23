@@ -228,7 +228,7 @@ export default function Plataforma() {
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Hospitais</h3>
+                  <h3 className="text-xs font-semibold text-slate-500">Hospitais</h3>
                   <Button type="button" variant="ghost" size="sm" onClick={() => openUnit(company)} className="h-8 gap-1.5"><Plus className="w-3.5 h-3.5" /> Adicionar hospital</Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -243,7 +243,7 @@ export default function Plataforma() {
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Gestores</h3>
+                  <h3 className="text-xs font-semibold text-slate-500">Gestores</h3>
                   <Button type="button" variant="ghost" size="sm" onClick={() => openManager(company)} className="h-8 gap-1.5"><UserPlus className="w-3.5 h-3.5" /> Adicionar gestor</Button>
                 </div>
                 {company.managers.length === 0 && <p className="text-sm text-slate-500">Nenhum gestor ainda.</p>}
@@ -259,10 +259,10 @@ export default function Plataforma() {
               </div>
 
               <div className="space-y-1.5">
-                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Credenciamento de profissionais</h3>
+                <h3 className="text-xs font-semibold text-slate-500">Credenciamento de profissionais</h3>
                 <div className="flex items-center gap-2">
                   <span className="w-12 shrink-0 text-xs text-slate-500">Código</span>
-                  <code className="flex-1 min-w-0 rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-sm font-bold tracking-wider">{company.registration_code}</code>
+                  <code className="flex-1 min-w-0 rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-sm font-bold">{company.registration_code}</code>
                   <CopyButton text={company.registration_code} label="Copiar código" />
                 </div>
                 <div className="flex items-center gap-2">
@@ -312,7 +312,7 @@ export default function Plataforma() {
                 <p className="text-[11px] text-slate-500">Os gestores gerais da empresa passam a ver este hospital no mesmo login. CNPJ, endereço e logo o gestor completa em Configurações.</p>
               </div>
             )}
-            {dialog?.type === 'company' && <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Primeiro gestor</h3>}
+            {dialog?.type === 'company' && <h3 className="text-xs font-semibold text-slate-500">Primeiro gestor</h3>}
             {dialog?.type !== 'unit' && <ManagerFields value={form} onChange={next => setForm({ ...form, ...next })} />}
             {formError && <p role="alert" className="text-sm text-rose-600">{formError}</p>}
             <DialogFooter>
@@ -335,7 +335,7 @@ export default function Plataforma() {
                 <dl className="rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-200 dark:divide-slate-800">
                   <div className="flex justify-between gap-3 px-3 py-2"><dt className="text-slate-500">Empresa</dt><dd className="font-semibold text-right">{result.companyName}</dd></div>
                   <div className="flex justify-between gap-3 px-3 py-2"><dt className="text-slate-500">Usuário</dt><dd className="font-semibold">{result.manager.username}</dd></div>
-                  <div className="flex justify-between gap-3 px-3 py-2"><dt className="text-slate-500">Senha do 1º acesso</dt><dd className="font-mono font-semibold">{result.manager.password}</dd></div>
+                  <div className="flex justify-between gap-3 px-3 py-2"><dt className="text-slate-500">Senha do 1º acesso</dt><dd className="tabular-nums font-semibold">{result.manager.password}</dd></div>
                 </dl>
               )}
               {result.manager && <p className="text-xs text-slate-500">{result.manager.isBirthDefault ? 'Senha padrão: data de nascimento + inicial do nome. ' : ''}O sistema obriga a troca no primeiro login. Esta senha não fica visível depois: copie agora.</p>}

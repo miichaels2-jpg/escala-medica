@@ -1910,7 +1910,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             const Icon = turno.icon;
             return (
               <section key={turno.id}>
-                <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <h4 className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
                   <Icon className="h-3.5 w-3.5" /> {turno.label} <span className="font-normal normal-case">· {items.length}</span>
                 </h4>
                 <ul className="space-y-1.5">
@@ -2018,23 +2018,23 @@ const handleAssignLegacyShiftUnit = async (shift) => {
         className={`rounded-xl border border-l-4 shadow-sm cursor-pointer transition-all hover:brightness-95 ${monthlyView === 'lista' ? 'p-3 min-h-[78px]' : 'p-2 min-w-0'} ${status.wrapper} ${draggingProfId && isOpen ? 'ring-2 ring-sky-500 ring-offset-1' : ''}`}
         title={isOpen ? 'Arraste um profissional para alocar neste horário' : 'Horário já preenchido'}
       >
-        <div className={`flex items-center justify-between gap-2 font-mono mb-1 ${monthlyView === 'lista' ? 'text-[11px]' : 'text-[10px]'}`}>
-          <span className="font-black text-slate-700 dark:text-slate-200">{shift.start_time}–{shift.end_time}</span>
-          <span className={`font-black uppercase tracking-tight flex items-center gap-1 ${status.text}`}>{status.icon} {status.label}</span>
+        <div className={`flex items-center justify-between gap-2 tabular-nums mb-1 ${monthlyView === 'lista' ? 'text-[11px]' : 'text-[10px]'}`}>
+          <span className="font-semibold text-slate-700 dark:text-slate-200">{shift.start_time}–{shift.end_time}</span>
+          <span className={`font-semibold tracking-tight flex items-center gap-1 ${status.text}`}>{status.icon} {status.label}</span>
         </div>
         <div className="flex items-start gap-2">
-          <div className={`mt-0.5 shrink-0 rounded-full flex items-center justify-center font-black ${isOpen ? 'w-7 h-7 bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300' : 'w-8 h-8 bg-white/80 dark:bg-slate-950/60 text-sky-700 dark:text-sky-300'} ${monthlyView === 'lista' ? 'text-[10px]' : 'text-[10px]'}`}>
+          <div className={`mt-0.5 shrink-0 rounded-full flex items-center justify-center font-semibold ${isOpen ? 'w-7 h-7 bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300' : 'w-8 h-8 bg-white/80 dark:bg-slate-950/60 text-sky-700 dark:text-sky-300'} ${monthlyView === 'lista' ? 'text-[10px]' : 'text-[10px]'}`}>
             {isOpen ? <AlertTriangle className="w-3.5 h-3.5" /> : getInitials(validName)}
           </div>
           <div className="min-w-0 flex-1">
-            <div className={`font-extrabold leading-snug break-words text-slate-900 dark:text-white ${monthlyView === 'lista' ? 'text-sm' : 'text-[11px]'}`}>
+            <div className={`font-semibold leading-snug break-words text-slate-900 dark:text-white ${monthlyView === 'lista' ? 'text-sm' : 'text-[11px]'}`}>
               {isOpen ? status.label : (monthlyView === 'lista' ? validName : formatFullName(validName))}
             </div>
-            <div className={`mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-semibold text-slate-600 dark:text-slate-300 ${monthlyView === 'lista' ? 'text-[11px]' : 'text-[10px]'}`}>
+            <div className={`mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-medium text-slate-600 dark:text-slate-300 ${monthlyView === 'lista' ? 'text-[11px]' : 'text-[10px]'}`}>
               <span className="break-words">{realSpec}</span>
               {!selectedSectorObj && <span className="text-slate-500">{sectorMap[String(shift.sector_id)]?.name}</span>}
               {!isOpen && professionalMap[String(shift.professional_id)]?.document && (
-                <span className="font-mono text-slate-500">{professionalMap[String(shift.professional_id)].document}</span>
+                <span className="tabular-nums text-slate-500">{professionalMap[String(shift.professional_id)].document}</span>
               )}
             </div>
           </div>
@@ -2051,19 +2051,19 @@ const handleAssignLegacyShiftUnit = async (shift) => {
       <div className="fixed inset-0 z-[99999] h-screen w-screen min-h-[100dvh] bg-slate-950 text-white flex flex-col justify-between p-6 lg:p-8 select-none overflow-hidden font-sans">
         <div className="flex items-center justify-between border-b border-slate-800 pb-4 shrink-0">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-2xl">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-sm">
               <Radio className="w-7 h-7 animate-pulse text-white" />
             </div>
             <div>
-              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.25em] text-sky-400">
+              <div className="flex items-center gap-2 text-xs font-semibold text-sky-400">
                 <span>{units?.find(u => String(u.id) === String(selectedUnitId))?.name || company?.name || 'Hospital Principal'}</span>
                 <span>•</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /> CCO AO VIVO</span>
               </div>
-              <h1 className="text-3xl lg:text-4xl font-black tracking-tight text-white mt-0.5">
+              <h1 className="text-3xl lg:text-4xl font-semibold tracking-tight text-white mt-0.5">
                 Centro de Comando & Situação
               </h1>
-              <p className="text-xs text-slate-400 font-bold">
+              <p className="text-xs text-slate-400 font-medium">
                 {liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })} · Escalas em Tempo Real
               </p>
             </div>
@@ -2071,10 +2071,10 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
           <div className="flex items-center gap-5">
             <div className="bg-slate-900 border border-slate-800 px-6 py-2.5 rounded-2xl text-right">
-              <div className="text-3xl lg:text-4xl font-black font-mono tracking-tight text-cyan-400">
+              <div className="text-3xl lg:text-4xl font-semibold tabular-nums tracking-tight text-cyan-400">
                 {liveNow.toLocaleTimeString('pt-BR')}
               </div>
-              <div className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Horário Oficial CCO</div>
+              <div className="text-xs font-medium text-slate-500">Horário Oficial CCO</div>
             </div>
 
             <button 
@@ -2089,13 +2089,13 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
         <div className="flex-1 my-6 grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-hidden">
           {/* ATIVOS NO MOMENTO */}
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
+          <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-sm flex flex-col justify-between overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
-                <span className="text-sm font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2">
+                <span className="text-sm font-semibold text-emerald-400 flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" /> Profissionais no Posto Agora ({tvData.emAndamento.length})
                 </span>
-                <span className="text-xs font-mono font-bold text-slate-400">AO VIVO</span>
+                <span className="text-xs tabular-nums font-medium text-slate-400">AO VIVO</span>
               </div>
 
               <div className="flex-1 space-y-3 overflow-y-auto pr-1">
@@ -2109,20 +2109,20 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                     const validName = prof?.name || shift.professional_name;
 
                     return (
-                      <div key={shift.id || `em-${idx}`} className="p-4 bg-slate-950 border border-emerald-500/40 rounded-2xl shadow-lg flex items-center justify-between">
+                      <div key={shift.id || `em-${idx}`} className="p-4 bg-slate-950 border border-emerald-500/40 rounded-2xl shadow-sm flex items-center justify-between">
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-black text-emerald-400 uppercase">{sector?.name}</span>
+                            <span className="text-xs font-semibold text-emerald-400">{sector?.name}</span>
                             {shift.lifecycle.isHandover && (
-                              <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                              <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
                                 Passagem de Turno
                               </span>
                             )}
                           </div>
-                          <div className="text-base font-black text-white mt-0.5">{formatFullName(validName)}</div>
+                          <div className="text-base font-semibold text-white mt-0.5">{formatFullName(validName)}</div>
                           <span className="text-xs text-slate-400">{realSpecialty} • {shift.start_time} às {shift.end_time}</span>
                         </div>
-                        <span className="text-xs font-mono font-black text-emerald-300 bg-emerald-500/20 px-3 py-1.5 rounded-xl">
+                        <span className="text-xs tabular-nums font-semibold text-emerald-300 bg-emerald-500/20 px-3 py-1.5 rounded-xl">
                           {shift.detail}
                         </span>
                       </div>
@@ -2134,13 +2134,13 @@ const handleAssignLegacyShiftUnit = async (shift) => {
           </div>
 
           {/* PLANTÕES PROGRAMADOS */}
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-2xl flex flex-col justify-between overflow-hidden">
+          <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 shadow-sm flex flex-col justify-between overflow-hidden">
             <div className="flex flex-col h-full overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4 shrink-0">
-                <span className="text-sm font-black uppercase text-sky-400 tracking-wider flex items-center gap-2">
+                <span className="text-sm font-semibold text-sky-400 flex items-center gap-2">
                   <CalendarIcon className="w-4 h-4" /> Plantões Programados (Hoje)
                 </span>
-                <span className="text-xs font-mono font-bold text-slate-400">{tvData.programadosHoje.length} programado(s)</span>
+                <span className="text-xs tabular-nums font-medium text-slate-400">{tvData.programadosHoje.length} programado(s)</span>
               </div>
 
               <div className="flex-1 space-y-3 overflow-y-auto pr-1">
@@ -2155,11 +2155,11 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                     return (
                       <div key={shift.id || `prog-${idx}`} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between">
                         <div>
-                          <span className="text-xs font-black text-slate-400 uppercase">{sector?.name}</span>
-                          <div className="text-base font-black text-white">{formatFullName(validName)}</div>
-                          <span className="text-xs text-sky-400 font-mono">{shift.start_time} às {shift.end_time}</span>
+                          <span className="text-xs font-medium text-slate-400">{sector?.name}</span>
+                          <div className="text-base font-semibold text-white">{formatFullName(validName)}</div>
+                          <span className="text-xs text-sky-400 tabular-nums">{shift.start_time} às {shift.end_time}</span>
                         </div>
-                        <span className="text-xs font-black uppercase bg-sky-500/20 text-sky-300 px-3 py-1.5 rounded-xl font-mono">
+                        <span className="text-xs font-semibold bg-sky-500/20 text-sky-300 px-3 py-1.5 rounded-xl tabular-nums">
                           {lifecycle.detail}
                         </span>
                       </div>
@@ -2171,7 +2171,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
           </div>
         </div>
 
-        <div className="border-t border-slate-800 pt-3 shrink-0 flex items-center justify-between text-xs text-slate-400 font-bold">
+        <div className="border-t border-slate-800 pt-3 shrink-0 flex items-center justify-between text-xs text-slate-400 font-medium">
           <div>ScaleMedic Enterprise CCO • {units?.find(u => String(u.id) === String(selectedUnitId))?.name || company?.name || 'Hospital Principal'}</div>
           <Button onClick={closeTvMode} variant="outline" className="h-8 text-xs border-slate-700 text-slate-300 cursor-pointer">
             Fechar Modo TV
@@ -2192,7 +2192,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
             <div>
-              <p className="text-sm font-black">{unassignedShifts.length} plantão(ões) antigo(s) precisam de unidade</p>
+              <p className="text-sm font-semibold">{unassignedShifts.length} plantão(ões) antigo(s) precisam de unidade</p>
               <p className="mt-1 text-xs">Eles foram retirados das visões financeiras para não serem contados em unidades erradas. Confira cada registro antes de vinculá-lo.</p>
             </div>
           </div>
@@ -2203,7 +2203,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               setLegacyAssignmentOpen(true);
             }}
             variant="outline"
-            className="h-9 shrink-0 border-amber-400 bg-white text-xs font-black text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-slate-900 dark:text-amber-200"
+            className="h-9 shrink-0 border-amber-400 bg-white text-xs font-semibold text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-slate-900 dark:text-amber-200"
           >
             Conferir e vincular unidades
           </Button>
@@ -2247,7 +2247,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                   <span className={`mt-1 h-2 w-2 rounded-full shrink-0 ${isPast ? 'bg-rose-500' : 'bg-amber-500'}`} />
                   <span className="min-w-0">
                     <span className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">{sectorMap[v.sector_id]?.name || 'Setor'}</span>
-                    <span className="block text-[11px] font-mono text-slate-500 dark:text-slate-400">{formatDateBR(v.date).slice(0, 5)} · {v.start_time}–{v.end_time}</span>
+                    <span className="block text-[11px] tabular-nums text-slate-500 dark:text-slate-400">{formatDateBR(v.date).slice(0, 5)} · {v.start_time}–{v.end_time}</span>
                     <span className={`block text-[11px] font-medium ${isPast ? 'text-rose-600 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400'}`}>{isPast ? 'Falta / furo' : 'Vaga aberta'}</span>
                   </span>
                 </button>
@@ -2264,13 +2264,13 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
       {/* BANNER 1: ALERTA DE CONFLITO EXISTENTE NA BASE */}
       {allScaleConflicts.length > 0 && isManager && (
-        <div className="p-4 rounded-3xl bg-rose-500/15 border-2 border-rose-500/60 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
+        <div className="p-4 rounded-3xl bg-rose-500/15 border-2 border-rose-500/60 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0">
               <ShieldAlert className="w-5 h-5 animate-pulse" />
             </div>
             <div>
-              <strong className="text-sm font-black text-rose-500 uppercase tracking-wider block">
+              <strong className="text-sm font-semibold text-rose-500 block">
                 Alerta de Choque de Horário ({allScaleConflicts.length} ocorrências detectadas)
               </strong>
               <p className="text-xs text-slate-600 dark:text-slate-300">
@@ -2289,7 +2289,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                 }
               }
             }}
-            className="h-9 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs px-4 rounded-xl shadow-md shrink-0 cursor-pointer"
+            className="h-9 bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs px-4 rounded-xl shadow-sm shrink-0 cursor-pointer"
           >
             Resolver Conflito Imediato
           </Button>
@@ -2330,16 +2330,16 @@ const handleAssignLegacyShiftUnit = async (shift) => {
       {/* SELETOR DE SEÇÕES COM PERSISTÊNCIA & CONFIGURADOR */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3.5 rounded-3xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 print:hidden">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-400 shrink-0">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-400 shrink-0">
             <Building2 className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Setor:
           </div>
           <div className="w-full max-w-xs">
             <Select value={selectedSectorId} onValueChange={handleSelectSector}>
-              <SelectTrigger className="h-9 text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-2xl">
+              <SelectTrigger className="h-9 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-2xl">
                 <SelectValue placeholder="Selecione..." />
               </SelectTrigger>
               <SelectContent className="bg-white dark:bg-slate-900 z-[99999]">
-                <SelectItem value="todos" className="font-bold text-sky-600">🏥 Todos os Setores</SelectItem>
+                <SelectItem value="todos" className="font-semibold text-sky-600">🏥 Todos os Setores</SelectItem>
                 {(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)} className="text-xs">{s.name}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -2349,7 +2349,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
         <div className="flex items-center gap-2">
           {isManager && (
             <>
-              <Button onClick={() => setDuplicateModalOpen(true)} variant="outline" className="h-9 text-indigo-600 hover:bg-indigo-50 border-indigo-200 font-black text-xs px-4 rounded-2xl shadow-sm gap-1.5 cursor-pointer">
+              <Button onClick={() => setDuplicateModalOpen(true)} variant="outline" className="h-9 text-indigo-600 hover:bg-indigo-50 border-indigo-200 font-semibold text-xs px-4 rounded-2xl shadow-sm gap-1.5 cursor-pointer">
                 <Copy className="w-4 h-4" /> Montar mês seguinte
               </Button>
               <Button onClick={() => { setGeneratorConfig(prev => ({ ...prev, sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '') })); setGeneratorModalOpen(true); }} className="h-9 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs px-4 rounded-2xl shadow-sm gap-1.5 shrink-0 cursor-pointer">
@@ -2359,25 +2359,25 @@ const handleAssignLegacyShiftUnit = async (shift) => {
           )}
 
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shrink-0">
-            <button onClick={() => setFilterTurno('todos')} className={`px-3 py-1 rounded-xl text-xs font-black cursor-pointer ${filterTurno === 'todos' ? 'bg-white dark:bg-slate-800 shadow-sm' : 'text-slate-500'}`}>Todos</button>
-            <button onClick={() => setFilterTurno('diurno')} className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer ${filterTurno === 'diurno' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300' : 'text-slate-500'}`}><Sun className="w-3 h-3 text-amber-500" /> Diurno</button>
-            <button onClick={() => setFilterTurno('noturno')} className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1 cursor-pointer ${filterTurno === 'noturno' ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300' : 'text-slate-500'}`}><Moon className="w-3 h-3 text-indigo-500" /> Noturno</button>
+            <button onClick={() => setFilterTurno('todos')} className={`px-3 py-1 rounded-xl text-xs font-semibold cursor-pointer ${filterTurno === 'todos' ? 'bg-white dark:bg-slate-800 shadow-sm' : 'text-slate-500'}`}>Todos</button>
+            <button onClick={() => setFilterTurno('diurno')} className={`px-3 py-1 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer ${filterTurno === 'diurno' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300' : 'text-slate-500'}`}><Sun className="w-3 h-3 text-amber-500" /> Diurno</button>
+            <button onClick={() => setFilterTurno('noturno')} className={`px-3 py-1 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer ${filterTurno === 'noturno' ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300' : 'text-slate-500'}`}><Moon className="w-3 h-3 text-indigo-500" /> Noturno</button>
           </div>
         </div>
       </div>
 
       {/* ALERTA VISUAL ANTI-ERRO SE UM SETOR ESTIVER FILTRADO */}
       {selectedSectorObj && (
-        <div className="p-3 px-4 rounded-2xl bg-gradient-to-r from-sky-950/70 via-indigo-950/70 to-slate-900 border border-sky-500/50 shadow-md flex items-center justify-between gap-3 animate-in fade-in">
-          <div className="flex items-center gap-2.5 text-xs font-black text-sky-300">
+        <div className="p-3 px-4 rounded-2xl bg-gradient-to-r from-sky-950/70 via-indigo-950/70 to-slate-900 border border-sky-500/50 shadow-sm flex items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2.5 text-xs font-semibold text-sky-300">
             <Target className="w-4 h-4 text-sky-400 animate-pulse shrink-0" />
             <span>
-              VISÃO FILTRADA POR SETOR: <strong className="text-white uppercase tracking-wider text-sm ml-1 underline decoration-sky-400 underline-offset-4">{selectedSectorObj.name}</strong>
+              VISÃO FILTRADA POR SETOR: <strong className="text-white text-sm ml-1 underline decoration-sky-400 underline-offset-4">{selectedSectorObj.name}</strong>
             </span>
           </div>
           <button 
             onClick={() => handleSelectSector('todos')}
-            className="text-[11px] font-bold text-sky-300 hover:text-white bg-sky-500/20 hover:bg-sky-500/40 px-3 py-1 rounded-xl border border-sky-500/40 transition-all flex items-center gap-1 cursor-pointer"
+            className="text-[11px] font-semibold text-sky-300 hover:text-white bg-sky-500/20 hover:bg-sky-500/40 px-3 py-1 rounded-xl border border-sky-500/40 transition-all flex items-center gap-1 cursor-pointer"
           >
             <span>Ver Todos os Setores</span>
             <X className="w-3.5 h-3.5 ml-0.5" />
@@ -2399,7 +2399,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             <button
               onClick={handleToday}
               title="Voltar para o mês e o dia atuais"
-              className="h-8 px-3 rounded-xl bg-white dark:bg-slate-800 shadow-sm text-[10px] font-black uppercase tracking-wide text-sky-600 dark:text-sky-300 cursor-pointer hover:shadow-md transition-all"
+              className="h-8 px-3 rounded-xl bg-white dark:bg-slate-800 shadow-sm text-xs font-semibold text-sky-600 dark:text-sky-300 cursor-pointer transition-all"
             >
               Hoje
             </button>
@@ -2412,35 +2412,35 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             </button>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-950 px-3.5 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-bold">
+          <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-950 px-3.5 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-semibold">
             <Filter className="w-3.5 h-3.5 text-sky-600 shrink-0" />
             <span className="text-[11px] text-slate-500 whitespace-nowrap">A partir de:</span>
             <input
               type="date"
               value={startDateFilter}
               onChange={handleStartDateChange}
-              className="bg-transparent text-xs font-black text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer"
+              className="bg-transparent text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer"
               title="Altere para amanhã ou qualquer outra data para iniciar a visualização"
             />
             <button
               onClick={handleToday}
               title="Usar novamente a data de hoje"
-              className="px-2 py-1 rounded-lg text-[10px] font-black uppercase text-sky-600 dark:text-sky-300 hover:bg-sky-500/10 cursor-pointer"
+              className="px-2 py-1 rounded-lg text-xs font-semibold text-sky-600 dark:text-sky-300 hover:bg-sky-500/10 cursor-pointer"
             >
               Hoje
             </button>
           </div>
 
           <div>
-          <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2">
               <CalendarDays className="w-5 h-5 text-sky-600" /> {MONTH_NAMES[currentMonth]} {currentYear}
               {selectedSectorObj && (
-                <span className="text-xs px-2.5 py-0.5 rounded-lg bg-sky-500/20 text-sky-400 font-mono font-bold border border-sky-500/30">
+                <span className="text-xs px-2.5 py-0.5 rounded-lg bg-sky-500/20 text-sky-400 tabular-nums font-semibold border border-sky-500/30">
                   {selectedSectorObj.name}
                 </span>
               )}
             </h2>
-            <span className={`text-xs font-bold ${isCurrentSectorPublished ? 'text-emerald-600' : 'text-amber-500'}`}>
+            <span className={`text-xs font-semibold ${isCurrentSectorPublished ? 'text-emerald-600' : 'text-amber-500'}`}>
               {isCurrentSectorPublished ? '✓ Escala Publicada (Oficializada)' : '⚠️ Modo Rascunho (Não Publicada)'}
             </span>
           </div>
@@ -2452,7 +2452,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             <div className="flex items-center gap-1.5">
               <Button 
                 onClick={openPublishModal}
-                className="h-9 px-4 text-xs font-black rounded-2xl gap-1.5 shadow-md bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
+                className="h-9 px-4 text-xs font-semibold rounded-2xl gap-1.5 shadow-sm bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5" /> Publicar Escala
               </Button>
@@ -2462,7 +2462,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                   onClick={handleUnpublishSector}
                   variant="outline"
                   title="Voltar escala para rascunho"
-                  className="h-9 px-3 text-xs font-bold rounded-2xl border-slate-300 dark:border-slate-700 text-slate-500 hover:text-rose-600 cursor-pointer"
+                  className="h-9 px-3 text-xs font-semibold rounded-2xl border-slate-300 dark:border-slate-700 text-slate-500 hover:text-rose-600 cursor-pointer"
                 >
                   Rascunho
                 </Button>
@@ -2471,16 +2471,16 @@ const handleAssignLegacyShiftUnit = async (shift) => {
           )}
 
           <div className="flex items-center bg-slate-100 dark:bg-slate-950 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
-            <button onClick={() => setActiveTab('mensal')} className={`px-3 py-1.5 rounded-xl text-xs font-black cursor-pointer ${activeTab === 'mensal' ? 'bg-white dark:bg-sky-600 shadow-sm text-sky-600 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}>Grade Mensal</button>
-            <button onClick={() => setActiveTab('dia')} className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer ${activeTab === 'dia' ? 'bg-white dark:bg-sky-600 shadow-sm text-sky-600 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}><Clock className="w-3.5 h-3.5" /> Plantão do Dia</button>
+            <button onClick={() => setActiveTab('mensal')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer ${activeTab === 'mensal' ? 'bg-white dark:bg-sky-600 shadow-sm text-sky-600 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}>Grade Mensal</button>
+            <button onClick={() => setActiveTab('dia')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer ${activeTab === 'dia' ? 'bg-white dark:bg-sky-600 shadow-sm text-sky-600 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}><Clock className="w-3.5 h-3.5" /> Plantão do Dia</button>
           </div>
 
-          <Button variant="outline" onClick={openTvMode} className="h-9 px-4 text-xs font-black rounded-2xl gap-2 bg-slate-50 dark:bg-slate-950 text-amber-600 border-slate-200 hover:bg-slate-100 cursor-pointer">
+          <Button variant="outline" onClick={openTvMode} className="h-9 px-4 text-xs font-semibold rounded-2xl gap-2 bg-slate-50 dark:bg-slate-950 text-amber-600 border-slate-200 hover:bg-slate-100 cursor-pointer">
             <MonitorPlay className="w-4 h-4" /> <span>Modo TV CCO</span>
           </Button>
 
           {isManager && (
-            <Button onClick={() => { setEditingShiftId(null); setFormData({ date: getLocalDateString(), sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || ''), target_specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar', professional_id: '', notes: '', retroactive_justification: '' }); setModalOpen(true); }} className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-black px-5 rounded-2xl gap-1.5 cursor-pointer">
+            <Button onClick={() => { setEditingShiftId(null); setFormData({ date: getLocalDateString(), sector_id: selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || ''), target_specialty: registeredSpecialties[0] || 'Clínica Médica', start_time: '07:00', end_time: '19:00', shift_type: 'diurno', action_type: 'alocar', professional_id: '', notes: '', retroactive_justification: '' }); setModalOpen(true); }} className="h-9 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-5 rounded-2xl gap-1.5 cursor-pointer">
               <Plus className="w-4 h-4" /> Lançar Plantão
             </Button>
           )}
@@ -2495,7 +2495,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm print:hidden">
           <div className="flex flex-col lg:flex-row lg:items-center gap-2.5">
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+              <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
                 Filtrar plantões da grade
               </div>
               <div className="text-[10px] text-slate-400">
@@ -2513,7 +2513,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               />
             </div>
             <Select value={scheduleSpecialtyFilter} onValueChange={setScheduleSpecialtyFilter}>
-              <SelectTrigger className="w-full lg:w-56 h-9 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl">
+              <SelectTrigger className="w-full lg:w-56 h-9 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl">
                 <SelectValue placeholder="Todas as especialidades" />
               </SelectTrigger>
               <SelectContent className="bg-white dark:bg-slate-900 z-[99999]">
@@ -2531,7 +2531,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                   setScheduleProfessionalSearch('');
                   setScheduleSpecialtyFilter('todas');
                 }}
-                className="h-9 px-3 text-xs font-bold rounded-xl shrink-0"
+                className="h-9 px-3 text-xs font-semibold rounded-xl shrink-0"
               >
                 <X className="w-3.5 h-3.5 mr-1" /> Limpar
               </Button>
@@ -2542,7 +2542,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                 variant="ghost"
                 onClick={() => setMonthlyView('lista')}
                 aria-pressed={monthlyView === 'lista'}
-                className={`h-7 px-2.5 text-[10px] font-black rounded-lg ${monthlyView === 'lista' ? 'bg-white dark:bg-slate-800 shadow-sm text-sky-700 dark:text-sky-300' : 'text-slate-500'}`}
+                className={`h-7 px-2.5 text-[10px] font-semibold rounded-lg ${monthlyView === 'lista' ? 'bg-white dark:bg-slate-800 shadow-sm text-sky-700 dark:text-sky-300' : 'text-slate-500'}`}
               >
                 Lista legível
               </Button>
@@ -2551,7 +2551,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                 variant="ghost"
                 onClick={() => setMonthlyView('calendario')}
                 aria-pressed={monthlyView === 'calendario'}
-                className={`h-7 px-2.5 text-[10px] font-black rounded-lg ${monthlyView === 'calendario' ? 'bg-white dark:bg-slate-800 shadow-sm text-sky-700 dark:text-sky-300' : 'text-slate-500'}`}
+                className={`h-7 px-2.5 text-[10px] font-semibold rounded-lg ${monthlyView === 'calendario' ? 'bg-white dark:bg-slate-800 shadow-sm text-sky-700 dark:text-sky-300' : 'text-slate-500'}`}
               >
                 Calendário
               </Button>
@@ -2560,7 +2560,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               type="button"
               variant="outline"
               onClick={handlePrintMonthlySchedule}
-              className="h-9 px-3 text-xs font-bold rounded-xl shrink-0"
+              className="h-9 px-3 text-xs font-semibold rounded-xl shrink-0"
             >
               <Printer className="w-3.5 h-3.5 mr-1.5" /> Imprimir mês
             </Button>
@@ -2578,7 +2578,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             <aside className={`transition-all duration-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 shadow-sm shrink-0 space-y-3 roll-professionals ${trayCollapsed ? 'w-full lg:w-14 p-2.5 items-center' : 'w-full lg:w-72'}`}>
               <div className="flex items-center justify-between">
                 {!trayCollapsed && (
-                  <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5 truncate">
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 truncate">
                     <HeartPulse className="w-4 h-4 text-sky-600 dark:text-sky-400" /> Roll Profissionais
                   </span>
                 )}
@@ -2596,7 +2596,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               {!trayCollapsed && (
                 <>
                   <Select value={traySpecialtyFilter} onValueChange={setTraySpecialtyFilter}>
-                    <SelectTrigger className="h-8 text-xs font-bold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Especialidade..." /></SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Especialidade..." /></SelectTrigger>
                     <SelectContent className="bg-white dark:bg-slate-900 z-[99999]">
                       <SelectItem value="todas">Todas Especialidades</SelectItem>
                       {registeredSpecialties.map(spec => <SelectItem key={spec} value={spec}>{spec}</SelectItem>)}
@@ -2612,8 +2612,8 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                     {filteredTrayProfs.map(prof => (
                       <div key={prof.id} draggable onDragStart={(e) => handleDragStart(e, prof.id)} className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:border-sky-500 transition-all cursor-grab active:cursor-grabbing select-none shadow-sm flex items-center gap-2.5">
                         <GripVertical className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-mono font-black text-[10px] text-sky-600 dark:text-sky-400 shrink-0">{getInitials(prof.name)}</div>
-                        <div className="min-w-0 flex-1"><div className="font-black text-xs text-slate-900 dark:text-white truncate">{formatFullName(prof.name)}</div><div className="text-[10px] text-slate-500 truncate">{prof.specialty || 'Clínica Geral'}</div></div>
+                        <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center tabular-nums font-semibold text-[10px] text-sky-600 dark:text-sky-400 shrink-0">{getInitials(prof.name)}</div>
+                        <div className="min-w-0 flex-1"><div className="font-semibold text-xs text-slate-900 dark:text-white truncate">{formatFullName(prof.name)}</div><div className="text-[10px] text-slate-500 truncate">{prof.specialty || 'Clínica Geral'}</div></div>
                       </div>
                     ))}
                   </div>
@@ -2636,7 +2636,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                   <span className="inline-flex items-center gap-1.5"><CheckCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Publicada</span>
                 </div>
                 <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 text-center py-2">
-                  {WEEKDAYS.map(day => (<div key={day.short} className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{day.short}</div>))}
+                  {WEEKDAYS.map(day => (<div key={day.short} className="text-xs font-medium text-slate-400">{day.short}</div>))}
                 </div>
 
                 <div className="grid grid-cols-7 gap-px bg-slate-200 dark:bg-slate-800">
@@ -2750,16 +2750,16 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                         <div className="flex items-baseline gap-2">
-                          <span className="text-lg font-black text-slate-900 dark:text-white">
+                          <span className="text-lg font-semibold text-slate-900 dark:text-white">
                             {dateObj.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
                           </span>
-                          {isToday && <span className="text-[10px] font-black uppercase text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-900/50 px-2 py-0.5 rounded-full">Hoje</span>}
+                          {isToday && <span className="text-xs font-semibold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-900/50 px-2 py-0.5 rounded-full">Hoje</span>}
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${vacancies ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300'}`}>
+                          <span className={`text-xs font-semibold  px-2 py-1 rounded-full ${vacancies ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300'}`}>
                             {vacancies} vaga(s) aberta(s)
                           </span>
-                          <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${isPublished ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'}`}>
+                          <span className={`text-xs font-semibold  px-2 py-1 rounded-full ${isPublished ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300'}`}>
                             {isPublished ? 'Publicada' : 'Rascunho'}
                           </span>
                         </div>
@@ -2773,7 +2773,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               {scheduleVisibleShifts.length === 0 && (
                 <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-10 text-center">
                   <Search className="w-7 h-7 mx-auto mb-2 text-slate-400" />
-                  <p className="font-bold text-slate-700 dark:text-slate-200">Nenhum plantão corresponde aos filtros.</p>
+                  <p className="font-semibold text-slate-700 dark:text-slate-200">Nenhum plantão corresponde aos filtros.</p>
                   <p className="text-xs text-slate-500 mt-1">Tente outro profissional, especialidade, setor ou período.</p>
                 </div>
               )}
@@ -2791,19 +2791,19 @@ const handleAssignLegacyShiftUnit = async (shift) => {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
-                <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400 tracking-wider block">Escala Oficial Diária</span>
-                <h3 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
+                <span className="text-xs font-semibold text-sky-600 dark:text-sky-400 block">Escala Oficial Diária</span>
+                <h3 className="text-xl font-semibold text-slate-900 dark:text-white mt-0.5">
                   Plantões de Hoje ({liveNow.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })})
                 </h3>
               </div>
-              <Button onClick={handlePrintA4Landscape} className="h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 text-xs font-black px-5 rounded-2xl gap-2 shadow-md cursor-pointer">
+              <Button onClick={handlePrintA4Landscape} className="h-10 bg-slate-900 hover:bg-slate-800 text-white dark:bg-sky-600 dark:hover:bg-sky-500 text-xs font-semibold px-5 rounded-2xl gap-2 shadow-sm cursor-pointer">
                 <Printer className="w-4 h-4" /> Imprimir Plantão do Dia (A4 Paisagem)
               </Button>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 uppercase text-[10px] font-black border-b border-slate-200 dark:border-slate-800">
+                <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 text-xs font-semibold border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="py-3 px-4">Seção / Setor</th>
                     <th className="py-3 px-4 text-center">Data & Horário</th>
@@ -2828,17 +2828,17 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
                       return (
                         <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
-                          <td className="py-3 px-4 font-black text-slate-900 dark:text-white">{sector?.name || 'Setor'}</td>
-                          <td className="py-3 px-4 font-mono font-bold text-sky-600 dark:text-sky-400 text-center whitespace-nowrap">
+                          <td className="py-3 px-4 font-semibold text-slate-900 dark:text-white">{sector?.name || 'Setor'}</td>
+                          <td className="py-3 px-4 tabular-nums font-semibold text-sky-600 dark:text-sky-400 text-center whitespace-nowrap">
                             {formattedDate}<br />
                             <span className="text-[10px] text-slate-400">{shift.start_time} às {shift.end_time}</span>
                           </td>
-                          <td className="py-3 px-4 font-black text-slate-900 dark:text-slate-100">
+                          <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">
                             {status.label.includes('FALTA') || status.label.includes('VAGA') ? <span className="text-rose-600 dark:text-rose-400">⚠️ {status.label}</span> : formatFullName(validName)}
                           </td>
                           <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-semibold">{realSpecialty}</td>
                           <td className="py-3 px-4 text-center">
-                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black tracking-wider ${status.wrapper} ${status.text} border-none`}>
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold ${status.wrapper} ${status.text} border-none`}>
                               {status.icon} {status.label}
                             </span>
                           </td>
@@ -2859,7 +2859,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="w-[95vw] sm:max-w-lg max-h-[85vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-2xl z-[9999] p-4 sm:p-6 rounded-3xl">
           <DialogHeader className="flex flex-row items-center justify-between pb-2 border-b border-slate-800">
-            <DialogTitle className="text-base font-black text-sky-400">
+            <DialogTitle className="text-base font-semibold text-sky-400">
               {editingShiftId ? 'Editar Plantão da Escala' : 'Lançar Novo Plantão'}
             </DialogTitle>
           </DialogHeader>
@@ -2867,11 +2867,11 @@ const handleAssignLegacyShiftUnit = async (shift) => {
           <form onSubmit={handleSaveShift} className="space-y-3.5 py-2 text-xs">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-300">Data do Plantão *</Label>
+                <Label className="text-xs font-semibold text-slate-300">Data do Plantão *</Label>
                 <Input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl cursor-pointer" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-300">Setor / Seção *</Label>
+                <Label className="text-xs font-semibold text-slate-300">Setor / Seção *</Label>
                 <Select value={formData.sector_id} onValueChange={v => setFormData({ ...formData, sector_id: v })}>
                   <SelectTrigger className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl">
                     <SelectValue placeholder="Selecione o setor..." />
@@ -2884,41 +2884,41 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             </div>
             
             <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-300">Especialidade Exigida *</Label>
+              <Label className="text-xs font-semibold text-slate-300">Especialidade Exigida *</Label>
               <SpecialtyPicker
                 value={formData.target_specialty}
                 options={registeredSpecialties}
                 onChange={value => setFormData(prev => ({ ...prev, target_specialty: value }))}
-                triggerClassName="h-10 bg-slate-900 border-slate-700 font-bold text-sky-400 rounded-xl"
+                triggerClassName="h-10 bg-slate-900 border-slate-700 font-semibold text-sky-400 rounded-xl"
                 contentClassName="bg-slate-900 border-slate-800 text-white"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-300">Horário Entrada</Label>
+                <Label className="text-xs font-semibold text-slate-300">Horário Entrada</Label>
                 <Input type="time" value={formData.start_time} onChange={e => setFormData({ ...formData, start_time: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-300">Horário Saída</Label>
+                <Label className="text-xs font-semibold text-slate-300">Horário Saída</Label>
                 <Input type="time" value={formData.end_time} onChange={e => setFormData({ ...formData, end_time: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl" />
               </div>
             </div>
 
             <div className="p-3.5 sm:p-4 bg-slate-900/90 rounded-2xl border border-slate-800 space-y-3">
-              <Label className="text-xs font-black uppercase text-slate-400 block">Modo de Alocação</Label>
+              <Label className="text-xs font-medium text-slate-400 block">Modo de Alocação</Label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button 
                   type="button" 
                   onClick={() => setFormData({ ...formData, action_type: 'alocar' })} 
-                  className={`p-2.5 rounded-xl border text-xs font-black transition-all cursor-pointer ${formData.action_type === 'alocar' ? 'bg-sky-600 border-sky-600 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}
+                  className={`p-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${formData.action_type === 'alocar' ? 'bg-sky-600 border-sky-600 text-white shadow-sm' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}
                 >
                   Alocar Pessoal
                 </button>
                 <button 
                   type="button" 
                   onClick={() => setFormData({ ...formData, action_type: 'mural', professional_id: '' })} 
-                  className={`p-2.5 rounded-xl border text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${formData.action_type === 'mural' ? 'bg-rose-600 border-rose-600 text-white shadow-md' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}
+                  className={`p-2.5 rounded-xl border text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${formData.action_type === 'mural' ? 'bg-rose-600 border-rose-600 text-white shadow-sm' : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'}`}
                 >
                   <Flame className="w-3.5 h-3.5" /> Vaga no Mural
                 </button>
@@ -2927,8 +2927,8 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               {formData.action_type === 'alocar' ? (
                 <div className="space-y-1.5 pt-1 w-full">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-slate-300">Profissional Disponível *</Label>
-                    <span className="text-[10px] font-bold text-emerald-400">
+                    <Label className="text-xs font-semibold text-slate-300">Profissional Disponível *</Label>
+                    <span className="text-[10px] font-semibold text-emerald-400">
                       {categorizedProfessionalsForModal.available.length} livre(s)
                     </span>
                   </div>
@@ -2945,7 +2945,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                           target_specialty: p?.specialty || formData.target_specialty
                         });
                       }}
-                      className="w-full h-11 px-3.5 py-2 bg-slate-900 border border-slate-700 text-white text-xs font-bold rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none appearance-none truncate pr-9 cursor-pointer"
+                      className="w-full h-11 px-3.5 py-2 bg-slate-900 border border-slate-700 text-white text-xs font-semibold rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none appearance-none truncate pr-9 cursor-pointer"
                     >
                       <option value="">Selecione o profissional...</option>
                       
@@ -2981,7 +2981,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               {/* CAMPO DE JUSTIFICATIVA RETROATIVA */}
               {isEditingPastShift && formData.action_type === 'alocar' && (
                 <div className="space-y-1.5 pt-2 border-t border-slate-800">
-                  <Label className="text-xs font-bold text-amber-500 flex items-center gap-1">
+                  <Label className="text-xs font-semibold text-amber-500 flex items-center gap-1">
                     <AlertTriangle className="w-3.5 h-3.5" /> Justificativa Retroativa *
                   </Label>
                   <p className="text-[10px] text-slate-400 leading-tight mb-1">Como este plantão já aconteceu, descreva o motivo do lançamento tardio para fins de auditoria financeira.</p>
@@ -2999,17 +2999,17 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             <DialogFooter className="pt-3 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between border-t border-slate-800 mt-2 gap-2">
               <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start">
                 {editingShiftId && (
-                  <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-10 text-xs font-bold text-rose-400 hover:bg-rose-950/30 rounded-xl px-3 cursor-pointer">
+                  <Button type="button" variant="ghost" onClick={() => handleDeleteShift(editingShiftId)} className="h-10 text-xs font-semibold text-rose-400 hover:bg-rose-950/30 rounded-xl px-3 cursor-pointer">
                     <Trash2 className="w-4 h-4 mr-1" /> Excluir
                   </Button>
                 )}
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="flex-1 sm:flex-none h-10 text-xs font-bold border-slate-700 text-slate-300 rounded-xl px-4 cursor-pointer">
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="flex-1 sm:flex-none h-10 text-xs font-semibold border-slate-700 text-slate-300 rounded-xl px-4 cursor-pointer">
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={submitting} className="flex-1 sm:flex-none h-10 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-6 rounded-xl shadow-md cursor-pointer">
+                <Button type="submit" disabled={submitting} className="flex-1 sm:flex-none h-10 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs px-6 rounded-xl shadow-sm cursor-pointer">
                   Confirmar
                 </Button>
               </div>
@@ -3022,9 +3022,9 @@ const handleAssignLegacyShiftUnit = async (shift) => {
       {/* 6. MODAL GERADOR E CONFIGURADOR DE ESCALAS EM MASSA                       */}
       {/* ========================================================================= */}
       <Dialog open={generatorModalOpen} onOpenChange={setGeneratorModalOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-6">
+        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-sm rounded-3xl p-6">
           <DialogHeader className="border-b border-slate-800 pb-4">
-            <DialogTitle className="text-lg font-black flex items-center gap-2 text-indigo-400">
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-indigo-400">
               <SlidersHorizontal className="w-5 h-5" /> Montar escala
             </DialogTitle>
             <ol className="flex items-center gap-2 pt-3 text-[11px] font-semibold" aria-label="Etapas">
@@ -3041,9 +3041,9 @@ const handleAssignLegacyShiftUnit = async (shift) => {
           <form onSubmit={handleExecuteGenerator} className="space-y-5 py-2">
             <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between gap-4">
               <div className="space-y-1.5 flex-1">
-                <Label className="text-xs font-bold text-slate-400">Setor Alvo</Label>
+                <Label className="text-xs font-medium text-slate-400">Setor Alvo</Label>
                 <Select value={generatorConfig.sector_id} onValueChange={v => setGeneratorConfig({ ...generatorConfig, sector_id: v })}>
-                  <SelectTrigger className="h-10 bg-slate-950 border-slate-700 text-white font-bold rounded-xl">
+                  <SelectTrigger className="h-10 bg-slate-950 border-slate-700 text-white font-semibold rounded-xl">
                     <SelectValue placeholder="Selecione o setor..." />
                   </SelectTrigger>
                   <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
@@ -3055,25 +3055,25 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-400">Data de Início da Grade</Label>
+                <Label className="text-xs font-medium text-slate-400">Data de Início da Grade</Label>
                 <Input type="date" value={generatorConfig.start_date} onChange={e => setGeneratorConfig({ ...generatorConfig, start_date: e.target.value })} className="h-10 bg-slate-900 border-slate-800 text-white rounded-xl cursor-pointer" required />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-400">Duração (Dias Sequenciais)</Label>
+                <Label className="text-xs font-medium text-slate-400">Duração (Dias Sequenciais)</Label>
                 <Input type="number" min="1" max="365" value={generatorConfig.duration_days} onChange={e => setGeneratorConfig({ ...generatorConfig, duration_days: e.target.value })} className="h-10 bg-slate-900 border-slate-800 text-white rounded-xl" required />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-amber-400 flex items-center gap-1"><ArrowRight className="w-3.5 h-3.5"/> Repetir de N em N dias</Label>
-                <Input type="number" min="1" max="30" value={generatorConfig.interval_days} onChange={e => setGeneratorConfig({ ...generatorConfig, interval_days: e.target.value })} placeholder="Ex: 15" className="h-10 bg-slate-900 border-amber-500/50 text-amber-300 font-bold rounded-xl" required />
+                <Label className="text-xs font-semibold text-amber-400 flex items-center gap-1"><ArrowRight className="w-3.5 h-3.5"/> Repetir de N em N dias</Label>
+                <Input type="number" min="1" max="30" value={generatorConfig.interval_days} onChange={e => setGeneratorConfig({ ...generatorConfig, interval_days: e.target.value })} placeholder="Ex: 15" className="h-10 bg-slate-900 border-amber-500/50 text-amber-300 font-semibold rounded-xl" required />
               </div>
             </div>
 
             <div className="space-y-3 pt-2 border-t border-slate-800">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-black text-sky-400 flex items-center gap-2">
+                <Label className="text-sm font-semibold text-sky-400 flex items-center gap-2">
                   <Clock className="w-4 h-4" /> Configuração Diária das Vagas
                 </Label>
-                <Button type="button" onClick={handleAddSlot} variant="outline" className="h-8 text-xs font-bold border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg px-3 cursor-pointer">
+                <Button type="button" onClick={handleAddSlot} variant="outline" className="h-8 text-xs font-semibold border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white rounded-lg px-3 cursor-pointer">
                   <Plus className="w-3.5 h-3.5 mr-1" /> Novo Turno
                 </Button>
               </div>
@@ -3082,7 +3082,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                 {generatorConfig.slots.map((slot, index) => (
                   <div key={slot.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-3 bg-slate-900 border border-slate-800 rounded-2xl relative group">
                     <div className="w-full sm:w-auto flex-1 min-w-0 space-y-1">
-                      <Label className="text-[10px] uppercase text-slate-500 font-bold">Especialidade</Label>
+                      <Label className="text-xs text-slate-500 font-medium">Especialidade</Label>
                       <SpecialtyPicker
                         value={slot.specialty}
                         options={registeredSpecialties}
@@ -3092,16 +3092,16 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                       />
                     </div>
                     <div className="w-24 shrink-0 space-y-1">
-                      <Label className="text-[10px] uppercase text-slate-500 font-bold">Entrada</Label>
+                      <Label className="text-xs text-slate-500 font-medium">Entrada</Label>
                       <Input type="time" value={slot.start_time} onChange={e => handleUpdateSlot(slot.id, 'start_time', e.target.value)} className="h-9 text-xs bg-slate-950 border-slate-800 text-white" required />
                     </div>
                     <div className="w-24 shrink-0 space-y-1">
-                      <Label className="text-[10px] uppercase text-slate-500 font-bold">Saída</Label>
+                      <Label className="text-xs text-slate-500 font-medium">Saída</Label>
                       <Input type="time" value={slot.end_time} onChange={e => handleUpdateSlot(slot.id, 'end_time', e.target.value)} className="h-9 text-xs bg-slate-950 border-slate-800 text-white" required />
                     </div>
                     <div className="w-20 shrink-0 space-y-1">
-                      <Label className="text-[10px] uppercase text-slate-500 font-bold">Vagas (Qtd)</Label>
-                      <Input type="number" min="1" value={slot.quantity} onChange={e => handleUpdateSlot(slot.id, 'quantity', e.target.value)} className="h-9 text-xs font-black text-sky-400 bg-slate-950 border-slate-800 text-center" required />
+                      <Label className="text-xs text-slate-500 font-medium">Vagas (Qtd)</Label>
+                      <Input type="number" min="1" value={slot.quantity} onChange={e => handleUpdateSlot(slot.id, 'quantity', e.target.value)} className="h-9 text-xs font-semibold text-sky-400 bg-slate-950 border-slate-800 text-center" required />
                     </div>
                     {generatorConfig.slots.length > 1 && (
                       <div className="w-full sm:w-auto mt-2 sm:mt-0 flex justify-end">
@@ -3124,7 +3124,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
             <DialogFooter className="pt-2">
               <Button type="button" variant="outline" onClick={() => setGeneratorModalOpen(false)} className="h-11 border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl cursor-pointer">Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-bold px-6 rounded-xl cursor-pointer">
+              <Button type="submit" disabled={submitting} className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-semibold px-6 rounded-xl cursor-pointer">
                 Próximo: escolher profissionais <ArrowRight className="w-4 h-4 ml-1.5" />
               </Button>
             </DialogFooter>
@@ -3137,9 +3137,9 @@ const handleAssignLegacyShiftUnit = async (shift) => {
       {/* 6A. PÓS-GERAÇÃO: CONFIRMAÇÃO PARA ALOCAÇÃO DOS PROFISSIONAIS            */}
       {/* ========================================================================= */}
       <Dialog open={legacyAssignmentOpen} onOpenChange={setLegacyAssignmentOpen}>
-        <DialogContent className="w-[96vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-5">
+        <DialogContent className="w-[96vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-sm rounded-3xl p-5">
           <DialogHeader className="border-b border-slate-800 pb-4">
-            <DialogTitle className="text-lg font-black flex items-center gap-2 text-amber-400">
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-amber-400">
               <AlertTriangle className="h-5 w-5" /> Conferir plantões sem unidade
             </DialogTitle>
             <p className="pt-2 text-xs leading-relaxed text-slate-400">
@@ -3150,7 +3150,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             {unassignedShifts.map(shift => (
               <div key={shift.id} className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(180px,240px)_auto] sm:items-center">
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-black text-white">{sectorMap[String(shift.sector_id)]?.name || 'Setor não identificado'} · {formatDateBR(shift.date)}</p>
+                  <p className="truncate text-xs font-semibold text-white">{sectorMap[String(shift.sector_id)]?.name || 'Setor não identificado'} · {formatDateBR(shift.date)}</p>
                   <p className="mt-1 truncate text-[11px] text-slate-400">{shift.start_time || '07:00'}–{shift.end_time || '19:00'} · {professionalMap[String(shift.professional_id)]?.name || shift.professional_name || 'Sem profissional identificado'}</p>
                 </div>
                 <Select
@@ -3168,7 +3168,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                   type="button"
                   disabled={!legacyUnitDrafts[String(shift.id)] || legacyAssignmentSaving}
                   onClick={() => handleAssignLegacyShiftUnit(shift)}
-                  className="h-9 bg-amber-600 px-3 text-xs font-black text-white hover:bg-amber-500 disabled:opacity-50"
+                  className="h-9 bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-500 disabled:opacity-50"
                 >
                   Vincular
                 </Button>
@@ -3188,9 +3188,9 @@ const handleAssignLegacyShiftUnit = async (shift) => {
       {/* 6B. ALOCAÇÃO EM LOTE DAS VAGAS GERADAS                                  */}
       {/* ========================================================================= */}
       <Dialog open={bulkAllocationOpen} onOpenChange={open => { if (!open) discardGeneratedSchedule(); }}>
-        <DialogContent className="w-[96vw] sm:max-w-5xl max-h-[92vh] flex flex-col bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-5 sm:p-6">
+        <DialogContent className="w-[96vw] sm:max-w-5xl max-h-[92vh] flex flex-col bg-slate-950 border border-slate-800 text-white shadow-sm rounded-3xl p-5 sm:p-6">
           <DialogHeader className="border-b border-slate-800 pb-4 shrink-0">
-            <DialogTitle className="text-lg font-bold flex items-center gap-2 text-sky-400">
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-sky-400">
               <HeartPulse className="w-5 h-5" /> Montar escala · {new Set((generatedAllocationRows || []).map(r => String(r.sector_id))).size > 1 ? `${new Set((generatedAllocationRows || []).map(r => String(r.sector_id))).size} setores` : (sectorMap[String(generatedAllocationRows[0]?.sector_id)]?.name || 'Setor')}
             </DialogTitle>
             <ol className="flex items-center gap-2 pt-3 text-[11px] font-semibold" aria-label="Etapas">
@@ -3260,7 +3260,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                           </div>
                         )}
                         <div className="grid grid-cols-[88px_minmax(0,1fr)] sm:grid-cols-[110px_minmax(0,180px)_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-3 py-2 border-b border-slate-800/70 last:border-b-0">
-                          <span className="font-mono text-xs text-slate-200 whitespace-nowrap">{row.start_time}–{row.end_time}</span>
+                          <span className="tabular-nums text-xs text-slate-200 whitespace-nowrap">{row.start_time}–{row.end_time}</span>
                           <span className="text-[11px] text-slate-400 truncate">{extractSpecialty(row)}{new Set((generatedAllocationRows || []).map(r => String(r.sector_id))).size > 1 ? ` · ${sectorMap[String(row.sector_id)]?.name || ''}` : ''}</span>
                           <select
                             value={assignedId}
@@ -3300,7 +3300,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               <Button type="button" variant="outline" onClick={() => handleSaveGeneratedSchedule(false)} disabled={submitting} className="h-11 border-slate-700 bg-transparent text-slate-200 hover:bg-slate-900 hover:text-white rounded-xl font-semibold cursor-pointer">
                 Salvar como rascunho
               </Button>
-              <Button type="button" onClick={() => handleSaveGeneratedSchedule(true)} disabled={submitting} className="h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 rounded-xl cursor-pointer">
+              <Button type="button" onClick={() => handleSaveGeneratedSchedule(true)} disabled={submitting} className="h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-6 rounded-xl cursor-pointer">
                 <Send className="w-4 h-4 mr-2" /> {submitting ? 'Salvando…' : 'Salvar e publicar'}
               </Button>
             </div>
@@ -3311,9 +3311,9 @@ const handleAssignLegacyShiftUnit = async (shift) => {
       {/* 7. MODAL DE PUBLICAÇÃO DE ESCALA */}
       {/* ========================================================================= */}
       <Dialog open={publishModalOpen} onOpenChange={setPublishModalOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-md bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-6">
+        <DialogContent className="w-[95vw] sm:max-w-md bg-slate-950 border border-slate-800 text-white shadow-sm rounded-3xl p-6">
           <DialogHeader className="border-b border-slate-800 pb-4">
-            <DialogTitle className="text-lg font-black flex items-center gap-2 text-emerald-400">
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-emerald-400">
               <Send className="w-5 h-5" /> Publicar e Oficializar Escala
             </DialogTitle>
           </DialogHeader>
@@ -3324,9 +3324,9 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             </p>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-slate-300">Setor a ser publicado</Label>
+              <Label className="text-xs font-semibold text-slate-300">Setor a ser publicado</Label>
               <Select value={publishConfig.sector_id} onValueChange={v => setPublishConfig({ ...publishConfig, sector_id: v })}>
-                <SelectTrigger className="h-10 bg-slate-900 border-slate-700 text-white font-bold rounded-xl">
+                <SelectTrigger className="h-10 bg-slate-900 border-slate-700 text-white font-semibold rounded-xl">
                   <SelectValue placeholder="Selecione o setor..." />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
@@ -3337,24 +3337,24 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-300">Data Inicial</Label>
+                <Label className="text-xs font-semibold text-slate-300">Data Inicial</Label>
                 <Input type="date" value={publishConfig.start_date} onChange={e => setPublishConfig({ ...publishConfig, start_date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl cursor-pointer" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-300">Data Final</Label>
+                <Label className="text-xs font-semibold text-slate-300">Data Final</Label>
                 <Input type="date" value={publishConfig.end_date} onChange={e => setPublishConfig({ ...publishConfig, end_date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl cursor-pointer" />
               </div>
             </div>
 
             <div className="flex gap-2">
-              <Button type="button" onClick={() => handleApplyQuickRange('7days')} variant="outline" className="flex-1 h-8 text-[10px] font-bold border-slate-700 text-slate-300 cursor-pointer">7 Dias</Button>
-              <Button type="button" onClick={() => handleApplyQuickRange('15days')} variant="outline" className="flex-1 h-8 text-[10px] font-bold border-slate-700 text-slate-300 cursor-pointer">15 Dias</Button>
-              <Button type="button" onClick={() => handleApplyQuickRange('month')} variant="outline" className="flex-1 h-8 text-[10px] font-bold border-slate-700 text-slate-300 cursor-pointer">Mês Inteiro</Button>
+              <Button type="button" onClick={() => handleApplyQuickRange('7days')} variant="outline" className="flex-1 h-8 text-[10px] font-semibold border-slate-700 text-slate-300 cursor-pointer">7 Dias</Button>
+              <Button type="button" onClick={() => handleApplyQuickRange('15days')} variant="outline" className="flex-1 h-8 text-[10px] font-semibold border-slate-700 text-slate-300 cursor-pointer">15 Dias</Button>
+              <Button type="button" onClick={() => handleApplyQuickRange('month')} variant="outline" className="flex-1 h-8 text-[10px] font-semibold border-slate-700 text-slate-300 cursor-pointer">Mês Inteiro</Button>
             </div>
 
             {existingPublishedOverlaps.length > 0 && (
               <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-                <p className="text-[10px] font-bold text-amber-500 flex items-center gap-1.5 mb-1"><History className="w-3.5 h-3.5" /> Sobrescrita Detectada</p>
+                <p className="text-[10px] font-semibold text-amber-500 flex items-center gap-1.5 mb-1"><History className="w-3.5 h-3.5" /> Sobrescrita Detectada</p>
                 <p className="text-[10px] text-amber-200/70 leading-tight">Você está publicando um período que já possui dias oficializados. A versão mais recente se tornará a escala principal.</p>
               </div>
             )}
@@ -3362,7 +3362,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
           <DialogFooter className="pt-4 border-t border-slate-800">
             <Button type="button" variant="outline" onClick={() => setPublishModalOpen(false)} className="h-11 border-slate-700 text-slate-300 rounded-xl cursor-pointer">Cancelar</Button>
-            <Button type="button" onClick={handleExecutePublishSector} disabled={submitting || !publishConfig.sector_id} className="h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-black px-6 rounded-xl shadow-lg shadow-emerald-500/20 cursor-pointer">
+            <Button type="button" onClick={handleExecutePublishSector} disabled={submitting || !publishConfig.sector_id} className="h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-6 rounded-xl shadow-sm cursor-pointer">
               Oficializar Escala
             </Button>
           </DialogFooter>
@@ -3373,9 +3373,9 @@ const handleAssignLegacyShiftUnit = async (shift) => {
       {/* 8. MODAL DE DUPLICAR MÊS (COPIAR ESCALAS)                                 */}
       {/* ========================================================================= */}
       <Dialog open={duplicateModalOpen} onOpenChange={setDuplicateModalOpen}>
-        <DialogContent className="w-[95vw] sm:max-w-md bg-slate-950 border border-slate-800 text-white shadow-2xl rounded-3xl p-6">
+        <DialogContent className="w-[95vw] sm:max-w-md bg-slate-950 border border-slate-800 text-white shadow-sm rounded-3xl p-6">
           <DialogHeader className="border-b border-slate-800 pb-4">
-            <DialogTitle className="text-lg font-black flex items-center gap-2 text-indigo-400">
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-indigo-400">
               <Copy className="w-5 h-5" /> Montar mês seguinte
             </DialogTitle>
           </DialogHeader>
@@ -3386,13 +3386,13 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             </p>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-slate-300">Setor a ser duplicado</Label>
+              <Label className="text-xs font-semibold text-slate-300">Setor a ser duplicado</Label>
               <Select value={duplicateConfig.sector_id} onValueChange={v => setDuplicateConfig({ ...duplicateConfig, sector_id: v })}>
-                <SelectTrigger className="h-10 bg-slate-900 border-slate-700 text-white font-bold rounded-xl">
+                <SelectTrigger className="h-10 bg-slate-900 border-slate-700 text-white font-semibold rounded-xl">
                   <SelectValue placeholder="Selecione..." />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-900 border-slate-800 text-white z-[99999]">
-                  <SelectItem value="todos" className="text-sky-400 font-bold">Todos os Setores</SelectItem>
+                  <SelectItem value="todos" className="text-sky-400 font-semibold">Todos os Setores</SelectItem>
                   {(sectors || []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -3400,22 +3400,22 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-300">Mês modelo</Label>
+                <Label className="text-xs font-semibold text-slate-300">Mês modelo</Label>
                 <Input type="month" value={duplicateConfig.source_date} onChange={e => setDuplicateConfig({ ...duplicateConfig, source_date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl cursor-pointer" required />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-300">Mês a montar</Label>
+                <Label className="text-xs font-semibold text-slate-300">Mês a montar</Label>
                 <Input type="month" value={duplicateConfig.target_date} onChange={e => setDuplicateConfig({ ...duplicateConfig, target_date: e.target.value })} className="h-10 bg-slate-900 border-slate-700 text-white rounded-xl cursor-pointer" required />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-slate-300">Como repetir os dias</Label>
+              <Label className="text-xs font-semibold text-slate-300">Como repetir os dias</Label>
               <div className="grid grid-cols-2 gap-2">
                 {[{ id: 'semana', label: 'Mesmo dia da semana', desc: '2ª segunda continua 2ª segunda' }, { id: 'dia', label: 'Mesmo dia do mês', desc: 'Dia 15 continua dia 15' }].map(opt => (
                   <button key={opt.id} type="button" onClick={() => setDuplicateConfig(prev => ({ ...prev, mode: opt.id }))}
                     className={`text-left rounded-xl border p-2.5 cursor-pointer ${duplicateConfig.mode === opt.id ? 'border-sky-500 bg-sky-500/10' : 'border-slate-700 bg-slate-900'}`}>
-                    <span className="block text-xs font-bold text-white">{opt.label}</span>
+                    <span className="block text-xs font-semibold text-white">{opt.label}</span>
                     <span className="block text-[11px] text-slate-400">{opt.desc}</span>
                   </button>
                 ))}
@@ -3424,7 +3424,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
             <DialogFooter className="pt-4 border-t border-slate-800">
               <Button type="button" variant="outline" onClick={() => setDuplicateModalOpen(false)} className="h-11 border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl cursor-pointer">Cancelar</Button>
-              <Button type="submit" disabled={submitting} className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-bold px-6 rounded-xl cursor-pointer">
+              <Button type="submit" disabled={submitting} className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-semibold px-6 rounded-xl cursor-pointer">
                 Revisar escala <ArrowRight className="w-4 h-4 ml-1.5" />
               </Button>
             </DialogFooter>

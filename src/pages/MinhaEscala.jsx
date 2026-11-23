@@ -6,8 +6,9 @@ import { buildIcs, googleCalendarUrl, shiftEventInfo } from '@/lib/calendarExpor
 import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, normalizeFinancialText, safeFinancialNumber } from '@/lib/financialCalculations';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import PageHero from '@/components/PageHero';
 import { 
-  CalendarDays, Clock, Building2, Repeat, CheckCircle2, Loader2, DollarSign, AlertCircle, 
+  Clock, Building2, Repeat, CheckCircle2, Loader2, DollarSign, AlertCircle, 
   Radio, Printer, ChevronLeft, ChevronRight, Send, Timer, Sparkles, Flame, ArrowRight, 
   Layers, CalendarCheck, Zap, ChevronDown, ChevronUp, Clock3, ShieldAlert, LogIn, LogOut, MapPin, CalendarPlus
 } from 'lucide-react';
@@ -622,52 +623,38 @@ export default function MinhaEscala() {
   return (
     <div className="p-3 sm:p-4 md:p-8 space-y-4 sm:space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
       
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 p-5 sm:p-6 md:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-[10px] sm:text-xs font-black uppercase tracking-[0.18em] sm:tracking-[0.25em] text-sky-400">
-            <CalendarDays className="w-4 h-4 shrink-0" /> Painel Assistencial do Profissional
+      <PageHero
+        title={<>Olá, Dr(a). {currentProfessional?.name ? currentProfessional.name.split(' ')[0] : user?.full_name?.split(' ')[0] || 'Profissional'}!</>}
+        subtitle="Consulte seus plantões, acompanhe horários e, se desejar, registre check-in e check-out."
+        actions={t => (
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
+            <Button onClick={handlePrintMyStatement} className={`h-11 font-medium text-sm px-3 sm:px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}>
+              <Printer className={`w-4 h-4 ${t.outlineIcon}`} /> Imprimir espelho
+            </Button>
+
+            <Button
+              onClick={handleAddToCalendar}
+              title="Baixa seus próximos plantões para a agenda do celular, com lembrete 12 h e 1 h antes"
+              className={`col-span-2 sm:col-span-1 order-last sm:order-none h-11 font-medium text-sm px-3 sm:px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}
+            >
+              <CalendarPlus className={`w-4 h-4 ${t.outlineIcon}`} /> Adicionar à agenda
+            </Button>
+
+            <Button onClick={() => navigate('/trocas')} className={`h-11 font-semibold text-sm px-3 sm:px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.primary}`}>
+              <Flame className="w-4 h-4" /> <span className="sm:hidden">Mural de Vagas</span><span className="hidden sm:inline">Mural de Oportunidades</span>
+            </Button>
           </div>
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight">
-            Olá, Dr(a). {currentProfessional?.name ? currentProfessional.name.split(' ')[0] : user?.full_name?.split(' ')[0] || 'Profissional'}!
-          </h1>
-          <p className="text-xs md:text-sm text-slate-300 font-medium">
-            Consulte seus plantões, acompanhe horários e, se desejar, registre check-in e check-out.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
-          <Button 
-            onClick={handlePrintMyStatement} 
-            className="h-11 bg-white hover:bg-slate-100 text-slate-900 font-black text-xs px-3 sm:px-5 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105"
-          >
-            <Printer className="w-4 h-4 text-sky-600" /> Imprimir Espelho
-          </Button>
-
-          <Button
-            onClick={handleAddToCalendar}
-            title="Baixa seus próximos plantões para a agenda do celular, com lembrete 12 h e 1 h antes"
-            className="col-span-2 sm:col-span-1 order-last sm:order-none h-11 bg-white/10 hover:bg-white/20 text-white border border-white/20 font-black text-xs px-3 sm:px-5 rounded-2xl gap-2 cursor-pointer"
-          >
-            <CalendarPlus className="w-4 h-4" /> Adicionar à agenda
-          </Button>
-
-          <Button 
-            onClick={() => navigate('/trocas')} 
-            className="h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-xs px-3 sm:px-5 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all hover:scale-105"
-          >
-            <Flame className="w-4 h-4" /> <span className="sm:hidden">Mural de Vagas</span><span className="hidden sm:inline">Mural de Oportunidades</span>
-          </Button>
-        </div>
-      </div>
+        )}
+      />
 
       {conflictingShiftsCount > 0 && (
-        <div className="p-4 rounded-3xl bg-rose-500/10 border-2 border-rose-500/50 shadow-md text-rose-900 dark:text-rose-200 flex items-start sm:items-center justify-between gap-4">
+        <div className="p-4 rounded-3xl bg-rose-500/10 border-2 border-rose-500/50 shadow-sm text-rose-900 dark:text-rose-200 flex items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-rose-600 text-white shrink-0">
               <ShieldAlert className="w-5 h-5 animate-pulse" />
             </div>
             <div>
-              <strong className="text-sm font-black uppercase tracking-wider block">
+              <strong className="text-sm font-semibold block">
                 Alerta de Choque de Horário ({conflictingShiftsCount} turnos sobrepostos)
               </strong>
               <p className="text-xs opacity-90">
@@ -680,7 +667,7 @@ export default function MinhaEscala() {
 
       {/* CARD DE PLANTÃO DO DIA COM GEOFENCING E LOCK DE TEMPO */}
       {featuredShift && (
-        <div className={`p-4 sm:p-5 md:p-6 rounded-3xl border-2 shadow-lg text-slate-950 dark:text-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in ${
+        <div className={`p-4 sm:p-5 md:p-6 rounded-3xl border-2 shadow-sm text-slate-950 dark:text-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in ${
           featuredShift.state === 'ativo'
             ? 'bg-emerald-500/10 border-emerald-500/60'
             : featuredShift === pendingCheckoutShift
@@ -688,14 +675,14 @@ export default function MinhaEscala() {
             : 'bg-sky-500/10 border-sky-500/50'
         }`}>
           <div className="flex items-start sm:items-center gap-3 sm:gap-4">
-            <div className={`p-3 rounded-2xl text-white font-bold shadow-md shrink-0 ${
+            <div className={`p-3 rounded-2xl text-white font-semibold shadow-sm shrink-0 ${
               featuredShift.state === 'ativo' ? 'bg-emerald-600' : featuredShift === pendingCheckoutShift ? 'bg-amber-600' : 'bg-sky-600'
             }`}>
               {featuredShift.state === 'ativo' ? <Radio className="w-6 h-6" /> : <Timer className="w-6 h-6" />}
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full text-white tracking-wider ${
+                <span className={`text-xs font-semibold  px-3 py-1 rounded-full text-white ${
                   featuredShift.state === 'ativo' ? 'bg-emerald-600' : featuredShift === pendingCheckoutShift ? 'bg-amber-600' : 'bg-sky-600'
                 }`}>
                   {featuredShift.state === 'ativo'
@@ -704,16 +691,16 @@ export default function MinhaEscala() {
                     ? 'Check-out disponível'
                     : 'Próximo plantão'}
                 </span>
-                <span className="font-mono text-xs font-bold text-slate-600 dark:text-slate-300">
+                <span className="tabular-nums text-xs font-medium text-slate-600 dark:text-slate-300">
                   {featuredShift.timeLeftDesc || (featuredShift === pendingCheckoutShift ? 'Janela de check-out' : '')}
                 </span>
               </div>
-              <h3 className="text-lg md:text-xl font-black text-slate-900 dark:text-white mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h3 className="text-lg md:text-xl font-semibold text-slate-900 dark:text-white mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="text-sky-700 dark:text-sky-300">🏥 {featuredShift.unitName}</span>
                 <span className="hidden sm:inline text-slate-400">·</span>
                 <span>{featuredShift.sectorName}</span>
                 <span className="hidden sm:inline text-slate-400">·</span>
-                <span className="text-sm font-bold">{formatDateBR(featuredShift.date)} · {featuredShift.start_time}–{featuredShift.end_time}</span>
+                <span className="text-sm font-semibold">{formatDateBR(featuredShift.date)} · {featuredShift.start_time}–{featuredShift.end_time}</span>
               </h3>
               {featuredShift.unitAddress && (
                 <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(featuredShift.unitAddress)}`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-sky-700 dark:hover:text-sky-300 hover:underline">
@@ -732,13 +719,13 @@ export default function MinhaEscala() {
           </div>
 
           <div className="grid grid-cols-2 sm:flex sm:flex-col sm:min-w-44 gap-2 shrink-0">
-            {locationError && <span className="col-span-2 text-[10px] text-rose-600 dark:text-rose-400 font-bold leading-tight">{locationError}</span>}
+            {locationError && <span className="col-span-2 text-[10px] text-rose-600 dark:text-rose-400 font-semibold leading-tight">{locationError}</span>}
             <Button 
               onClick={() => handleCheckAction(featuredShift, 'in')}
               disabled={!featuredShift.canCheckIn || !featuredShiftHasCoordinates}
-              className={`h-12 sm:h-10 text-xs font-black rounded-xl gap-2 ${
+              className={`h-12 sm:h-10 text-xs font-semibold rounded-xl gap-2 ${
                 featuredShift.canCheckIn && featuredShiftHasCoordinates
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md cursor-pointer'
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm cursor-pointer'
                   : 'bg-slate-200 text-slate-500 dark:bg-slate-800 cursor-not-allowed'
               }`}
             >
@@ -748,9 +735,9 @@ export default function MinhaEscala() {
             <Button 
               onClick={() => handleCheckAction(featuredShift, 'out')}
               disabled={!featuredShift.canCheckOut || !featuredShiftHasCoordinates}
-              className={`h-12 sm:h-10 text-xs font-black rounded-xl gap-2 ${
+              className={`h-12 sm:h-10 text-xs font-semibold rounded-xl gap-2 ${
                 featuredShift.canCheckOut && featuredShiftHasCoordinates
-                  ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-md cursor-pointer'
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-sm cursor-pointer'
                   : 'bg-slate-200 text-slate-500 dark:bg-slate-800 cursor-not-allowed'
               }`}
             >
@@ -769,26 +756,26 @@ export default function MinhaEscala() {
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Card className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400">Plantões Cumpridos</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span className="text-xs sm:text-xs font-medium text-slate-400">Plantões cumpridos</span>
+            <CheckCircle2 className="w-4 h-4 text-slate-400" />
           </div>
-          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
+          <div className="text-3xl font-semibold text-slate-900 dark:text-white mt-3">
             {monthMetrics.cumpridos}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1 font-semibold">{monthMetrics.horas}h totais em {MONTH_NAMES[currentMonth]}</p>
+          <p className="text-[11px] text-slate-500 mt-1 font-medium">{monthMetrics.horas}h totais em {MONTH_NAMES[currentMonth]}</p>
         </Card>
 
         <Card className="col-span-2 sm:col-span-1 order-last sm:order-none p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400">Meus ganhos · {MONTH_NAMES[currentMonth]}</span>
-            <DollarSign className="w-4 h-4 text-emerald-600" />
+            <span className="text-xs sm:text-xs font-medium text-slate-400">Meus ganhos · {MONTH_NAMES[currentMonth]}</span>
+            <DollarSign className="w-4 h-4 text-slate-400" />
           </div>
           {isProductivityRemuneration ? (
             <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">Produtividade: o valor sai no fechamento, conforme os atendimentos lançados pela coordenação.</p>
           ) : (
             <>
-              <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-3 font-mono">{formatCurrency(earnings.done)}</div>
-              <p className="text-[11px] text-slate-500 font-semibold">{isMonthlyRemuneration ? 'Salário mensal das unidades' : 'Já realizado'}</p>
+              <div className="text-2xl font-semibold text-emerald-600 dark:text-emerald-400 mt-3 tabular-nums">{formatCurrency(earnings.done)}</div>
+              <p className="text-[11px] text-slate-500 font-medium">{isMonthlyRemuneration ? 'Salário mensal das unidades' : 'Já realizado'}</p>
               {!isMonthlyRemuneration && (
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
                   + {formatCurrency(earnings.upcoming)} a realizar · <b>{formatCurrency(earnings.done + earnings.upcoming)}</b> previsto no mês
@@ -809,7 +796,7 @@ export default function MinhaEscala() {
             </ul>
           )}
           {(earnings.missingRate || (isMonthlyRemuneration && monthMetrics.monthlySalaryMissing)) && (
-            <p className="mt-1 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+            <p className="mt-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
               Falta valor cadastrado em alguma unidade; o total pode estar incompleto. Fale com a coordenação.
             </p>
           )}
@@ -820,13 +807,13 @@ export default function MinhaEscala() {
 
         <Card className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-slate-400">Próximos Plantões</span>
-            <CalendarCheck className="w-4 h-4 text-indigo-600" />
+            <span className="text-xs sm:text-xs font-medium text-slate-400">Próximos plantões</span>
+            <CalendarCheck className="w-4 h-4 text-slate-400" />
           </div>
-          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">
+          <div className="text-3xl font-semibold text-slate-900 dark:text-white mt-3">
             {monthMetrics.futuros}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1 font-semibold">Agendados no mês vigente</p>
+          <p className="text-[11px] text-slate-500 mt-1 font-medium">Agendados no mês vigente</p>
         </Card>
       </div>
 
@@ -836,9 +823,9 @@ export default function MinhaEscala() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-sky-500" />
-              <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                Plantões a Realizar (Escala Futura & Hoje)
+
+              <h2 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-white">
+                Plantões a realizar
               </h2>
             </div>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
@@ -850,7 +837,7 @@ export default function MinhaEscala() {
             <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} aria-label="Mês anterior" className="p-2.5 sm:p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500 cursor-pointer">
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-xs font-black px-2 uppercase font-mono">
+            <span className="text-xs font-semibold px-2 tabular-nums">
               {MONTH_NAMES[currentMonth]} {currentYear}
             </span>
             <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} aria-label="Próximo mês" className="p-2.5 sm:p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-500 cursor-pointer">
@@ -860,7 +847,7 @@ export default function MinhaEscala() {
         </div>
 
         {shiftsLoadError && (
-          <div role="alert" className="mb-4 flex flex-col gap-3 rounded-2xl border border-rose-300 bg-rose-50 p-4 text-xs font-bold text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200 sm:flex-row sm:items-center sm:justify-between">
+          <div role="alert" className="mb-4 flex flex-col gap-3 rounded-2xl border border-rose-300 bg-rose-50 p-4 text-xs font-semibold text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200 sm:flex-row sm:items-center sm:justify-between">
             <span>Falha ao carregar sua escala: {shiftsLoadError}</span>
             <Button type="button" onClick={loadMyShifts} variant="outline" className="h-8 border-rose-300 text-rose-800 dark:border-rose-500/40 dark:text-rose-200">
               Tentar novamente
@@ -883,9 +870,9 @@ export default function MinhaEscala() {
                   key={shift.id} 
                   className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 ${
                     hasConflict
-                      ? 'border-2 border-rose-500 bg-rose-50/40 dark:bg-rose-950/20 shadow-md ring-2 ring-rose-500/20'
+                      ? 'border-2 border-rose-500 bg-rose-50/40 dark:bg-rose-950/20 shadow-sm ring-2 ring-rose-500/20'
                       : isAtivo 
-                      ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-md ring-1 ring-emerald-500/40' 
+                      ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 shadow-sm ring-1 ring-emerald-500/40' 
                       : isPending
                       ? 'border-amber-300 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/20'
                       : isNext
@@ -896,21 +883,21 @@ export default function MinhaEscala() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-black font-mono text-slate-900 dark:text-white">
+                        <span className="text-xs font-semibold tabular-nums text-slate-900 dark:text-white">
                           {formatDateBR(shift.date)}
                         </span>
-                        <span className="text-[10px] font-bold text-slate-500">
+                        <span className="text-[10px] font-medium text-slate-500">
                           ({new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' })})
                         </span>
                       </div>
 
                       <div className="flex items-center gap-1">
                         {hasConflict && (
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-600 text-white flex items-center gap-1 animate-pulse">
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-600 text-white flex items-center gap-1 animate-pulse">
                             <ShieldAlert className="w-3 h-3" /> Choque Horário
                           </span>
                         )}
-                        <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                        <span className={`text-xs font-semibold  px-2.5 py-0.5 rounded-full ${
                           isAtivo 
                             ? 'bg-emerald-600 text-white animate-pulse' 
                             : isPending
@@ -924,7 +911,7 @@ export default function MinhaEscala() {
                       </div>
                     </div>
 
-                    <div className="text-sm font-black text-slate-900 dark:text-white flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                       <span className="text-sky-600">🏥 {shift.unitName}</span>
                       <span className="text-slate-300 dark:text-slate-700">•</span>
                       <span>{shift.sectorName}</span>
@@ -938,13 +925,13 @@ export default function MinhaEscala() {
                       <CalendarPlus className="w-3.5 h-3.5 shrink-0" /> Google Agenda
                     </a>
 
-                    <div className="flex items-center justify-between text-xs text-slate-500 font-mono">
+                    <div className="flex items-center justify-between text-xs text-slate-500 tabular-nums">
                       <span>Horário: <b>{shift.start_time} às {shift.end_time}</b></span>
                       <span>{shift.duration}h</span>
                     </div>
 
                     {shift.shiftValue?.type === 'valor' && (
-                      <div className="text-xs text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1 pt-1 border-t border-slate-100 dark:border-slate-800">
+                      <div className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 pt-1 border-t border-slate-100 dark:border-slate-800">
                         <DollarSign className="w-3.5 h-3.5" />
                         Valor Previsto: {formatCurrency(shift.shiftValue.value)}
                       </div>
@@ -954,7 +941,7 @@ export default function MinhaEscala() {
                   {!isAtivo && (
                     <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
                       {isPending ? (
-                        <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
                           <Clock3 className="w-3.5 h-3.5 animate-pulse" /> Aguardando Gestão
                         </span>
                       ) : (
@@ -963,7 +950,7 @@ export default function MinhaEscala() {
                           variant="outline" 
                           onClick={() => handlePassShiftToMural(shift)}
                           disabled={submitting}
-                          className="h-10 sm:h-8 w-full sm:w-auto text-[11px] font-bold border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl gap-1.5 cursor-pointer"
+                          className="h-10 sm:h-8 w-full sm:w-auto text-[11px] font-semibold border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl gap-1.5 cursor-pointer"
                         >
                           <Flame className="w-3.5 h-3.5" /> Passar no Mural
                         </Button>
@@ -976,7 +963,7 @@ export default function MinhaEscala() {
             {upcomingMonthShifts.length === 0 && (
               <div className="md:col-span-2 lg:col-span-3 py-10 text-center rounded-2xl border border-dashed border-slate-300 dark:border-slate-700">
                 <CalendarCheck className="w-8 h-8 mx-auto mb-2 text-slate-400" />
-                <p className="text-sm font-bold text-slate-600 dark:text-slate-300">Nenhum plantão futuro nesta competência</p>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Nenhum plantão futuro nesta competência</p>
                 <p className="text-xs text-slate-500 mt-1">Use as setas para consultar outros meses. O próximo plantão, quando houver, aparece em destaque acima.</p>
               </div>
             )}
@@ -987,8 +974,8 @@ export default function MinhaEscala() {
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 sm:p-6 rounded-3xl shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <h3 className="text-sm font-black text-slate-800 dark:text-slate-200">
+            <CheckCircle2 className="w-4 h-4 text-slate-400" />
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
               Plantões Já Concluídos ({completedMonthShifts.length})
             </h3>
           </div>
@@ -1015,16 +1002,16 @@ export default function MinhaEscala() {
               {completedMonthShifts.map(shift => (
                 <div key={shift.id} className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 text-xs flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-slate-900 dark:text-white block">
+                    <span className="tabular-nums font-semibold text-slate-900 dark:text-white block">
                       {formatDateBR(shift.date)}
                     </span>
-                    <span className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-black px-2 py-0.5 rounded-lg shrink-0">
+                    <span className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-semibold px-2 py-0.5 rounded-lg shrink-0">
                       ✓ Concluído
                     </span>
                   </div>
                   
                   <div className="space-y-0.5">
-                    <span className="text-[11px] text-sky-700 dark:text-sky-400 font-bold block truncate">
+                    <span className="text-[11px] text-sky-700 dark:text-sky-400 font-semibold block truncate">
                       🏥 {shift.unitName}
                     </span>
                     <span className="text-[10px] text-slate-500 block truncate">
@@ -1032,15 +1019,15 @@ export default function MinhaEscala() {
                     </span>
                   </div>
                   
-                  <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mt-1 border-t border-slate-200 dark:border-slate-800 pt-1.5">
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 tabular-nums mt-1 border-t border-slate-200 dark:border-slate-800 pt-1.5">
                     <span>{shift.start_time} - {shift.end_time} ({shift.duration}h)</span>
                     {shift.shiftValue?.type === 'valor' && (
-                      <span className="font-bold text-emerald-600">{formatCurrency(shift.shiftValue.value)}</span>
+                      <span className="font-semibold text-emerald-600">{formatCurrency(shift.shiftValue.value)}</span>
                     )}
                   </div>
                   
                   {(shift.checkinTime || shift.checkoutTime) && (
-                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 bg-white dark:bg-slate-900 p-1.5 rounded-lg mt-0.5 border border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center justify-between text-[10px] tabular-nums text-slate-500 bg-white dark:bg-slate-900 p-1.5 rounded-lg mt-0.5 border border-slate-100 dark:border-slate-800">
                       <span>In: <b className="text-emerald-600">{shift.checkinTime || '--:--'}</b></span>
                       <span>Out: <b className="text-rose-600">{shift.checkoutTime || '--:--'}</b></span>
                     </div>

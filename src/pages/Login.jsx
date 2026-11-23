@@ -268,21 +268,21 @@ export default function Login() {
 
       <div className="w-full max-w-md bg-white/95 dark:bg-slate-900/90 backdrop-blur-2xl border border-white/20 dark:border-slate-800/50 rounded-3xl p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-10 relative">
         <div className="flex flex-col items-center mb-6 sm:mb-8">
-          <BrandAppIcon size={56} className="mb-4 shadow-lg shadow-sky-600/25" />
+          <BrandAppIcon size={56} className="mb-4 shadow-sm" />
           <h1 className="text-2xl text-slate-900 dark:text-white"><BrandWordmark /></h1>
-          <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mt-1 text-center">Gestão Hospitalar</p>
+          <p className="text-xs text-slate-500 font-medium mt-1 text-center">Gestão Hospitalar</p>
         </div>
 
         {error && (
           <div className="mb-6 p-4 rounded-xl bg-rose-50/80 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex items-start gap-3 animate-in fade-in">
             <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-            <p className="text-xs font-bold text-rose-800 dark:text-rose-300 leading-relaxed">{error}</p>
+            <p className="text-xs font-semibold text-rose-800 dark:text-rose-300 leading-relaxed">{error}</p>
           </div>
         )}
 
         <form onSubmit={handleLogin} className="space-y-5">
           <div className="space-y-2">
-            <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Usuário ou E-mail</Label>
+            <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Usuário ou E-mail</Label>
             <Input 
               type="text" 
               placeholder="Ex: dr.carlos"
@@ -296,8 +296,8 @@ export default function Login() {
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Senha</Label>
-              <Button type="button" variant="link" className="h-auto p-0 text-[11px] font-bold text-sky-600 hover:text-sky-500 transition-colors cursor-pointer" onClick={() => alert('Procure a coordenação ou RH da sua unidade para solicitar o reset de senha da sua conta.')}>
+              <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Senha</Label>
+              <Button type="button" variant="link" className="h-auto p-0 text-[11px] font-semibold text-sky-600 hover:text-sky-500 transition-colors cursor-pointer" onClick={() => alert('Procure a coordenação ou RH da sua unidade para solicitar o reset de senha da sua conta.')}>
                 Esqueceu a senha?
               </Button>
             </div>
@@ -329,15 +329,15 @@ export default function Login() {
                 onChange={(e) => setRememberMe(e.target.checked)}
                 className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
               />
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Lembrar-me neste dispositivo</span>
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Lembrar-me neste dispositivo</span>
             </label>
-            <span className="text-[11px] font-mono font-semibold text-slate-400 dark:text-slate-500" title="Versão do aplicativo">{APP_VERSION}</span>
+            <span className="text-[11px] tabular-nums font-medium text-slate-400 dark:text-slate-500" title="Versão do aplicativo">{APP_VERSION}</span>
           </div>
 
           <Button 
             type="submit" 
             disabled={loading || showLgpdModal || showUnitModal || showPasswordChangeModal} 
-            className="w-full h-12 sm:h-11 bg-sky-600 hover:bg-sky-500 text-white font-black text-sm rounded-xl shadow-lg shadow-sky-600/20 mt-2 transition-all cursor-pointer hover:scale-[1.02]"
+            className="w-full h-12 sm:h-11 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-sm rounded-xl shadow-sm mt-2 transition-all cursor-pointer hover:scale-[1.02]"
           >
             {loading ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Conectando...</> : 'Entrar no Sistema'}
           </Button>
@@ -348,7 +348,7 @@ export default function Login() {
         <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800/60 text-center">
           <p className="text-xs text-slate-500 font-medium">
             Novo na plataforma? {' '}
-            <Link to="/register" className="font-bold text-sky-600 hover:text-sky-500 transition-colors">Solicite seu credenciamento</Link>
+            <Link to="/register" className="font-semibold text-sky-600 hover:text-sky-500 transition-colors">Solicite seu credenciamento</Link>
           </p>
         </div>
         {/* ========================================================= */}
@@ -359,7 +359,7 @@ export default function Login() {
         <button
           type="button"
           onClick={() => setInstallGuideOpen(true)}
-          className="mt-4 z-10 inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-bold text-sky-100 transition-colors cursor-pointer"
+          className="mt-4 z-10 inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-semibold text-sky-100 transition-colors cursor-pointer"
         >
           <img src="/icons/icon-192.png" alt="" className="w-6 h-6 rounded-lg" />
           <Smartphone className="w-4 h-4" /> Instalar o app no celular
@@ -370,9 +370,9 @@ export default function Login() {
 
       <div className="relative mt-6 sm:mt-0 sm:absolute sm:bottom-6 text-center z-0 flex flex-col items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
         <p className="text-[10px] text-slate-400 font-medium">
-          Ao entrar, você concorda com nossos <Link to="/termos-de-uso" className="font-bold text-sky-400 hover:underline">Termos de Uso e LGPD</Link>.
+          Ao entrar, você concorda com nossos <Link to="/termos-de-uso" className="font-semibold text-sky-400 hover:underline">Termos de Uso e LGPD</Link>.
         </p>
-        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+        <p className="text-xs font-medium text-slate-500">
           &copy; 2026 ScaleMedic Enterprise. Todos os direitos reservados.
         </p>
       </div>
@@ -383,7 +383,7 @@ export default function Login() {
       <Dialog open={showPasswordChangeModal} onOpenChange={(open) => !open && resetModals()}>
         <DialogContent className="max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-3xl p-6 shadow-2xl z-[9999]">
           <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-4 mb-4">
-            <DialogTitle className="text-lg font-black flex items-center gap-2 text-rose-500">
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-rose-500">
               <KeyRound className="w-6 h-6" /> Atualização de Segurança
             </DialogTitle>
           </DialogHeader>
@@ -395,41 +395,41 @@ export default function Login() {
             </p>
 
             {passwordError && (
-              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs font-bold text-rose-600 flex items-center gap-2">
+              <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs font-semibold text-rose-600 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4" /> {passwordError}
               </div>
             )}
 
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nova Senha</Label>
+                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Nova Senha</Label>
                 <Input 
                   type="password" 
                   value={newPassword} 
                   onChange={e => setNewPassword(e.target.value)} 
                   placeholder="8+ caracteres, com letras e números" 
-                  className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl font-mono" 
+                  className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl tabular-nums" 
                   required 
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Confirme a Nova Senha</Label>
+                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Confirme a Nova Senha</Label>
                 <Input 
                   type="password" 
                   value={confirmNewPassword} 
                   onChange={e => setConfirmNewPassword(e.target.value)} 
                   placeholder="Digite novamente" 
-                  className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl font-mono" 
+                  className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl tabular-nums" 
                   required 
                 />
               </div>
             </div>
 
             <DialogFooter className="pt-4 mt-2 border-t border-slate-100 dark:border-slate-800">
-              <Button type="button" variant="outline" onClick={resetModals} className="h-11 w-full text-xs font-bold border-slate-200 dark:border-slate-700 text-slate-500 cursor-pointer">
+              <Button type="button" variant="outline" onClick={resetModals} className="h-11 w-full text-xs font-medium border-slate-200 dark:border-slate-700 text-slate-500 cursor-pointer">
                 Cancelar e Sair
               </Button>
-              <Button type="submit" disabled={loadingAction} className="h-11 w-full bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-md cursor-pointer transition-all">
+              <Button type="submit" disabled={loadingAction} className="h-11 w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-sm cursor-pointer transition-all">
                 {loadingAction ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Salvando...</> : <><Check className="w-4 h-4 mr-1.5" /> Salvar e Continuar</>}
               </Button>
             </DialogFooter>
@@ -443,7 +443,7 @@ export default function Login() {
       <Dialog open={showLgpdModal} onOpenChange={(open) => !open && resetModals()}>
         <DialogContent className="max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-3xl p-6 shadow-2xl z-[9999]">
           <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-4 mb-4">
-            <DialogTitle className="text-lg font-black flex items-center gap-2 text-sky-600 dark:text-sky-400">
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-sky-600 dark:text-sky-400">
               <ShieldCheck className="w-6 h-6" /> Privacidade e LGPD
             </DialogTitle>
           </DialogHeader>
@@ -455,7 +455,7 @@ export default function Login() {
 
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 space-y-2">
               <p>Nós armazenamos seus dados de contato, matrícula e registro de conselho exclusivamente para o funcionamento operacional e seguro das escalas hospitalares.</p>
-              <Link to="/termos-de-uso" target="_blank" className="inline-flex items-center gap-1 font-bold text-sky-600 hover:underline">
+              <Link to="/termos-de-uso" target="_blank" className="inline-flex items-center gap-1 font-semibold text-sky-600 hover:underline">
                 <FileText className="w-3.5 h-3.5" /> Ler Política de Privacidade Completa
               </Link>
             </div>
@@ -467,17 +467,17 @@ export default function Login() {
                 onChange={(e) => setLgpdChecked(e.target.checked)}
                 className="mt-0.5 w-4 h-4 rounded border-sky-300 text-sky-600 focus:ring-sky-500 cursor-pointer shrink-0"
               />
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 leading-tight">
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 leading-tight">
                 Declaro que li e concordo integralmente com os Termos de Uso e LGPD, autorizando o processamento dos meus dados para fins de escala hospitalar.
               </span>
             </label>
           </div>
 
           <DialogFooter className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex gap-2">
-            <Button type="button" variant="outline" onClick={resetModals} className="h-11 w-full text-xs font-bold border-slate-200 dark:border-slate-700 text-slate-500 cursor-pointer">
+            <Button type="button" variant="outline" onClick={resetModals} className="h-11 w-full text-xs font-medium border-slate-200 dark:border-slate-700 text-slate-500 cursor-pointer">
               Cancelar Acesso
             </Button>
-            <Button type="button" onClick={handleAcceptTerms} disabled={!lgpdChecked || loadingAction} className="h-11 w-full bg-sky-600 hover:bg-sky-500 text-white font-black text-xs shadow-md cursor-pointer transition-all">
+            <Button type="button" onClick={handleAcceptTerms} disabled={!lgpdChecked || loadingAction} className="h-11 w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-sm cursor-pointer transition-all">
               {loadingAction ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Registrando...</> : <><Check className="w-4 h-4 mr-1.5" /> Aceitar e Continuar</>}
             </Button>
           </DialogFooter>
@@ -490,7 +490,7 @@ export default function Login() {
       <Dialog open={showUnitModal} onOpenChange={(open) => !open && resetModals()}>
         <DialogContent className="max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-3xl p-6 shadow-2xl z-[9999]">
           <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-4 mb-4">
-            <DialogTitle className="text-lg font-black flex items-center gap-2 text-sky-600 dark:text-sky-400">
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-sky-600 dark:text-sky-400">
               <Building2 className="w-6 h-6" /> Portal das Unidades
             </DialogTitle>
           </DialogHeader>
@@ -516,10 +516,10 @@ export default function Login() {
                   <div className="flex items-center gap-3">
                     <Hospital className={`w-5 h-5 ${selectedUnitForLogin === u.id ? 'text-sky-600' : 'text-slate-400'}`} />
                     <div className="flex flex-col">
-                      <span className="text-sm font-bold truncate">{u.name}</span>
+                      <span className="text-sm font-semibold truncate">{u.name}</span>
                       <span
                         title={String(u.id)}
-                        className={`block max-w-[260px] break-all text-[10px] font-mono ${selectedUnitForLogin === u.id ? 'text-sky-600/80' : 'text-slate-400'}`}
+                        className={`block max-w-[260px] break-all text-[10px] tabular-nums ${selectedUnitForLogin === u.id ? 'text-sky-600/80' : 'text-slate-400'}`}
                       >
                         {String(u.id).match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
                           ? `ID: ${u.id}`
@@ -534,10 +534,10 @@ export default function Login() {
           </div>
 
           <DialogFooter className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex gap-2">
-            <Button type="button" variant="outline" onClick={resetModals} className="h-11 w-full text-xs font-bold border-slate-200 dark:border-slate-700 text-slate-500 cursor-pointer">
+            <Button type="button" variant="outline" onClick={resetModals} className="h-11 w-full text-xs font-medium border-slate-200 dark:border-slate-700 text-slate-500 cursor-pointer">
               Voltar
             </Button>
-            <Button type="button" onClick={handleSelectUnitAndEnter} disabled={!selectedUnitForLogin || loadingAction} className="h-11 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md cursor-pointer transition-all">
+            <Button type="button" onClick={handleSelectUnitAndEnter} disabled={!selectedUnitForLogin || loadingAction} className="h-11 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-sm cursor-pointer transition-all">
               {loadingAction ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Conectando...</> : <><Check className="w-4 h-4 mr-1.5" /> Acessar Escalas</>}
             </Button>
           </DialogFooter>

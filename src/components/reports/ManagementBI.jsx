@@ -30,12 +30,12 @@ const num = value => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }
 function ChartTooltip({ active, payload, label, colors, formatter = num, labelFormatter }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 shadow-lg">
-      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">{labelFormatter ? labelFormatter(label) : label}</p>
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 shadow-sm">
+      <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{labelFormatter ? labelFormatter(label) : label}</p>
       {payload.map(item => (
         <div key={item.dataKey} className="flex items-center gap-2 text-sm">
           <span className="inline-block w-3 h-0.5 rounded" style={{ background: item.color || colors.s1 }} />
-          <span className="font-bold text-slate-900 dark:text-white tabular-nums">{formatter(item.value)}</span>
+          <span className="font-semibold text-slate-900 dark:text-white tabular-nums">{formatter(item.value)}</span>
           <span className="text-slate-500 dark:text-slate-400">{item.name}</span>
         </div>
       ))}
@@ -53,10 +53,10 @@ function Kpi({ icon: Icon, label, value, detail, tone = 'default' }) {
   return (
     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</span>
+        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</span>
         <Icon className="w-4 h-4 text-slate-400" aria-hidden="true" />
       </div>
-      <div className={`mt-2 text-2xl font-bold tracking-tight tabular-nums whitespace-nowrap ${toneClass}`}>{value}</div>
+      <div className={`mt-2 text-2xl font-semibold tracking-tight tabular-nums whitespace-nowrap ${toneClass}`}>{value}</div>
       {detail && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{detail}</p>}
     </div>
   );
@@ -65,7 +65,7 @@ function Kpi({ icon: Icon, label, value, detail, tone = 'default' }) {
 function ChartCard({ title, subtitle, children, className = '' }) {
   return (
     <section className={`rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-sm ${className}`}>
-      <h3 className="text-sm font-bold text-slate-900 dark:text-white">{title}</h3>
+      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{title}</h3>
       {subtitle && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{subtitle}</p>}
       <div className="mt-4">{children}</div>
     </section>
@@ -155,8 +155,8 @@ export default function ManagementBI({
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         {isFullscreen ? (
           <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-400">Painel de gestão</p>
-            <h2 className="text-3xl font-bold text-slate-900 dark:text-white">{hospitalName}</h2>
+            <p className="text-sm font-semibold text-sky-700 dark:text-sky-400">Painel de gestão</p>
+            <h2 className="text-3xl font-semibold text-slate-900 dark:text-white">{hospitalName}</h2>
             <p className="text-base text-slate-500 dark:text-slate-400">{periodLabel} · {filterSummary}</p>
           </div>
         ) : (
@@ -190,11 +190,11 @@ export default function ManagementBI({
               {unitBreakdown.map(row => (
                 <tr key={row.id}>
                   <td className="px-4 py-2 font-medium text-slate-800 dark:text-slate-100">{row.name}</td>
-                  <td className="px-4 py-2 text-right font-mono">{num(row.shifts)}</td>
-                  <td className={`px-4 py-2 text-right font-mono ${row.coverage === null ? 'text-slate-400' : row.coverage >= 98 ? 'text-emerald-700 dark:text-emerald-400' : row.coverage >= 90 ? 'text-amber-700 dark:text-amber-400' : 'text-rose-700 dark:text-rose-400'}`}>{row.coverage === null ? '—' : `${row.coverage}%`}</td>
-                  <td className="px-4 py-2 text-right font-mono">{num(row.vacant)}</td>
-                  <td className="px-4 py-2 text-right font-mono">{num(Math.round(row.hours))}</td>
-                  <td className="px-4 py-2 text-right font-mono">{brl(row.cost)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{num(row.shifts)}</td>
+                  <td className={`px-4 py-2 text-right tabular-nums ${row.coverage === null ? 'text-slate-400' : row.coverage >= 98 ? 'text-emerald-700 dark:text-emerald-400' : row.coverage >= 90 ? 'text-amber-700 dark:text-amber-400' : 'text-rose-700 dark:text-rose-400'}`}>{row.coverage === null ? '—' : `${row.coverage}%`}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{num(row.vacant)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{num(Math.round(row.hours))}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{brl(row.cost)}</td>
                 </tr>
               ))}
             </tbody>
@@ -307,12 +307,12 @@ export default function ManagementBI({
                 <dl className="grid grid-cols-2 gap-3">
                   <div>
                     <dt className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400"><span className="w-3 h-3 rounded-sm" style={{ background: colors.s1 }} /> Diurnos</dt>
-                    <dd className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">{num(data.day)}</dd>
+                    <dd className="text-2xl font-semibold text-slate-900 dark:text-white tabular-nums">{num(data.day)}</dd>
                     <dd className="text-xs text-slate-500 dark:text-slate-400">{shiftTotal ? Math.round((data.day / shiftTotal) * 100) : 0}% dos plantões</dd>
                   </div>
                   <div>
                     <dt className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400"><span className="w-3 h-3 rounded-sm" style={{ background: colors.s2 }} /> Noturnos</dt>
-                    <dd className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">{num(data.night)}</dd>
+                    <dd className="text-2xl font-semibold text-slate-900 dark:text-white tabular-nums">{num(data.night)}</dd>
                     <dd className="text-xs text-slate-500 dark:text-slate-400">{shiftTotal ? Math.round((data.night / shiftTotal) * 100) : 0}% dos plantões</dd>
                   </div>
                 </dl>

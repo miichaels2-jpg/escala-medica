@@ -1,4 +1,4 @@
-import React, { Component, useState, useEffect } from 'react';
+import React, { Component, Suspense, useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { persistSelectedUnit, useAppData } from '@/lib/useAppData';
 import { supabase } from '@/lib/supabase';
@@ -38,11 +38,11 @@ class LayoutErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-8 max-w-xl mx-auto my-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl text-center shadow-2xl text-slate-900 dark:text-white">
+        <div className="p-8 max-w-xl mx-auto my-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl text-center shadow-sm text-slate-900 dark:text-white">
           <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
-          <h2 className="text-lg font-black">Instabilidade no Módulo</h2>
+          <h2 className="text-lg font-semibold">Instabilidade no Módulo</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 my-3">{this.state.error?.message || 'Erro inesperado na visualização.'}</p>
-          <Button onClick={() => window.location.reload()} className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-10 px-6 cursor-pointer">
+          <Button onClick={() => window.location.reload()} className="bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs h-10 px-6 cursor-pointer">
             Recarregar Página
           </Button>
         </div>
@@ -199,7 +199,7 @@ export default function AppLayout({ children }) {
     { label: 'Faturamento & Repasse', path: '/faturamento', icon: DollarSign, visible: isManager || isBilling },
     { label: 'Histórico de alterações', path: '/historico', icon: History, visible: isManager },
     { label: 'Configurações', path: '/configuracoes', icon: Settings, visible: isManager },
-    { label: 'Planejamento (temporário)', path: '/planejamento', icon: ListChecks, visible: isManager }, // TEMPORÁRIO
+    { label: 'Planejamento', path: '/planejamento', icon: ListChecks, visible: isManager }, // TEMPORÁRIO
     // Só o dono da plataforma (o campo "visible" acima não filtra o menu; quem filtra é canAccessRoute).
     ...(isPlatformOwner ? [{ label: 'Plataforma', path: '/plataforma', icon: Globe, visible: true }] : []),
   ].filter(item => canAccessRoute(user, item.path))
@@ -259,14 +259,14 @@ export default function AppLayout({ children }) {
     <div className="flex h-screen h-[100dvh] overflow-hidden bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
       {/* SIDEBAR DESKTOP */}
-      <aside className="hidden md:flex w-64 flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 select-none shadow-xl print:hidden transition-colors">
+      <aside className="hidden md:flex w-64 flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 select-none shadow-sm print:hidden transition-colors">
         <div className="p-4 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40">
           <BrandAppIcon size={40} />
           <div className="min-w-0">
             <h1 className="text-base text-slate-900 dark:text-white">
               <BrandWordmark />
             </h1>
-            <p className="text-[10px] text-slate-400 font-bold truncate">{currentHospitalName}</p>
+            <p className="text-[10px] text-slate-400 font-medium truncate">{currentHospitalName}</p>
           </div>
         </div>
 
@@ -278,9 +278,9 @@ export default function AppLayout({ children }) {
                 key={item.path}
                 to={item.path}
                 className={({ isActive }) =>
-                  `flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all ${
+                  `flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-sm font-medium transition-all ${
                     isActive || (item.path === '/dashboard' && location.pathname === '/')
-                      ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-lg shadow-sky-600/30' 
+                      ? 'bg-sky-600 text-white' 
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
                   }`
                 }
@@ -290,7 +290,7 @@ export default function AppLayout({ children }) {
                   <span className="truncate">{item.label}</span>
                 </div>
                 {item.badge > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500 text-white animate-pulse">
                     {item.badge}
                   </span>
                 )}
@@ -303,10 +303,10 @@ export default function AppLayout({ children }) {
         <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50">
           <div className="p-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 shadow-sm">
             <div className="min-w-0 flex-1">
-              <span className="text-xs font-black text-slate-900 dark:text-white block truncate">
+              <span className="text-xs font-semibold text-slate-900 dark:text-white block truncate">
                 {user?.full_name || 'Usuário'}
               </span>
-              <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider block truncate">
+              <span className="text-xs font-semibold text-sky-600 dark:text-sky-400 block truncate">
                 {roleBadgeLabel}
               </span>
             </div>
@@ -318,7 +318,7 @@ export default function AppLayout({ children }) {
               <LogOut className="w-4 h-4" />
             </button>
           </div>
-          <p className="mt-2 text-center text-[10px] font-semibold text-slate-400 dark:text-slate-500" title="Versão do sistema">ScaleMedic {APP_VERSION}</p>
+          <p className="mt-2 text-center text-[10px] font-medium text-slate-400 dark:text-slate-500" title="Versão do sistema">ScaleMedic {APP_VERSION}</p>
         </div>
       </aside>
 
@@ -333,29 +333,29 @@ export default function AppLayout({ children }) {
               <BrandAppIcon size={36} />
               <div className="min-w-0 leading-tight">
                 <BrandWordmark className="text-sm text-slate-900 dark:text-white block" />
-                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block truncate max-w-[170px]">{currentHospitalName}</span>
+                <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block truncate max-w-[170px]">{currentHospitalName}</span>
               </div>
             </div>
 
             {!showUnitSelector && (
-              <span className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              <span className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
                 <Hospital className="w-3.5 h-3.5 text-sky-600 dark:text-sky-500" /> {currentHospitalName}
               </span>
             )}
             {showUnitSelector && <div className="hidden sm:flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
+              <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
                 <Hospital className="w-3.5 h-3.5 text-sky-600 dark:text-sky-500" /> Unidade:
               </span>
               <Select value={headerUnitValue} onValueChange={handleUnitChange}>
-                <SelectTrigger className="h-8 w-64 text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl cursor-pointer">
+                <SelectTrigger className="h-8 w-64 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl cursor-pointer">
                   <SelectValue placeholder="Selecione o Hospital..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                   {screenSupportsAllUnits && (
-                    <SelectItem value="todas" className="text-xs font-bold cursor-pointer">Todas as unidades ({selectableUnits.length})</SelectItem>
+                    <SelectItem value="todas" className="text-xs font-semibold cursor-pointer">Todas as unidades ({selectableUnits.length})</SelectItem>
                   )}
                   {selectableUnits.map(u => (
-                    <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold cursor-pointer">
+                    <SelectItem key={u.id} value={String(u.id)} className="text-xs font-semibold cursor-pointer">
                       {u.name}
                     </SelectItem>
                   ))}
@@ -367,11 +367,11 @@ export default function AppLayout({ children }) {
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
 
             <div className="hidden lg:flex items-center gap-2.5 px-3.5 py-1.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs shadow-inner">
-              <span className="text-slate-600 dark:text-slate-400 font-bold">
+              <span className="text-slate-600 dark:text-slate-400 font-medium">
                 {dayName}, {formattedDate}
               </span>
               <span className="text-slate-300 dark:text-slate-700">•</span>
-              <span className="font-mono font-black text-sky-600 dark:text-cyan-400 flex items-center gap-1.5 tracking-wider">
+              <span className="tabular-nums font-semibold text-sky-600 dark:text-cyan-400 flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 animate-pulse" />
                 {formattedTime}
               </span>
@@ -386,7 +386,7 @@ export default function AppLayout({ children }) {
               >
                 <Bell className="w-4 h-4" />
                 {notificationCenter.unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-rose-500 text-white font-mono font-black text-[10px] flex items-center justify-center shadow-lg shadow-rose-500/50">
+                  <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-rose-500 text-white tabular-nums font-semibold text-[10px] flex items-center justify-center shadow-lg shadow-rose-500/50">
                     {notificationCenter.unreadCount > 99 ? '99+' : notificationCenter.unreadCount}
                   </span>
                 )}
@@ -422,13 +422,13 @@ export default function AppLayout({ children }) {
               <div className="flex items-start gap-2">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <div>
-                  <p className="font-black">Atenção: dados incompletos ou pendentes de conferência</p>
+                  <p className="font-semibold">Atenção: dados incompletos ou pendentes de conferência</p>
                   <ul className="mt-1 list-disc space-y-1 pl-4">
                     {dataWarnings.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}
                   </ul>
                 </div>
               </div>
-              <Button type="button" variant="outline" onClick={syncGlobalData} className="h-8 shrink-0 border-amber-400 bg-white px-3 text-[11px] font-bold text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-slate-900 dark:text-amber-200 dark:hover:bg-slate-800">
+              <Button type="button" variant="outline" onClick={syncGlobalData} className="h-8 shrink-0 border-amber-400 bg-white px-3 text-[11px] font-semibold text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-slate-900 dark:text-amber-200 dark:hover:bg-slate-800">
                 Recarregar dados
               </Button>
             </div>
@@ -440,12 +440,12 @@ export default function AppLayout({ children }) {
             <button type="button" aria-label="Fechar menu" onClick={() => setMobileMenuOpen(false)} className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm animate-in fade-in cursor-default" />
             <div className="absolute right-0 top-0 h-full w-[86%] max-w-sm bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
             <div className="p-4 flex items-center gap-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-600 to-cyan-500 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-md shadow-sky-600/30">
+              <div className="w-11 h-11 rounded-2xl bg-sky-600 text-white font-semibold text-sm flex items-center justify-center shrink-0 shadow-sm">
                 {userInitials}
               </div>
               <div className="min-w-0 flex-1">
-                <span className="text-sm font-black text-slate-900 dark:text-white block truncate">{user?.full_name || 'Usuário'}</span>
-                <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider block truncate">{roleBadgeLabel}</span>
+                <span className="text-sm font-semibold text-slate-900 dark:text-white block truncate">{user?.full_name || 'Usuário'}</span>
+                <span className="text-xs font-semibold text-sky-600 dark:text-sky-400 block truncate">{roleBadgeLabel}</span>
               </div>
               <button
                 type="button"
@@ -454,7 +454,7 @@ export default function AppLayout({ children }) {
                 className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
               >
                 <LogOut className="w-5 h-5" />
-                <span className="text-[10px] font-bold">Sair</span>
+                <span className="text-[10px] font-semibold">Sair</span>
               </button>
               <button type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Fechar menu" className="p-2 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
                 <X className="w-5 h-5" />
@@ -463,17 +463,17 @@ export default function AppLayout({ children }) {
 
             <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
             {showUnitSelector && <div className="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
-              <Label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Hospital Atual</Label>
+              <Label className="text-xs font-medium text-slate-400 mb-1 block">Hospital Atual</Label>
               <Select value={headerUnitValue} onValueChange={handleUnitChange}>
-                <SelectTrigger className="h-10 w-full text-xs font-black bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl cursor-pointer">
+                <SelectTrigger className="h-10 w-full text-xs font-semibold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-sky-600 dark:text-sky-400 rounded-xl cursor-pointer">
                   <SelectValue placeholder="Selecione o Hospital..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
                   {screenSupportsAllUnits && (
-                    <SelectItem value="todas" className="text-xs font-bold cursor-pointer">Todas as unidades ({selectableUnits.length})</SelectItem>
+                    <SelectItem value="todas" className="text-xs font-semibold cursor-pointer">Todas as unidades ({selectableUnits.length})</SelectItem>
                   )}
                   {selectableUnits.map(u => (
-                    <SelectItem key={u.id} value={String(u.id)} className="text-xs font-bold cursor-pointer">
+                    <SelectItem key={u.id} value={String(u.id)} className="text-xs font-semibold cursor-pointer">
                       {u.name}
                     </SelectItem>
                   ))}
@@ -486,9 +486,9 @@ export default function AppLayout({ children }) {
                 key={item.path}
                 to={item.path}
                 onClick={() => setMobileMenuOpen(false)}
-                className={({ isActive }) => `flex items-center justify-between px-3.5 py-3 rounded-2xl text-sm font-bold cursor-pointer transition-colors ${
+                className={({ isActive }) => `flex items-center justify-between px-3.5 py-3 rounded-2xl text-sm font-medium cursor-pointer transition-colors ${
                   isActive
-                    ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-md shadow-sky-600/30'
+                    ? 'bg-sky-600 text-white'
                     : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
@@ -499,7 +499,7 @@ export default function AppLayout({ children }) {
                       <span>{item.label}</span>
                     </div>
                     {item.badge > 0 && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500 text-white">
                         {item.badge}
                       </span>
                     )}
@@ -514,7 +514,7 @@ export default function AppLayout({ children }) {
                 <button
                   type="button"
                   onClick={() => { setMobileMenuOpen(false); setInstallGuideOpen(true); }}
-                  className="w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900 cursor-pointer"
+                  className="w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-semibold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900 cursor-pointer"
                 >
                   <Smartphone className="w-5 h-5" /> Instalar aplicativo no celular
                 </button>
@@ -522,11 +522,11 @@ export default function AppLayout({ children }) {
               <button
                 type="button"
                 onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
+                className="w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
               >
                 <LogOut className="w-5 h-5" /> Sair do sistema
               </button>
-              <p className="pt-1 text-center text-[11px] font-semibold text-slate-400 dark:text-slate-500">ScaleMedic {APP_VERSION}</p>
+              <p className="pt-1 text-center text-[11px] font-medium text-slate-400 dark:text-slate-500">ScaleMedic {APP_VERSION}</p>
             </div>
             </div>
           </div>
@@ -536,7 +536,11 @@ export default function AppLayout({ children }) {
 
         <main className="flex-1 overflow-y-auto pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-0">
           <LayoutErrorBoundary>
-            {children || <Outlet />}
+            {children || (
+              <Suspense fallback={<div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-4 border-slate-200 dark:border-slate-700 border-t-sky-600 rounded-full animate-spin" /></div>}>
+                <Outlet />
+              </Suspense>
+            )}
           </LayoutErrorBoundary>
         </main>
 
@@ -550,7 +554,7 @@ export default function AppLayout({ children }) {
               <NavLink
                 key={tab.path}
                 to={tab.path}
-                className={({ isActive }) => `relative flex flex-col items-center justify-center gap-1 text-[10px] font-black transition-colors ${
+                className={({ isActive }) => `relative flex flex-col items-center justify-center gap-1 text-[10px] font-semibold transition-colors ${
                   isActive ? 'text-sky-600 dark:text-sky-400' : 'text-slate-500 dark:text-slate-400'
                 }`}
               >
@@ -561,7 +565,7 @@ export default function AppLayout({ children }) {
                     </span>
                     <span>{tab.label}</span>
                     {tab.badge > 0 && (
-                      <span className="absolute top-1.5 left-1/2 ml-2 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center">
+                      <span className="absolute top-1.5 left-1/2 ml-2 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-semibold flex items-center justify-center">
                         {tab.badge > 9 ? '9+' : tab.badge}
                       </span>
                     )}
@@ -572,7 +576,7 @@ export default function AppLayout({ children }) {
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className={`flex flex-col items-center justify-center gap-1 text-[10px] font-black cursor-pointer ${mobileMenuOpen ? 'text-sky-600 dark:text-sky-400' : 'text-slate-500 dark:text-slate-400'}`}
+              className={`flex flex-col items-center justify-center gap-1 text-[10px] font-semibold cursor-pointer ${mobileMenuOpen ? 'text-sky-600 dark:text-sky-400' : 'text-slate-500 dark:text-slate-400'}`}
             >
               <span className="flex items-center justify-center w-12 h-7 rounded-full">
                 <Menu className="w-5 h-5" />

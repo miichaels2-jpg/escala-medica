@@ -14,9 +14,9 @@ const DefaultFallback = () => (
 function NoAccess({ onLogout }) {
   return (
     <div className="min-h-[100dvh] flex items-center justify-center p-6 bg-slate-100 dark:bg-slate-950">
-      <div className="max-w-sm w-full text-center rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 shadow-xl">
+      <div className="max-w-sm w-full text-center rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 shadow-sm">
         <ShieldAlert className="w-10 h-10 mx-auto text-amber-500" />
-        <h1 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">Acesso não liberado</h1>
+        <h1 className="mt-3 text-lg font-semibold text-slate-900 dark:text-white">Acesso não liberado</h1>
         <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
           Seu usuário ainda não tem nenhuma área liberada. Fale com a coordenação da sua unidade.
         </p>

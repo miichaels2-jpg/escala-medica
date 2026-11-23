@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
-  DollarSign, Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer, Download, AlertTriangle
+  Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer, Download, AlertTriangle
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -1178,13 +1178,10 @@ export default function Faturamento() {
     <div className="p-4 md:p-8 space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
       
       {/* BANNER PRINCIPAL */}
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950 p-6 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400">
-            <DollarSign className="w-4 h-4" /> Gestão Financeira & Conciliação de Plantões
-          </div>
-          <h2 className="mt-1 text-2xl sm:text-3xl font-black">Faturamento & Repasse</h2>
-          <p className="text-xs text-slate-300">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Faturamento e repasse</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             Apuração inteligente baseada na matriz de remuneração (Fixo, Produtividade ou Plantão Dinâmico).
           </p>
         </div>
@@ -1192,7 +1189,8 @@ export default function Faturamento() {
         <div className="flex items-center gap-3">
           <Button 
             onClick={handleExportExcel}
-            className="h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all"
+            variant="outline"
+            className="h-10 font-medium text-sm px-4 rounded-xl gap-2 cursor-pointer"
             title="Baixar Relatório em Excel (Abre formatado no Excel)"
           >
             <Download className="w-4 h-4" /> Exportar Planilha (.xls)
@@ -1200,19 +1198,20 @@ export default function Faturamento() {
 
           <Button 
             onClick={handlePrintConsolidatedReport}
-            className="h-10 bg-white text-slate-900 hover:bg-slate-100 font-black text-xs px-4 rounded-2xl shadow-lg gap-2 cursor-pointer transition-all"
+            variant="outline"
+            className="h-10 font-medium text-sm px-4 rounded-xl gap-2 cursor-pointer"
           >
             <Printer className="w-4 h-4" /> Imprimir Fechamento
           </Button>
 
-          <div className="flex items-center bg-slate-900/90 border border-slate-800 p-1.5 rounded-2xl gap-2">
-            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white cursor-pointer">
+          <div className="flex items-center bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-1 rounded-xl gap-2">
+            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth - 1, 1))} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-lg text-slate-500 cursor-pointer">
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-xs font-black px-2 uppercase cursor-default">
+            <span className="text-sm font-medium px-2 cursor-default text-slate-700 dark:text-slate-200">
               {MONTH_NAMES[currentMonth]} {currentYear}
             </span>
-            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white cursor-pointer">
+            <button onClick={() => setCurrentDate(new Date(currentYear, currentMonth + 1, 1))} className="p-1.5 hover:bg-white dark:hover:bg-slate-800 rounded-lg text-slate-500 cursor-pointer">
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -1222,27 +1221,27 @@ export default function Faturamento() {
       {/* CARDS EXECUTIVOS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[10px] font-black uppercase text-slate-400">Total Bruto Apurado</span>
-          <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">{formatCurrency(totals.bruto)}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">{totals.plantões} plantões concluídos · inclui fixo mensal</span>
+          <span className="text-xs font-medium text-slate-400">Total Bruto Apurado</span>
+          <div className="text-2xl font-semibold text-slate-900 dark:text-white mt-1">{formatCurrency(totals.bruto)}</div>
+          <span className="text-[10px] text-slate-500 font-medium">{totals.plantões} plantões concluídos · inclui fixo mensal</span>
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400">Total Líquido p/ Repasse</span>
-          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(totals.liquido)}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">Valor acumulado na competência</span>
+          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Total Líquido p/ Repasse</span>
+          <div className="text-2xl font-semibold text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(totals.liquido)}</div>
+          <span className="text-[10px] text-slate-500 font-medium">Valor acumulado na competência</span>
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[10px] font-black uppercase text-sky-600 dark:text-sky-400">Horas de plantões concluídos</span>
-          <div className="text-2xl font-black text-sky-600 dark:text-sky-400 mt-1">{totals.horas.toFixed(1).replace('.', ',')}h</div>
-          <span className="text-[10px] text-slate-500 font-semibold">Horas assistenciais efetivadas</span>
+          <span className="text-xs font-semibold text-sky-600 dark:text-sky-400">Horas de plantões concluídos</span>
+          <div className="text-2xl font-semibold text-sky-600 dark:text-sky-400 mt-1">{totals.horas.toFixed(1).replace('.', ',')}h</div>
+          <span className="text-[10px] text-slate-500 font-medium">Horas assistenciais efetivadas</span>
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400">Profissionais na competência</span>
-          <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-1">{reportData.length}</div>
-          <span className="text-[10px] text-slate-500 font-semibold">Com plantões ou regime mensal</span>
+          <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">Profissionais na competência</span>
+          <div className="text-2xl font-semibold text-indigo-600 dark:text-indigo-400 mt-1">{reportData.length}</div>
+          <span className="text-[10px] text-slate-500 font-medium">Com plantões ou regime mensal</span>
         </Card>
       </div>
 
@@ -1250,7 +1249,7 @@ export default function Faturamento() {
         <Card className="space-y-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-500/30 dark:bg-indigo-950/20">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-sm font-black text-indigo-950 dark:text-indigo-200">Produtividade diária</h2>
+              <h2 className="text-sm font-semibold text-indigo-950 dark:text-indigo-200">Produtividade diária</h2>
               <p className="mt-1 text-xs text-indigo-900/80 dark:text-indigo-200/80">
                 {productivityRuleUnitId
                   ? <>Rateio de <strong>{formatCurrency(safeNumber(productivityRule?.daily_amount, 150))}</strong> por dia em <strong>{units.find(unit => String(unit.id) === productivityRuleUnitId)?.name || 'unidade não encontrada'}</strong>, dividido pelos atendimentos de cada profissional.</>
@@ -1275,18 +1274,18 @@ export default function Faturamento() {
           </div>
           {isManager && (showProductivitySettings || !productivityRuleUnitId) && (
             <div className="flex flex-col gap-2 border-t border-indigo-200 pt-3 dark:border-indigo-500/20 sm:flex-row sm:items-end">
-              <label className="flex-1 space-y-1 text-[10px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
+              <label className="flex-1 space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
                 Unidade exclusiva para esta regra
                 <select
                   value={productivityUnitDraft}
                   onChange={event => setProductivityUnitDraft(event.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold normal-case text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold normal-case text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                 >
                   <option value="">Não configurar</option>
                   {units.map(unit => <option key={unit.id} value={String(unit.id)}>{unit.name}</option>)}
                 </select>
               </label>
-              <Button type="button" disabled={productivityConfigSaving} onClick={handleSaveProductivityConfiguration} className="h-10 bg-slate-900 px-4 text-xs font-black text-white hover:bg-slate-700 dark:bg-indigo-600 dark:hover:bg-indigo-500">
+              <Button type="button" disabled={productivityConfigSaving} onClick={handleSaveProductivityConfiguration} className="h-10 bg-slate-900 px-4 text-xs font-semibold text-white hover:bg-slate-700 dark:bg-indigo-600 dark:hover:bg-indigo-500">
                 {productivityConfigSaving ? 'Salvando...' : productivityUnitDraft ? 'Salvar unidade da regra' : 'Desativar regra'}
               </Button>
             </div>
@@ -1304,7 +1303,7 @@ export default function Faturamento() {
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
             <div className="space-y-1">
-              <h3 className="text-sm font-black text-amber-900 dark:text-amber-300">Verifique os dados antes de fechar o repasse</h3>
+              <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-300">Verifique os dados antes de fechar o repasse</h3>
               {shiftsWithoutRate > 0 && (
                 <p className="text-xs text-amber-800 dark:text-amber-200">
                   {shiftsWithoutRate} plantão(ões) realizado(s) sem tarifa cadastrada na unidade. Esses valores aparecem como R$ 0,00 e deixam o total bruto incompleto.
@@ -1341,24 +1340,24 @@ export default function Faturamento() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Card className="flex items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-500/20 dark:bg-emerald-950/20">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Marcado como pago</p>
+            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Marcado como pago</p>
             <p className="mt-1 text-xs text-emerald-800/80 dark:text-emerald-300/80">{paymentSummary.paid.count} profissional(is)</p>
           </div>
-          <strong className="text-lg font-black text-emerald-700 dark:text-emerald-300">{formatCurrency(paymentSummary.paid.net)}</strong>
+          <strong className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">{formatCurrency(paymentSummary.paid.net)}</strong>
         </Card>
         <Card className="flex items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/20 dark:bg-amber-950/20">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-wide text-amber-700 dark:text-amber-400">Pendente de pagamento</p>
+            <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Pendente de pagamento</p>
             <p className="mt-1 text-xs text-amber-800/80 dark:text-amber-300/80">{paymentSummary.pending.count} profissional(is)</p>
           </div>
-          <strong className="text-lg font-black text-amber-700 dark:text-amber-300">{formatCurrency(paymentSummary.pending.net)}</strong>
+          <strong className="text-lg font-semibold text-amber-700 dark:text-amber-300">{formatCurrency(paymentSummary.pending.net)}</strong>
         </Card>
         <Card className="flex items-center justify-between gap-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-500/20 dark:bg-indigo-950/20">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-wide text-indigo-700 dark:text-indigo-400">Aguardando apuração</p>
+            <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-400">Aguardando apuração</p>
             <p className="mt-1 text-xs text-indigo-800/80 dark:text-indigo-300/80">{paymentSummary.awaiting.count} profissional(is)</p>
           </div>
-          <strong className="text-sm font-black text-indigo-700 dark:text-indigo-300">Produção</strong>
+          <strong className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Produção</strong>
         </Card>
       </div>
 
@@ -1366,7 +1365,7 @@ export default function Faturamento() {
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
-            <h3 className="text-base font-black text-slate-900 dark:text-white">Espelho de Conciliação Financeira</h3>
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white">Espelho de Conciliação Financeira</h3>
             <p className="text-xs text-slate-500">Apuração restrita para <b>{currentUnitName}</b>. O status de pagamento é compartilhado entre os gestores.</p>
           </div>
 
@@ -1383,7 +1382,7 @@ export default function Faturamento() {
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 uppercase text-[10px] font-black border-b border-slate-200 dark:border-slate-800">
+            <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 text-xs font-semibold border-b border-slate-200 dark:border-slate-800">
               <tr>
                 <th className="py-3 px-4">Profissional / Matrícula</th>
                 <th className="py-3 px-4">Regime Contratual</th>
@@ -1404,26 +1403,26 @@ export default function Faturamento() {
               ) : (
                 filteredReport.map(item => {
                   const formaPagto = item.chavePix ? (
-                    <div><span className="text-sky-600 font-bold">{item.chavePix}</span><div className="text-[10px] text-slate-400">PIX ({item.pixTipo})</div></div>
+                    <div><span className="text-sky-600 font-semibold">{item.chavePix}</span><div className="text-[10px] text-slate-400">PIX ({item.pixTipo})</div></div>
                   ) : item.banco ? (
-                    <div><span className="text-slate-800 dark:text-slate-200 font-bold">{item.banco}</span><div className="text-[10px] text-slate-400">Dados Bancários</div></div>
+                    <div><span className="text-slate-800 dark:text-slate-200 font-semibold">{item.banco}</span><div className="text-[10px] text-slate-400">Dados Bancários</div></div>
                   ) : (
                     <span className="text-[10px] text-rose-500 italic">Pendente de cadastro</span>
                   );
 
                   const regimeBadge = item.remunType === 'mensal' 
-                    ? <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-bold text-[10px]">Fixo Mensal</span> 
+                    ? <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-semibold text-[10px]">Fixo Mensal</span> 
                     : item.remunType === 'produtividade'
-                    ? <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md font-bold text-[10px]">Produtividade</span>
-                    : <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-bold text-[10px]">Por Plantão</span>;
+                    ? <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md font-semibold text-[10px]">Produtividade</span>
+                    : <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-semibold text-[10px]">Por Plantão</span>;
 
                   return (
                     <tr key={item.prof.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
                       <td className="py-3 px-4">
-                        <div className="font-black text-slate-900 dark:text-white">{item.prof.name}</div>
-                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono font-bold">
+                        <div className="font-semibold text-slate-900 dark:text-white">{item.prof.name}</div>
+                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] tabular-nums font-semibold">
                           <span className="text-indigo-600 dark:text-indigo-400">{item.matricula} • {item.prof.document || 'CRM'}</span>
-                          {item.profStatus && item.profStatus !== 'ativo' && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-sans text-[10px] uppercase text-slate-500 dark:bg-slate-800">{item.profStatus} · com registro</span>}
+                          {item.profStatus && item.profStatus !== 'ativo' && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-sans text-xs text-slate-500 dark:bg-slate-800">{item.profStatus} · com registro</span>}
                         </div>
                       </td>
 
@@ -1432,24 +1431,24 @@ export default function Faturamento() {
                       </td>
 
                       <td className="py-3 px-4 text-center">
-                        <span className="font-bold text-slate-900 dark:text-white">{item.plantõesRealizados} plantões</span>
-                        <div className="text-[10px] font-mono text-slate-400">{item.horasRealizadas.toFixed(1).replace('.', ',')}h totais</div>
+                        <span className="font-semibold text-slate-900 dark:text-white">{item.plantõesRealizados} plantões</span>
+                        <div className="text-[10px] tabular-nums text-slate-400">{item.horasRealizadas.toFixed(1).replace('.', ',')}h totais</div>
                         {item.remunType === 'produtividade' && (
                           <div className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">
                             {item.atendimentosApurados} atendimento(s) em dias fechados
                           </div>
                         )}
                         {item.plantõesAguardandoProducao > 0 && (
-                          <div className="mt-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-400">{item.plantõesAguardandoProducao} dia(s) pendente(s)</div>
+                          <div className="mt-1 text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">{item.plantõesAguardandoProducao} dia(s) pendente(s)</div>
                         )}
                       </td>
 
-                      <td className="py-3 px-4 font-mono">
+                      <td className="py-3 px-4 tabular-nums">
                         {formaPagto}
                       </td>
 
                       <td className="py-3 px-4 text-right">
-                        <span className="font-black text-sm text-emerald-600 dark:text-emerald-400">
+                        <span className="font-semibold text-sm text-emerald-600 dark:text-emerald-400">
                           {formatCurrency(item.valorLiquido)}
                         </span>
                         {item.awaitingProduction && (
@@ -1465,7 +1464,7 @@ export default function Faturamento() {
                           onClick={() => handleTogglePago(item.prof.id)}
                           disabled={(item.awaitingProduction && !item.isPago) || paymentSavingId === String(item.prof.id)}
                           title={item.awaitingProduction ? item.isPago ? 'O pagamento já marcado deve ser revisado após a apuração.' : 'Aguarde o lançamento da produção para conciliar o pagamento.' : undefined}
-                          className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all border disabled:cursor-not-allowed disabled:opacity-60 ${
+                          className={`px-3 py-1 rounded-full text-xs font-semibold   cursor-pointer transition-all border disabled:cursor-not-allowed disabled:opacity-60 ${
                             item.isPago 
                               ? 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800' 
                               : 'bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 hover:bg-slate-200'
@@ -1482,7 +1481,7 @@ export default function Faturamento() {
                             variant="outline" 
                             onClick={() => handlePrintIndividualReceipt(item)}
                             title={item.awaitingProduction ? 'Imprimir demonstrativo; apuração pendente e sem comprovação de pagamento' : item.isPago ? 'Imprimir recibo em 2 vias' : 'Imprimir demonstrativo; não comprova pagamento'}
-                            className="h-8 text-xs font-bold gap-1 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-white cursor-pointer"
+                            className="h-8 text-xs font-semibold gap-1 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-white cursor-pointer"
                           >
                             <Receipt className="w-3.5 h-3.5 text-emerald-600" /> {item.isPago && !item.awaitingProduction ? 'Recibo' : 'Demonstrativo'}
                           </Button>
@@ -1491,7 +1490,7 @@ export default function Faturamento() {
                             size="sm" 
                             variant="outline" 
                             onClick={() => setSelectedProfModal(item)}
-                            className="h-8 text-xs font-bold gap-1 rounded-xl cursor-pointer"
+                            className="h-8 text-xs font-semibold gap-1 rounded-xl cursor-pointer"
                           >
                             <FileText className="w-3.5 h-3.5 text-sky-600" /> Detalhar
                           </Button>
@@ -1521,7 +1520,7 @@ export default function Faturamento() {
       <Dialog open={productionEntryOpen} onOpenChange={setProductionEntryOpen}>
         <DialogContent className="max-h-[92vh] flex flex-col border-slate-200 bg-white text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-white sm:max-w-3xl">
           <DialogHeader className="shrink-0">
-            <DialogTitle className="text-base font-bold text-slate-900 dark:text-white">
+            <DialogTitle className="text-base font-semibold text-slate-900 dark:text-white">
               Atendimentos de produtividade · {MONTH_NAMES[currentMonth]} {currentYear}
             </DialogTitle>
             <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
@@ -1594,7 +1593,7 @@ export default function Faturamento() {
                           onChange={event => setProductionDraft(previous => ({ ...previous, [key]: event.target.value }))}
                           aria-label={`Atendimentos de ${professional.name} em ${formatDateBR(day.date)}`}
                           placeholder="—"
-                          className="h-9 text-right font-mono"
+                          className="h-9 text-right tabular-nums"
                         />
                       </div>
                     );
@@ -1611,7 +1610,7 @@ export default function Faturamento() {
             </span>
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={() => setProductionEntryOpen(false)} disabled={productionSaving}>Cancelar</Button>
-              <Button type="button" onClick={handleSaveDailyProduction} disabled={productionSaving || productionChanges.changes.length === 0} className="bg-indigo-600 font-bold text-white hover:bg-indigo-700">
+              <Button type="button" onClick={handleSaveDailyProduction} disabled={productionSaving || productionChanges.changes.length === 0} className="bg-indigo-600 font-semibold text-white hover:bg-indigo-700">
                 {productionSaving ? 'Salvando...' : 'Salvar'}
               </Button>
             </div>
@@ -1623,7 +1622,7 @@ export default function Faturamento() {
       <Dialog open={!!selectedProfModal} onOpenChange={() => setSelectedProfModal(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-slate-200 dark:border-slate-800">
           <DialogHeader>
-            <DialogTitle className="text-base font-black flex items-center gap-2 text-slate-900 dark:text-white">
+            <DialogTitle className="text-base font-semibold flex items-center gap-2 text-slate-900 dark:text-white">
               <Receipt className="w-5 h-5 text-emerald-600" />
               Espelho de Produção • {selectedProfModal?.prof.name}
             </DialogTitle>
@@ -1633,33 +1632,33 @@ export default function Faturamento() {
             <div className="space-y-4 py-2 text-xs">
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <div>
-                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Matrícula ID</span>
-                  <strong className="font-mono text-sm text-indigo-600 dark:text-indigo-400">{selectedProfModal.matricula}</strong>
+                  <span className="text-xs text-slate-400 block font-medium">Matrícula ID</span>
+                  <strong className="tabular-nums text-sm text-indigo-600 dark:text-indigo-400">{selectedProfModal.matricula}</strong>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Regime Contratual</span>
-                  <strong className="text-xs text-slate-900 dark:text-white block uppercase">
+                  <span className="text-xs text-slate-400 block font-medium">Regime Contratual</span>
+                  <strong className="text-xs text-slate-900 dark:text-white block">
                     {selectedProfModal.remunType === 'mensal' ? 'Fixo Mensal' : selectedProfModal.remunType === 'produtividade' ? 'Produtividade' : 'Plantão Dinâmico'}
                   </strong>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Plantões Realizados</span>
+                  <span className="text-xs text-slate-400 block font-medium">Plantões Realizados</span>
                   <strong className="text-sm">{selectedProfModal.plantõesRealizados} plantões</strong>
                 </div>
                 {selectedProfModal.remunType === 'produtividade' && (
                   <div>
-                    <span className="text-[10px] text-slate-400 block uppercase font-bold">Atendimentos Apurados</span>
+                    <span className="text-xs text-slate-400 block font-medium">Atendimentos Apurados</span>
                     <strong className="text-sm">{selectedProfModal.atendimentosApurados}</strong>
                   </div>
                 )}
                 <div>
-                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Líquido Apurado</span>
+                  <span className="text-xs text-slate-400 block font-medium">Líquido Apurado</span>
                   <strong className="text-sm text-emerald-600 dark:text-emerald-400">{formatCurrency(selectedProfModal.valorLiquido)}</strong>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <span className="font-black uppercase text-slate-500 text-[11px] block">Extrato de Plantões (Realizados vs Programados)</span>
+                <span className="font-medium text-slate-500 text-xs block">Extrato de Plantões (Realizados vs Programados)</span>
                 <div className="max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800">
                   {selectedProfModal.plantõesList.length === 0 ? (
                     <div className="p-4 text-center text-slate-400">Nenhum plantão localizado na grade deste mês.</div>
@@ -1668,10 +1667,10 @@ export default function Faturamento() {
                       <div key={p.id} className="p-2.5 flex flex-col sm:flex-row sm:items-center justify-between text-xs hover:bg-slate-50 dark:hover:bg-slate-900/50 gap-2">
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 dark:text-white">
+                            <span className="font-semibold text-slate-900 dark:text-white">
                               {new Date(p.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
                             </span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-black uppercase ${p.isRealizado ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
+                            <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${p.isRealizado ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
                               {p.isRealizado ? 'Realizado' : 'A Realizar'}
                             </span>
                           </div>
@@ -1680,16 +1679,16 @@ export default function Faturamento() {
                         
                         <div className="flex items-center gap-3 justify-between sm:justify-end">
                           {selectedProfModal.remunType === 'plantao' && p.isRealizado && (
-                            <span className={`text-[10px] font-bold ${p.tarifaPendente ? 'text-amber-600' : 'text-slate-500'}`}>
+                            <span className={`text-[10px] font-semibold ${p.tarifaPendente ? 'text-amber-600' : 'text-slate-500'}`}>
                               {p.tarifaPendente ? 'Tarifa não cadastrada' : p.aguardandoProducao ? 'Aguardando lançamento da produção' : `Apurado: ${formatCurrency(p.valorAplicado)}`}
                             </span>
                           )}
                           {['produtividade', 'production'].includes(selectedProfModal.remunType) && p.isRealizado && (
-                            <span className={`text-[10px] font-bold ${p.aguardandoProducao ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                            <span className={`text-[10px] font-semibold ${p.aguardandoProducao ? 'text-amber-600 dark:text-amber-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
                               Atendimentos: {p.atendimentoDia ?? 'não lançado'} · {p.aguardandoProducao ? 'Aguardando apuração diária' : `Rateio: ${formatCurrency(p.valorAplicado)}`}
                             </span>
                           )}
-                          <span className="font-mono font-bold text-sky-600 bg-sky-50 dark:bg-sky-950/30 px-2 py-1 rounded-lg">
+                          <span className="tabular-nums font-semibold text-sky-600 bg-sky-50 dark:bg-sky-950/30 px-2 py-1 rounded-lg">
                             {p.duration}h
                           </span>
                         </div>
@@ -1703,12 +1702,12 @@ export default function Faturamento() {
                 <Button 
                   variant="outline" 
                   onClick={() => handlePrintIndividualReceipt(selectedProfModal)}
-                  className="h-9 text-xs font-black gap-1.5 cursor-pointer"
+                  className="h-9 text-xs font-semibold gap-1.5 cursor-pointer"
                 >
                   <Receipt className="w-3.5 h-3.5 text-emerald-600" /> {selectedProfModal.isPago ? 'Imprimir recibo' : 'Imprimir demonstrativo'}
                 </Button>
                 
-                <Button onClick={() => handleSendStatementWhatsApp(selectedProfModal)} className="h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-5 gap-2 cursor-pointer">
+                <Button onClick={() => handleSendStatementWhatsApp(selectedProfModal)} className="h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-5 gap-2 cursor-pointer">
                   <Send className="w-3.5 h-3.5" /> Enviar WhatsApp
                 </Button>
               </div>

@@ -4,7 +4,7 @@
 // - Arquivos do build (/assets/*, com hash no nome) e ícones: servidos do cache após o 1º acesso.
 // - Dados (Supabase e qualquer outro domínio) NUNCA passam pelo cache: escalas e valores
 //   são sempre lidos ao vivo, para não exibir informação desatualizada.
-const CACHE = 'scalemedic-v3';
+const CACHE = 'scalemedic-v4';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', event => {

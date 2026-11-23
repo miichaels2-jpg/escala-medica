@@ -1653,10 +1653,10 @@ export default function Relatorios() {
           <tbody>
             ${productivityReport.days.map(day => `
               <tr>
-                <td class="font-bold">${formatDate(day.date)}</td>
+                <td class="font-semibold">${formatDate(day.date)}</td>
                 <td class="text-center">${day.complete ? formatNumber(day.totalAttendance) : 'Pendente'}</td>
                 <td class="text-center">${day.items.reduce((sum, item) => sum + item.shifts, 0)}</td>
-                <td class="text-right font-bold">${day.complete ? formatCurrency(day.totalAttendance > 0 ? day.poolAmount : 0) : '—'}</td>
+                <td class="text-right font-semibold">${day.complete ? formatCurrency(day.totalAttendance > 0 ? day.poolAmount : 0) : '—'}</td>
                 <td class="text-right">${day.complete && day.totalAttendance > 0 ? formatCurrency(day.poolAmount / day.totalAttendance) : '—'}</td>
                 <td>${getProductivityDayStatus(day)}</td>
               </tr>
@@ -1669,7 +1669,7 @@ export default function Relatorios() {
           <tbody>
             ${productivityReport.rows.map(row => `
               <tr>
-                <td class="font-bold">${formatDate(row.date)}</td>
+                <td class="font-semibold">${formatDate(row.date)}</td>
                 <td>${titleCase(row.professional.name)}</td>
                 <td>${row.professional.specialty || '—'}</td>
                 <td>${row.sectors}</td>
@@ -1678,7 +1678,7 @@ export default function Relatorios() {
                 <td class="text-center">${row.attendance ?? 'Não lançado'}</td>
                 <td class="text-right">${row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
                 <td class="text-right">${row.complete ? formatCurrency(productivityReport.days.find(day => day.date === row.date)?.totalAttendance > 0 ? productivityReport.dailyPool : 0) : '—'}</td>
-                <td class="text-right font-bold">${row.complete ? formatCurrency(row.amount) : '—'}</td>
+                <td class="text-right font-semibold">${row.complete ? formatCurrency(row.amount) : '—'}</td>
                 <td>${row.complete ? 'Rateado' : row.pendingReason}</td>
               </tr>
             `).join('')}
@@ -1690,11 +1690,11 @@ export default function Relatorios() {
           <tbody>
             ${productivityReport.professionalTotals.map(item => `
               <tr>
-                <td class="font-bold">${titleCase(item.professional.name)}</td>
+                <td class="font-semibold">${titleCase(item.professional.name)}</td>
                 <td>${item.professional.specialty || '—'}</td>
                 <td class="text-center">${item.shifts}</td>
                 <td class="text-center">${formatNumber(item.attendance)}</td>
-                <td class="text-right font-bold">${formatCurrency(item.amount)}</td>
+                <td class="text-right font-semibold">${formatCurrency(item.amount)}</td>
                 <td class="text-center">${item.pendingDays}</td>
                 <td>${item.pendingDays ? 'Saldo parcial' : 'Completo'}</td>
               </tr>
@@ -1731,13 +1731,13 @@ export default function Relatorios() {
               const day = productivityReport.days.find(item => item.date === row.date);
               return `
                 <tr>
-                  <td class="font-bold">${formatDate(row.date)}</td>
+                  <td class="font-semibold">${formatDate(row.date)}</td>
                   <td>${row.sectors}</td>
                   <td class="text-center">${row.shifts}</td>
                   <td class="text-center">${row.attendance ?? 'Não lançado'}</td>
                   <td class="text-center">${row.complete ? formatNumber(day?.totalAttendance) : 'Pendente'}</td>
                   <td class="text-right">${row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
-                  <td class="text-right font-bold">${row.complete ? formatCurrency(row.amount) : '—'}</td>
+                  <td class="text-right font-semibold">${row.complete ? formatCurrency(row.amount) : '—'}</td>
                   <td>${row.complete ? 'Rateado' : `Pendente · ${row.pendingReason}`}</td>
                 </tr>
               `;
@@ -1820,37 +1820,34 @@ export default function Relatorios() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans transition-colors duration-300">
       
       {/* TOPO EXECUTIVO */}
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 md:p-6 shadow-sm flex flex-col xl:flex-row xl:items-center justify-between gap-5 transition-colors duration-300">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-sky-600 dark:text-cyan-400">
-            <Activity className="w-4 h-4 text-sky-600 dark:text-cyan-400" /> {hospitalName} · RELATÓRIOS GERENCIAIS
-          </div>
-          <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 flex flex-col xl:flex-row xl:items-center justify-between gap-4 sm:gap-6">
+        <div className="space-y-1">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
             Central de Relatórios & BI Hospitalar
           </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium max-w-2xl">
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
             Filtre períodos personalizados para auditoria de produtividade, furos de escala, corpo clínico e consolidação de custos.
           </p>
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch gap-2 shrink-0">
-          <Button onClick={() => triggerExcelExport('current')} variant="outline" disabled={!hasSearched || (activeTab === 'produtividade_profissional' && !productivityProfessionalReportReady)} className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-white font-bold text-xs px-4 rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer shadow-sm disabled:opacity-50 transition-colors">
+          <Button onClick={() => triggerExcelExport('current')} variant="outline" disabled={!hasSearched || (activeTab === 'produtividade_profissional' && !productivityProfessionalReportReady)} className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-white font-semibold text-xs px-4 rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer shadow-sm disabled:opacity-50 transition-colors">
             <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Exportar aba para Excel
           </Button>
-          <Button onClick={() => triggerPrint('current')} disabled={!hasSearched || (activeTab === 'produtividade_profissional' && !productivityProfessionalReportReady)} className="bg-sky-600 hover:bg-sky-700 dark:bg-cyan-700 dark:hover:bg-cyan-600 text-white font-bold text-xs px-4 rounded-xl shadow-md gap-2 cursor-pointer disabled:opacity-50 border border-sky-500 dark:border-cyan-500/50 transition-colors">
+          <Button onClick={() => triggerPrint('current')} disabled={!hasSearched || (activeTab === 'produtividade_profissional' && !productivityProfessionalReportReady)} className="bg-sky-600 hover:bg-sky-700 dark:bg-cyan-700 dark:hover:bg-cyan-600 text-white font-semibold text-xs px-4 rounded-xl shadow-sm gap-2 cursor-pointer disabled:opacity-50 border border-sky-500 dark:border-cyan-500/50 transition-colors">
             <PrinterIcon className="w-4 h-4" /> Imprimir / Salvar PDF
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[250px_minmax(0,1fr)] lg:items-start">
-        <aside className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-3 shadow-sm">
+        <aside className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm">
           <div className="hidden px-3 pb-3 pt-2 lg:block">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Navegação</p>
-            <h2 className="mt-1 text-sm font-black text-slate-900 dark:text-white">Escolha um relatório</h2>
+            <p className="text-xs font-medium text-slate-400">Navegação</p>
+            <h2 className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">Escolha um relatório</h2>
           </div>
           <nav aria-label="Relatórios disponíveis" className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
             {reportNavigation.map(({ id, label, description, icon: Icon }) => {
@@ -1875,7 +1872,7 @@ export default function Relatorios() {
                     <Icon className="h-4 w-4" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-xs font-black">{label}</span>
+                    <span className="block truncate text-xs font-semibold">{label}</span>
                     <span className={`mt-0.5 block truncate text-[10px] ${
                       isActive ? 'text-sky-700/80 dark:text-cyan-200/70' : 'text-slate-400 dark:text-slate-500'
                     }`}>{description}</span>
@@ -1891,26 +1888,26 @@ export default function Relatorios() {
 
         <main className="min-w-0 space-y-5">
       {/* PAINEL DE FILTROS PERSONALIZÁVEL */}
-      <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-md space-y-4 transition-colors">
+      <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 transition-colors">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-3">
-          <span className="text-xs font-black uppercase tracking-wider text-sky-600 dark:text-cyan-400 flex items-center gap-2">
+          <span className="text-xs font-semibold text-sky-600 dark:text-cyan-400 flex items-center gap-2">
             <Filter className="w-4 h-4 text-sky-600 dark:text-cyan-400" /> Filtros do relatório
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-7 gap-3 items-end">
           <div className="space-y-1.5">
-            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Data Inicial</Label>
-            <Input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 dark:[color-scheme:dark] transition-colors" />
+            <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Data Inicial</Label>
+            <Input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 dark:[color-scheme:dark] transition-colors" />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Data Final</Label>
-            <Input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 dark:[color-scheme:dark] transition-colors" />
+            <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Data Final</Label>
+            <Input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 dark:[color-scheme:dark] transition-colors" />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Setor Clínico</Label>
+            <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Setor Clínico</Label>
             <Select value={selectedSector} onValueChange={setSelectedSector}>
-              <SelectTrigger className="h-11 text-xs font-bold bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
+              <SelectTrigger className="h-11 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white z-[99999] max-h-[300px]">
@@ -1924,9 +1921,9 @@ export default function Relatorios() {
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Status profissional</Label>
+            <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Status profissional</Label>
             <Select value={profStatusFilter} onValueChange={setProfStatusFilter}>
-              <SelectTrigger className="h-11 text-xs font-bold bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
+              <SelectTrigger className="h-11 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white z-[99999]">
@@ -1937,11 +1934,11 @@ export default function Relatorios() {
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Busca</Label>
-            <Input placeholder="Profissional ou setor..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:border-sky-500 dark:focus:border-cyan-500 transition-colors" />
+            <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Busca</Label>
+            <Input placeholder="Profissional ou setor..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:border-sky-500 dark:focus:border-cyan-500 transition-colors" />
           </div>
           <div>
-            <Button onClick={handleApplyFilters} className="w-full h-11 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs rounded-xl shadow-lg gap-2 cursor-pointer transition-colors border-none dark:border-solid dark:border-cyan-500/50">
+            <Button onClick={handleApplyFilters} className="w-full h-11 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-semibold text-xs rounded-xl shadow-sm gap-2 cursor-pointer transition-colors border-none dark:border-solid dark:border-cyan-500/50">
               <Check className="w-4 h-4" /> Aplicar filtros
             </Button>
           </div>
@@ -1950,7 +1947,7 @@ export default function Relatorios() {
               type="button"
               variant="outline"
               onClick={handleClearFilters}
-              className="w-full h-11 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer transition-colors"
+              className="w-full h-11 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer transition-colors"
             >
               <RotateCcw className="w-4 h-4" /> Limpar filtros
             </Button>
@@ -1960,24 +1957,24 @@ export default function Relatorios() {
 
       {/* ESTADO INICIAL */}
       {!hasSearched ? (
-        <Card className="p-10 md:p-16 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-[#1e293b]/50 text-center space-y-4 shadow-sm transition-colors">
+        <Card className="p-10 md:p-16 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/50 text-center space-y-4 shadow-sm transition-colors">
           <div className="w-16 h-16 rounded-2xl bg-sky-50 dark:bg-cyan-500/10 text-sky-500 dark:text-cyan-400 flex items-center justify-center mx-auto border border-sky-100 dark:border-cyan-500/20">
             <Filter className="w-8 h-8" />
           </div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-600 dark:text-cyan-400">{REPORT_TITLES[activeTab]}</p>
-            <h3 className="mt-2 text-xl font-black text-slate-900 dark:text-white tracking-tight">Relatório pronto para configurar</h3>
+            <p className="text-xs font-semibold text-sky-600 dark:text-cyan-400">{REPORT_TITLES[activeTab]}</p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-900 dark:text-white tracking-tight">Relatório pronto para configurar</h3>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">Defina o período e os filtros desta consulta. O relatório selecionado será exibido e poderá ser exportado ou impresso individualmente.</p>
         </Card>
       ) : (
         <div className="space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] px-4 py-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3">
             <div>
-              <h2 className="text-sm font-black text-slate-900 dark:text-white">{REPORT_TITLES[activeTab] || 'Relatório'}</h2>
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{REPORT_TITLES[activeTab] || 'Relatório'}</h2>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{periodLabel} · {filterSummary}</p>
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
               {activeTab === 'bi' ? `${filteredShifts.length} plantões no período` :
                 activeTab === 'escalas' ? `${filteredShifts.length} plantões` :
                 activeTab === 'trocas' ? `${swapsList.length} repasses` :
@@ -2028,28 +2025,28 @@ export default function Relatorios() {
             {activeTab === 'executivo' && (
               <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg relative overflow-hidden group transition-colors">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Total de Plantões</p>
-                    <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{formatNumber(totalShiftsCount)}</p>
-                    <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-bold flex flex-col gap-1">
+                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm relative overflow-hidden group transition-colors">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Total de Plantões</p>
+                    <p className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white tabular-nums tracking-tight">{formatNumber(totalShiftsCount)}</p>
+                    <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-medium flex flex-col gap-1">
                       <span className="text-emerald-600 dark:text-teal-400">{filledShiftsCount} Ocupados</span>
                       {vacantShiftsCount > 0 && <span className="text-rose-600 dark:text-rose-400">{vacantShiftsCount} Furos/Vagos</span>}
                     </div>
                   </Card>
-                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg relative overflow-hidden group transition-colors">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Taxa de Ocupação Real</p>
-                    <p className={`mt-2 text-3xl font-black font-mono tracking-tight ${coverageRate >= 98 ? 'text-emerald-600 dark:text-emerald-400' : coverageRate >= 90 ? 'text-amber-500 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>{coverageRate}%</p>
-                    <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-bold">Meta Hospitalar: &gt; 98%</div>
+                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm relative overflow-hidden group transition-colors">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Taxa de Ocupação Real</p>
+                    <p className={`mt-2 text-3xl font-semibold tabular-nums tracking-tight ${coverageRate >= 98 ? 'text-emerald-600 dark:text-emerald-400' : coverageRate >= 90 ? 'text-amber-500 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>{coverageRate}%</p>
+                    <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-medium">Meta Hospitalar: &gt; 98%</div>
                   </Card>
-                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg relative overflow-hidden group transition-colors">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Custo das escalas ocupadas</p>
-                    <p className="mt-2 text-3xl font-black text-amber-600 dark:text-amber-400 font-mono tracking-tight">{formatCurrency(financialSummary.totalCost)}</p>
-                    <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-bold">{formatNumber(financialSummary.hours)} Horas Calculadas</div>
+                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm relative overflow-hidden group transition-colors">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Custo das escalas ocupadas</p>
+                    <p className="mt-2 text-3xl font-semibold text-amber-600 dark:text-amber-400 tabular-nums tracking-tight">{formatCurrency(financialSummary.totalCost)}</p>
+                    <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-medium">{formatNumber(financialSummary.hours)} Horas Calculadas</div>
                   </Card>
-                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-5 shadow-sm dark:shadow-lg relative overflow-hidden group transition-colors">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Profissionais Filtrados</p>
-                    <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white font-mono tracking-tight">{filteredProfessionals.length}</p>
-                    <div className="mt-3 text-[10px] text-slate-500 dark:text-slate-400 font-bold flex flex-col gap-0.5">
+                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm relative overflow-hidden group transition-colors">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Profissionais Filtrados</p>
+                    <p className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white tabular-nums tracking-tight">{filteredProfessionals.length}</p>
+                    <div className="mt-3 text-[10px] text-slate-500 dark:text-slate-400 font-medium flex flex-col gap-0.5">
                        <span className={credentialAudit.expired > 0 ? 'text-rose-600 dark:text-rose-400' : ''}>{credentialAudit.expired} Docs Vencidos</span>
                        <span className="text-amber-600 dark:text-amber-400">{credentialAudit.nearExpiry} Vencem em 30d</span>
                     </div>
@@ -2057,10 +2054,10 @@ export default function Relatorios() {
                 </div>
 
                 {vacantShiftItems.length > 0 && (
-                  <Card className="rounded-3xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-950/20 p-6 shadow-sm dark:shadow-lg transition-colors">
+                  <Card className="rounded-3xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-950/20 p-6 shadow-sm transition-colors">
                     <div className="flex items-center gap-3 border-b border-rose-200 dark:border-rose-500/20 pb-4">
                       <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-500 animate-pulse" />
-                      <h3 className="text-sm font-black uppercase tracking-widest text-rose-800 dark:text-rose-400">Ocorrências: Furos de Escala ou Vagas em Aberto ({vacantShiftItems.length})</h3>
+                      <h3 className="text-sm font-semibold text-rose-800 dark:text-rose-400">Ocorrências: Furos de Escala ou Vagas em Aberto ({vacantShiftItems.length})</h3>
                     </div>
                     <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {vacantShiftItems.slice(0, 15).map((v, i) => {
@@ -2069,13 +2066,13 @@ export default function Relatorios() {
                           <div key={i} className={`p-3 rounded-2xl border flex items-center justify-between shadow-sm transition-colors ${
                             isPast 
                               ? 'bg-rose-100 dark:bg-rose-950/50 border-rose-300 dark:border-rose-500/50' 
-                              : 'bg-amber-50 dark:bg-[#1e293b] border-amber-200 dark:border-amber-500/30'
+                              : 'bg-amber-50 dark:bg-slate-900 border-amber-200 dark:border-amber-500/30'
                           }`}>
                             <div>
                               <strong className="text-xs text-slate-900 dark:text-white block">{getSectorName(v, sectors)}</strong>
                               <span className="text-[10px] text-slate-500 dark:text-slate-400">Data: {formatDate(v.date)}</span>
                             </div>
-                            <span className={`font-mono text-[10px] font-bold px-2 py-1 rounded-lg border ${
+                            <span className={`tabular-nums text-[10px] font-semibold px-2 py-1 rounded-lg border ${
                               isPast 
                                 ? 'bg-rose-200 dark:bg-rose-500/20 text-rose-800 dark:text-rose-400 border-rose-300 dark:border-rose-500/30' 
                                 : 'bg-amber-100 dark:bg-amber-500/10 text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-500/30'
@@ -2086,7 +2083,7 @@ export default function Relatorios() {
                         );
                       })}
                       {vacantShiftItems.length > 15 && (
-                        <div className="p-3 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-xs text-slate-500 dark:text-slate-400 font-bold transition-colors">
+                        <div className="p-3 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-xs text-slate-500 dark:text-slate-400 font-semibold transition-colors">
                           + {vacantShiftItems.length - 15} registros na aba Escalas
                         </div>
                       )}
@@ -2098,16 +2095,16 @@ export default function Relatorios() {
 
             {/* ABA ESCALAS */}
             {activeTab === 'escalas' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-black text-sm uppercase tracking-widest text-sky-600 dark:text-cyan-400 flex items-center gap-2">
+                  <h3 className="font-semibold text-sm text-sky-600 dark:text-cyan-400 flex items-center gap-2">
                     <CalendarDays className="w-5 h-5" /> Extrato de Escalas ({filteredShifts.length})
                   </h3>
                 </div>
                 <div className="overflow-x-auto mt-4">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 dark:text-slate-500 tracking-wider">
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500 dark:text-slate-500">
                         <th className="py-3 px-3">Data</th>
                         <th className="py-3 px-3">Setor</th>
                         <th className="py-3 px-3">Profissional Alocado</th>
@@ -2137,11 +2134,11 @@ export default function Relatorios() {
 
                         return (
                           <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                            <td className="py-3 px-3 font-bold font-mono text-slate-700 dark:text-slate-300">{formatDate(s.date)}</td>
+                            <td className="py-3 px-3 font-semibold tabular-nums text-slate-700 dark:text-slate-300">{formatDate(s.date)}</td>
                             <td className="py-3 px-3 text-slate-600 dark:text-slate-300">{getSectorName(s, sectors)}</td>
-                            <td className={`py-3 px-3 font-black text-slate-900 dark:text-white`}>{profNameRender}</td>
-                            <td className="py-3 px-3 font-mono text-slate-500 dark:text-slate-400">{s.start_time || '07:00'} - {s.end_time || '19:00'}</td>
-                            <td className="py-3 px-3"><span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${badgeClass}`}>{badgeText}</span></td>
+                            <td className={`py-3 px-3 font-semibold text-slate-900 dark:text-white`}>{profNameRender}</td>
+                            <td className="py-3 px-3 tabular-nums text-slate-500 dark:text-slate-400">{s.start_time || '07:00'} - {s.end_time || '19:00'}</td>
+                            <td className="py-3 px-3"><span className={`px-2.5 py-1 rounded-md text-xs font-semibold border ${badgeClass}`}>{badgeText}</span></td>
                           </tr>
                         );
                       })}
@@ -2156,16 +2153,16 @@ export default function Relatorios() {
 
             {/* NOVA ABA: TROCAS E MURAL */}
             {activeTab === 'trocas' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-black text-sm uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                  <h3 className="font-semibold text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
                     <ArrowLeftRight className="w-5 h-5" /> Histórico de Trocas e Repasses ({swapsList.length})
                   </h3>
                 </div>
                 <div className="overflow-x-auto mt-4">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500">
                         <th className="py-3 px-3">Data</th>
                         <th className="py-3 px-3">Setor Clínico</th>
                         <th className="py-3 px-3 text-center">Horário</th>
@@ -2177,13 +2174,13 @@ export default function Relatorios() {
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
                       {swapsList.map((s, idx) => (
                         <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                          <td className="py-3 px-3 font-bold font-mono text-slate-700 dark:text-slate-300">{formatDate(s.date)}</td>
+                          <td className="py-3 px-3 font-semibold tabular-nums text-slate-700 dark:text-slate-300">{formatDate(s.date)}</td>
                           <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{getSectorName(s, sectors)}</td>
-                          <td className="py-3 px-3 font-mono text-center text-slate-500 dark:text-slate-400">{s.start_time} - {s.end_time}</td>
-                          <td className="py-3 px-3 font-bold text-rose-600 dark:text-rose-400">{s.requester}</td>
-                          <td className="py-3 px-3 font-bold text-emerald-600 dark:text-emerald-400">{s.currentProf}</td>
+                          <td className="py-3 px-3 tabular-nums text-center text-slate-500 dark:text-slate-400">{s.start_time} - {s.end_time}</td>
+                          <td className="py-3 px-3 font-semibold text-rose-600 dark:text-rose-400">{s.requester}</td>
+                          <td className="py-3 px-3 font-semibold text-emerald-600 dark:text-emerald-400">{s.currentProf}</td>
                           <td className="py-3 px-3 text-center">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${s.isPending ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400' : 'bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-400'}`}>
+                            <span className={`px-2 py-0.5 rounded text-xs font-semibold ${s.isPending ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400' : 'bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-400'}`}>
                               {s.swapStatus}
                             </span>
                           </td>
@@ -2200,16 +2197,16 @@ export default function Relatorios() {
 
             {/* ABA BASE DE SETORES */}
             {activeTab === 'base_setores' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-black text-sm uppercase tracking-widest text-sky-600 dark:text-sky-400 flex items-center gap-2">
+                  <h3 className="font-semibold text-sm text-sky-600 dark:text-sky-400 flex items-center gap-2">
                     <Building2 className="w-5 h-5" /> Estrutura de Setores ({enrichedSectors.length})
                   </h3>
                 </div>
                 <div className="overflow-x-auto mt-4">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500">
                         <th className="py-3 px-3">Nome do Setor</th>
                         <th className="py-3 px-3">Especialidade Exigida</th>
                         <th className="py-3 px-3">Status</th>
@@ -2220,15 +2217,15 @@ export default function Relatorios() {
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
                       {enrichedSectors.map((s, idx) => (
                         <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                          <td className="py-3 px-3 font-bold text-slate-900 dark:text-white">{titleCase(s.name)}</td>
+                          <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">{titleCase(s.name)}</td>
                           <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{s.specialty || 'Não definida'}</td>
                           <td className="py-3 px-3">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${normalize(s.status) === 'inativo' ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-400' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>
+                            <span className={`px-2 py-0.5 rounded text-xs font-semibold ${normalize(s.status) === 'inativo' ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-400' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>
                               {s.status || 'Ativo'}
                             </span>
                           </td>
-                          <td className="py-3 px-3 text-center font-mono font-bold text-slate-900 dark:text-white">{s.shiftsCount}</td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-amber-600 dark:text-amber-400">{formatCurrency(s.totalCost)}</td>
+                          <td className="py-3 px-3 text-center tabular-nums font-semibold text-slate-900 dark:text-white">{s.shiftsCount}</td>
+                          <td className="py-3 px-3 text-right tabular-nums font-semibold text-amber-600 dark:text-amber-400">{formatCurrency(s.totalCost)}</td>
                         </tr>
                       ))}
                       {enrichedSectors.length === 0 && (
@@ -2242,16 +2239,16 @@ export default function Relatorios() {
 
             {/* ABA BASE DE PROFISSIONAIS */}
             {activeTab === 'base_profissionais' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-black text-sm uppercase tracking-widest text-sky-600 dark:text-sky-400 flex items-center gap-2">
+                  <h3 className="font-semibold text-sm text-sky-600 dark:text-sky-400 flex items-center gap-2">
                     <Contact2 className="w-5 h-5" /> Base do Corpo Clínico ({filteredProfessionals.length})
                   </h3>
                 </div>
                 <div className="overflow-x-auto mt-4">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500">
                         <th className="py-3 px-3">Nome Completo</th>
                         <th className="py-3 px-3">Especialidade</th>
                         <th className="py-3 px-3">Remuneração · {hospitalName}</th>
@@ -2266,15 +2263,15 @@ export default function Relatorios() {
                         const isExpired = expiryDate && new Date(expiryDate) < new Date();
                         return (
                           <tr key={p.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                            <td className="py-3 px-3 font-bold text-slate-900 dark:text-white">{titleCase(p.name)}</td>
+                            <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">{titleCase(p.name)}</td>
                             <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{p.specialty}</td>
-                            <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">{getProfessionalRemuneration(p, selectedUnitId)}</td>
-                            <td className="py-3 px-3 text-slate-700 dark:text-slate-300 font-mono">{p.document || '—'}</td>
-                            <td className={`py-3 px-3 font-mono ${isExpired ? 'text-rose-600 dark:text-rose-500 font-bold' : 'text-slate-500 dark:text-slate-400'}`}>
+                            <td className="py-3 px-3 text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">{getProfessionalRemuneration(p, selectedUnitId)}</td>
+                            <td className="py-3 px-3 text-slate-700 dark:text-slate-300 tabular-nums">{p.document || '—'}</td>
+                            <td className={`py-3 px-3 tabular-nums ${isExpired ? 'text-rose-600 dark:text-rose-500 font-semibold' : 'text-slate-500 dark:text-slate-400'}`}>
                               {formatDate(expiryDate)}
                             </td>
                             <td className="py-3 px-3 text-center">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${normalize(p.status) === 'inativo' ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-400' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>
+                              <span className={`px-2 py-0.5 rounded text-xs font-semibold ${normalize(p.status) === 'inativo' ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-400' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>
                                 {p.status || 'Ativo'}
                               </span>
                             </td>
@@ -2292,16 +2289,16 @@ export default function Relatorios() {
 
             {/* NOVA ABA: ANIVERSARIANTES */}
             {activeTab === 'aniversariantes' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-black text-sm uppercase tracking-widest text-rose-500 flex items-center gap-2">
+                  <h3 className="font-semibold text-sm text-rose-500 flex items-center gap-2">
                     <Gift className="w-5 h-5" /> Aniversariantes do Mês ({birthDaysList.length})
                   </h3>
                 </div>
                 <div className="overflow-x-auto mt-4">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500">
                         <th className="py-3 px-3 text-center w-24">Dia</th>
                         <th className="py-3 px-3">Profissional</th>
                         <th className="py-3 px-3 text-center">Idade</th>
@@ -2312,12 +2309,12 @@ export default function Relatorios() {
                       {birthDaysList.map((p, idx) => (
                         <tr key={p.id || idx} className="hover:bg-rose-50/50 dark:hover:bg-rose-950/20 transition-colors">
                           <td className="py-3 px-3 text-center">
-                            <span className="bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 font-black px-3 py-1 rounded-xl text-lg">
+                            <span className="bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 font-semibold px-3 py-1 rounded-xl text-lg">
                               {p.birthDayNum}
                             </span>
                           </td>
-                          <td className="py-3 px-3 font-bold text-slate-900 dark:text-white text-sm">{titleCase(p.name)}</td>
-                          <td className="py-3 px-3 text-center font-mono font-bold text-slate-500">{p.ageTurns} anos</td>
+                          <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white text-sm">{titleCase(p.name)}</td>
+                          <td className="py-3 px-3 text-center tabular-nums font-semibold text-slate-500">{p.ageTurns} anos</td>
                           <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{p.specialty}</td>
                         </tr>
                       ))}
@@ -2332,16 +2329,16 @@ export default function Relatorios() {
 
             {/* ABA PROFISSIONAIS (PRODUTIVIDADE) */}
             {activeTab === 'profissionais' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-black text-sm uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                  <h3 className="font-semibold text-sm text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
                     <Stethoscope className="w-5 h-5" /> Matriz de Produtividade Clínica ({professionalMetrics.length})
                   </h3>
                 </div>
                 <div className="overflow-x-auto mt-4">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                      <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500">
                         <th className="py-3 px-3">Profissional</th>
                         <th className="py-3 px-3">Especialidade</th>
                         <th className="py-3 px-3 text-center">Nº Plantões</th>
@@ -2352,16 +2349,16 @@ export default function Relatorios() {
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
                       {professionalMetrics.map((doc, idx) => (
                         <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                          <td className="py-3 px-3 font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
-                            <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-sky-600 dark:text-cyan-400 font-black flex items-center justify-center text-[10px] border border-slate-200 dark:border-slate-700">
+                          <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-sky-600 dark:text-cyan-400 font-semibold flex items-center justify-center text-[10px] border border-slate-200 dark:border-slate-700">
                               {doc.name.substring(0,2).toUpperCase()}
                             </div>
                             {doc.name}
                           </td>
                           <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{doc.specialty}</td>
-                          <td className="py-3 px-3 text-center font-mono font-bold text-slate-900 dark:text-white">{doc.shifts}</td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">{doc.hours}h</td>
-                          <td className="py-3 px-3 text-right font-mono font-bold text-amber-600 dark:text-amber-400">{formatCurrency(doc.cost)}</td>
+                          <td className="py-3 px-3 text-center tabular-nums font-semibold text-slate-900 dark:text-white">{doc.shifts}</td>
+                          <td className="py-3 px-3 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{doc.hours}h</td>
+                          <td className="py-3 px-3 text-right tabular-nums font-semibold text-amber-600 dark:text-amber-400">{formatCurrency(doc.cost)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -2375,7 +2372,7 @@ export default function Relatorios() {
                 {!productivityReport.available ? (
                   <Card className="rounded-3xl border border-dashed border-amber-300 bg-amber-50 p-8 text-center dark:border-amber-500/30 dark:bg-amber-950/20">
                     <AlertTriangle className="mx-auto h-8 w-8 text-amber-600 dark:text-amber-400" />
-                    <h3 className="mt-3 text-base font-black text-amber-900 dark:text-amber-200">
+                    <h3 className="mt-3 text-base font-semibold text-amber-900 dark:text-amber-200">
                       {productivityReport.error ? 'Configuração inválida' : 'Regra de produtividade não configurada para esta unidade'}
                     </h3>
                     <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">
@@ -2392,23 +2389,23 @@ export default function Relatorios() {
                         { label: 'Dias pendentes', value: formatNumber(productivityReport.totals.pendingDays), tone: 'text-amber-600 dark:text-amber-400' }
                       ].map(metric => (
                         <Card key={metric.label} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                          <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{metric.label}</p>
-                          <p className={`mt-2 text-xl font-black ${metric.tone}`}>{metric.value}</p>
+                          <p className="text-xs font-medium text-slate-500">{metric.label}</p>
+                          <p className={`mt-2 text-xl font-semibold ${metric.tone}`}>{metric.value}</p>
                         </Card>
                       ))}
                     </div>
 
-                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#1e293b]">
+                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                       <div className="mb-4 flex flex-col gap-2 border-b border-slate-100 pb-3 dark:border-slate-700/50 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <h3 className="text-sm font-black uppercase tracking-wider text-sky-700 dark:text-cyan-400">Fechamento diário da regra</h3>
+                          <h3 className="text-sm font-semibold text-sky-700 dark:text-cyan-400">Fechamento diário da regra</h3>
                           <p className="mt-1 text-[11px] text-slate-500">Pool configurado: {formatCurrency(productivityReport.dailyPool)} por dia. O rateio usa todos os profissionais produtivos da unidade, independentemente dos filtros de exibição.</p>
                         </div>
-                        <span className="text-[10px] font-bold text-slate-500">{hospitalName}</span>
+                        <span className="text-[10px] font-medium text-slate-500">{hospitalName}</span>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs">
-                          <thead className="border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 dark:border-slate-700">
+                          <thead className="border-b border-slate-200 text-xs font-medium text-slate-500 dark:border-slate-700">
                             <tr>
                               <th className="py-3 pr-3">Data</th>
                               <th className="py-3 px-3 text-right">Atendimentos</th>
@@ -2421,12 +2418,12 @@ export default function Relatorios() {
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                             {productivityReport.days.map(day => (
                               <tr key={day.date}>
-                                <td className="py-3 pr-3 font-bold">{formatDate(day.date)}</td>
-                                <td className="py-3 px-3 text-right font-mono">{day.complete ? formatNumber(day.totalAttendance) : 'Pendente'}</td>
-                                <td className="py-3 px-3 text-right font-mono">{day.items.reduce((sum, item) => sum + item.shifts, 0)}</td>
-                                <td className="py-3 px-3 text-right font-mono font-bold">{day.complete ? formatCurrency(day.totalAttendance > 0 ? day.poolAmount : 0) : '—'}</td>
-                                <td className="py-3 px-3 text-right font-mono">{day.complete && day.totalAttendance > 0 ? formatCurrency(day.poolAmount / day.totalAttendance) : '—'}</td>
-                                <td className={`py-3 pl-3 text-right font-bold ${day.complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                <td className="py-3 pr-3 font-semibold">{formatDate(day.date)}</td>
+                                <td className="py-3 px-3 text-right tabular-nums">{day.complete ? formatNumber(day.totalAttendance) : 'Pendente'}</td>
+                                <td className="py-3 px-3 text-right tabular-nums">{day.items.reduce((sum, item) => sum + item.shifts, 0)}</td>
+                                <td className="py-3 px-3 text-right tabular-nums font-semibold">{day.complete ? formatCurrency(day.totalAttendance > 0 ? day.poolAmount : 0) : '—'}</td>
+                                <td className="py-3 px-3 text-right tabular-nums">{day.complete && day.totalAttendance > 0 ? formatCurrency(day.poolAmount / day.totalAttendance) : '—'}</td>
+                                <td className={`py-3 pl-3 text-right font-semibold ${day.complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
                                   {getProductivityDayStatus(day)}
                                 </td>
                               </tr>
@@ -2437,14 +2434,14 @@ export default function Relatorios() {
                       </div>
                     </Card>
 
-                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#1e293b]">
+                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                       <div className="mb-4 border-b border-slate-100 pb-3 dark:border-slate-700/50">
-                        <h3 className="text-sm font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-400">Rateio por profissional e dia</h3>
+                        <h3 className="text-sm font-semibold text-indigo-700 dark:text-indigo-400">Rateio por profissional e dia</h3>
                         <p className="mt-1 text-[11px] text-slate-500">Valor individual = atendimentos do profissional × pool diário ÷ atendimentos totais do dia. Os valores só são liberados quando todos os registros do dia estão completos e os plantões terminaram.</p>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs">
-                          <thead className="border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 dark:border-slate-700">
+                          <thead className="border-b border-slate-200 text-xs font-medium text-slate-500 dark:border-slate-700">
                             <tr>
                               <th className="py-3 pr-3">Data</th>
                               <th className="py-3 px-3">Profissional</th>
@@ -2461,15 +2458,15 @@ export default function Relatorios() {
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                             {productivityReport.rows.map((row, index) => (
                               <tr key={`${row.date}:${row.professional.id}:${index}`}>
-                                <td className="py-3 pr-3 font-bold">{formatDate(row.date)}</td>
+                                <td className="py-3 pr-3 font-semibold">{formatDate(row.date)}</td>
                                 <td className="py-3 px-3 font-semibold">{row.professional.name}</td>
                                 <td className="py-3 px-3 text-slate-500">{row.sectors}</td>
-                                <td className="py-3 px-3 text-right font-mono">{row.shifts}</td>
-                                <td className="py-3 px-3 text-right font-mono">{row.complete ? formatNumber(productivityReport.days.find(day => day.date === row.date)?.totalAttendance) : 'Pendente'}</td>
-                                <td className="py-3 px-3 text-right font-mono">{row.attendance ?? '—'}</td>
-                                <td className="py-3 px-3 text-right font-mono">                                {row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
-                                <td className="py-3 px-3 text-right font-mono">{row.complete ? formatCurrency(productivityReport.dailyPool) : '—'}</td>
-                                <td className="py-3 px-3 text-right font-mono font-bold">{row.complete ? formatCurrency(row.amount) : '—'}</td>
+                                <td className="py-3 px-3 text-right tabular-nums">{row.shifts}</td>
+                                <td className="py-3 px-3 text-right tabular-nums">{row.complete ? formatNumber(productivityReport.days.find(day => day.date === row.date)?.totalAttendance) : 'Pendente'}</td>
+                                <td className="py-3 px-3 text-right tabular-nums">{row.attendance ?? '—'}</td>
+                                <td className="py-3 px-3 text-right tabular-nums">                                {row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
+                                <td className="py-3 px-3 text-right tabular-nums">{row.complete ? formatCurrency(productivityReport.dailyPool) : '—'}</td>
+                                <td className="py-3 px-3 text-right tabular-nums font-semibold">{row.complete ? formatCurrency(row.amount) : '—'}</td>
                                 <td className={`py-3 pl-3 text-right font-semibold ${row.complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
                                   {row.complete ? 'Rateado' : row.pendingReason}
                                 </td>
@@ -2481,11 +2478,11 @@ export default function Relatorios() {
                       </div>
                     </Card>
 
-                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#1e293b]">
-                      <h3 className="mb-4 border-b border-slate-100 pb-3 text-sm font-black uppercase tracking-wider text-emerald-700 dark:border-slate-700/50 dark:text-emerald-400">Acumulado por profissional no período</h3>
+                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                      <h3 className="mb-4 border-b border-slate-100 pb-3 text-sm font-semibold text-emerald-700 dark:border-slate-700/50 dark:text-emerald-400">Acumulado por profissional no período</h3>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs">
-                          <thead className="border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 dark:border-slate-700">
+                          <thead className="border-b border-slate-200 text-xs font-medium text-slate-500 dark:border-slate-700">
                             <tr>
                               <th className="py-3 pr-3">Profissional</th>
                               <th className="py-3 px-3 text-right">Plantões</th>
@@ -2497,10 +2494,10 @@ export default function Relatorios() {
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                             {productivityReport.professionalTotals.map(item => (
                               <tr key={item.professional.id}>
-                                <td className="py-3 pr-3 font-bold">{item.professional.name}</td>
-                                <td className="py-3 px-3 text-right font-mono">{item.shifts}</td>
-                                <td className="py-3 px-3 text-right font-mono">{formatNumber(item.attendance)}</td>
-                                <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(item.amount)}</td>
+                                <td className="py-3 pr-3 font-semibold">{item.professional.name}</td>
+                                <td className="py-3 px-3 text-right tabular-nums">{item.shifts}</td>
+                                <td className="py-3 px-3 text-right tabular-nums">{formatNumber(item.attendance)}</td>
+                                <td className="py-3 px-3 text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">{formatCurrency(item.amount)}</td>
                                 <td className="py-3 pl-3 text-right font-semibold text-amber-600 dark:text-amber-400">{item.pendingDays}</td>
                               </tr>
                             ))}
@@ -2519,7 +2516,7 @@ export default function Relatorios() {
                 {!productivityReport.available ? (
                   <Card className="rounded-3xl border border-dashed border-amber-300 bg-amber-50 p-8 text-center dark:border-amber-500/30 dark:bg-amber-950/20">
                     <AlertTriangle className="mx-auto h-8 w-8 text-amber-600 dark:text-amber-400" />
-                    <h3 className="mt-3 text-base font-black text-amber-900 dark:text-amber-200">
+                    <h3 className="mt-3 text-base font-semibold text-amber-900 dark:text-amber-200">
                       {productivityReport.error ? 'Configuração inválida' : 'Regra de produtividade não configurada para esta unidade'}
                     </h3>
                     <p className="mt-2 text-xs text-amber-800 dark:text-amber-300">
@@ -2528,19 +2525,19 @@ export default function Relatorios() {
                   </Card>
                 ) : (
                   <>
-                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#1e293b]">
+                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(240px,0.8fr)] sm:items-end">
                         <div>
-                          <h3 className="text-sm font-black uppercase tracking-wider text-sky-700 dark:text-cyan-400">Extrato individual de produtividade</h3>
+                          <h3 className="text-sm font-semibold text-sky-700 dark:text-cyan-400">Extrato individual de produtividade</h3>
                           <p className="mt-1 text-[11px] text-slate-500">Escolha o profissional para detalhar atendimentos, plantões e valores do período.</p>
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Profissional produtivo</Label>
+                          <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Profissional produtivo</Label>
                           <Select
                             value={selectedProductivitySummary ? String(selectedProductivityProfessionalId) : ''}
                             onValueChange={setSelectedProductivityProfessionalId}
                           >
-                            <SelectTrigger className="h-11 text-xs font-bold bg-slate-50 dark:bg-[#0B1120] border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
+                            <SelectTrigger className="h-11 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
                               <SelectValue placeholder="Selecione um profissional" />
                             </SelectTrigger>
                             <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white z-[99999] max-h-[300px]">
@@ -2559,9 +2556,9 @@ export default function Relatorios() {
                     </Card>
 
                     {!selectedProductivitySummary ? (
-                      <Card className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-[#1e293b]">
+                      <Card className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900">
                         <Users className="mx-auto h-8 w-8 text-slate-400" />
-                        <h3 className="mt-3 text-sm font-black text-slate-700 dark:text-slate-200">
+                        <h3 className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
                           {productivityReport.professionalTotals.length > 0 ? 'Selecione um profissional' : 'Nenhum profissional produtivo encontrado'}
                         </h3>
                         <p className="mt-2 text-xs text-slate-500">
@@ -2580,15 +2577,15 @@ export default function Relatorios() {
                             { label: 'Dias pendentes', value: formatNumber(selectedProductivitySummary.pendingDays), tone: 'text-amber-600 dark:text-amber-400' }
                           ].map(metric => (
                             <Card key={metric.label} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{metric.label}</p>
-                              <p className={`mt-2 text-xl font-black ${metric.tone}`}>{metric.value}</p>
+                              <p className="text-xs font-medium text-slate-500">{metric.label}</p>
+                              <p className={`mt-2 text-xl font-semibold ${metric.tone}`}>{metric.value}</p>
                             </Card>
                           ))}
                         </div>
 
-                        <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#1e293b]">
+                        <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                           <div className="mb-4 border-b border-slate-100 pb-3 dark:border-slate-700/50">
-                            <h3 className="text-sm font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                            <h3 className="text-sm font-semibold text-indigo-700 dark:text-indigo-400">
                               {selectedProductivitySummary.professional.name}
                             </h3>
                             <p className="mt-1 text-[11px] text-slate-500">
@@ -2597,7 +2594,7 @@ export default function Relatorios() {
                           </div>
                           <div className="overflow-x-auto">
                             <table className="w-full min-w-[850px] text-left text-xs">
-                              <thead className="border-b border-slate-200 text-[10px] font-black uppercase text-slate-500 dark:border-slate-700">
+                              <thead className="border-b border-slate-200 text-xs font-medium text-slate-500 dark:border-slate-700">
                                 <tr>
                                   <th className="py-3 pr-3">Data</th>
                                   <th className="py-3 px-3">Setor(es)</th>
@@ -2614,26 +2611,26 @@ export default function Relatorios() {
                                   const day = productivityReport.days.find(item => item.date === row.date);
                                   return (
                                     <tr key={`${row.date}:${row.professional.id}`}>
-                                      <td className="py-3 pr-3 font-bold">{formatDate(row.date)}</td>
+                                      <td className="py-3 pr-3 font-semibold">{formatDate(row.date)}</td>
                                       <td className="py-3 px-3">{row.sectors}</td>
-                                      <td className="py-3 px-3 text-right font-mono">{row.shifts}</td>
-                                      <td className="py-3 px-3 text-right font-mono">{row.attendance ?? 'Não lançado'}</td>
-                                      <td className="py-3 px-3 text-right font-mono">{row.complete ? formatNumber(day?.totalAttendance) : 'Pendente'}</td>
-                                      <td className="py-3 px-3 text-right font-mono">{row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
-                                      <td className="py-3 px-3 text-right font-mono font-bold">{row.complete ? formatCurrency(row.amount) : '—'}</td>
+                                      <td className="py-3 px-3 text-right tabular-nums">{row.shifts}</td>
+                                      <td className="py-3 px-3 text-right tabular-nums">{row.attendance ?? 'Não lançado'}</td>
+                                      <td className="py-3 px-3 text-right tabular-nums">{row.complete ? formatNumber(day?.totalAttendance) : 'Pendente'}</td>
+                                      <td className="py-3 px-3 text-right tabular-nums">{row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
+                                      <td className="py-3 px-3 text-right tabular-nums font-semibold">{row.complete ? formatCurrency(row.amount) : '—'}</td>
                                       <td className={`py-3 pl-3 text-right font-semibold ${row.complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
                                         {row.complete ? 'Rateado' : row.pendingReason}
                                       </td>
                                     </tr>
                                   );
                                 })}
-                                <tr className="border-t-2 border-slate-200 bg-slate-50 font-black dark:border-slate-700 dark:bg-slate-900/60">
+                                <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold dark:border-slate-700 dark:bg-slate-900/60">
                                   <td className="py-3 pr-3" colSpan="2">Total fechado no período</td>
-                                  <td className="py-3 px-3 text-right font-mono">{selectedProductivitySummary.shifts}</td>
-                                  <td className="py-3 px-3 text-right font-mono">{formatNumber(selectedProductivitySummary.attendance)}</td>
+                                  <td className="py-3 px-3 text-right tabular-nums">{selectedProductivitySummary.shifts}</td>
+                                  <td className="py-3 px-3 text-right tabular-nums">{formatNumber(selectedProductivitySummary.attendance)}</td>
                                   <td className="py-3 px-3 text-right">—</td>
                                   <td className="py-3 px-3 text-right">—</td>
-                                  <td className="py-3 px-3 text-right font-mono text-emerald-700 dark:text-emerald-400">{formatCurrency(selectedProductivitySummary.amount)}</td>
+                                  <td className="py-3 px-3 text-right tabular-nums text-emerald-700 dark:text-emerald-400">{formatCurrency(selectedProductivitySummary.amount)}</td>
                                   <td className="py-3 pl-3 text-right">
                                     {selectedProductivitySummary.pendingDays ? `${selectedProductivitySummary.pendingDays} pendente(s) · saldo parcial` : 'Completo'}
                                   </td>
@@ -2701,11 +2698,11 @@ export default function Relatorios() {
                               <span className="block font-medium text-slate-900 dark:text-white">{row.name}</span>
                               {row.specialty && <span className="block text-xs text-slate-500">{row.specialty}</span>}
                             </td>
-                            <td className="px-4 py-2.5 text-right font-mono">{row.done}<span className="text-slate-400"> / {row.scheduled}</span></td>
-                            <td className="px-4 py-2.5 text-right font-mono">{row.hours}</td>
-                            <td className="px-4 py-2.5 text-right font-mono">{row.covered}</td>
-                            <td className="px-4 py-2.5 text-right font-mono">{row.released}</td>
-                            <td className="px-4 py-2.5 text-right font-mono">{row.directSwaps}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums">{row.done}<span className="text-slate-400"> / {row.scheduled}</span></td>
+                            <td className="px-4 py-2.5 text-right tabular-nums">{row.hours}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums">{row.covered}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums">{row.released}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums">{row.directSwaps}</td>
                             <td className="px-4 py-2.5 text-right">
                               <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${tone(row.index)}`}>{row.index === null ? '—' : `${row.index}%`}</span>
                             </td>
@@ -2719,9 +2716,9 @@ export default function Relatorios() {
             })()}
 
             {activeTab === 'financeiro' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 shadow-sm dark:shadow-lg animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-black text-sm uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                  <h3 className="font-semibold text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
                     <DollarSign className="w-5 h-5" /> Inteligência Financeira e Orçamento
                   </h3>
                 </div>
@@ -2742,38 +2739,38 @@ export default function Relatorios() {
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
                   <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-inner">
-                    <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Previsão das escalas ocupadas</span>
-                    <div className="text-2xl font-black font-mono text-slate-900 dark:text-white mt-2">{formatCurrency(financialSummary.totalCost)}</div>
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Previsão das escalas ocupadas</span>
+                    <div className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-white mt-2">{formatCurrency(financialSummary.totalCost)}</div>
                   </div>
                   <div className="p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 shadow-sm dark:shadow-inner">
-                    <span className="text-[10px] font-black uppercase text-emerald-800 dark:text-emerald-400">Valor Realizado</span>
-                    <div className="text-2xl font-black font-mono text-emerald-700 dark:text-emerald-400 mt-2">{formatCurrency(financialSummary.executedCost)}</div>
+                    <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-400">Valor Realizado</span>
+                    <div className="text-2xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-400 mt-2">{formatCurrency(financialSummary.executedCost)}</div>
                   </div>
                   <div className="p-5 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 shadow-sm dark:shadow-inner">
-                    <span className="text-[10px] font-black uppercase text-amber-800 dark:text-amber-400">Valor Pendente</span>
-                    <div className="text-2xl font-black font-mono text-amber-700 dark:text-amber-400 mt-2">{formatCurrency(financialSummary.pendingCost)}</div>
+                    <span className="text-xs font-semibold text-amber-800 dark:text-amber-400">Valor Pendente</span>
+                    <div className="text-2xl font-semibold tabular-nums text-amber-700 dark:text-amber-400 mt-2">{formatCurrency(financialSummary.pendingCost)}</div>
                   </div>
                   <div className="p-5 rounded-2xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 shadow-sm dark:shadow-inner">
-                    <span className="text-[10px] font-black uppercase text-rose-800 dark:text-rose-400">Desfalques (Vagas)</span>
-                    <div className="text-2xl font-black font-mono text-rose-700 dark:text-rose-400 mt-2">{formatCurrency(financialSummary.vacantCost)}</div>
+                    <span className="text-xs font-semibold text-rose-800 dark:text-rose-400">Desfalques (Vagas)</span>
+                    <div className="text-2xl font-semibold tabular-nums text-rose-700 dark:text-rose-400 mt-2">{formatCurrency(financialSummary.vacantCost)}</div>
                   </div>
                 </div>
                 {financialSummary.payrollWithoutShifts > 0 && (
                   <div className="mt-4 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <span className="text-xs text-slate-600 dark:text-slate-300">
-                      Folha mensal de {financialSummary.professionalsWithoutShifts} profissional(is) sem plantão no período: <b className="font-mono text-slate-900 dark:text-white">{formatCurrency(financialSummary.payrollWithoutShifts)}</b>
+                      Folha mensal de {financialSummary.professionalsWithoutShifts} profissional(is) sem plantão no período: <b className="tabular-nums text-slate-900 dark:text-white">{formatCurrency(financialSummary.payrollWithoutShifts)}</b>
                     </span>
                     <span className="text-xs text-slate-600 dark:text-slate-300">
-                      Total comparável ao Faturamento: <b className="font-mono text-slate-900 dark:text-white">{formatCurrency(financialSummary.comparableTotal)}</b>
+                      Total comparável ao Faturamento: <b className="tabular-nums text-slate-900 dark:text-white">{formatCurrency(financialSummary.comparableTotal)}</b>
                     </span>
                   </div>
                 )}
                 <div className="mt-8 border-t border-slate-100 dark:border-slate-700/50 pt-6">
-                  <h4 className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 mb-4">Orçamento por Setor Clínico</h4>
+                  <h4 className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-4">Orçamento por Setor Clínico</h4>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
-                        <tr className="border-b border-slate-200 dark:border-slate-700 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                        <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500">
                           <th className="py-2 px-2">Setor Clínico</th>
                           <th className="py-2 px-2 text-right">Horas Assistenciais</th>
                           <th className="py-2 px-2 text-right">Custo Projetado</th>
@@ -2782,9 +2779,9 @@ export default function Relatorios() {
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
                         {sectorMetrics.map((sec, idx) => (
                           <tr key={idx}>
-                            <td className="py-3 px-2 font-bold text-slate-900 dark:text-white">{sec.name}</td>
-                            <td className="py-3 px-2 text-right font-mono text-slate-600 dark:text-slate-400">{sec.hours}h</td>
-                            <td className="py-3 px-2 text-right font-mono font-black text-amber-600 dark:text-amber-400">{formatCurrency(sec.cost)}</td>
+                            <td className="py-3 px-2 font-semibold text-slate-900 dark:text-white">{sec.name}</td>
+                            <td className="py-3 px-2 text-right tabular-nums text-slate-600 dark:text-slate-400">{sec.hours}h</td>
+                            <td className="py-3 px-2 text-right tabular-nums font-semibold text-amber-600 dark:text-amber-400">{formatCurrency(sec.cost)}</td>
                           </tr>
                         ))}
                       </tbody>
