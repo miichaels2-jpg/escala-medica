@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { USER_PUBLIC_COLUMNS, useAppData } from '@/lib/useAppData';
 import { authorizedSectorIdsFor, blockedSectorsFrom, getProfessionalUnitIds } from '@/lib/sectorAccess';
 import { maskCNPJ } from '@/lib/brDocs';
@@ -18,8 +18,10 @@ import {
   Users, UserPlus, Search, CheckCircle2, DollarSign, Edit3, KeyRound, Send, RefreshCw,
   MessageSquare, Shield, UserCog, Eye, EyeOff, HeartPulse, Plus, Landmark, Building2,
   Power, Trash2, Settings, Save, Lock, Hospital, List, LayoutGrid, FileSpreadsheet,
-  Download, Upload
+  Download, Upload, Check, ChevronRight
 } from 'lucide-react';
+
+const FORM_STEPS = ['Dados', 'Acesso', 'Valores'];
 
 function safeNumber(val, fb = 0) {
   if (val === null || val === undefined || val === '') return fb;
@@ -159,6 +161,12 @@ export default function CorpoClinico() {
   const [editingProf, setEditingProf] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Cadastro em 3 passos; na edição dá para ir direto a qualquer um.
+  const [formStep, setFormStep] = useState(1);
+  // A lista de telas fica recolhida: o perfil já marca o padrão.
+  const [showScreenDetails, setShowScreenDetails] = useState(false);
+  // Cada passo abre no topo, mesmo que o anterior tenha sido rolado até o fim.
+  useEffect(() => { document.querySelector('[role=dialog]')?.scrollTo?.(0, 0); }, [formStep]);
 
   const [customCategories, setCustomCategories] = useState(() => {
     try { 
@@ -230,7 +238,7 @@ export default function CorpoClinico() {
     setShowPassword(false);
   };
 
-  const handleOpenNew = () => { resetForm(); setModalOpen(true); };
+  const handleOpenNew = () => { resetForm(); setFormStep(1); setShowScreenDetails(false); setModalOpen(true); };
 
   const handleOpenEdit = (prof) => {
     setEditingProf(prof);
@@ -288,6 +296,8 @@ export default function CorpoClinico() {
       authorized_sectors: authSectors,
       allowed_unit_ids: savedUnits 
     });
+    setFormStep(1);
+    setShowScreenDetails(false);
     setModalOpen(true);
   };
 
@@ -800,6 +810,35 @@ export default function CorpoClinico() {
     }
   };
 
+  const formStepProblem = (step) => {
+    if (step === 1) {
+      if (!formData.name.trim()) return 'Informe o nome completo.';
+      if (!formData.birth_date) return 'Informe a data de nascimento (ela gera a senha do primeiro acesso).';
+    }
+    if (step === 2) {
+      if (formData.allowed_unit_ids.length === 0) return 'Selecione pelo menos um hospital.';
+      if (!(formData.screen_access || []).length) return 'Libere pelo menos uma tela.';
+    }
+    return '';
+  };
+
+  const goNextFormStep = () => {
+    const problem = formStepProblem(formStep);
+    if (problem) { alert(problem); return; }
+    setFormStep(step => Math.min(FORM_STEPS.length, step + 1));
+  };
+
+  // Enter num campo avança o passo; só o último (ou a edição) salva.
+  const handleSubmitProfessionalForm = (e) => {
+    e.preventDefault();
+    if (!editingProf && formStep < FORM_STEPS.length) { goNextFormStep(); return; }
+    for (const step of [1, 2]) {
+      const problem = formStepProblem(step);
+      if (problem) { setFormStep(step); alert(problem); return; }
+    }
+    handleSaveProfessional(e);
+  };
+
   const handleSaveProfessional = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) return;
@@ -1222,9 +1261,25 @@ export default function CorpoClinico() {
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
-          <DialogHeader><DialogTitle className="text-base font-semibold flex items-center gap-2 text-slate-900 dark:text-white"><UserCog className="w-5 h-5 text-sky-600" /> {editingProf ? 'Editar Perfil Profissional & Acesso' : 'Cadastrar Novo Profissional'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-base font-semibold flex items-center gap-2 text-slate-900 dark:text-white"><UserCog className="w-5 h-5 text-sky-600" /> {editingProf ? 'Editar profissional' : 'Novo profissional'}</DialogTitle></DialogHeader>
 
-          <form onSubmit={handleSaveProfessional} className="space-y-5 py-2 text-xs">
+          <form onSubmit={handleSubmitProfessionalForm} className="space-y-5 py-2 text-xs">
+            <ol className="flex items-center gap-2 text-[11px] font-semibold" aria-label="Etapas do cadastro">
+              {FORM_STEPS.map((label, i) => {
+                const n = i + 1;
+                const reachable = Boolean(editingProf) || n <= formStep;
+                return (
+                  <li key={label} className="flex items-center gap-2">
+                    <button type="button" disabled={!reachable} onClick={() => reachable && setFormStep(n)} aria-current={formStep === n ? 'step' : undefined} className={`flex items-center gap-2 rounded-lg px-1.5 py-1 ${reachable ? 'cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800' : 'cursor-default'}`}>
+                      <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${formStep === n ? 'bg-sky-600 text-white' : n < formStep ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200' : 'bg-slate-100 text-slate-400 dark:bg-slate-800'}`}>{n < formStep ? <Check className="h-3 w-3" /> : n}</span>
+                      <span className={formStep === n ? 'text-slate-900 dark:text-white' : 'text-slate-500'}>{label}</span>
+                    </button>
+                    {i < FORM_STEPS.length - 1 && <ChevronRight className="h-3.5 w-3.5 text-slate-300" />}
+                  </li>
+                );
+              })}
+            </ol>
+            {formStep === 1 && (<>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1248,6 +1303,76 @@ export default function CorpoClinico() {
               </div>
             </div>
 
+            <div className="space-y-3 pt-2">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">Nome Completo Oficial *</Label>
+                <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" required />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">Especialidade / Atuação *</Label>
+                  <Input value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})} placeholder="Ex: Cirurgião Geral" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">RQE</Label>
+                  <Input value={formData.rqe} onChange={e => setFormData({...formData, rqe: e.target.value})} placeholder="Ex: 12345" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">Matrícula ID (Gerada Auto) *</Label>
+                  <Input value={formData.registration_id} onChange={e => setFormData({...formData, registration_id: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums font-semibold text-sky-600" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-slate-900 dark:text-slate-200">CPF *</Label>
+                  <Input value={formData.cpf} onChange={e => setFormData({...formData, cpf: e.target.value})} placeholder="000.000.000-00" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-slate-900 dark:text-slate-200">Data Nasc. *</Label>
+                  <Input type="date" value={formData.birth_date} onChange={e => setFormData({...formData, birth_date: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums cursor-pointer" required />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-slate-900 dark:text-slate-200">Conselho *</Label>
+                  <Input value={formData.document} onChange={e => setFormData({...formData, document: e.target.value})} placeholder="Ex: 2155 - RJ" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-slate-900 dark:text-slate-200">Validade Cred.</Label>
+                  <Input type="date" value={formData.document_expiry} onChange={e => setFormData({...formData, document_expiry: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums cursor-pointer" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">CBO</Label>
+                  <Input value={formData.cbo} onChange={e => setFormData({...formData, cbo: e.target.value})} placeholder="Ex: 225125" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">Telefone / WhatsApp *</Label>
+                  <Input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="21999999999" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">Status Cadastral</Label>
+                  <Select value={formData.status} onValueChange={v => setFormData({...formData, status: v})}>
+                    <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue /></SelectTrigger>
+                    <SelectContent className="z-[99999]">
+                      <SelectItem value="ativo">Ativo</SelectItem>
+                      <SelectItem value="inativo">Inativo</SelectItem>
+                      <SelectItem value="pendente">Pendente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">E-mail Profissional</Label>
+                <Input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="email@exemplo.com (Opcional)" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+              </div>
+            </div>
+
+            </>)}
+            {formStep === 2 && (<>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Shield className="w-4 h-4 text-slate-400" />
@@ -1270,13 +1395,18 @@ export default function CorpoClinico() {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <Label className="font-semibold text-slate-800 dark:text-slate-100">Telas liberadas</Label>
-                  <p className="text-[11px] text-slate-500 mt-1">O perfil acima marca o padrão; ajuste tela por tela se precisar. Vale no próximo acesso do profissional.</p>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {SCREENS.filter(s => (formData.screen_access || []).includes(s.path)).map(s => s.label).join(', ') || 'Nenhuma tela'}
+                    {' · '}{formData.can_edit ? 'pode criar e alterar' : 'só visualiza'}
+                  </p>
                 </div>
                 <div className="flex gap-1.5">
-                  <Button type="button" variant="outline" onClick={() => setFormData(prev => ({ ...prev, screen_access: SCREENS.map(s => s.path) }))} className="h-8 text-xs">Liberar todas</Button>
-                  <Button type="button" variant="ghost" onClick={() => setFormData(prev => ({ ...prev, screen_access: defaultScreensForRole(prev.app_role), can_edit: defaultCanEditForRole(prev.app_role) }))} className="h-8 text-xs">Padrão do perfil</Button>
+                  {showScreenDetails && <Button type="button" variant="outline" onClick={() => setFormData(prev => ({ ...prev, screen_access: SCREENS.map(s => s.path) }))} className="h-8 text-xs">Liberar todas</Button>}
+                  {showScreenDetails && <Button type="button" variant="ghost" onClick={() => setFormData(prev => ({ ...prev, screen_access: defaultScreensForRole(prev.app_role), can_edit: defaultCanEditForRole(prev.app_role) }))} className="h-8 text-xs">Padrão do perfil</Button>}
+                  <Button type="button" variant="outline" onClick={() => setShowScreenDetails(v => !v)} aria-expanded={showScreenDetails} className="h-8 text-xs">{showScreenDetails ? 'Fechar' : 'Ajustar telas'}</Button>
                 </div>
               </div>
+              {showScreenDetails && (<>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {SCREENS.map(screen => {
                   const enabled = (formData.screen_access || []).includes(screen.path);
@@ -1306,6 +1436,7 @@ export default function CorpoClinico() {
                   <span className="block text-[11px] text-slate-500">Mesmos poderes do gestor nas telas liberadas: montar, alocar e publicar escalas, aprovar trocas. Sem esta opção, a pessoa vê as escalas mas não altera. Não precisa ser Gestor.</span>
                 </span>
               </label>
+              </>)}
             </div>
 
             <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
@@ -1384,8 +1515,46 @@ export default function CorpoClinico() {
               )}
             </div>
 
+            <div className="p-4 rounded-2xl bg-sky-50/60 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/60 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2 font-semibold text-xs text-sky-900 dark:text-sky-200">
+                  <KeyRound className="w-4 h-4 text-sky-600" /> Credenciais de Login & Acesso
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Button type="button" size="sm" variant="outline" onClick={handleGenerateDefaultPassword} className="h-7 text-[10px] font-semibold border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950 cursor-pointer shadow-sm">
+                    <RefreshCw className="w-3 h-3 mr-1" /> Senha (Data Nasc)
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'S@ude'+Math.floor(1000+Math.random()*9000)}))} className="h-7 text-[10px] font-semibold border-sky-300 text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950 cursor-pointer">
+                    <RefreshCw className="w-3 h-3 mr-1" /> Gerar Aleatória
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">Usuário (Login por Nome) *</Label>
+                  <Input type="text" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} placeholder="Ex: dr.carlos" className="h-10 bg-white dark:bg-slate-900 tabular-nums font-semibold text-sky-600 border-slate-200 dark:border-slate-800" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">{editingProf ? 'Nova Senha (deixe vazio para manter)' : 'Senha de Acesso *'}</Label>
+                  <div className="relative">
+                    <Input type={showPassword ? "text" : "password"} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder={editingProf ? '••••••••' : 'Senha'} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums pr-8" />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 cursor-pointer">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
+                  </div>
+                </div>
+              </div>
+              <Button type="button" onClick={handleSendWhatsApp} className="w-full h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-sm gap-2 rounded-xl mt-2 cursor-pointer">
+                <Send className="w-4 h-4" /> Enviar link de acesso via WhatsApp
+              </Button>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                Por segurança, a mensagem não inclui usuário ou senha.
+              </p>
+            </div>
+
+            </>)}
+            {formStep === 3 && (<>
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-4">
-              <div className="flex items-center gap-2 font-semibold text-xs text-emerald-700 dark:text-emerald-400 border-b border-slate-200 dark:border-slate-800 pb-2">
+              <div className="flex items-center gap-2 font-semibold text-xs text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-800 pb-2">
                 <DollarSign className="w-4 h-4" /> Regime Contratual & Matriz de Valores
               </div>
 
@@ -1470,112 +1639,8 @@ export default function CorpoClinico() {
               )}
             </div>
 
-            <div className="space-y-3 pt-2">
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">Nome Completo Oficial *</Label>
-                <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" required />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">Especialidade / Atuação *</Label>
-                  <Input value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})} placeholder="Ex: Cirurgião Geral" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">RQE</Label>
-                  <Input value={formData.rqe} onChange={e => setFormData({...formData, rqe: e.target.value})} placeholder="Ex: 12345" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">Matrícula ID (Gerada Auto) *</Label>
-                  <Input value={formData.registration_id} onChange={e => setFormData({...formData, registration_id: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums font-semibold text-sky-600" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-semibold text-slate-900 dark:text-slate-200">CPF *</Label>
-                  <Input value={formData.cpf} onChange={e => setFormData({...formData, cpf: e.target.value})} placeholder="000.000.000-00" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-semibold text-slate-900 dark:text-slate-200">Data Nasc. *</Label>
-                  <Input type="date" value={formData.birth_date} onChange={e => setFormData({...formData, birth_date: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums cursor-pointer" required />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-semibold text-slate-900 dark:text-slate-200">Conselho *</Label>
-                  <Input value={formData.document} onChange={e => setFormData({...formData, document: e.target.value})} placeholder="Ex: 2155 - RJ" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-semibold text-slate-900 dark:text-slate-200">Validade Cred.</Label>
-                  <Input type="date" value={formData.document_expiry} onChange={e => setFormData({...formData, document_expiry: e.target.value})} className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums cursor-pointer" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">CBO</Label>
-                  <Input value={formData.cbo} onChange={e => setFormData({...formData, cbo: e.target.value})} placeholder="Ex: 225125" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">Telefone / WhatsApp *</Label>
-                  <Input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="21999999999" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">Status Cadastral</Label>
-                  <Select value={formData.status} onValueChange={v => setFormData({...formData, status: v})}>
-                    <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue /></SelectTrigger>
-                    <SelectContent className="z-[99999]">
-                      <SelectItem value="ativo">Ativo</SelectItem>
-                      <SelectItem value="inativo">Inativo</SelectItem>
-                      <SelectItem value="pendente">Pendente</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-slate-900 dark:text-slate-200">E-mail Profissional</Label>
-                <Input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="email@exemplo.com (Opcional)" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-sky-50/60 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/60 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2 font-semibold text-xs text-sky-900 dark:text-sky-200">
-                  <KeyRound className="w-4 h-4 text-sky-600" /> Credenciais de Login & Acesso
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Button type="button" size="sm" variant="outline" onClick={handleGenerateDefaultPassword} className="h-7 text-[10px] font-semibold border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950 cursor-pointer shadow-sm">
-                    <RefreshCw className="w-3 h-3 mr-1" /> Senha (Data Nasc)
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'S@ude'+Math.floor(1000+Math.random()*9000)}))} className="h-7 text-[10px] font-semibold border-sky-300 text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950 cursor-pointer">
-                    <RefreshCw className="w-3 h-3 mr-1" /> Gerar Aleatória
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">Usuário (Login por Nome) *</Label>
-                  <Input type="text" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} placeholder="Ex: dr.carlos" className="h-10 bg-white dark:bg-slate-900 tabular-nums font-semibold text-sky-600 border-slate-200 dark:border-slate-800" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">{editingProf ? 'Nova Senha (deixe vazio para manter)' : 'Senha de Acesso *'}</Label>
-                  <div className="relative">
-                    <Input type={showPassword ? "text" : "password"} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder={editingProf ? '••••••••' : 'Senha'} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums pr-8" />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 cursor-pointer">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
-                  </div>
-                </div>
-              </div>
-              <Button type="button" onClick={handleSendWhatsApp} className="w-full h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-sm gap-2 rounded-xl mt-2 cursor-pointer">
-                <Send className="w-4 h-4" /> Enviar link de acesso via WhatsApp
-              </Button>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                Por segurança, a mensagem não inclui usuário ou senha.
-              </p>
-            </div>
-
             <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-3">
-              <div className="flex items-center gap-2 font-semibold text-xs text-emerald-700 dark:text-emerald-400 border-b border-slate-200 dark:border-slate-800 pb-2">
+              <div className="flex items-center gap-2 font-semibold text-xs text-slate-800 dark:text-slate-100 border-b border-slate-200 dark:border-slate-800 pb-2">
                 <DollarSign className="w-4 h-4" /> Dados para Recebimento / PIX
               </div>
 
@@ -1629,9 +1694,21 @@ export default function CorpoClinico() {
               </div>
             </div>
 
-            <DialogFooter className="pt-4 gap-2">
-              <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="text-xs h-10 border-slate-200 dark:border-slate-700 cursor-pointer">Cancelar </Button>
-              <Button type="submit" disabled={submitting || formData.allowed_unit_ids.length === 0} className="bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs h-10 px-8 rounded-xl shadow-sm cursor-pointer transition-all">Salvar Perfil Profissional</Button>
+            </>)}
+            <DialogFooter className="pt-4 gap-2 sm:justify-between">
+              <Button type="button" variant="outline" onClick={() => (formStep > 1 ? setFormStep(formStep - 1) : setModalOpen(false))} className="text-xs h-10 border-slate-200 dark:border-slate-700 cursor-pointer">
+                {formStep > 1 ? 'Voltar' : 'Cancelar'}
+              </Button>
+              <div className="flex flex-col-reverse sm:flex-row gap-2">
+                {formStep < FORM_STEPS.length && (
+                  <Button type="button" onClick={goNextFormStep} variant={editingProf ? 'outline' : 'default'} className={`text-xs h-10 px-6 rounded-xl cursor-pointer ${editingProf ? '' : 'bg-sky-600 hover:bg-sky-500 text-white font-semibold'}`}>
+                    Próximo: {FORM_STEPS[formStep]} <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
+                )}
+                {(editingProf || formStep === FORM_STEPS.length) && (
+                  <Button type="submit" disabled={submitting} className="bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs h-10 px-8 rounded-xl shadow-sm cursor-pointer transition-all">{submitting ? 'Salvando…' : editingProf ? 'Salvar alterações' : 'Cadastrar profissional'}</Button>
+                )}
+              </div>
             </DialogFooter>
           </form>
         </DialogContent>
