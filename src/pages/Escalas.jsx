@@ -4,6 +4,7 @@ import { isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { describeUnavailability, findUnavailability } from '@/lib/availability';
 import { mapDateToMonth } from '@/lib/scheduleCopy';
 import { checkWorkload, getWorkloadRules } from '@/lib/workload';
+import { getSectorTemplates, templatesToSlots, withSectorTemplates } from '@/lib/sectorTemplates';
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
@@ -11,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
 import ScheduleGrid from '@/components/escala/ScheduleGrid';
+import SpecialtyPicker from '@/components/SpecialtyPicker';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,36 +29,6 @@ import {
 } from 'lucide-react';
 
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-const CUSTOM_SPECIALTY = '__outra__';
-
-function SpecialtyPicker({ value, options, onChange, triggerClassName = '', contentClassName = '' }) {
-  const [typing, setTyping] = useState(false);
-  const list = useMemo(() => {
-    const set = new Set((options || []).map(o => String(o || '').trim()).filter(Boolean));
-    if (String(value || '').trim()) set.add(String(value).trim());
-    return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [options, value]);
-
-  if (typing) {
-    return (
-      <div className="flex items-center gap-1">
-        <Input autoFocus value={value} onChange={e => onChange(e.target.value)} placeholder="Digite a especialidade" className={triggerClassName} />
-        <Button type="button" variant="ghost" onClick={() => setTyping(false)} className="h-9 px-2 text-[11px] text-slate-400 hover:text-white shrink-0">Lista</Button>
-      </div>
-    );
-  }
-
-  return (
-    <Select value={String(value || '').trim() || undefined} onValueChange={v => { if (v === CUSTOM_SPECIALTY) { setTyping(true); onChange(''); } else onChange(v); }}>
-      <SelectTrigger className={triggerClassName}><SelectValue placeholder="Escolha a especialidade" /></SelectTrigger>
-      <SelectContent className={`z-[99999] ${contentClassName}`}>
-        {list.map(spec => <SelectItem key={spec} value={spec}>{spec}</SelectItem>)}
-        <SelectItem value={CUSTOM_SPECIALTY}>Outra (digitar)…</SelectItem>
-      </SelectContent>
-    </Select>
-  );
-}
-
 const WEEKDAYS = [{ short: 'Dom', weekend: true }, { short: 'Seg', weekend: false }, { short: 'Ter', weekend: false }, { short: 'Qua', weekend: false }, { short: 'Qui', weekend: false }, { short: 'Sex', weekend: false }, { short: 'Sáb', weekend: true }];
 
 function getLocalDateString(d = new Date()) {
@@ -1157,6 +1129,34 @@ const conflict = checkProfessionalConflict(
     ]
   });
 
+  // "Guardar como turnos padrão do setor": vem marcado quando o setor ainda não tem turnos salvos.
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [generatorFromTemplate, setGeneratorFromTemplate] = useState(false);
+
+  const loadSectorIntoGenerator = (sectorId) => {
+    const templates = getSectorTemplates(company, sectorId);
+    setGeneratorFromTemplate(templates.length > 0);
+    setSaveAsTemplate(templates.length === 0);
+    setGeneratorConfig(prev => ({
+      ...prev,
+      sector_id: sectorId ? String(sectorId) : '',
+      slots: templates.length ? templatesToSlots(templates) : prev.slots
+    }));
+  };
+
+  const saveGeneratorAsTemplate = async (sectorId, slots) => {
+    try {
+      const { data: row, error: readError } = await supabase.from('companies').select('data').eq('id', company.id).single();
+      if (readError) throw readError;
+      const data = withSectorTemplates(row?.data, sectorId, slots);
+      const { error } = await supabase.from('companies').update({ data }).eq('id', company.id);
+      if (error) throw error;
+      syncGlobalData();
+    } catch (err) {
+      alert('A escala segue normalmente, mas os turnos padrão não foram salvos: ' + (err?.message || ''));
+    }
+  };
+
   const handleAddSlot = () => {
     setGeneratorConfig(prev => ({
       ...prev,
@@ -1256,6 +1256,12 @@ const conflict = checkProfessionalConflict(
         ? `A grade já existe para esse período: ${skippedExisting} vaga(s) configurada(s) já estavam criadas. Nada foi duplicado.`
         : 'Nenhuma vaga foi gerada. Verifique a quantidade configurada.');
       return;
+    }
+
+    if (saveAsTemplate && isManager) {
+      saveGeneratorAsTemplate(generatorConfig.sector_id, validSlots);
+      setSaveAsTemplate(false);
+      setGeneratorFromTemplate(true);
     }
 
     setGeneratorSourceInfo('');
@@ -1761,10 +1767,25 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
     setModalOpen(true);
   };
 
-  const openGenerator = (sectorId) => {
-    setGeneratorConfig(prev => ({ ...prev, sector_id: sectorId || (selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || '')), start_date: `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01` }));
+  const openGenerator = (sectorId, monthDate = currentDate) => {
+    const year = monthDate.getFullYear();
+    const month = monthDate.getMonth();
+    const target = sectorId || (selectedSectorId !== 'todos' ? selectedSectorId : ((sectors || [])[0]?.id || ''));
+    setGeneratorConfig(prev => ({ ...prev, start_date: `${year}-${String(month + 1).padStart(2, '0')}-01`, duration_days: new Date(year, month + 1, 0).getDate(), interval_days: 1 }));
+    loadSectorIntoGenerator(target);
     setGeneratorModalOpen(true);
   };
+
+  // Setores › "Montar mês": chega aqui com o setor escolhido e abre o gerador.
+  useEffect(() => {
+    if (!isManager || !(sectors || []).length) return;
+    let pending = null;
+    try { pending = window.sessionStorage.getItem('scale_open_generator_sector'); window.sessionStorage.removeItem('scale_open_generator_sector'); } catch { return; }
+    if (!pending || !(sectors || []).some(sec => String(sec.id) === String(pending))) return;
+    setSelectedSectorId(String(pending));
+    openGenerator(pending);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isManager, sectors]);
 
   const shortLabels = useMemo(() => buildShortLabels(professionals || []), [professionals]);
 
@@ -2933,7 +2954,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between gap-4">
               <div className="space-y-1.5 flex-1">
                 <Label className="text-xs font-medium text-slate-400">Setor Alvo</Label>
-                <Select value={generatorConfig.sector_id} onValueChange={v => setGeneratorConfig({ ...generatorConfig, sector_id: v })}>
+                <Select value={generatorConfig.sector_id} onValueChange={loadSectorIntoGenerator}>
                   <SelectTrigger className="h-10 bg-slate-950 border-slate-700 text-white font-semibold rounded-xl">
                     <SelectValue placeholder="Selecione o setor..." />
                   </SelectTrigger>
@@ -3005,6 +3026,16 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                 ))}
               </div>
             </div>
+
+            {isManager && generatorConfig.sector_id && (
+              <label className="flex items-start gap-3 p-3 rounded-2xl border border-slate-800 bg-slate-900 cursor-pointer">
+                <input type="checkbox" checked={saveAsTemplate} onChange={e => setSaveAsTemplate(e.target.checked)} className="mt-0.5 h-4 w-4 accent-sky-500 cursor-pointer" />
+                <span className="text-xs text-slate-300 leading-relaxed">
+                  <b className="text-white">{generatorFromTemplate ? 'Atualizar os turnos padrão do setor' : 'Guardar como turnos padrão do setor'}</b>
+                  <span className="block text-slate-400">{generatorFromTemplate ? 'Estes turnos vieram do cadastro do setor. Marque se mudou algo e quer manter para os próximos meses.' : 'No próximo mês o gerador já abre com estes turnos. Dá para mudar em Setores.'}</span>
+                </span>
+              </label>
+            )}
 
             <div className="p-4 bg-sky-950/30 border border-sky-900/50 rounded-2xl flex items-start gap-3">
               <CheckCircle2 className="w-5 h-5 text-sky-500 shrink-0 mt-0.5" />
