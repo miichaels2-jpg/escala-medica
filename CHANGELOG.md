@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.4.6 — 23/11/2026
+
+- **Escala, acabamento:** siglas da Grade sem repetição (duas pessoas com as mesmas iniciais viram, por exemplo,
+  "CSi" e "CSo", ou "MT1" e "MT2") e legenda "quem é quem" embaixo de cada setor; setores numa linha própria, com os
+  5 primeiros à vista e o resto no "+N"; no celular, o mês e o "Publicar" na mesma linha ("Copiar mês anterior" foi
+  para o menu "Mais").
+- **Lista, calendário e plantão do dia no mesmo padrão da Grade:** cartões neutros com selo curto ("Vaga aberta",
+  "Furo", "Em andamento", "Concluído", "Programado"), sem bordas coloridas nem ícones piscando.
+
 ## V0.4.5 — 23/11/2026
 
 - **Tela "Escala" (antes "Escalas & Plantões"):** topo com o mês, "Copiar mês anterior" e um único "Publicar"; uma
