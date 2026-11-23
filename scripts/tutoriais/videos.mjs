@@ -11,7 +11,19 @@ const btnStarts = text => `[...document.querySelectorAll('button')].find(b => b.
 // Vaga de teste da demo (Enfermaria / Clínica Médica, 05/12 e 12/12, não publicadas: ninguém é avisado).
 const TEST_VACANCY_DAY = 'shift_teste_plantonista_5';
 const TEST_VACANCY_NIGHT = 'shift_teste_plantonista_6';
+// Plantão de 17/12 do Plantonista Teste: ele pede para passar e a gestão aprova.
+const TEST_SHIFT_RELEASE = 'shift_teste_plantonista_4';
+const TEST_PROFESSIONAL = 'prof_61dcc97d-44e2-4871-9d51-cfc7930bd424';
 const asVacancy = { status: 'vago', professional_id: null, professional_name: 'Vaga Aberta', notes: '[ESP:Clínica Médica] [TESTE_PLANTONISTA]' };
+const asTestShift = { status: 'confirmado', professional_id: TEST_PROFESSIONAL, professional_name: 'Plantonista Teste', notes: '[ESP:Clínica Médica] [TESTE_PLANTONISTA]' };
+const escape = r => r.ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); 1`);
+// Digita devagar num campo do formulário (React precisa do evento "input").
+const type = async (r, sel, text) => {
+  for (let i = 1; i <= text.length; i++) {
+    await r.ev(`(() => { const el = ${sel}; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(text)}.slice(0, ${i})); el.dispatchEvent(new Event('input', { bubbles: true })); return 1; })()`);
+    await sleep(45);
+  }
+};
 
 export const VIDEOS = {
   'escalar-pela-grade': {
@@ -133,5 +145,98 @@ export const VIDEOS = {
       await sleep(4000);
     },
     restore: cdp => rest(cdp, 'PATCH', `shifts?id=eq.${TEST_VACANCY_NIGHT}&select=id,status`, asVacancy)
+  },
+
+  'passar-plantao': {
+    profile: 'plantonista', view: PHONE,
+    async run(r, base) {
+      await r.go(base + '/trocas', 8000);
+      await r.ev(`${btnStarts('Meus plantões')}?.click()`); await sleep(1500);
+      const release = `[...document.querySelectorAll('button')].filter(b => b.innerText.trim() === 'Passar p/ Mural').pop()`;
+      await r.ev(`${release}?.scrollIntoView({ block: 'center' })`); await sleep(600);
+      await r.start();
+      await r.step('Passar um plantão');
+      await r.cap('Não vai poder ir? Em Mural › Meus plantões…', '…estão todos os seus próximos plantões.');
+      await sleep(4200);
+      await r.cap('Toque em “Passar p/ Mural” no plantão.');
+      await r.moveClick(release, 900);
+      await r.dialogs(3000);
+      await r.cap('O pedido vai para a coordenação aprovar.', 'Enquanto isso, o plantão continua sendo seu.');
+      await sleep(4500);
+      await r.cap('Aprovado, ele vira vaga no Mural para os colegas.', 'Você recebe o aviso no celular. Para trocar com alguém específico, use “Propor troca”.');
+      await sleep(5000);
+    },
+    // Se gravado sozinho, devolve o plantão (com aprovar-troca, quem devolve é ele).
+    restore: cdp => rest(cdp, 'PATCH', `shifts?id=eq.${TEST_SHIFT_RELEASE}&select=id,status`, asTestShift)
+  },
+
+  'aprovar-troca': {
+    profile: 'gestor', view: DESKTOP,
+    async run(r, base) {
+      await r.go(base + '/trocas', 8000);
+      await r.start();
+      await r.step('Aprovar um pedido no Mural');
+      await r.cap('Quando alguém pede para passar um plantão, o pedido cai em Mural › Aprovações.');
+      await r.moveClick(btnStarts('Aprovações'), 1800);
+      await r.cap('Confira quem pediu, o dia e o horário.', 'Autorizar abre a vaga no Mural; Recusar mantém o plantão com a pessoa.');
+      await sleep(4800);
+      await r.moveClick(`[...document.querySelectorAll('button')].find(b => b.offsetParent !== null && b.innerText.trim() === 'Autorizar')`, 900);
+      await r.dialogs(3000);
+      await r.cap('Pronto: o plantão vira vaga no Mural.', 'Quem pediu recebe o aviso, e os colegas da mesma especialidade já podem assumir.');
+      await sleep(3000);
+      await r.moveClick(btnStarts('Vagas'), 1800); await sleep(3000);
+    },
+    restore: cdp => rest(cdp, 'PATCH', `shifts?id=eq.${TEST_SHIFT_RELEASE}&select=id,status`, asTestShift)
+  },
+
+  'cadastrar-profissional': {
+    profile: 'gestor', view: DESKTOP,
+    async run(r, base) {
+      await r.go(base + '/corpo-clinico', 9000);
+      await r.waitFor(btnStarts('Novo profissional'));
+      await r.start();
+      await r.step('Cadastrar um profissional');
+      await r.cap('Em Corpo Clínico, clique em “Novo profissional”.', 'Ou mande o link de cadastro pelo botão “Convidar equipe”.');
+      await r.moveClick(btnStarts('Novo profissional'), 1500);
+      const field = n => `[...document.querySelectorAll('[role=dialog] input')].filter(i => i.type !== 'checkbox')[${n}]`;
+      await r.cap('Passo 1, Dados: categoria, nome, documentos e contato.');
+      await r.move(field(0), 700); await type(r, field(0), 'Ana Beatriz Rocha');
+      await r.move(field(1), 600); await type(r, field(1), 'Clínica Médica');
+      await r.move(`[...document.querySelectorAll('[role=dialog] input[type=date]')][0]`, 600);
+      await r.ev(`(() => { const el = [...document.querySelectorAll('[role=dialog] input[type=date]')][0]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, '1990-04-12'); el.dispatchEvent(new Event('input', { bubbles: true })); return 1; })()`);
+      await r.cap('A data de nascimento gera a senha do primeiro acesso.', 'Dia, mês e ano + a inicial do nome. Ela troca a senha ao entrar.');
+      await sleep(3800);
+      await r.moveClick(btnStarts('Próximo: Acesso'), 1500);
+      await r.cap('Passo 2, Acesso: o perfil já marca as telas certas.', 'Escolha os hospitais e os setores onde a pessoa pode ser escalada.');
+      await sleep(5200);
+      await r.moveClick(btnStarts('Próximo: Valores'), 1500);
+      await r.cap('Passo 3, Valores: quanto ela recebe em cada hospital, e o PIX.', 'Por plantão (dia, noite, fim de semana), fixo mensal ou produtividade.');
+      await sleep(5200);
+      await r.move(btnStarts('Cadastrar profissional'));
+      await r.cap('Clique em “Cadastrar profissional” e ela já pode ser escalada.', 'Mande o link de acesso pelo WhatsApp no passo 2.');
+      await sleep(4200);
+      await escape(r); await sleep(800);
+    }
+  },
+
+  'fechar-mes': {
+    profile: 'gestor', view: DESKTOP,
+    async run(r, base) {
+      await r.go(base + '/faturamento', 9000);
+      await r.ev(`document.querySelector('[aria-label="Mês anterior"]')?.click()`); await sleep(2500);
+      await r.start();
+      await r.step('Fechar o mês no Faturamento');
+      await r.cap('O Faturamento calcula quanto pagar a cada profissional no mês.', 'Pelo valor cadastrado de cada um: por plantão, fixo ou produtividade.');
+      await sleep(4500);
+      await r.scrollMain(430, 1500);
+      await r.cap('Cada linha diz onde pagar e o que falta.', '“Falta PIX ou conta”: complete no Corpo Clínico.');
+      await r.move(`[...document.querySelectorAll('tbody tr td')].find(td => td.innerText.includes('Falta PIX'))`); await sleep(4200);
+      await r.cap('Pagou? Marque um por um, ou vários de uma vez.');
+      await r.moveClick(`document.querySelector('input[aria-label="Selecionar todos a pagar"]')`, 1200);
+      await r.move(btnStarts('Marcar como pago')); await sleep(3800);
+      await r.cap('Depois, o demonstrativo ou o recibo de cada um sai pronto para imprimir.', 'E “Imprimir fechamento” gera o resumo do mês para a direção.');
+      await r.moveClick(btnStarts('Limpar'), 900);
+      await r.move(`[...document.querySelectorAll('tbody button')].find(b => /Demonstrativo|Recibo/.test(b.innerText))`); await sleep(4500);
+    }
   }
 };

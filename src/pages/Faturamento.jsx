@@ -1264,7 +1264,7 @@ export default function Faturamento() {
         {[
           ['Pago', 'bg-emerald-500', paymentSummary.paid.count, formatCurrency(paymentSummary.paid.net)],
           ['A pagar', 'bg-amber-500', paymentSummary.pending.count, formatCurrency(paymentSummary.pending.net)],
-          ...(paymentSummary.awaiting.count ? [['Esperando produção', 'bg-slate-400', paymentSummary.awaiting.count, 'Lançar atendimentos']] : [])
+          ...(paymentSummary.awaiting.count ? [['Esperando produção', 'bg-slate-400', paymentSummary.awaiting.count, `${shiftsAwaitingProduction} dia(s)`]] : [])
         ].map(([label, dot, count, value]) => (
           <Card key={label} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
             <div>
@@ -1311,7 +1311,7 @@ export default function Faturamento() {
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 text-xs font-semibold border-b border-slate-200 dark:border-slate-800">
+            <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 text-xs font-semibold border-b border-slate-200 dark:border-slate-800 whitespace-nowrap">
               <tr>
                 <th className="py-3 pl-4 pr-0 w-8">
                   {filteredReport.some(canMarkPaid) && (
@@ -1366,7 +1366,7 @@ export default function Faturamento() {
                           <input type="checkbox" aria-label={`Selecionar ${item.prof.name}`} checked={selectedForPay.has(String(item.prof.id))} onChange={() => toggleSelectedForPay(item.prof.id)} className="h-4 w-4 accent-sky-600 cursor-pointer" />
                         )}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 min-w-[190px]">
                         <div className="font-semibold text-slate-900 dark:text-white">{item.prof.name}</div>
                         <div className="flex flex-wrap items-center gap-1.5 text-[10px] tabular-nums font-semibold">
                           <span className="font-normal text-slate-500 dark:text-slate-400">{item.matricula} · {item.prof.document || 'CRM'}</span>
@@ -1391,7 +1391,7 @@ export default function Faturamento() {
                         )}
                       </td>
 
-                      <td className="py-3 px-4 tabular-nums">
+                      <td className="py-3 px-4 tabular-nums min-w-[170px]">
                         {formaPagto}
                       </td>
 

@@ -9,6 +9,14 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.5.10 — 23/11/2026
+
+- **Mais 4 vídeos em "Como usar"** (agora 9, em quatro assuntos): cadastrar um profissional, aprovar um pedido no
+  Mural, fechar o mês no Faturamento e, para o plantonista, passar um plantão.
+- **Faturamento:** o cartão "Esperando produção" mostra quantos dias faltam lançar (antes, "Lançar atendimentos" em
+  letra grande); nomes e "Pagar em" não quebram mais em várias linhas na tabela; cabeçalho em uma linha.
+- Gravador dos vídeos: a rolagem mira a área principal da tela (antes podia rolar o menu lateral).
+
 ## V0.5.9 — 23/11/2026
 
 - **Nova tela "Como usar"** (menu): vídeos curtos, sem som, com cursor e legendas na própria tela do ScaleMedic.

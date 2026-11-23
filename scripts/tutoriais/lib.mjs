@@ -134,7 +134,7 @@ export async function createRecorder(cdp, { out, width = 1280, height = 720, sca
     cap: (text = '', sub = '') => cdp.ev(`__tut.cap(${JSON.stringify(text)}, ${JSON.stringify(sub)})`),
     step: (text = '') => cdp.ev(`__tut.step(${JSON.stringify(text)})`),
     async scrollMain(top, wait = 1400) {
-      await cdp.ev(`(() => { const el = [...document.querySelectorAll('main, *')].find(e => e.scrollHeight > e.clientHeight + 50 && /auto|scroll/.test(getComputedStyle(e).overflowY)) || document.scrollingElement; el.scrollTo({ top: ${top}, behavior: 'smooth' }); return 1; })()`);
+      await cdp.ev(`(() => { const scrollable = e => e && e.scrollHeight > e.clientHeight + 50 && /auto|scroll/.test(getComputedStyle(e).overflowY); const main = document.querySelector('main'); const el = scrollable(main) ? main : ([...document.querySelectorAll('*')].find(e => scrollable(e) && !e.closest('aside, nav')) || document.scrollingElement); el.scrollTo({ top: ${top}, behavior: 'smooth' }); return 1; })()`);
       await sleep(wait);
     },
     async start() {
