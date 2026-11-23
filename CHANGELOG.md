@@ -9,6 +9,16 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.5.6 — 23/11/2026
+
+- **Cadastro de profissional em 3 passos** (Corpo Clínico › Novo profissional): **Dados** (categoria, nome,
+  documentos, contato) → **Acesso** (perfil, telas, hospitais, setores, login) → **Valores** (regime, tabela por
+  unidade, PIX/conta). Cada passo confere o que falta antes de avançar (nome, data de nascimento, hospital, telas);
+  Enter avança em vez de salvar pela metade. Na edição, dá para ir direto a qualquer passo e salvar de onde estiver.
+- **Telas liberadas recolhidas:** o passo Acesso mostra um resumo ("Escala, Mural, Minha Escala · só visualiza") e o
+  botão "Ajustar telas" abre a lista completa.
+- Títulos "Novo profissional" / "Editar profissional"; títulos de seção sem verde decorativo.
+
 ## V0.5.5 — 23/11/2026
 
 - **Faturamento mais claro:** números do mês, produtividade e situação dos pagamentos em superfície neutra; cor só
