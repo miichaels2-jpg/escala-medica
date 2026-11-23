@@ -104,7 +104,7 @@ export default function Historico() {
   return (
     <div className="min-h-full bg-slate-100 dark:bg-slate-950 p-4 md:p-8 space-y-5 text-slate-900 dark:text-slate-100">
       <PageHero
-        title="Histórico de alterações"
+        title="Histórico"
         subtitle="Quem criou, alocou, trocou, excluiu, publicou, aprovou troca ou marcou pagamento, e quando."
         actions={t => (
           <Button type="button" onClick={load} disabled={loading} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none shrink-0 ${t.outline}`}>

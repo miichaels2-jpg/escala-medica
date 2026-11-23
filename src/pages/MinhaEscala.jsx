@@ -476,7 +476,7 @@ export default function MinhaEscala() {
     const requesterName = currentProfessional?.name || user?.full_name || 'Profissional';
     const requesterId = currentProfessional?.id || user?.id || '';
 
-    if (!confirm(`Deseja solicitar a liberação do seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) no Mural de Oportunidades?\n\nO pedido será enviado para aprovação da coordenação antes de ser liberado.`)) {
+    if (!confirm(`Deseja solicitar a liberação do seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) no Mural?\n\nO pedido será enviado para aprovação da coordenação antes de ser liberado.`)) {
       return;
     }
 
@@ -642,7 +642,7 @@ export default function MinhaEscala() {
             </Button>
 
             <Button onClick={() => navigate('/trocas')} className={`h-11 font-semibold text-sm px-3 sm:px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.primary}`}>
-              <Flame className="w-4 h-4" /> <span className="sm:hidden">Mural de Vagas</span><span className="hidden sm:inline">Mural de Oportunidades</span>
+              <Flame className="w-4 h-4" /> Ver o Mural
             </Button>
           </div>
         )}

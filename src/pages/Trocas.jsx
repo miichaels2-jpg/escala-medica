@@ -401,7 +401,7 @@ export default function Trocas() {
     const requesterName = currentProfessional?.name || user?.full_name || 'Profissional';
     const requesterId = currentProfessional?.id || user?.id || '';
 
-    if (!confirm(`Deseja solicitar a liberação do seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) no Mural de Oportunidades?\n\nO pedido será enviado para aprovação da coordenação antes de ser liberado.`)) {
+    if (!confirm(`Deseja solicitar a liberação do seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) no Mural?\n\nO pedido será enviado para aprovação da coordenação antes de ser liberado.`)) {
       return;
     }
 
@@ -446,7 +446,7 @@ export default function Trocas() {
 
       await notifyRequester(shift, audit, 'Troca aprovada', `Seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) foi liberado no Mural pela coordenação.`, 'troca_aprovada');
       await syncGlobalData();
-      alert('Plantão autorizado e publicado com sucesso no Mural de Oportunidades!');
+      alert('Plantão autorizado e publicado no Mural.');
     } catch (err) {
       alert('Erro ao autorizar: ' + err.message);
     } finally {
@@ -563,7 +563,7 @@ export default function Trocas() {
       
       {/* 1. CABEÇALHO */}
       <PageHero
-        title="Mural de vagas"
+        title="Mural"
         subtitle={isManager ? 'Vagas abertas, pedidos de troca e histórico de repasses.' : `Vagas que você pode assumir, sem choque com a sua escala${myUnitIds.length > 1 ? `, em todas as suas unidades (${myUnitIds.length})` : ''}.`}
       />
 

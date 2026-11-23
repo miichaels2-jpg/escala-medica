@@ -1180,7 +1180,7 @@ export default function Faturamento() {
       
       {/* BANNER PRINCIPAL */}
       <PageHero
-        title="Faturamento e repasse"
+        title="Faturamento"
         subtitle="Apuração baseada na matriz de remuneração (fixo, produtividade ou plantão dinâmico)."
         actions={t => (
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">

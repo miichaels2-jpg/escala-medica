@@ -2865,7 +2865,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                 </div>
               ) : (
                 <p className="text-[11px] text-rose-400 bg-rose-950/40 p-3 rounded-xl border border-rose-900/60 leading-tight">
-                  O plantão será disponibilizado no <b>Mural de Oportunidades</b> para que os profissionais assumam.
+                  O plantão será disponibilizado no <b>Mural</b> para que os profissionais assumam.
                 </p>
               )}
 

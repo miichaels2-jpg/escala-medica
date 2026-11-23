@@ -64,15 +64,15 @@ export const ROUTE_PRIORITY = ['/minha-escala', '/trocas', '/escalas', '/dashboa
 
 // Telas que podem ser liberadas uma a uma (ordem do menu).
 export const SCREENS = [
-  { path: '/dashboard', label: 'Painel Geral', desc: 'Visão do dia, vagas, custos e unidades' },
+  { path: '/dashboard', label: 'Painel', desc: 'Visão do dia, vagas, custos e unidades' },
   { path: '/escalas', label: 'Escala', desc: 'Grade do mês, alocação, turnos e publicação' },
-  { path: '/trocas', label: 'Mural de Oportunidades', desc: 'Vagas abertas, trocas e repasses' },
+  { path: '/trocas', label: 'Mural', desc: 'Vagas abertas, trocas e repasses' },
   { path: '/minha-escala', label: 'Minha Escala', desc: 'Os próprios plantões, agenda e disponibilidade' },
   { path: '/corpo-clinico', label: 'Corpo Clínico', desc: 'Cadastro de profissionais e acessos' },
-  { path: '/setores', label: 'Setores & Especialidades', desc: 'Setores de cada unidade' },
+  { path: '/setores', label: 'Setores', desc: 'Setores de cada unidade' },
   { path: '/relatorios', label: 'Relatórios', desc: 'BI, custos e exportações' },
-  { path: '/faturamento', label: 'Faturamento & Repasse', desc: 'Fechamento, produtividade e pagamentos' },
-  { path: '/historico', label: 'Histórico de alterações', desc: 'Quem mudou o quê, e quando' },
+  { path: '/faturamento', label: 'Faturamento', desc: 'Fechamento, produtividade e pagamentos' },
+  { path: '/historico', label: 'Histórico', desc: 'Quem mudou o quê, e quando' },
   { path: '/configuracoes', label: 'Configurações', desc: 'Unidades, logos e regras gerais' }
 ];
 const SCREEN_PATHS = SCREENS.map(screen => screen.path);
