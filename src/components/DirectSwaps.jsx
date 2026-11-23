@@ -251,7 +251,7 @@ export function SwapProposalDialog({ shift, onClose, swapsApi, sectorName, unitN
     <Dialog open={Boolean(shift)} onOpenChange={open => { if (!open) onClose(); }}>
       <DialogContent className="sm:max-w-xl max-h-[90vh] flex flex-col bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-slate-200 dark:border-slate-800">
         <DialogHeader className="shrink-0">
-          <DialogTitle className="text-base font-bold">Propor troca de plantão</DialogTitle>
+          <DialogTitle className="text-base font-semibold">Propor troca de plantão</DialogTitle>
           {shift && (
             <p className="text-sm text-slate-500 dark:text-slate-400">
               Seu plantão: <b className="text-slate-800 dark:text-slate-100">{shortDate(shift.date)} {shift.start_time}–{shift.end_time}</b> · {sectorName(shift.sector_id)}
@@ -269,7 +269,7 @@ export function SwapProposalDialog({ shift, onClose, swapsApi, sectorName, unitN
             return (
               <label key={theirs.id} className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer ${selected ? 'bg-sky-50 dark:bg-sky-500/10' : 'hover:bg-slate-50 dark:hover:bg-slate-900'}`}>
                 <input type="radio" name="swap-option" checked={selected} onChange={() => setChoice(String(theirs.id))} className="w-4 h-4" />
-                <span className="w-24 shrink-0 font-mono text-xs">{shortDate(theirs.date)}<br />{theirs.start_time}–{theirs.end_time}</span>
+                <span className="w-24 shrink-0 tabular-nums text-xs">{shortDate(theirs.date)}<br />{theirs.start_time}–{theirs.end_time}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium truncate">{firstLast(colleague.name)}</span>
                   <span className="block text-xs text-slate-500 truncate">{sectorName(theirs.sector_id)}{multiUnit && unitNameById?.[String(theirs.unit_id)] ? ` · ${unitNameById[String(theirs.unit_id)]}` : ''}</span>

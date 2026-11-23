@@ -4,7 +4,7 @@
 //
 // status: 'entregue' | 'em_andamento' | 'planejado' | 'ideia'
 
-export const ROADMAP_UPDATED_AT = '2026-11-21';
+export const ROADMAP_UPDATED_AT = '2026-11-22';
 
 export const ROADMAP_GROUPS = [
   {
@@ -39,9 +39,9 @@ export const ROADMAP_GROUPS = [
     title: 'Aparência e primeiros passos',
     items: [
       { id: 20, title: 'Marca nova', detail: 'Ícone "grade de plantões" (os dias do meio formam a cruz da saúde) no celular, navegador, login e menu.', status: 'entregue', version: 'V0.3.10' },
-      { id: 21, title: 'Acabamento visual das telas', detail: 'Um só padrão de letras, cores, cartões e botões em todas as telas, no tom calmo da marca.', status: 'em_andamento' },
-      { id: 22, title: 'Primeiros passos para empresa nova', detail: 'Lista no Painel: setores, equipe (ou link de credenciamento), primeira escala, publicar.', status: 'planejado' },
-      { id: 23, title: 'Abrir mais rápido no celular', detail: 'Dividir o app em partes para o login e a Minha Escala carregarem primeiro.', status: 'planejado' }
+      { id: 21, title: 'Acabamento visual das telas', detail: 'Um só padrão de letras, cores, cartões e botões em todas as telas, no tom calmo da marca; topo azul de destaque na Minha Escala e no Painel.', status: 'entregue', version: 'V0.4.1' },
+      { id: 22, title: 'Primeiros passos para empresa nova', detail: 'Lista no Painel: dados do hospital, setores, equipe (ou link de credenciamento), primeira escala, publicar. Some quando tudo estiver feito.', status: 'entregue', version: 'V0.4.1' },
+      { id: 23, title: 'Abrir mais rápido no celular', detail: 'Cada tela baixa só quando é aberta: a entrada caiu de 1,8 MB para cerca de 700 KB.', status: 'entregue', version: 'V0.4.1' }
     ]
   },
   {

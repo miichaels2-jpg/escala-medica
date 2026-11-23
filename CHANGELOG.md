@@ -9,6 +9,23 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.4.1 — 22/11/2026
+
+- **Acabamento visual em todas as telas:** a letra Inter passa a ser usada de fato (antes o app caía na fonte do
+  sistema), títulos mais leves, sem palavras em maiúsculas espaçadas nem números em letra de máquina de escrever,
+  sombras discretas e um só tom de fundo no tema escuro. Os topos escuros com degradê viraram cartões neutros com o
+  mesmo tamanho de título em todas as telas; a cor fica para o que é status (vaga, alerta, pago). No menu, o item
+  "Planejamento (temporário)" virou só "Planejamento".
+- **Topo em destaque nas telas de entrada:** Minha Escala e Painel ganham uma faixa no azul da marca, com o símbolo da
+  grade ao fundo. No Painel, o topo passa a ser a primeira coisa da tela.
+- **Primeiros passos:** lista no Painel para o gestor de empresa nova — dados do hospital, setores, equipe (ou link de
+  credenciamento), primeira escala e publicar. Cada passo se marca sozinho; a lista some quando tudo estiver feito ou
+  quando o gestor fechar.
+- **Abre mais rápido no celular:** cada tela é baixada só quando é aberta. A entrada caiu de 1,8 MB para cerca de
+  700 KB; Relatórios e a planilha Excel só baixam quando alguém usa. React e Supabase ficam em arquivos separados, então
+  numa versão nova o celular baixa só o que mudou. Se uma tela não for encontrada porque saiu versão nova com o app
+  aberto, ele recarrega sozinho uma vez.
+
 ## V0.3.10 — 21/11/2026
 
 - **Marca nova:** ícone "grade de plantões" (uma grade de escala 3×3 em que os dias do meio formam a cruz da saúde) e

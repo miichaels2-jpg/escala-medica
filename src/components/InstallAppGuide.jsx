@@ -13,10 +13,10 @@ function Step({ number, icon: Icon, title, children }) {
   return (
     <li className="flex gap-3">
       <div className="flex flex-col items-center">
-        <span className="w-7 h-7 rounded-full bg-sky-600 text-white text-xs font-black flex items-center justify-center shrink-0">{number}</span>
+        <span className="w-7 h-7 rounded-full bg-sky-600 text-white text-xs font-semibold flex items-center justify-center shrink-0">{number}</span>
       </div>
       <div className="flex-1 min-w-0 pb-1">
-        <p className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+        <p className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
           {Icon && <Icon className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />}
           {title}
         </p>
@@ -48,15 +48,15 @@ export function InstallAppDialog({ open, onOpenChange }) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[94vw] sm:max-w-md max-h-[88dvh] overflow-y-auto bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-3xl p-5 shadow-2xl z-[9999]">
         <DialogHeader>
-          <DialogTitle className="text-base font-black flex items-center gap-2 text-sky-600 dark:text-sky-400">
+          <DialogTitle className="text-base font-semibold flex items-center gap-2 text-sky-600 dark:text-sky-400">
             <Smartphone className="w-5 h-5" /> Instalar o ScaleMedic no celular
           </DialogTitle>
         </DialogHeader>
 
         <div className="flex items-center gap-4 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
           <div className="flex flex-col items-center gap-1 shrink-0">
-            <img src="/icons/icon-192.png" alt="Ícone do ScaleMedic" className="w-14 h-14 rounded-2xl shadow-lg shadow-sky-600/30" />
-            <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300">ScaleMedic</span>
+            <img src="/icons/icon-192.png" alt="Ícone do ScaleMedic" className="w-14 h-14 rounded-2xl shadow-sm" />
+            <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300">ScaleMedic</span>
           </div>
           <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
             Este é o ícone que vai aparecer junto com os seus aplicativos. O sistema abre em tela cheia,
@@ -65,7 +65,7 @@ export function InstallAppDialog({ open, onOpenChange }) {
         </div>
 
         {isInstalled ? (
-          <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-sm font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+          <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-sm font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 shrink-0" /> Você já está usando o aplicativo instalado.
           </div>
         ) : (
@@ -76,7 +76,7 @@ export function InstallAppDialog({ open, onOpenChange }) {
                 role="tab"
                 aria-selected={tab === 'ios'}
                 onClick={() => setTab('ios')}
-                className={`h-10 rounded-xl text-xs font-black transition-all cursor-pointer ${tab === 'ios' ? 'bg-white dark:bg-slate-800 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'}`}
+                className={`h-10 rounded-xl text-xs font-semibold transition-all cursor-pointer ${tab === 'ios' ? 'bg-white dark:bg-slate-800 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'}`}
               >
                 iPhone / iPad
               </button>
@@ -85,7 +85,7 @@ export function InstallAppDialog({ open, onOpenChange }) {
                 role="tab"
                 aria-selected={tab === 'android'}
                 onClick={() => setTab('android')}
-                className={`h-10 rounded-xl text-xs font-black transition-all cursor-pointer ${tab === 'android' ? 'bg-white dark:bg-slate-800 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'}`}
+                className={`h-10 rounded-xl text-xs font-semibold transition-all cursor-pointer ${tab === 'android' ? 'bg-white dark:bg-slate-800 shadow-sm text-slate-900 dark:text-white' : 'text-slate-500'}`}
               >
                 Android
               </button>
@@ -120,13 +120,13 @@ export function InstallAppDialog({ open, onOpenChange }) {
                   <Button
                     type="button"
                     onClick={handleInstallNow}
-                    className="w-full h-12 bg-sky-600 hover:bg-sky-500 text-white font-black text-sm rounded-2xl shadow-lg shadow-sky-600/30 gap-2 cursor-pointer"
+                    className="w-full h-12 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-sm rounded-2xl shadow-sm gap-2 cursor-pointer"
                   >
                     <Download className="w-5 h-5" /> Instalar agora
                   </Button>
                 )}
                 {installMessage && (
-                  <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 text-center">{installMessage}</p>
+                  <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 text-center">{installMessage}</p>
                 )}
                 {canPromptInstall && (
                   <p className="text-[11px] text-slate-500 text-center">Se preferir, faça pelo menu do navegador:</p>
@@ -153,7 +153,7 @@ export function InstallAppDialog({ open, onOpenChange }) {
           </>
         )}
 
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="w-full h-11 rounded-2xl text-xs font-bold border-slate-200 dark:border-slate-700 cursor-pointer">
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="w-full h-11 rounded-2xl text-xs font-semibold border-slate-200 dark:border-slate-700 cursor-pointer">
           Fechar
         </Button>
       </DialogContent>
@@ -182,13 +182,13 @@ export function InstallAppBanner({ onOpenGuide }) {
   };
 
   return (
-    <div className="md:hidden mx-3 mt-3 p-3 rounded-2xl bg-gradient-to-r from-sky-600 to-cyan-600 text-white shadow-lg shadow-sky-600/20 flex items-center gap-3 print:hidden">
+    <div className="md:hidden mx-3 mt-3 p-3 rounded-2xl bg-gradient-to-r from-sky-600 to-cyan-600 text-white shadow-sm flex items-center gap-3 print:hidden">
       <img src="/icons/icon-192.png" alt="" className="w-10 h-10 rounded-xl ring-2 ring-white/30 shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-black leading-tight">Instale o ScaleMedic no seu celular</p>
+        <p className="text-xs font-semibold leading-tight">Instale o ScaleMedic no seu celular</p>
         <p className="text-[11px] text-sky-100 leading-tight mt-0.5">Acesso com um toque, em tela cheia.</p>
       </div>
-      <Button type="button" onClick={onOpenGuide} className="h-9 px-3 bg-white text-sky-700 hover:bg-sky-50 font-black text-xs rounded-xl shrink-0 cursor-pointer">
+      <Button type="button" onClick={onOpenGuide} className="h-9 px-3 bg-white text-sky-700 hover:bg-sky-50 font-semibold text-xs rounded-xl shrink-0 cursor-pointer">
         Instalar
       </Button>
       <button type="button" onClick={dismiss} aria-label="Agora não" className="p-1 text-sky-100 hover:text-white shrink-0 cursor-pointer">

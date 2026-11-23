@@ -302,7 +302,7 @@ export default function Register() {
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center p-4 py-8 sm:py-12 font-sans">
-      <div className="w-full max-w-2xl bg-white dark:bg-slate-950 border border-slate-200/10 rounded-3xl p-5 sm:p-10 shadow-xl">
+      <div className="w-full max-w-2xl bg-white dark:bg-slate-950 border border-slate-200/10 rounded-3xl p-5 sm:p-10 shadow-sm">
         {success ? (
           <div className="flex flex-col items-center text-center py-10 space-y-4">
             <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center">

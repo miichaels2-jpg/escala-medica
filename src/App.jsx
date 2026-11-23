@@ -1,31 +1,41 @@
+import { Suspense } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
-import TermosDeUso from './pages/TermosDeUso';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import Login from '@/pages/Login';
-import Register from '@/pages/Register';
 import AppLayout from '@/components/AppLayout';
-import Dashboard from '@/pages/Dashboard';
-import Escalas from '@/pages/Escalas';
-import CorpoClinico from '@/pages/CorpoClinico';
-import Setores from '@/pages/Setores';
-import Relatorios from '@/pages/Relatorios';
-import Faturamento from '@/pages/Faturamento';
-import Configuracoes from '@/pages/Configuracoes';
-import MinhaEscala from '@/pages/MinhaEscala';
-import Trocas from '@/pages/Trocas';
-import Planejamento from '@/pages/Planejamento'; // TEMPORÁRIO
-import Plataforma from '@/pages/Plataforma';
-import Historico from '@/pages/Historico';
+import { lazyPage } from '@/lib/lazyPage';
 import AutoLogout from '@/components/AutoLogout'; 
 import ContractGuard from '@/components/ContractGuard';
 import { getHomePath } from '@/lib/accessControl';
+
+// Cada tela vira um arquivo separado, baixado só quando é aberta.
+const Register = lazyPage(() => import('@/pages/Register'));
+const TermosDeUso = lazyPage(() => import('./pages/TermosDeUso'));
+const Dashboard = lazyPage(() => import('@/pages/Dashboard'));
+const Escalas = lazyPage(() => import('@/pages/Escalas'));
+const CorpoClinico = lazyPage(() => import('@/pages/CorpoClinico'));
+const Setores = lazyPage(() => import('@/pages/Setores'));
+const Relatorios = lazyPage(() => import('@/pages/Relatorios'));
+const Faturamento = lazyPage(() => import('@/pages/Faturamento'));
+const Configuracoes = lazyPage(() => import('@/pages/Configuracoes'));
+const MinhaEscala = lazyPage(() => import('@/pages/MinhaEscala'));
+const Trocas = lazyPage(() => import('@/pages/Trocas'));
+const Planejamento = lazyPage(() => import('@/pages/Planejamento')); // TEMPORÁRIO
+const Plataforma = lazyPage(() => import('@/pages/Plataforma'));
+const Historico = lazyPage(() => import('@/pages/Historico'));
+
+const PageLoading = () => (
+  <div className="flex items-center justify-center py-24">
+    <div className="w-8 h-8 border-4 border-slate-200 dark:border-slate-700 border-t-sky-600 rounded-full animate-spin"></div>
+  </div>
+);
 
 const AuthenticatedApp = () => {
   const { isAuthenticated, isLoadingAuth, isLoadingPublicSettings, authError, user } = useAuth();
@@ -49,6 +59,7 @@ const AuthenticatedApp = () => {
     <>
       {isAuthenticated && <AutoLogout timeoutMinutes={60} />}
 
+      <Suspense fallback={<PageLoading />}>
       <Routes>
         <Route 
           path="/" 
@@ -78,6 +89,7 @@ const AuthenticatedApp = () => {
 
         <Route path="*" element={<PageNotFound />} />
       </Routes>
+      </Suspense>
     </>
   );
 };

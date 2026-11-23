@@ -4,9 +4,11 @@ import { DEFAULT_REMUNERATION_TYPE, getShiftCostEstimate, safeFinancialNumber } 
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import PageHero from '@/components/PageHero';
+import OnboardingChecklist from '@/components/OnboardingChecklist';
 import { 
   CalendarDays, Users, Clock, Minimize2, AlertTriangle, CheckCircle2,
-  ArrowRightLeft, Activity, DollarSign, Building2, ShieldAlert,
+  ArrowRightLeft, DollarSign, Building2, ShieldAlert,
   Radio, TrendingUp, Flame, ChevronRight, ChevronDown, ChevronUp, X, Send
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -381,52 +383,52 @@ export default function Painel() {
         <button onClick={closeTvMode} className="lg:hidden fixed top-4 right-4 z-[99999] p-2.5 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 shadow-xl cursor-pointer hover:bg-slate-700"><X className="w-5 h-5" /></button>
         <div className="flex items-center justify-between border-b border-slate-800 pb-4 shrink-0 pr-12 lg:pr-0">
           <div className="flex items-center gap-3 sm:gap-4 max-w-[85%] sm:max-w-none">
-            <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-2xl shrink-0"><Radio className="w-5 h-5 sm:w-7 sm:h-7 animate-pulse text-white" /></div>
+            <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-sky-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-sm shrink-0"><Radio className="w-5 h-5 sm:w-7 sm:h-7 animate-pulse text-white" /></div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[10px] sm:text-xs font-black uppercase tracking-[0.25em] text-sky-400 truncate"><span className="truncate max-w-[150px] sm:max-w-none">{dashboardTitle}</span><span className="hidden sm:inline">•</span><span className="hidden sm:flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500" /> CCO AO VIVO</span></div>
-              <h1 className="text-lg sm:text-2xl lg:text-4xl font-black tracking-tight text-white mt-0.5 truncate">Centro de Comando</h1>
-              <p className="text-[10px] sm:text-xs text-slate-400 font-bold truncate">{fmtDateLong(currentTime)}, {fmtDate(todayStr)} · Telemetria</p>
+              <div className="flex items-center gap-2 text-xs sm:text-xs font-semibold text-sky-400 truncate"><span className="truncate max-w-[150px] sm:max-w-none">{dashboardTitle}</span><span className="hidden sm:inline">•</span><span className="hidden sm:flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500" /> CCO AO VIVO</span></div>
+              <h1 className="text-lg sm:text-2xl lg:text-4xl font-semibold tracking-tight text-white mt-0.5 truncate">Centro de Comando</h1>
+              <p className="text-[10px] sm:text-xs text-slate-400 font-medium truncate">{fmtDateLong(currentTime)}, {fmtDate(todayStr)} · Telemetria</p>
             </div>
           </div>
           <div className="hidden lg:flex items-center gap-5">
-            <div className={`px-4 py-2.5 rounded-2xl border flex items-center gap-3 ${vacantShifts.length > 0 ? 'bg-rose-500/10 border-rose-500/40 text-rose-300' : monthlyShifts.length > 0 ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-amber-500/10 border-amber-500/40 text-amber-300'}`}><div className={`w-3 h-3 rounded-full ${vacantShifts.length > 0 ? 'bg-rose-500 animate-ping' : monthlyShifts.length > 0 ? 'bg-emerald-400' : 'bg-amber-400'}`} /><div><div className="text-xs font-black uppercase tracking-wider">{vacantShifts.length > 0 ? 'Alerta Assistencial' : monthlyShifts.length > 0 ? 'Sem vagas descobertas' : 'Escala não cadastrada'}</div><div className="text-[10px] font-bold opacity-80">{vacantShifts.length > 0 ? `${vacantShifts.length} vaga(s) desocupada(s) no mês` : monthlyShifts.length > 0 ? 'Plantões cadastrados sem vagas em aberto' : 'Nenhum plantão cadastrado neste mês'}</div></div></div>
-            <div className="bg-slate-900 border border-slate-800 px-5 py-2.5 rounded-2xl text-right"><div className="text-2xl lg:text-4xl font-black font-mono tracking-tight text-cyan-400">{currentTime.toLocaleTimeString('pt-BR')}</div><div className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Oficial CCO</div></div>
+            <div className={`px-4 py-2.5 rounded-2xl border flex items-center gap-3 ${vacantShifts.length > 0 ? 'bg-rose-500/10 border-rose-500/40 text-rose-300' : monthlyShifts.length > 0 ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-amber-500/10 border-amber-500/40 text-amber-300'}`}><div className={`w-3 h-3 rounded-full ${vacantShifts.length > 0 ? 'bg-rose-500 animate-ping' : monthlyShifts.length > 0 ? 'bg-emerald-400' : 'bg-amber-400'}`} /><div><div className="text-xs font-semibold">{vacantShifts.length > 0 ? 'Alerta Assistencial' : monthlyShifts.length > 0 ? 'Sem vagas descobertas' : 'Escala não cadastrada'}</div><div className="text-[10px] font-semibold opacity-80">{vacantShifts.length > 0 ? `${vacantShifts.length} vaga(s) desocupada(s) no mês` : monthlyShifts.length > 0 ? 'Plantões cadastrados sem vagas em aberto' : 'Nenhum plantão cadastrado neste mês'}</div></div></div>
+            <div className="bg-slate-900 border border-slate-800 px-5 py-2.5 rounded-2xl text-right"><div className="text-2xl lg:text-4xl font-semibold tabular-nums tracking-tight text-cyan-400">{currentTime.toLocaleTimeString('pt-BR')}</div><div className="text-xs font-medium text-slate-500">Oficial CCO</div></div>
             <button title="Sair da tela cheia" onClick={closeTvMode} className="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition-colors cursor-pointer"><Minimize2 className="h-5 w-5" /></button>
           </div>
         </div>
         <div className="flex-1 my-4 overflow-y-auto lg:overflow-hidden pr-1 pb-16 lg:pb-0">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-5 lg:h-full">
-            <div className="lg:col-span-2 rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5 shadow-2xl flex flex-col h-auto lg:h-full lg:overflow-hidden">
+            <div className="lg:col-span-2 rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5 shadow-sm flex flex-col h-auto lg:h-full lg:overflow-hidden">
               <div className="flex flex-col flex-1 h-full lg:overflow-hidden">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0"><div className="flex items-center gap-2 text-xs sm:text-sm font-black uppercase tracking-wider text-sky-400"><Building2 className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" /> Cobertura Setores</div><span className="text-[10px] sm:text-xs font-black px-2 sm:px-3 py-1 rounded-xl bg-slate-800 text-slate-300 whitespace-nowrap">{sectorsCoverage.length} auditados</span></div>
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0"><div className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-sky-400"><Building2 className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" /> Cobertura Setores</div><span className="text-[10px] sm:text-xs font-semibold px-2 sm:px-3 py-1 rounded-xl bg-slate-800 text-slate-300 whitespace-nowrap">{sectorsCoverage.length} auditados</span></div>
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 lg:overflow-y-auto pr-1 pb-1">
                   {sectorsCoverage.map((sec) => {
                     const hasShifts = sec.total > 0; const percent = hasShifts ? Math.round((sec.active / sec.total) * 100) : 0; const hasVacant = sec.vacant > 0;
                     return (
-                      <div key={sec.id} className={`p-3.5 rounded-2xl border flex flex-col justify-between transition-all ${hasVacant ? 'border-rose-500/80 bg-rose-950/30 shadow-lg' : sec.active > 0 ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800/80 bg-slate-900/40'}`}>
+                      <div key={sec.id} className={`p-3.5 rounded-2xl border flex flex-col justify-between transition-all ${hasVacant ? 'border-rose-500/80 bg-rose-950/30 shadow-sm' : sec.active > 0 ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-800/80 bg-slate-900/40'}`}>
                         <div>
-                          <div className="flex items-center justify-between"><h3 className="font-black text-xs sm:text-sm text-white truncate max-w-[150px]">{sec.name}</h3><span className={`text-[10px] sm:text-[10px] font-black px-2 py-0.5 rounded-full uppercase whitespace-nowrap ${hasVacant ? 'bg-rose-500 text-white font-black animate-pulse' : sec.active > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>{hasVacant ? `${sec.vacant} descoberto(s)` : sec.active > 0 ? `${sec.active} em andamento` : hasShifts && sec.upcoming > 0 ? `${sec.upcoming} a assumir` : hasShifts ? `${sec.concluded} concluído(s)` : 'Sem plantão'}</span></div>
-                          <div className="flex items-center justify-between text-[10px] sm:text-xs text-slate-400 mt-2 font-medium"><span>Em andamento / turnos do dia</span><strong className="text-white font-mono">{sec.active} / {sec.total}</strong></div>
+                          <div className="flex items-center justify-between"><h3 className="font-semibold text-xs sm:text-sm text-white truncate max-w-[150px]">{sec.name}</h3><span className={`text-xs sm:text-xs font-semibold px-2 py-0.5 rounded-full  whitespace-nowrap ${hasVacant ? 'bg-rose-500 text-white font-semibold animate-pulse' : sec.active > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>{hasVacant ? `${sec.vacant} descoberto(s)` : sec.active > 0 ? `${sec.active} em andamento` : hasShifts && sec.upcoming > 0 ? `${sec.upcoming} a assumir` : hasShifts ? `${sec.concluded} concluído(s)` : 'Sem plantão'}</span></div>
+                          <div className="flex items-center justify-between text-[10px] sm:text-xs text-slate-400 mt-2 font-medium"><span>Em andamento / turnos do dia</span><strong className="text-white tabular-nums">{sec.active} / {sec.total}</strong></div>
                           <div className="w-full h-2 bg-slate-800 rounded-full mt-2 overflow-hidden"><div className={`h-full transition-all duration-500 ${hasVacant ? 'bg-rose-500' : sec.active > 0 ? 'bg-emerald-400' : 'bg-transparent'}`} style={{ width: `${hasShifts ? Math.min(100, Math.max(6, percent)) : 0}%` }} /></div>
                         </div>
-                        <div className="pt-2">{hasVacant ? <div className="text-[10px] sm:text-[11px] text-rose-400 font-black flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {sec.vacant} desfalque(s)</div> : <div className="text-[10px] sm:text-[10px] text-slate-400 font-semibold">{hasShifts ? `${sec.active} em andamento · ${sec.upcoming} a assumir · ${sec.concluded} concluído(s)` : 'Nenhum plantão hoje'}</div>}</div>
+                        <div className="pt-2">{hasVacant ? <div className="text-[10px] sm:text-[11px] text-rose-400 font-semibold flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {sec.vacant} desfalque(s)</div> : <div className="text-[10px] sm:text-[10px] text-slate-400 font-medium">{hasShifts ? `${sec.active} em andamento · ${sec.upcoming} a assumir · ${sec.concluded} concluído(s)` : 'Nenhum plantão hoje'}</div>}</div>
                       </div>
                     );
                   })}
                 </div>
-                <div className="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] sm:text-xs text-slate-400 font-bold shrink-0"><span>Cobertura mensal: <b className="text-white font-mono text-xs sm:text-sm">{globalFillRate === null ? '—' : `${globalFillRate}%`}</b></span><span className="text-sky-400 hidden sm:block">Auditoria Contínua</span></div>
+                <div className="mt-2 pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] sm:text-xs text-slate-400 font-medium shrink-0"><span>Cobertura mensal: <b className="text-white tabular-nums text-xs sm:text-sm">{globalFillRate === null ? '—' : `${globalFillRate}%`}</b></span><span className="text-sky-400 hidden sm:block">Auditoria Contínua</span></div>
               </div>
             </div>
-            <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5 shadow-2xl flex flex-col h-auto lg:h-full lg:overflow-hidden">
+            <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5 shadow-sm flex flex-col h-auto lg:h-full lg:overflow-hidden">
               <div className="flex flex-col flex-1 h-full lg:overflow-hidden">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0"><span className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" /> Em andamento ({activeNowList.length})</span><span className="text-[10px] font-mono text-slate-400 hidden sm:block">PELO HORÁRIO DA ESCALA</span></div>
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 shrink-0"><span className="text-xs font-semibold text-emerald-400 flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" /> Em andamento ({activeNowList.length})</span><span className="text-[10px] tabular-nums text-slate-400 hidden sm:block">PELO HORÁRIO DA ESCALA</span></div>
                 <div className="flex-1 space-y-2.5 lg:overflow-y-auto pr-1 pb-1">
                   {activeNowList.length === 0 ? <div className="py-10 text-center text-xs text-slate-500">Nenhum plantão alocado está em andamento agora.</div> : activeNowList.map(s => {
                     const prof = profById[s.professional_id] || profByName[normalizeStr(s.professional_name)]; const profName = toTitleCase(prof?.name || s.professional_name || 'Profissional'); const sectorName = toTitleCase(s.sector_name || sectors.find(sec => String(sec.id) === String(s.sector_id))?.name || 'Setor Geral');
                     return (
-                      <div key={s.id} className="p-3.5 rounded-2xl bg-slate-950 border border-emerald-500/40 flex items-center justify-between shadow-md">
-                        <div className="min-w-0 pr-2"><span className="text-[10px] sm:text-[10px] text-emerald-400 font-mono font-black block uppercase tracking-wider truncate">🏥 {sectorName}</span><div className="font-black text-xs sm:text-sm text-white truncate mt-0.5">Dr(a). {profName}</div><span className="text-[10px] sm:text-[10px] text-slate-400 font-mono block mt-0.5">{s.start_time} às {s.end_time}</span></div>
-                        <span className="text-[10px] sm:text-[10px] font-mono font-black text-emerald-300 bg-emerald-500/20 px-2 sm:px-2.5 py-1.5 rounded-xl shrink-0 border border-emerald-500/30 whitespace-nowrap">{s.lifecycle.detail}</span>
+                      <div key={s.id} className="p-3.5 rounded-2xl bg-slate-950 border border-emerald-500/40 flex items-center justify-between shadow-sm">
+                        <div className="min-w-0 pr-2"><span className="text-xs sm:text-xs text-emerald-400 tabular-nums font-semibold block truncate">🏥 {sectorName}</span><div className="font-semibold text-xs sm:text-sm text-white truncate mt-0.5">Dr(a). {profName}</div><span className="text-[10px] sm:text-[10px] text-slate-400 tabular-nums block mt-0.5">{s.start_time} às {s.end_time}</span></div>
+                        <span className="text-[10px] sm:text-[10px] tabular-nums font-semibold text-emerald-300 bg-emerald-500/20 px-2 sm:px-2.5 py-1.5 rounded-xl shrink-0 border border-emerald-500/30 whitespace-nowrap">{s.lifecycle.detail}</span>
                       </div>
                     );
                   })}
@@ -434,25 +436,25 @@ export default function Painel() {
               </div>
             </div>
             <div className="flex flex-col gap-4 h-auto lg:h-full lg:overflow-hidden">
-              <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5 shadow-2xl flex-1 flex flex-col h-auto lg:h-full lg:overflow-hidden">
+              <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-4 sm:p-5 shadow-sm flex-1 flex flex-col h-auto lg:h-full lg:overflow-hidden">
                 <div className="flex flex-col flex-1 h-full lg:overflow-hidden">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-2.5 shrink-0"><div className="flex items-center gap-2 text-[10px] sm:text-xs font-black uppercase tracking-wider text-sky-400"><ArrowRightLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Próxima Passagem</div>{nextHandover && <span className="text-[10px] sm:text-xs font-mono font-black px-2 py-0.5 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-500/30">{nextHandover.targetTime}</span>}</div>
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-2.5 shrink-0"><div className="flex items-center gap-2 text-xs sm:text-xs font-semibold text-sky-400"><ArrowRightLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Próxima Passagem</div>{nextHandover && <span className="text-[10px] sm:text-xs tabular-nums font-semibold px-2 py-0.5 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-500/30">{nextHandover.targetTime}</span>}</div>
                   <div className="flex-1 lg:overflow-y-auto pr-1">
                     {nextHandover ? (
                       <div className="space-y-2.5">
-                        <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30"><span className="text-[10px] sm:text-[10px] uppercase font-bold text-emerald-400 block mb-1">Equipe que Assume ({nextHandover.incoming.length})</span>{nextHandover.incoming.slice(0, 4).map((s) => (<div key={s.id} className="text-[10px] sm:text-xs flex items-center justify-between py-0.5"><span className="font-bold text-white truncate pr-2">{toTitleCase(profById[s.professional_id]?.name || getShiftProfessionalName(s))}</span><span className="text-[10px] sm:text-[10px] text-slate-400 shrink-0">{toTitleCase(s.sector_name)}</span></div>))}</div>
-                        <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800"><span className="text-[10px] sm:text-[10px] uppercase font-bold text-slate-400 block mb-1">Equipe que Entrega ({nextHandover.outgoing.length})</span>{nextHandover.outgoing.length === 0 ? <span className="text-[10px] sm:text-xs text-slate-500 italic">Nenhum encerrando às {nextHandover.targetTime}.</span> : nextHandover.outgoing.slice(0, 4).map((s) => (<div key={s.id} className="text-[10px] sm:text-xs flex items-center justify-between py-0.5"><span className="font-medium text-slate-300 truncate pr-2">{toTitleCase(profById[s.professional_id]?.name || getShiftProfessionalName(s))}</span><span className="text-[10px] sm:text-[10px] text-slate-500 shrink-0">{toTitleCase(s.sector_name)}</span></div>))}</div>
+                        <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30"><span className="text-xs sm:text-xs font-semibold text-emerald-400 block mb-1">Equipe que Assume ({nextHandover.incoming.length})</span>{nextHandover.incoming.slice(0, 4).map((s) => (<div key={s.id} className="text-[10px] sm:text-xs flex items-center justify-between py-0.5"><span className="font-semibold text-white truncate pr-2">{toTitleCase(profById[s.professional_id]?.name || getShiftProfessionalName(s))}</span><span className="text-[10px] sm:text-[10px] text-slate-400 shrink-0">{toTitleCase(s.sector_name)}</span></div>))}</div>
+                        <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800"><span className="text-xs sm:text-xs font-medium text-slate-400 block mb-1">Equipe que Entrega ({nextHandover.outgoing.length})</span>{nextHandover.outgoing.length === 0 ? <span className="text-[10px] sm:text-xs text-slate-500 italic">Nenhum encerrando às {nextHandover.targetTime}.</span> : nextHandover.outgoing.slice(0, 4).map((s) => (<div key={s.id} className="text-[10px] sm:text-xs flex items-center justify-between py-0.5"><span className="font-medium text-slate-300 truncate pr-2">{toTitleCase(profById[s.professional_id]?.name || getShiftProfessionalName(s))}</span><span className="text-[10px] sm:text-[10px] text-slate-500 shrink-0">{toTitleCase(s.sector_name)}</span></div>))}</div>
                       </div>
                     ) : <div className="py-10 text-center text-[10px] sm:text-xs text-slate-500">Nenhuma troca prevista.</div>}
                   </div>
                 </div>
               </div>
-              <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-4 shadow-2xl space-y-1.5 shrink-0">
-                <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Custo Operacional</span>
-                <div className="text-xl sm:text-2xl lg:text-3xl font-black font-mono text-white">R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                <div className="text-[10px] sm:text-[11px] text-slate-400 flex justify-between"><span>Previsão 24h:</span><b className="font-mono text-white">R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
-                {todayFinancials.shiftsMissingRate > 0 && <div className="text-[10px] font-bold text-amber-300">{todayFinancials.shiftsMissingRate} plantão(ões) sem tarifa</div>}
-                {todayFinancials.shiftsAwaitingProduction > 0 && <div className="text-[10px] font-bold text-amber-300">{todayFinancials.shiftsAwaitingProduction} aguardando apuração</div>}
+              <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-4 shadow-sm space-y-1.5 shrink-0">
+                <span className="text-xs sm:text-xs font-semibold text-amber-400 flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> Custo Operacional</span>
+                <div className="text-xl sm:text-2xl lg:text-3xl font-semibold tabular-nums text-white">R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div className="text-[10px] sm:text-[11px] text-slate-400 flex justify-between"><span>Previsão 24h:</span><b className="tabular-nums text-white">R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>
+                {todayFinancials.shiftsMissingRate > 0 && <div className="text-[10px] font-semibold text-amber-300">{todayFinancials.shiftsMissingRate} plantão(ões) sem tarifa</div>}
+                {todayFinancials.shiftsAwaitingProduction > 0 && <div className="text-[10px] font-semibold text-amber-300">{todayFinancials.shiftsAwaitingProduction} aguardando apuração</div>}
               </div>
             </div>
           </div>
@@ -465,41 +467,45 @@ export default function Painel() {
     <div className="p-3 sm:p-4 md:p-8 space-y-4 sm:space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
       
       {isManager && daysToExpiration !== null && daysToExpiration <= 5 && daysToExpiration >= 0 && (
-        <div className="bg-rose-600 border border-rose-500 p-4 rounded-3xl text-white shadow-xl flex items-center gap-3 animate-in fade-in">
+        <div className="bg-rose-600 border border-rose-500 p-4 rounded-3xl text-white shadow-sm flex items-center gap-3 animate-in fade-in">
           <AlertTriangle className="w-8 h-8 animate-pulse shrink-0" />
           <div>
-            <h2 className="text-base font-black uppercase tracking-wider">Aviso Crítico de Renovação</h2>
+            <h2 className="text-base font-semibold">Aviso Crítico de Renovação</h2>
             <p className="text-sm font-medium">Seu contrato com a ScaleMedic expira em <b>{daysToExpiration} dia(s)</b>. Entre em contato para renovar, ou todas as suas unidades serão bloqueadas após o vencimento.</p>
           </div>
         </div>
       )}
 
+      <PageHero
+        title={dashboardTitle}
+        subtitle={`Monitoramento em tempo real de escalas, cobertura médica hospitalar e custo operacional diário ${isAllUnits ? 'de todas as unidades' : 'da unidade selecionada'}.`}
+        actions={t => (
+          <Button onClick={openTvMode} className={`font-medium text-sm h-11 px-4 rounded-xl gap-2 shrink-0 cursor-pointer shadow-none ${t.outline}`}>
+            <Radio className={`w-4 h-4 ${t.outlineIcon}`} /> Modo TV
+          </Button>
+        )}
+      />
+
+      {isManager && (
+        <OnboardingChecklist
+          companyId={company?.id}
+          user={user}
+          units={managedUnits}
+          sectors={allCompanySectors.length ? allCompanySectors : sectors}
+          professionals={allCompanyProfessionals.length ? allCompanyProfessionals : professionals}
+          shifts={allCompanyShifts.length ? allCompanyShifts : shifts}
+          publishedRanges={publishedRanges}
+        />
+      )}
+
       {multiUnit && <UnitsOverview units={managedUnits} shifts={allCompanyShifts} scope={effectiveScope} onScopeChange={changeScope} now={currentTime} />}
-
-      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-sky-950 text-white p-6 md:p-8 rounded-3xl border border-slate-800 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.25em] text-sky-400 font-black">
-            <Activity className="w-4 h-4" /> Centro de Operações Clínicas & Gestão
-          </div>
-          <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white">
-            {dashboardTitle}
-          </h1>
-          <p className="text-xs md:text-sm text-slate-300 font-medium max-w-2xl">
-            Monitoramento em tempo real de escalas, cobertura médica hospitalar e custo operacional diário {isAllUnits ? 'de todas as unidades' : 'da unidade selecionada'}.
-          </p>
-        </div>
-
-        <Button onClick={openTvMode} className="bg-sky-600 hover:bg-sky-500 text-white font-black text-xs h-12 px-6 rounded-2xl shadow-xl gap-2.5 transition-all hover:scale-105 shrink-0 cursor-pointer">
-          <Radio className="w-4 h-4 animate-pulse text-white" /> Ativar Modo TV CCO
-        </Button>
-      </div>
 
       {unsubmittedSectors.length > 0 && isManager && (
         <div className="p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in">
           <div className="flex items-start sm:items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-amber-500 text-white shrink-0 shadow-sm"><AlertTriangle className="w-5 h-5" /></div>
             <div>
-              <strong className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-300 block">
+              <strong className="text-xs font-semibold text-amber-700 dark:text-amber-300 block">
                 {unsubmittedSectors.length} Setor(es) com Escala Pendente de Publicação em {MONTH_NAMES[currentMonth]}
               </strong>
               <button type="button" onClick={() => setShowDraftSectors(v => !v)} aria-expanded={showDraftSectors} className="mt-1 text-xs font-semibold text-amber-700 dark:text-amber-300 hover:underline cursor-pointer inline-flex items-center gap-1">
@@ -507,22 +513,22 @@ export default function Painel() {
               </button>
               {showDraftSectors && <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                 {unsubmittedSectors.map(s => (
-                  <button key={s.id} onClick={() => handleNavigateToSectorScale(s.id)} className="text-[10px] font-black uppercase px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-800 dark:text-amber-200 hover:bg-amber-500/30 transition-all cursor-pointer border border-amber-500/30">{s.name}</button>
+                  <button key={s.id} onClick={() => handleNavigateToSectorScale(s.id)} className="text-xs font-semibold px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-800 dark:text-amber-200 hover:bg-amber-500/30 transition-all cursor-pointer border border-amber-500/30">{s.name}</button>
                 ))}
               </div>}
             </div>
           </div>
-          <Button onClick={() => navigate('/escalas')} className="h-9 bg-amber-600 hover:bg-amber-500 text-white font-black text-xs px-4 rounded-xl shadow-md shrink-0 cursor-pointer gap-1.5"><Send className="w-3.5 h-3.5" /> Abrir Escalas</Button>
+          <Button onClick={() => navigate('/escalas')} className="h-9 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs px-4 rounded-xl shadow-sm shrink-0 cursor-pointer gap-1.5"><Send className="w-3.5 h-3.5" /> Abrir Escalas</Button>
         </div>
       )}
 
       {vacantShifts.length > 0 ? (
-        <div className="p-5 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-900 dark:text-rose-200 shadow-lg space-y-3">
+        <div className="p-5 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-900 dark:text-rose-200 shadow-sm space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0 font-bold shadow-md"><Flame className="w-5 h-5" /></div>
+              <div className="p-2.5 rounded-2xl bg-rose-600 text-white shrink-0 font-semibold shadow-sm"><Flame className="w-5 h-5" /></div>
               <div>
-                <strong className="text-sm font-black flex items-center gap-2">{vacantShifts.length} vaga(s) sem profissional neste mês</strong>
+                <strong className="text-sm font-semibold flex items-center gap-2">{vacantShifts.length} vaga(s) sem profissional neste mês</strong>
                 <span className="text-xs text-rose-700 dark:text-rose-300">Próximas primeiro. Toque em uma vaga para preencher.</span>
               </div>
             </div>
@@ -533,7 +539,7 @@ export default function Painel() {
                 size="sm"
                 aria-expanded={showAllVacantShifts}
                 onClick={() => setShowAllVacantShifts(value => !value)}
-                className="h-8 shrink-0 self-start text-xs font-bold text-rose-700 hover:bg-rose-500/10 hover:text-rose-900 dark:text-rose-300 dark:hover:bg-rose-500/20 dark:hover:text-rose-100 sm:self-auto"
+                className="h-8 shrink-0 self-start text-xs font-semibold text-rose-700 hover:bg-rose-500/10 hover:text-rose-900 dark:text-rose-300 dark:hover:bg-rose-500/20 dark:hover:text-rose-100 sm:self-auto"
               >
                 {showAllVacantShifts ? (
                   <span className="flex items-center gap-1">Mostrar menos <ChevronUp className="h-3.5 w-3.5" /></span>
@@ -545,7 +551,7 @@ export default function Painel() {
           </div>
           <div className="flex flex-wrap gap-2 pt-2 border-t border-rose-200 dark:border-rose-900/50">
             {visibleVacantShifts.map((vs) => (
-              <button key={vs.id} onClick={() => handleResolveAlert(vs)} className="cursor-pointer px-3.5 py-2 rounded-xl bg-white dark:bg-rose-950/70 border border-rose-300 dark:border-rose-800 text-xs font-black text-rose-700 dark:text-rose-300 flex items-center gap-2 hover:bg-rose-50 dark:hover:bg-rose-900 transition-all hover:scale-105 shadow-sm">
+              <button key={vs.id} onClick={() => handleResolveAlert(vs)} className="cursor-pointer px-3.5 py-2 rounded-xl bg-white dark:bg-rose-950/70 border border-rose-300 dark:border-rose-800 text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-center gap-2 hover:bg-rose-50 dark:hover:bg-rose-900 transition-all shadow-sm">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" /><span><b>{vs.sectorName}</b> • {vs.start_time} às {vs.end_time} ({vs.formattedDate})</span><ArrowRightLeft className="w-3 h-3 opacity-60 ml-1" />
               </button>
             ))}
@@ -554,16 +560,16 @@ export default function Painel() {
       ) : monthlyShifts.length > 0 ? (
         <div className="p-4 rounded-3xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-emerald-600 text-white font-bold"><CheckCircle2 className="w-4 h-4" /></div>
-            <div><strong className="text-xs font-black uppercase tracking-wider block">Nenhuma vaga descoberta neste mês</strong><span className="text-[11px] text-emerald-700 dark:text-emerald-400">Todos os plantões cadastrados no período possuem profissional alocado. A publicação da escala é acompanhada separadamente.</span></div>
+            <div className="p-2 rounded-xl bg-emerald-600 text-white font-semibold"><CheckCircle2 className="w-4 h-4" /></div>
+            <div><strong className="text-xs font-semibold block">Nenhuma vaga descoberta neste mês</strong><span className="text-[11px] text-emerald-700 dark:text-emerald-400">Todos os plantões cadastrados no período possuem profissional alocado. A publicação da escala é acompanhada separadamente.</span></div>
           </div>
-          <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono px-3 py-1 rounded-xl bg-emerald-500/20">SEM VAGAS</span>
+          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums px-3 py-1 rounded-xl bg-emerald-500/20">SEM VAGAS</span>
         </div>
       ) : (
         <div className="p-4 rounded-3xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 flex items-center gap-3 shadow-sm">
           <CalendarDays className="w-5 h-5 text-slate-500 shrink-0" />
           <div>
-            <strong className="text-xs font-black uppercase tracking-wider block">Nenhum plantão cadastrado neste mês</strong>
+            <strong className="text-xs font-semibold block">Nenhum plantão cadastrado neste mês</strong>
             <span className="text-[11px] text-slate-500 dark:text-slate-400">A cobertura mensal será calculada quando houver plantões na escala.</span>
           </div>
         </div>
@@ -571,26 +577,26 @@ export default function Painel() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 rounded-3xl border border-emerald-200 dark:border-emerald-800/60 bg-gradient-to-br from-white to-emerald-50/40 dark:from-slate-900 dark:to-emerald-950/20 shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between"><span className="text-xs font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-400">Profissionais com Plantão Ativo</span><span className="p-2 rounded-xl bg-emerald-600 text-white shadow-md animate-pulse"><Clock className="w-4 h-4" /></span></div>
-          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">{activeNowList.length} <span className="text-sm font-bold text-slate-500">em andamento</span></div>
+          <div className="flex items-center justify-between"><span className="text-xs font-semibold text-emerald-800 dark:text-emerald-400">Profissionais com Plantão Ativo</span><span className="p-2 rounded-xl bg-emerald-600 text-white shadow-sm animate-pulse"><Clock className="w-4 h-4" /></span></div>
+          <div className="text-3xl font-semibold text-slate-900 dark:text-white mt-3">{activeNowList.length} <span className="text-sm font-medium text-slate-500">em andamento</span></div>
           <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-semibold">Plantões cujo horário está ativo na escala</p>
         </Card>
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="flex items-center justify-between"><span className="text-xs font-black uppercase tracking-wider text-slate-500">Plantões do Dia</span><span className="p-2 rounded-xl bg-sky-50 dark:bg-sky-950 text-sky-600 dark:text-sky-400"><CalendarDays className="w-4 h-4" /></span></div>
-          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">{todayShifts.length} <span className="text-sm font-bold text-slate-500">turnos</span></div>
+          <div className="flex items-center justify-between"><span className="text-xs font-medium text-slate-500">Plantões do Dia</span><span className="p-2 rounded-xl bg-sky-50 dark:bg-sky-950 text-sky-600 dark:text-sky-400"><CalendarDays className="w-4 h-4" /></span></div>
+          <div className="text-3xl font-semibold text-slate-900 dark:text-white mt-3">{todayShifts.length} <span className="text-sm font-medium text-slate-500">turnos</span></div>
           <p className="text-[11px] text-slate-500 mt-1 font-medium">{upcomingList.length} a iniciar · {concludedList.length} concluídos</p>
         </Card>
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="flex items-center justify-between"><span className="text-xs font-black uppercase tracking-wider text-slate-500">Corpo Clínico Credenciado</span><span className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400"><Users className="w-4 h-4" /></span></div>
-          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3">{professionals.length} <span className="text-sm font-bold text-slate-500">profissionais</span></div>
+          <div className="flex items-center justify-between"><span className="text-xs font-medium text-slate-500">Corpo Clínico Credenciado</span><span className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400"><Users className="w-4 h-4" /></span></div>
+          <div className="text-3xl font-semibold text-slate-900 dark:text-white mt-3">{professionals.length} <span className="text-sm font-medium text-slate-500">profissionais</span></div>
           <p className="text-[11px] text-slate-500 mt-1 font-medium">Equipe vinculada às escalas</p>
         </Card>
         <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-          <div className="flex items-center justify-between"><span className="text-xs font-black uppercase tracking-wider text-slate-500">Custo Operacional Hoje</span><span className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400"><DollarSign className="w-4 h-4" /></span></div>
-          <div className="text-3xl font-black text-slate-900 dark:text-white mt-3 font-mono">R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div className="flex items-center justify-between"><span className="text-xs font-medium text-slate-500">Custo Operacional Hoje</span><span className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400"><DollarSign className="w-4 h-4" /></span></div>
+          <div className="text-3xl font-semibold text-slate-900 dark:text-white mt-3 tabular-nums">R$ {todayFinancials.executedValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           <p className="text-[11px] text-slate-500 mt-1 font-medium">Previsão 24h: <b>R$ {todayFinancials.totalToday.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></p>
-          {todayFinancials.shiftsMissingRate > 0 && <p className="mt-1 text-[10px] font-bold text-amber-600 dark:text-amber-400">{todayFinancials.shiftsMissingRate} plantão(ões) sem tarifa ou cadastro financeiro</p>}
-          {todayFinancials.shiftsAwaitingProduction > 0 && <p className="mt-1 text-[10px] font-bold text-amber-600 dark:text-amber-400">{todayFinancials.shiftsAwaitingProduction} plantão(ões) aguardam lançamento da produção</p>}
+          {todayFinancials.shiftsMissingRate > 0 && <p className="mt-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">{todayFinancials.shiftsMissingRate} plantão(ões) sem tarifa ou cadastro financeiro</p>}
+          {todayFinancials.shiftsAwaitingProduction > 0 && <p className="mt-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">{todayFinancials.shiftsAwaitingProduction} plantão(ões) aguardam lançamento da produção</p>}
         </Card>
       </div>
 
@@ -598,12 +604,12 @@ export default function Painel() {
         <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm lg:col-span-2 space-y-5">
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
             <div>
-              <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+              <h3 className="font-semibold text-base text-slate-900 dark:text-white flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-sky-600" /> Cobertura da Escala por Setor
               </h3>
               <p className="text-xs text-slate-500">Plantões descobertos, em andamento, a iniciar ou concluídos hoje ({fmtDate(todayStr)})</p>
             </div>
-            <span className="text-xs font-black px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+            <span className="text-xs font-semibold px-3 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
               {sectorsCoverage.filter(sec => sec.total > 0).length} de {sectorsCoverage.length} com plantão hoje
             </span>
           </div>
@@ -629,10 +635,10 @@ export default function Painel() {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <strong className="text-sm font-black text-slate-900 dark:text-white truncate">
+                    <strong className="text-sm font-semibold text-slate-900 dark:text-white truncate">
                       {sec.name}
                     </strong>
-                    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                    <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${
                       hasVacant 
                         ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' 
                         : sec.active > 0 
@@ -645,7 +651,7 @@ export default function Painel() {
 
                   <div className="flex items-center justify-between text-xs text-slate-500 mt-2.5 font-medium">
                     <span>Ocupação do posto</span>
-                    <span className="font-mono font-black text-slate-900 dark:text-white">
+                    <span className="tabular-nums font-semibold text-slate-900 dark:text-white">
                       {hasShifts ? `${sec.active} de ${sec.total} turnos (${percent}%)` : '0 / 0'}
                     </span>
                   </div>
@@ -658,7 +664,7 @@ export default function Painel() {
                   </div>
 
                   {hasVacant ? (
-                    <div className="text-[11px] text-rose-600 dark:text-rose-400 font-black mt-2 flex items-center gap-1 animate-pulse">
+                    <div className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold mt-2 flex items-center gap-1 animate-pulse">
                       <AlertTriangle className="w-3.5 h-3.5" /> {sec.vacant} vaga(s) com desfalque médico
                     </div>
                   ) : hasShifts ? (
@@ -676,7 +682,7 @@ export default function Painel() {
           </div>
           {sectorsCoverage.some(sec => sec.total === 0) && (
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              <span className="font-semibold text-slate-600 dark:text-slate-300">Sem plantão hoje:</span>{' '}
+              <span className="font-medium text-slate-600 dark:text-slate-300">Sem plantão hoje:</span>{' '}
               {sectorsCoverage.filter(sec => sec.total === 0).map(sec => sec.name).join(' · ')}
             </p>
           )}
@@ -685,10 +691,10 @@ export default function Painel() {
         <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
-              <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+              <h3 className="font-semibold text-base text-slate-900 dark:text-white flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-emerald-600" /> Eficiência de Cobertura
               </h3>
-              <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Neste Mês</span>
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Neste Mês</span>
             </div>
 
             <div className="py-6 flex flex-col items-center justify-center relative">
@@ -704,32 +710,32 @@ export default function Painel() {
                 />
               </svg>
               <div className="absolute flex flex-col items-center justify-center text-center">
-                <span className="text-4xl font-black font-mono tracking-tight text-slate-900 dark:text-white">{globalFillRate === null ? '—' : `${globalFillRate}%`}</span>
-                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider mt-0.5">{globalFillRate === null ? 'Sem escala' : 'Cobertura'}</span>
+                <span className="text-4xl font-semibold tabular-nums tracking-tight text-slate-900 dark:text-white">{globalFillRate === null ? '—' : `${globalFillRate}%`}</span>
+                <span className="text-xs font-medium text-slate-400 mt-0.5">{globalFillRate === null ? 'Sem escala' : 'Cobertura'}</span>
               </div>
             </div>
 
             <div className="space-y-2 text-xs">
               <div className="flex justify-between items-center p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850/50 font-medium">
                 <span className="text-slate-500">Plantões em andamento:</span>
-                <strong className="text-emerald-600 font-mono font-black">{activeNowList.length} turnos</strong>
+                <strong className="text-emerald-600 tabular-nums font-semibold">{activeNowList.length} turnos</strong>
               </div>
               <div className="flex justify-between items-center p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850/50 font-medium">
                 <span className="text-slate-500">Vagas Descobertas:</span>
-                <strong className={vacantShifts.length > 0 ? "text-rose-600 font-mono font-black" : "text-slate-400 font-mono"}>{vacantShifts.length} postos</strong>
+                <strong className={vacantShifts.length > 0 ? "text-rose-600 tabular-nums font-semibold" : "text-slate-400 tabular-nums"}>{vacantShifts.length} postos</strong>
               </div>
             </div>
           </div>
 
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
-            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-2">Distribuição da Carga Horária 24h</span>
+            <span className="text-xs font-medium text-slate-400 block mb-2">Distribuição da Carga Horária 24h</span>
             <div className="flex items-stretch justify-between h-20 gap-1">
               {hourlyCurveData.map((b, i) => (
                 <div key={i} className="flex-1 h-full flex flex-col items-center gap-1">
                   <div className="w-full flex-1 flex items-end">
                     <div className="w-full rounded-t-sm bg-sky-600 dark:bg-sky-500" style={{ height: b.count ? `${Math.max(8, b.height)}%` : '2px', opacity: b.count ? 1 : 0.35 }} title={`${b.label}: ${b.count} plantão(ões)`} />
                   </div>
-                  <span className="text-[10px] font-mono text-slate-400">{b.label}</span>
+                  <span className="text-[10px] tabular-nums text-slate-400">{b.label}</span>
                 </div>
               ))}
             </div>
@@ -741,10 +747,10 @@ export default function Painel() {
       <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
           <div>
-            <h3 className="font-black text-base text-slate-900 dark:text-white">Plantões em Atendimento Hoje</h3>
+            <h3 className="font-semibold text-base text-slate-900 dark:text-white">Plantões em Atendimento Hoje</h3>
             <p className="text-xs text-slate-500">Escala de {fmtDate(todayStr)} (Ativos no momento, programados e concluídos)</p>
           </div>
-          <span className="text-xs font-black px-3 py-1 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+          <span className="text-xs font-semibold px-3 py-1 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
             {todayShifts.length} turno(s) na unidade
           </span>
         </div>
@@ -769,17 +775,17 @@ export default function Painel() {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="text-xs font-bold font-mono text-slate-600 dark:text-slate-300">{shift.start_time} às {shift.end_time}</span>
-                    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase ${isVago ? 'bg-rose-600 text-white animate-pulse' : isActive ? 'bg-emerald-600 text-white animate-pulse' : isFinished ? 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300' : 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'}`}>
+                    <span className="text-xs font-medium tabular-nums text-slate-600 dark:text-slate-300">{shift.start_time} às {shift.end_time}</span>
+                    <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${isVago ? 'bg-rose-600 text-white animate-pulse' : isActive ? 'bg-emerald-600 text-white animate-pulse' : isFinished ? 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300' : 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'}`}>
                       {isVago ? '⚠️ Vaga Aberta' : isActive ? '● Ativo no Plantão' : isFinished ? '✓ Concluído' : '⏳ Programado'}
                     </span>
                   </div>
-                  <div className="font-black text-sm text-slate-900 dark:text-white truncate">
+                  <div className="font-semibold text-sm text-slate-900 dark:text-white truncate">
                     {isVago ? <span className="text-rose-600">Vaga em Aberto</span> : toTitleCase(shift.professional_name)}
                   </div>
                   <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
                     <span className="truncate">{toTitleCase(shift.sector_name || sectors.find(sec => String(sec.id) === String(shift.sector_id))?.name) || 'Setor não informado'}{isAllUnits && unitNameById[String(shift.unit_id)] ? ` · ${unitNameById[String(shift.unit_id)]}` : ''}</span>
-                    <span className="text-[10px] font-semibold text-slate-400">{shift.lifecycle.detail}</span>
+                    <span className="text-[10px] font-medium text-slate-400">{shift.lifecycle.detail}</span>
                   </div>
                 </div>
               );

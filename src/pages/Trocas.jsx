@@ -562,7 +562,7 @@ export default function Trocas() {
       
       {/* 1. CABEÇALHO */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Mural de vagas</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Mural de vagas</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           {isManager ? 'Vagas abertas, pedidos de troca e histórico de repasses.' : `Vagas que você pode assumir, sem choque com a sua escala${myUnitIds.length > 1 ? `, em todas as suas unidades (${myUnitIds.length})` : ''}.`}
         </p>
@@ -670,12 +670,12 @@ export default function Trocas() {
 
                       return (
                         <div key={shift.id} title={isManager && conflictInfo.hasConflict ? conflictInfo.message : undefined} className="flex items-center gap-3 sm:gap-4 px-4 py-3">
-                          <div className="hidden sm:block w-28 shrink-0 font-mono text-sm font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                          <div className="hidden sm:block w-28 shrink-0 tabular-nums text-sm font-semibold text-slate-900 dark:text-white whitespace-nowrap">
                             {shift.start_time || '07:00'}–{shift.end_time || '19:00'}
                           </div>
 
                           <div className="min-w-0 flex-1 space-y-1.5">
-                            <div className="sm:hidden font-mono text-sm font-semibold text-slate-900 dark:text-white">{shift.start_time || '07:00'}–{shift.end_time || '19:00'}</div>
+                            <div className="sm:hidden tabular-nums text-sm font-semibold text-slate-900 dark:text-white">{shift.start_time || '07:00'}–{shift.end_time || '19:00'}</div>
                             <div className="font-semibold text-slate-900 dark:text-white truncate">{sector?.name || 'Setor'}</div>
                             {showUnitName && unitNameById[String(shift.unit_id)] && (
                               <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 truncate">
@@ -757,7 +757,7 @@ export default function Trocas() {
                 <b>Mesa de Controle do Gestor:</b> Avalie os pedidos dos profissionais antes de liberar os plantões no Mural.
               </span>
             </div>
-            <span className="font-mono font-black px-2.5 py-0.5 rounded-lg bg-indigo-200 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200">
+            <span className="tabular-nums font-semibold px-2.5 py-0.5 rounded-lg bg-indigo-200 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200">
               {pendingApprovalShifts.length} pendente(s)
             </span>
           </div>
@@ -765,7 +765,7 @@ export default function Trocas() {
           {pendingApprovalShifts.length === 0 ? (
             <Card className="p-16 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-2 rounded-3xl">
               <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
-              <h3 className="font-black text-slate-900 dark:text-white text-base">Nenhuma solicitação pendente</h3>
+              <h3 className="font-semibold text-slate-900 dark:text-white text-base">Nenhuma solicitação pendente</h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
                 Não há pedidos de envio de plantão ao Mural aguardando sua autorização.
               </p>
@@ -783,14 +783,14 @@ export default function Trocas() {
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
                         <div>
-                          <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-2.5 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                          <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-2.5 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
                             Aguardando Autorização
                           </span>
-                          <h3 className="font-black text-base text-slate-900 dark:text-white mt-1.5">
+                          <h3 className="font-semibold text-base text-slate-900 dark:text-white mt-1.5">
                             {sector?.name || 'Setor'}
                           </h3>
                         </div>
-                        <span className="text-xs font-mono font-black text-sky-600 dark:text-sky-400 px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800">
+                        <span className="text-xs tabular-nums font-semibold text-sky-600 dark:text-sky-400 px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800">
                           {shift.start_time} - {shift.end_time}
                         </span>
                       </div>
@@ -798,12 +798,12 @@ export default function Trocas() {
                       <div className="space-y-2 text-xs">
                         <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
                           <div>
-                            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">Solicitante da liberação</span>
-                            <strong className="text-sm font-black text-slate-900 dark:text-white block truncate mt-0.5">
+                            <span className="text-xs font-medium text-slate-400 block">Solicitante da liberação</span>
+                            <strong className="text-sm font-semibold text-slate-900 dark:text-white block truncate mt-0.5">
                               {requesterName}
                             </strong>
                           </div>
-                          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                          <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
                             <Stethoscope className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                             <span className="truncate">{realSpecialty}</span>
                           </div>
@@ -821,7 +821,7 @@ export default function Trocas() {
                         onClick={() => handleRejectMuralPost(shift)} 
                         disabled={submitting} 
                         variant="outline"
-                        className="h-10 text-xs font-black border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl gap-1 cursor-pointer"
+                        className="h-10 text-xs font-semibold border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl gap-1 cursor-pointer"
                       >
                         <XCircle className="w-4 h-4" /> Recusar
                       </Button>
@@ -829,7 +829,7 @@ export default function Trocas() {
                       <Button 
                         onClick={() => handleApproveMuralPost(shift)} 
                         disabled={submitting} 
-                        className="h-10 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs rounded-xl shadow-md gap-1 cursor-pointer"
+                        className="h-10 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl shadow-sm gap-1 cursor-pointer"
                       >
                         <Check className="w-4 h-4" /> Autorizar
                       </Button>
@@ -858,7 +858,7 @@ export default function Trocas() {
 
           {myUpcomingShifts.length === 0 ? (
             <Card className="p-12 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-3xl">
-              <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+              <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
                 Você não possui plantões futuros confirmados sob sua titularidade.
               </p>
             </Card>
@@ -874,28 +874,28 @@ export default function Trocas() {
                     <div>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{sector?.name || 'Setor'}</span>
-                          <h4 className="font-black text-sm text-slate-900 dark:text-white mt-1">
+                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{sector?.name || 'Setor'}</span>
+                          <h4 className="font-semibold text-sm text-slate-900 dark:text-white mt-1">
                             {new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'long' })}
                           </h4>
                         </div>
-                        <span className="shrink-0 font-mono text-xs font-black text-sky-700 dark:text-sky-300 px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-950">
+                        <span className="shrink-0 tabular-nums text-xs font-semibold text-sky-700 dark:text-sky-300 px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-950">
                           {shift.start_time}–{shift.end_time}
                         </span>
                       </div>
-                      <div className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                      <div className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
                         <Stethoscope className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
                         <span>{extractSpecialty(shift, myProf)}</span>
                       </div>
                     </div>
 
                     {isPending ? (
-                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] font-bold text-amber-700 dark:text-amber-300 text-center flex items-center justify-center gap-1.5">
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] font-semibold text-amber-700 dark:text-amber-300 text-center flex items-center justify-center gap-1.5">
                         <Clock3 className="w-3.5 h-3.5" />
                         Aguardando autorização do gestor
                       </div>
                     ) : swapsApi.openShiftIds.includes(String(shift.id)) ? (
-                      <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/30 text-[11px] font-bold text-sky-700 dark:text-sky-300 text-center flex items-center justify-center gap-1.5">
+                      <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/30 text-[11px] font-semibold text-sky-700 dark:text-sky-300 text-center flex items-center justify-center gap-1.5">
                         <ArrowRightLeft className="w-3.5 h-3.5" /> Troca em andamento
                       </div>
                     ) : (
@@ -935,20 +935,20 @@ export default function Trocas() {
                 <b>Trilha de Auditoria:</b> Histórico consolidado de repasses assistenciais aprovados e concluídos.
               </span>
             </div>
-            <span className="font-mono text-slate-400 text-xs">{transferHistory.length} transação(ões)</span>
+            <span className="tabular-nums text-slate-400 text-xs">{transferHistory.length} transação(ões)</span>
           </div>
 
           {transferHistory.length === 0 ? (
             <Card className="p-16 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-3xl">
               <History className="w-10 h-10 text-slate-400 mx-auto mb-2 opacity-50" />
-              <h3 className="text-sm font-black text-slate-900 dark:text-white">Nenhum repasse registrado</h3>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Nenhum repasse registrado</h3>
               <p className="text-xs text-slate-500">As trocas efetivadas entre profissionais aparecerão aqui.</p>
             </Card>
           ) : (
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 uppercase text-[10px] font-black border-b border-slate-200 dark:border-slate-800">
+                  <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 text-xs font-semibold border-b border-slate-200 dark:border-slate-800">
                     <tr>
                       <th className="py-3 px-4">Data do Plantão</th>
                       <th className="py-3 px-4">Setor / Horário</th>
@@ -969,28 +969,28 @@ export default function Trocas() {
 
                       return (
                         <tr key={shift.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
-                          <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
+                          <td className="py-3 px-4 tabular-nums font-semibold text-slate-900 dark:text-white">
                             {shift.date}
                           </td>
                           <td className="py-3 px-4">
                             <strong className="block text-slate-900 dark:text-white">{sector?.name || 'Setor'}</strong>
-                            <span className="font-mono text-[11px] text-slate-400">{shift.start_time} às {shift.end_time}</span>
-                            <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                            <span className="tabular-nums text-[11px] text-slate-400">{shift.start_time} às {shift.end_time}</span>
+                            <span className="mt-1 flex items-center gap-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
                               <Stethoscope className="w-3 h-3 shrink-0" /> {extractSpecialty(shift, null)}
                             </span>
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-700 dark:text-slate-300">{deQuem}</span>
+                              <span className="font-semibold text-slate-700 dark:text-slate-300">{deQuem}</span>
                               <ArrowRight className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                               <strong className="text-emerald-700 dark:text-emerald-400">{paraQuem}</strong>
                             </div>
                           </td>
-                          <td className="py-3 px-4 text-center font-mono text-[11px] text-slate-500">
+                          <td className="py-3 px-4 text-center tabular-nums text-[11px] text-slate-500">
                             {autorizador}
                           </td>
                           <td className="py-3 px-4 text-center">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
                               <CheckCircle2 className="w-3 h-3" /> {shift.status === 'confirmado' ? 'Efetivado' : 'Disponível'}
                             </span>
                           </td>

@@ -16,10 +16,10 @@ export default function TermosDeUso() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white flex items-center gap-2">
               <ShieldCheck className="w-6 h-6 text-sky-600" /> Política de Privacidade e Termos de Uso
             </h1>
-            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">
+            <p className="text-xs text-slate-500 font-medium mt-1">
               Conformidade com a LGPD (Lei nº 13.709/2018)
             </p>
           </div>
@@ -29,7 +29,7 @@ export default function TermosDeUso() {
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 md:p-10 shadow-sm space-y-8 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
           
           <section>
-            <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2 mb-3">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2 mb-3">
               <FileText className="w-5 h-5 text-sky-600" /> 1. Aceitação dos Termos
             </h2>
             <p>
@@ -38,7 +38,7 @@ export default function TermosDeUso() {
           </section>
 
           <section>
-            <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2 mb-3">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2 mb-3">
               <Lock className="w-5 h-5 text-sky-600" /> 2. Coleta e Tratamento de Dados (LGPD)
             </h2>
             <p className="mb-3">
@@ -52,7 +52,7 @@ export default function TermosDeUso() {
           </section>
 
           <section>
-            <h2 className="text-lg font-black text-slate-900 dark:text-white mb-3">3. Finalidade do Tratamento de Dados</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-3">3. Finalidade do Tratamento de Dados</h2>
             <p>
               Os dados fornecidos são utilizados de forma exclusiva para o funcionamento do ecossistema hospitalar, incluindo:
             </p>
@@ -65,21 +65,21 @@ export default function TermosDeUso() {
           </section>
 
           <section>
-            <h2 className="text-lg font-black text-slate-900 dark:text-white mb-3">4. Armazenamento e Segurança</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-3">4. Armazenamento e Segurança</h2>
             <p>
               Empregamos protocolos rígidos de segurança da informação, criptografia em trânsito e em repouso. O acesso aos dados é compartimentado; profissionais assistenciais têm acesso apenas à sua própria escala, enquanto gestores possuem visões consolidadas das unidades que administram.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg font-black text-slate-900 dark:text-white mb-3">5. Direitos do Titular</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-3">5. Direitos do Titular</h2>
             <p>
               Conforme o art. 18 da LGPD, o Usuário tem o direito de solicitar a qualquer momento a exibição, retificação ou exclusão de seus dados pessoais através do departamento de Recursos Humanos/Administração da unidade hospitalar vinculada.
             </p>
           </section>
 
           <div className="pt-6 border-t border-slate-200 dark:border-slate-800 text-center">
-            <p className="text-xs font-bold text-slate-400">
+            <p className="text-xs font-medium text-slate-400">
               Última atualização: Setembro de 2026<br/>
               ScaleMedic Enterprise Ltda.
             </p>

@@ -153,7 +153,7 @@ export function NotificationPanel({ center, isManager, onClose }) {
       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
         <div className="flex items-center gap-2">
           <Bell className="w-4 h-4 text-sky-600" />
-          <span className="text-sm font-bold text-slate-900 dark:text-white">Notificações</span>
+          <span className="text-sm font-semibold text-slate-900 dark:text-white">Notificações</span>
         </div>
         {(unreadNotices.length > 0 || unreadVacancies.length > 0) && (
           <button onClick={center.markAllRead} className="text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 cursor-pointer">
@@ -185,7 +185,7 @@ export function NotificationPanel({ center, isManager, onClose }) {
 
         {visibleNotices.length > 0 && (
           <div className="space-y-1.5">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Avisos</p>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Avisos</p>
             {visibleNotices.map(notice => (
               <button
                 type="button"
@@ -213,7 +213,7 @@ export function NotificationPanel({ center, isManager, onClose }) {
 
         {unreadVacancies.length > 0 && (
           <div className="space-y-1.5">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
               {isManager ? 'Vagas abertas na unidade' : 'Vagas abertas para você'}
             </p>
             {unreadVacancies.slice(0, 10).map(shift => (
@@ -224,8 +224,8 @@ export function NotificationPanel({ center, isManager, onClose }) {
                 className="w-full text-left p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 hover:border-amber-400 transition-colors cursor-pointer"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1"><Flame className="w-3.5 h-3.5" /> Vaga disponível</span>
-                  <span className="text-xs font-mono text-slate-500 dark:text-slate-400">{formatDateBR(shift.date)}</span>
+                  <span className="text-xs font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-1"><Flame className="w-3.5 h-3.5" /> Vaga disponível</span>
+                  <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">{formatDateBR(shift.date)}</span>
                 </div>
                 <p className="text-sm font-semibold text-slate-900 dark:text-white mt-1">
                   {shift.start_time} às {shift.end_time}{getShiftSpecialty(shift) ? ` · ${getShiftSpecialty(shift)}` : ''}

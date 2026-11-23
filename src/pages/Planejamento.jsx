@@ -28,8 +28,8 @@ export default function Planejamento() {
   return (
     <div className="min-h-full bg-slate-100 dark:bg-slate-950 p-4 md:p-8 space-y-6 text-slate-900 dark:text-slate-100">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">Temporário · some quando terminarmos</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Planejamento de melhorias</h1>
+        <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Temporário · some quando terminarmos</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Planejamento de melhorias</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           {delivered} de {allItems.length} entregues · versão atual {APP_VERSION} · atualizado em {ROADMAP_UPDATED_AT.split('-').reverse().join('/')}
         </p>

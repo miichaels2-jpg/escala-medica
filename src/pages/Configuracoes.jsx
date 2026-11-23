@@ -417,23 +417,20 @@ export default function Configuracoes() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#0B1120]">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="w-8 h-8 border-4 border-sky-200 border-t-sky-600 rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans transition-colors duration-300">
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] p-6 md:p-8 shadow-xl flex flex-col xl:flex-row xl:items-center justify-between gap-6 transition-colors duration-300">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-sky-600 dark:text-cyan-400">
-            <Settings className="w-4 h-4 text-sky-600 dark:text-cyan-400 animate-spin-slow" /> Ajustes Globais
-          </div>
-          <h1 className="text-2xl md:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans transition-colors duration-300">
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 flex flex-col xl:flex-row xl:items-center justify-between gap-4 sm:gap-6">
+        <div className="space-y-1">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
             Painel de Configurações
           </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium max-w-2xl">
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
             Gerencie o contrato da sua empresa com o ScaleMedic, edite os dados do Hospital selecionado ou convide sua equipe.
           </p>
         </div>
@@ -453,10 +450,10 @@ export default function Configuracoes() {
             <button 
               key={tab.id} 
               onClick={() => setActiveTab(tab.id)} 
-              className={`px-6 py-4 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center gap-2.5 shrink-0 border ${
+              className={`px-6 py-4 rounded-2xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2.5 shrink-0 border ${
                 isActive 
-                  ? 'bg-sky-600 dark:bg-cyan-600 text-white border-sky-600 dark:border-cyan-500 shadow-md shadow-sky-600/20 dark:shadow-cyan-900/50' 
-                  : 'bg-white dark:bg-[#1e293b] border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
+                  ? 'bg-sky-600 dark:bg-cyan-600 text-white border-sky-600 dark:border-cyan-500 shadow-sm' 
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'
               }`}
             >
               <Icon className="w-4 h-4" /> {tab.label}
@@ -470,10 +467,10 @@ export default function Configuracoes() {
         {/* ABA: HOSPITAL ATUAL */}
         {activeTab === 'unidade_atual' && (
           <div className="max-w-4xl">
-            <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
+            <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
               <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-4 flex items-start justify-between">
                 <div>
-                  <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                  <h3 className="font-semibold text-lg text-slate-900 dark:text-white flex items-center gap-2">
                     <Hospital className="w-5 h-5 text-sky-600 dark:text-cyan-400" /> Dados do Hospital Selecionado
                   </h3>
                   <p className="text-xs text-slate-500 mt-1">
@@ -481,14 +478,14 @@ export default function Configuracoes() {
                   </p>
                 </div>
                 {currentUnit && (
-                  <span className="text-[10px] font-black uppercase px-3 py-1 rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                  <span className="text-xs font-semibold px-3 py-1 rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                     Sincronizado
                   </span>
                 )}
               </div>
 
               {!currentUnit ? (
-                <div className="py-12 text-center text-sm font-bold text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50 dark:bg-slate-900/50">
+                <div className="py-12 text-center text-sm font-semibold text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50 dark:bg-slate-900/50">
                   Nenhum hospital selecionado no topo da tela.
                 </div>
               ) : (
@@ -497,7 +494,7 @@ export default function Configuracoes() {
                     
                     {/* NOVO: UPLOAD DE ARQUIVO DA UNIDADE */}
                     <div className="space-y-2 sm:col-span-2 border-b border-slate-100 dark:border-slate-800 pb-5 mb-1">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"><ImageIcon className="w-4 h-4 text-sky-500" /> Logomarca da Unidade</Label>
+                      <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"><ImageIcon className="w-4 h-4 text-sky-500" /> Logomarca da Unidade</Label>
                       <p className="text-[10px] text-slate-500">Selecione uma imagem do seu computador (PNG ou JPG). Ela sairá impressa nos relatórios desta unidade específica.</p>
                       
                       <div className="flex items-center gap-4 mt-2">
@@ -511,13 +508,13 @@ export default function Configuracoes() {
                         <div className="flex-1">
                           <label className="flex items-center justify-center gap-2 w-full h-11 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                             <UploadCloud className="w-4 h-4 text-sky-600" />
-                            <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Procurar Imagem</span>
+                            <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Procurar Imagem</span>
                             <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setUnitForm)} />
                           </label>
                           <div className="flex items-center justify-between mt-1.5">
                             <span className="text-[10px] text-slate-400">Tamanho máximo: 2MB</span>
                             {unitForm.logo_url && (
-                              <button type="button" onClick={() => setUnitForm(prev => ({...prev, logo_url: ''}))} className="text-[10px] font-bold text-rose-500 hover:underline">
+                              <button type="button" onClick={() => setUnitForm(prev => ({...prev, logo_url: ''}))} className="text-[10px] font-semibold text-rose-500 hover:underline">
                                 Remover Imagem
                               </button>
                             )}
@@ -527,33 +524,33 @@ export default function Configuracoes() {
                     </div>
 
                     <div className="space-y-1.5 sm:col-span-2">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nome Oficial do Hospital *</Label>
+                      <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Nome Oficial do Hospital *</Label>
                       <Input value={unitForm.name} onChange={(e) => setUnitForm(p => ({...p, name: e.target.value}))} required className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">CNPJ do Hospital</Label>
-                      <Input value={unitForm.cnpj} onChange={(e) => setUnitForm(p => ({...p, cnpj: e.target.value}))} placeholder="00.000.000/0000-00" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-mono" />
+                      <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">CNPJ do Hospital</Label>
+                      <Input value={unitForm.cnpj} onChange={(e) => setUnitForm(p => ({...p, cnpj: e.target.value}))} placeholder="00.000.000/0000-00" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl tabular-nums" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Telefone da Recepção / Posto</Label>
+                      <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Telefone da Recepção / Posto</Label>
                       <Input value={unitForm.phone} onChange={(e) => setUnitForm(p => ({...p, phone: e.target.value}))} placeholder="(00) 0000-0000" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
                     </div>
                     <div className="space-y-1.5 sm:col-span-2">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Endereço Completo</Label>
+                      <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Endereço Completo</Label>
                       <Input value={unitForm.address} onChange={(e) => setUnitForm(p => ({...p, address: e.target.value}))} placeholder="Ex: Av. Paulista, 1000 - Bela Vista" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">E-mail de Contato</Label>
+                      <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">E-mail de Contato</Label>
                       <Input type="email" value={unitForm.email} onChange={(e) => setUnitForm(p => ({...p, email: e.target.value}))} placeholder="hospital@contato.com" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Coordenador / Responsável Local</Label>
+                      <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Coordenador / Responsável Local</Label>
                       <Input value={unitForm.primary_contact} onChange={(e) => setUnitForm(p => ({...p, primary_contact: e.target.value}))} placeholder="Nome do médico chefe / RT" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl" />
                     </div>
                   </div>
 
                   <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
-                    <Button type="submit" disabled={saving} className="h-11 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs px-8 rounded-xl shadow-md cursor-pointer transition-all">
+                    <Button type="submit" disabled={saving} className="h-11 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-semibold text-xs px-8 rounded-xl shadow-sm cursor-pointer transition-all">
                       {saving ? 'Processando...' : <><Save className="w-4 h-4 mr-1.5" /> Salvar Hospital</>}
                     </Button>
                   </div>
@@ -573,7 +570,7 @@ export default function Configuracoes() {
               <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-2xl flex items-start gap-3 animate-in fade-in">
                 <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="font-black text-amber-800 dark:text-amber-400 text-sm">Contrato próximo do vencimento</h4>
+                  <h4 className="font-semibold text-amber-800 dark:text-amber-400 text-sm">Contrato próximo do vencimento</h4>
                   <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">Faltam apenas <strong>{daysToExpiration} dias</strong> para o vencimento do seu contrato com a ScaleMedic. Renove para evitar a suspensão dos acessos.</p>
                 </div>
               </div>
@@ -583,15 +580,15 @@ export default function Configuracoes() {
               <div className="mb-6 p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded-2xl flex items-start gap-3 animate-in fade-in">
                 <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-500 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="font-black text-rose-800 dark:text-rose-400 text-sm">Contrato Vencido</h4>
+                  <h4 className="font-semibold text-rose-800 dark:text-rose-400 text-sm">Contrato Vencido</h4>
                   <p className="text-xs text-rose-700 dark:text-rose-300 mt-1">Seu contrato expirou há <strong>{Math.abs(daysToExpiration)} dias</strong>. O sistema poderá ser bloqueado a qualquer momento.</p>
                 </div>
               </div>
             )}
 
-            <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
+            <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
               <div className="mb-6 border-b border-slate-100 dark:border-slate-800 pb-4">
-                <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                <h3 className="font-semibold text-lg text-slate-900 dark:text-white flex items-center gap-2">
                   <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> Gestão de Contrato & Matriz
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">Dados de faturamento, vigência e identidade corporativa da rede (Matriz). Esta logo sairá em todos os documentos da rede.</p>
@@ -602,7 +599,7 @@ export default function Configuracoes() {
                   
                   {/* NOVO: UPLOAD DE ARQUIVO DA MATRIZ */}
                   <div className="space-y-2 sm:col-span-2 border-b border-slate-100 dark:border-slate-800 pb-5 mb-1">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"><ImageIcon className="w-4 h-4 text-indigo-500" /> Logomarca da Matriz / Rede</Label>
+                    <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5"><ImageIcon className="w-4 h-4 text-indigo-500" /> Logomarca da Matriz / Rede</Label>
                     <p className="text-[10px] text-slate-500">Selecione a logomarca principal da rede no seu computador.</p>
                     
                     <div className="flex items-center gap-4 mt-2">
@@ -616,13 +613,13 @@ export default function Configuracoes() {
                       <div className="flex-1">
                         <label className="flex items-center justify-center gap-2 w-full h-11 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                           <UploadCloud className="w-4 h-4 text-indigo-600" />
-                          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Procurar Imagem</span>
+                          <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Procurar Imagem</span>
                           <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setContractForm)} />
                         </label>
                         <div className="flex items-center justify-between mt-1.5">
                           <span className="text-[10px] text-slate-400">Tamanho máximo: 2MB</span>
                           {contractForm.logo_url && (
-                            <button type="button" onClick={() => setContractForm(prev => ({...prev, logo_url: ''}))} className="text-[10px] font-bold text-rose-500 hover:underline">
+                            <button type="button" onClick={() => setContractForm(prev => ({...prev, logo_url: ''}))} className="text-[10px] font-semibold text-rose-500 hover:underline">
                               Remover Imagem
                             </button>
                           )}
@@ -632,17 +629,17 @@ export default function Configuracoes() {
                   </div>
 
                   <div className="space-y-1.5 sm:col-span-2">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Razão Social (Empresa Pagadora) *</Label>
-                    <Input value={contractForm.name} onChange={(e) => setContractForm(p => ({...p, name: e.target.value}))} required className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-bold" />
+                    <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Razão Social (Empresa Pagadora) *</Label>
+                    <Input value={contractForm.name} onChange={(e) => setContractForm(p => ({...p, name: e.target.value}))} required className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-semibold" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">CNPJ</Label>
-                    <Input value={contractForm.cnpj} onChange={(e) => setContractForm(p => ({...p, cnpj: e.target.value}))} placeholder="00.000.000/0000-00" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-mono" />
+                    <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">CNPJ</Label>
+                    <Input value={contractForm.cnpj} onChange={(e) => setContractForm(p => ({...p, cnpj: e.target.value}))} placeholder="00.000.000/0000-00" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl tabular-nums" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Ciclo de Faturamento</Label>
+                    <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Ciclo de Faturamento</Label>
                     <Select value={contractForm.billing_cycle} onValueChange={v => setContractForm(p => ({...p, billing_cycle: v}))}>
-                      <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-bold">
+                      <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-semibold">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
@@ -656,21 +653,21 @@ export default function Configuracoes() {
                   
                   <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/50 sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-indigo-800 dark:text-indigo-300">Início do Contrato</Label>
+                      <Label className="text-xs font-semibold text-indigo-800 dark:text-indigo-300">Início do Contrato</Label>
                       <Input type="date" value={contractForm.contract_start} onChange={(e) => setContractForm(p => ({...p, contract_start: e.target.value}))} className="h-10 bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800 text-slate-900 dark:text-white rounded-xl cursor-pointer" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-indigo-800 dark:text-indigo-300">Vencimento do Contrato</Label>
-                      <Input type="date" value={contractForm.contract_end} onChange={(e) => setContractForm(p => ({...p, contract_end: e.target.value}))} className="h-10 bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800 text-slate-900 dark:text-white rounded-xl font-bold cursor-pointer" />
+                      <Label className="text-xs font-semibold text-indigo-800 dark:text-indigo-300">Vencimento do Contrato</Label>
+                      <Input type="date" value={contractForm.contract_end} onChange={(e) => setContractForm(p => ({...p, contract_end: e.target.value}))} className="h-10 bg-white dark:bg-slate-900 border-indigo-200 dark:border-indigo-800 text-slate-900 dark:text-white rounded-xl font-semibold cursor-pointer" />
                     </div>
                   </div>
                 </div>
 
                 <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between gap-3">
-                  <Button type="button" onClick={handleRenewContract} disabled={saving} variant="outline" className="h-11 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border-indigo-200 font-black text-xs px-6 rounded-xl cursor-pointer">
+                  <Button type="button" onClick={handleRenewContract} disabled={saving} variant="outline" className="h-11 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border-indigo-200 font-semibold text-xs px-6 rounded-xl cursor-pointer">
                     <RotateCcw className="w-4 h-4 mr-1.5" /> Renovar Automaticamente
                   </Button>
-                  <Button type="submit" disabled={saving} className="h-11 bg-slate-900 hover:bg-slate-800 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 font-black text-xs px-8 rounded-xl shadow-md cursor-pointer transition-all">
+                  <Button type="submit" disabled={saving} className="h-11 bg-slate-900 hover:bg-slate-800 text-white dark:bg-indigo-600 dark:hover:bg-indigo-500 font-semibold text-xs px-8 rounded-xl shadow-sm cursor-pointer transition-all">
                     {saving ? 'Processando...' : <><Save className="w-4 h-4 mr-1.5" /> Salvar Contrato</>}
                   </Button>
                 </div>
@@ -681,17 +678,17 @@ export default function Configuracoes() {
 
         {/* ABA: GERENCIAR UNIDADES */}
         {activeTab === 'unidades' && (
-          <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
+          <Card className="p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 mb-6 gap-4">
               <div>
-                <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                <h3 className="font-semibold text-lg text-slate-900 dark:text-white flex items-center gap-2">
                   <Building2 className="w-5 h-5 text-sky-600 dark:text-cyan-400" /> Cadastrar Múltiplos Hospitais
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
                   Adicione novos hospitais que pertencem a este contrato com logotipo independente, CNPJ, endereço e contatos completos.
                 </p>
               </div>
-              <Button onClick={() => openUnitModal()} className="shrink-0 h-10 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-black text-xs px-5 rounded-xl shadow-md cursor-pointer">
+              <Button onClick={() => openUnitModal()} className="shrink-0 h-10 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-semibold text-xs px-5 rounded-xl shadow-sm cursor-pointer">
                 <Plus className="w-4 h-4 mr-1.5" /> Adicionar Hospital
               </Button>
             </div>
@@ -700,7 +697,7 @@ export default function Configuracoes() {
               {activeUnits.length === 0 ? (
                 <div className="col-span-full py-16 text-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-3xl bg-slate-50 dark:bg-slate-900/50">
                   <Hospital className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-                  <h4 className="text-sm font-black text-slate-600 dark:text-slate-400">Nenhum hospital cadastrado</h4>
+                  <h4 className="text-sm font-medium text-slate-600 dark:text-slate-400">Nenhum hospital cadastrado</h4>
                 </div>
               ) : (
                 activeUnits.map(u => (
@@ -710,15 +707,15 @@ export default function Configuracoes() {
                         <div className="p-2.5 rounded-xl bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400">
                           {u.logo_url ? <img src={u.logo_url} className="w-5 h-5 object-contain" alt="logo" /> : <Hospital className="w-5 h-5" />}
                         </div>
-                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                        <span className={`text-xs font-semibold  px-2 py-0.5 rounded-md ${
                           u.status === 'inativo' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
                         }`}>
                           {u.status || 'Ativo'}
                         </span>
                       </div>
-                      <h4 className="text-base font-black text-slate-900 dark:text-white leading-tight">{u.name}</h4>
-                      <div className="break-all text-[10px] font-mono text-slate-500">ID: {u.id}</div>
-                      <div className="text-[11px] font-mono font-bold text-sky-600 dark:text-sky-400">CNPJ: {u.cnpj || 'Não informado'}</div>
+                      <h4 className="text-base font-semibold text-slate-900 dark:text-white leading-tight">{u.name}</h4>
+                      <div className="break-all text-[10px] tabular-nums text-slate-500">ID: {u.id}</div>
+                      <div className="text-[11px] tabular-nums font-semibold text-sky-600 dark:text-sky-400">CNPJ: {u.cnpj || 'Não informado'}</div>
                       <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                         <MapPin className="w-3.5 h-3.5 shrink-0" />
                         <span className="truncate">{u.address || 'Endereço não informado'}</span>
@@ -732,10 +729,10 @@ export default function Configuracoes() {
                     </div>
 
                     <div className="mt-5 pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2">
-                      <Button variant="ghost" onClick={() => handleDeleteUnit(u.id, u.name)} className="h-8 text-[10px] font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg px-2.5 cursor-pointer">
+                      <Button variant="ghost" onClick={() => handleDeleteUnit(u.id, u.name)} className="h-8 text-[10px] font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg px-2.5 cursor-pointer">
                         <Trash2 className="w-3.5 h-3.5 mr-1" /> Remover
                       </Button>
-                      <Button variant="outline" onClick={() => openUnitModal(u)} className="h-8 text-[10px] font-bold border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg px-3 cursor-pointer">
+                      <Button variant="outline" onClick={() => openUnitModal(u)} className="h-8 text-[10px] font-semibold border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg px-3 cursor-pointer">
                         <Edit className="w-3.5 h-3.5 mr-1" /> Editar
                       </Button>
                     </div>
@@ -745,9 +742,9 @@ export default function Configuracoes() {
             </div>
 
             <Dialog open={unitModalOpen} onOpenChange={setUnitModalOpen}>
-              <DialogContent className="w-[95vw] sm:max-w-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-2xl rounded-3xl p-6">
+              <DialogContent className="w-[95vw] sm:max-w-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-sm rounded-3xl p-6">
                 <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <DialogTitle className="text-base font-black flex items-center gap-2 text-sky-600 dark:text-sky-400">
+                  <DialogTitle className="text-base font-semibold flex items-center gap-2 text-sky-600 dark:text-sky-400">
                     <Hospital className="w-5 h-5" /> {editingUnit ? 'Editar Hospital / Unidade' : 'Cadastrar Novo Hospital'}
                   </DialogTitle>
                 </DialogHeader>
@@ -758,7 +755,7 @@ export default function Configuracoes() {
                       type="button" 
                       variant="ghost" 
                       onClick={handleAutoFillFromContract}
-                      className="w-full bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/30 dark:hover:bg-sky-900/50 text-sky-700 dark:text-sky-400 font-bold border border-sky-200 dark:border-sky-800 cursor-pointer h-9 mb-2"
+                      className="w-full bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/30 dark:hover:bg-sky-900/50 text-sky-700 dark:text-sky-400 font-semibold border border-sky-200 dark:border-sky-800 cursor-pointer h-9 mb-2"
                     >
                       <Copy className="w-3.5 h-3.5 mr-2" /> Preencher com dados do Contrato Matriz
                     </Button>
@@ -766,7 +763,7 @@ export default function Configuracoes() {
 
                   {/* UPLOAD IMAGEM PARA MODAL DE NOVA UNIDADE */}
                   <div className="space-y-1.5 border-b border-slate-100 dark:border-slate-800 pb-4 mb-2">
-                    <Label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1"><ImageIcon className="w-3.5 h-3.5 text-sky-500" /> Logomarca da Unidade</Label>
+                    <Label className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1"><ImageIcon className="w-3.5 h-3.5 text-sky-500" /> Logomarca da Unidade</Label>
                     
                     <div className="flex items-center gap-4 mt-2">
                       <div className="w-14 h-14 rounded-2xl border border-slate-300 dark:border-slate-700 flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-slate-900 shrink-0">
@@ -779,13 +776,13 @@ export default function Configuracoes() {
                       <div className="flex-1">
                         <label className="flex items-center justify-center gap-2 w-full h-10 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                           <UploadCloud className="w-4 h-4 text-sky-600" />
-                          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Procurar Imagem</span>
+                          <span className="text-xs font-medium text-slate-600 dark:text-slate-300">Procurar Imagem</span>
                           <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setNewUnitForm)} />
                         </label>
                         <div className="flex items-center justify-between mt-1.5">
                           <span className="text-[10px] text-slate-400">Tamanho máximo: 2MB</span>
                           {newUnitForm.logo_url && (
-                            <button type="button" onClick={() => setNewUnitForm(prev => ({ ...prev, logo_url: '' }))} className="text-[10px] font-bold text-rose-500 hover:underline">
+                            <button type="button" onClick={() => setNewUnitForm(prev => ({ ...prev, logo_url: '' }))} className="text-[10px] font-semibold text-rose-500 hover:underline">
                               Remover Imagem
                             </button>
                           )}
@@ -795,53 +792,53 @@ export default function Configuracoes() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="font-bold text-slate-700 dark:text-slate-300">Nome Oficial do Hospital *</Label>
-                    <Input value={newUnitForm.name} onChange={e => setNewUnitForm({...newUnitForm, name: e.target.value})} placeholder="Ex: Hospital Municipal Central" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-bold" required autoFocus />
+                    <Label className="font-semibold text-slate-700 dark:text-slate-300">Nome Oficial do Hospital *</Label>
+                    <Input value={newUnitForm.name} onChange={e => setNewUnitForm({...newUnitForm, name: e.target.value})} placeholder="Ex: Hospital Municipal Central" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-semibold" required autoFocus />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label className="font-bold text-slate-700 dark:text-slate-300">CNPJ da Unidade</Label>
-                      <Input value={newUnitForm.cnpj} onChange={e => setNewUnitForm({...newUnitForm, cnpj: e.target.value})} placeholder="00.000.000/0000-00" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-mono" />
+                      <Label className="font-semibold text-slate-700 dark:text-slate-300">CNPJ da Unidade</Label>
+                      <Input value={newUnitForm.cnpj} onChange={e => setNewUnitForm({...newUnitForm, cnpj: e.target.value})} placeholder="00.000.000/0000-00" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl tabular-nums" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="font-bold text-slate-700 dark:text-slate-300">Telefone / Recepção</Label>
-                      <Input value={newUnitForm.phone} onChange={e => setNewUnitForm({...newUnitForm, phone: e.target.value})} placeholder="(00) 0000-0000" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-mono" />
+                      <Label className="font-semibold text-slate-700 dark:text-slate-300">Telefone / Recepção</Label>
+                      <Input value={newUnitForm.phone} onChange={e => setNewUnitForm({...newUnitForm, phone: e.target.value})} placeholder="(00) 0000-0000" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl tabular-nums" />
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="font-bold text-slate-700 dark:text-slate-300">Endereço Completo</Label>
+                    <Label className="font-semibold text-slate-700 dark:text-slate-300">Endereço Completo</Label>
                     <Input value={newUnitForm.address} onChange={e => setNewUnitForm({...newUnitForm, address: e.target.value})} placeholder="Rua, Número, Bairro, Cidade - UF" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl" />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label className="font-bold text-slate-700 dark:text-slate-300">E-mail de Contato</Label>
+                      <Label className="font-semibold text-slate-700 dark:text-slate-300">E-mail de Contato</Label>
                       <Input type="email" value={newUnitForm.email} onChange={e => setNewUnitForm({...newUnitForm, email: e.target.value})} placeholder="unidade@hospital.com" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label className="font-bold text-slate-700 dark:text-slate-300">Responsável Local</Label>
+                      <Label className="font-semibold text-slate-700 dark:text-slate-300">Responsável Local</Label>
                       <Input value={newUnitForm.primary_contact} onChange={e => setNewUnitForm({...newUnitForm, primary_contact: e.target.value})} placeholder="Nome do gestor / RT" className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl" />
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="font-bold text-slate-700 dark:text-slate-300">Status Operacional</Label>
+                    <Label className="font-semibold text-slate-700 dark:text-slate-300">Status Operacional</Label>
                     <Select value={newUnitForm.status} onValueChange={v => setNewUnitForm({...newUnitForm, status: v})}>
-                      <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-bold">
+                      <SelectTrigger className="h-10 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl font-semibold">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
-                        <SelectItem value="ativo" className="text-emerald-600 font-bold">Ativo (Permite Escalas)</SelectItem>
-                        <SelectItem value="inativo" className="text-rose-500 font-bold">Inativo (Apenas Histórico)</SelectItem>
+                        <SelectItem value="ativo" className="text-emerald-600 font-semibold">Ativo (Permite Escalas)</SelectItem>
+                        <SelectItem value="inativo" className="text-rose-500 font-semibold">Inativo (Apenas Histórico)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   <DialogFooter className="pt-4 border-t border-slate-100 dark:border-slate-800 gap-2">
-                    <Button type="button" variant="outline" onClick={() => setUnitModalOpen(false)} className="h-10 font-bold rounded-xl px-4 cursor-pointer border-slate-200 dark:border-slate-700">Cancelar</Button>
-                    <Button type="submit" disabled={saving} className="h-10 bg-sky-600 hover:bg-sky-700 text-white font-black px-6 rounded-xl cursor-pointer">Salvar Hospital</Button>
+                    <Button type="button" variant="outline" onClick={() => setUnitModalOpen(false)} className="h-10 font-semibold rounded-xl px-4 cursor-pointer border-slate-200 dark:border-slate-700">Cancelar</Button>
+                    <Button type="submit" disabled={saving} className="h-10 bg-sky-600 hover:bg-sky-700 text-white font-semibold px-6 rounded-xl cursor-pointer">Salvar Hospital</Button>
                   </DialogFooter>
                 </form>
               </DialogContent>
@@ -854,17 +851,17 @@ export default function Configuracoes() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
             <div className="lg:col-span-1 space-y-6">
               {company?.registration_code && (
-                <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm space-y-3">
+                <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-3">
                   <div>
-                    <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                    <h3 className="font-semibold text-base text-slate-900 dark:text-white flex items-center gap-2">
                       <Copy className="w-5 h-5 text-slate-400" /> Link de credenciamento
                     </h3>
                     <p className="text-[11px] text-slate-500 mt-1">Envie o link aos profissionais (ou o código, para quem abrir pela tela de entrada). A ficha chega na aba "Pendentes" do Corpo Clínico.</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[11px] font-bold text-slate-500">Código do hospital</p>
+                    <p className="text-[11px] font-medium text-slate-500">Código do hospital</p>
                     <div className="flex items-center gap-2">
-                      <code className="flex-1 rounded-lg bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm font-bold tracking-wider">{company.registration_code}</code>
+                      <code className="flex-1 rounded-lg bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm font-semibold">{company.registration_code}</code>
                       <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 shrink-0" onClick={async () => {
                         try { await navigator.clipboard.writeText(company.registration_code); alert('Código copiado.'); } catch { window.prompt('Copie o código:', company.registration_code); }
                       }}>
@@ -873,7 +870,7 @@ export default function Configuracoes() {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[11px] font-bold text-slate-500">Link (já abre com o hospital preenchido)</p>
+                    <p className="text-[11px] font-medium text-slate-500">Link (já abre com o hospital preenchido)</p>
                     <code className="block truncate rounded-lg bg-slate-50 dark:bg-slate-900 px-3 py-2 text-xs">{`${window.location.origin}/register?empresa=${company.registration_code}`}</code>
                     <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5" onClick={async () => {
                       const link = `${window.location.origin}/register?empresa=${company.registration_code}`;
@@ -884,9 +881,9 @@ export default function Configuracoes() {
                   </div>
                 </Card>
               )}
-              <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
+              <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
                 <div className="border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
-                  <h3 className="font-black text-base text-slate-900 dark:text-white flex items-center gap-2">
+                  <h3 className="font-semibold text-base text-slate-900 dark:text-white flex items-center gap-2">
                     <UserPlus className="w-5 h-5 text-emerald-500" /> Liberar Acesso
                   </h3>
                   <p className="text-[10px] text-slate-500 mt-1">
@@ -896,7 +893,7 @@ export default function Configuracoes() {
                 
                 <form onSubmit={handleInvite} className="space-y-4">
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">E-mail do Profissional</Label>
+                    <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">E-mail do Profissional</Label>
                     <div className="relative">
                       <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                       <Input type="email" placeholder="medico@hospital.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} required className="pl-9 h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl text-xs" />
@@ -904,9 +901,9 @@ export default function Configuracoes() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Nível de Acesso</Label>
+                    <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Nível de Acesso</Label>
                     <Select value={inviteRole} onValueChange={setInviteRole}>
-                      <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-bold text-xs">
+                      <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl font-semibold text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
@@ -916,7 +913,7 @@ export default function Configuracoes() {
                     </Select>
                   </div>
 
-                  <Button type="submit" disabled={saving || !inviteEmail} className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md cursor-pointer transition-colors">
+                  <Button type="submit" disabled={saving || !inviteEmail} className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-sm cursor-pointer transition-colors">
                     {saving ? 'Liberando...' : 'Liberar Acesso Exclusivo'}
                   </Button>
                 </form>
@@ -924,15 +921,15 @@ export default function Configuracoes() {
             </div>
 
             <div className="lg:col-span-2">
-              <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1e293b] shadow-sm">
+              <Card className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4 mb-4">
                   <div>
-                    <h3 className="font-black text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                    <h3 className="font-semibold text-lg text-slate-900 dark:text-white flex items-center gap-2">
                       <ShieldCheck className="w-5 h-5 text-sky-600 dark:text-cyan-400" /> Controle de Acessos
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">Visão consolidada dos usuários com acesso ao hospital <b>{currentUnit?.name || 'selecionado'}</b>.</p>
                   </div>
-                  <span className="text-xs font-black px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl">
+                  <span className="text-xs font-semibold px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl">
                     {visibleUsers.length} Logins
                   </span>
                 </div>
@@ -946,11 +943,11 @@ export default function Configuracoes() {
                     {visibleUsers.map((u) => (
                       <div key={u.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-2xl border border-slate-100 dark:border-slate-800/60 bg-slate-50 dark:bg-slate-900/40 hover:border-sky-200 dark:hover:border-sky-900/50 transition-colors gap-3">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-black text-slate-500 dark:text-slate-400 text-xs shrink-0 ring-1 ring-slate-300 dark:ring-slate-700">
+                          <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center font-semibold text-slate-500 dark:text-slate-400 text-xs shrink-0 ring-1 ring-slate-300 dark:ring-slate-700">
                             {(u.full_name || u.email || 'U').substring(0, 2).toUpperCase()}
                           </div>
                           <div className="truncate">
-                            <div className="text-sm font-black text-slate-900 dark:text-white truncate">
+                            <div className="text-sm font-semibold text-slate-900 dark:text-white truncate">
                               {u.full_name || 'Usuário Pendente'}
                             </div>
                             <div className="text-[10px] text-slate-500 truncate mt-0.5 flex items-center gap-1">
@@ -958,7 +955,7 @@ export default function Configuracoes() {
                             </div>
                           </div>
                         </div>
-                        <span className={`shrink-0 text-[10px] font-black uppercase px-2.5 py-1 rounded-lg text-center ${
+                        <span className={`shrink-0 text-xs font-semibold  px-2.5 py-1 rounded-lg text-center ${
                           u.role === 'admin' 
                             ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border border-rose-200 dark:border-rose-800' 
                             : 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-300 dark:border-slate-700'

@@ -19,5 +19,17 @@ export default defineConfig({
   },
   plugins: [
     react(),
-  ]
+  ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Bibliotecas que quase nunca mudam ficam em arquivos próprios: numa versão nova
+        // do app o celular baixa só o código do ScaleMedic, não o React e o Supabase de novo.
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom'],
+          supabase: ['@supabase/supabase-js']
+        }
+      }
+    }
+  }
 });
