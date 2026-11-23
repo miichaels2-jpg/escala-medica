@@ -6,6 +6,9 @@ import { getShiftDateTimeRange, isShiftVacant } from './shiftLiveStatus.js';
 const norm = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const tag = (notes, name) => String(notes || '').match(new RegExp(`\\[${name}:\\s*([^\\]]+)\\]`, 'i'))?.[1]?.trim() || '';
 
+const isNight = shift => { const t = String(shift.start_time || '07:00').padStart(5, '0'); return t >= '18:00' || t < '06:00'; };
+const isWeekend = shift => { const d = new Date(`${String(shift.date).slice(0, 10)}T12:00:00`); return d.getDay() === 0 || d.getDay() === 6; };
+
 function hoursOf(shift) {
   const range = getShiftDateTimeRange(shift);
   return range ? (range.end - range.start) / 3600000 : 0;
@@ -51,6 +54,9 @@ export function computeReliability({ shifts, professionals, swaps = [], start = 
         scheduled: mine.length,
         done: done.length,
         hours: Math.round(done.reduce((sum, s) => sum + hoursOf(s), 0)),
+        // Quem carrega a escala pesada: noites e fins de semana cumpridos.
+        nights: done.filter(isNight).length,
+        weekends: done.filter(isWeekend).length,
         covered: covered.length,
         released: released.length,
         directSwaps,

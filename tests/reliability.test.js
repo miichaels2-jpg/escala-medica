@@ -36,3 +36,15 @@ test('cobertura, repasse e índice de confiabilidade', () => {
 test('quem não teve plantão no período não entra', () => {
   assert.deepEqual(computeReliability({ shifts: [], professionals: [ana], now }), []);
 });
+
+test('noites e fins de semana cumpridos', () => {
+  // 03/10/2026 é sábado; 05/10 é segunda.
+  const shifts = [
+    s('n1', 'ana', '2026-10-03'),
+    s('n2', 'ana', '2026-10-05', { start_time: '19:00', end_time: '07:00' }),
+    s('n3', 'ana', '2026-10-06')
+  ];
+  const [row] = computeReliability({ shifts, professionals: [ana], start: '2026-10-01', end: '2026-10-31', now });
+  assert.equal(row.nights, 1);
+  assert.equal(row.weekends, 1);
+});
