@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { CheckCircle2, Circle, Clock3, Lightbulb } from 'lucide-react';
 import { ROADMAP_GROUPS, ROADMAP_UPDATED_AT } from '@/lib/roadmap';
 import { APP_VERSION } from '@/lib/version';
+import PageHero from '@/components/PageHero';
 
 const STATUS = {
   entregue: { label: 'Entregue', icon: CheckCircle2, chip: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300', iconColor: 'text-emerald-600 dark:text-emerald-400' },
@@ -27,16 +28,16 @@ export default function Planejamento() {
 
   return (
     <div className="min-h-full bg-slate-100 dark:bg-slate-950 p-4 md:p-8 space-y-6 text-slate-900 dark:text-slate-100">
-      <div>
-        <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Temporário · some quando terminarmos</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Planejamento de melhorias</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          {delivered} de {allItems.length} entregues · versão atual {APP_VERSION} · atualizado em {ROADMAP_UPDATED_AT.split('-').reverse().join('/')}
-        </p>
-        <div className="mt-3 h-2 w-full max-w-md rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden" aria-hidden="true">
-          <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.round((delivered / Math.max(1, allItems.length)) * 100)}%` }} />
+      <PageHero
+        title="Planejamento de melhorias"
+        subtitle={`${delivered} de ${allItems.length} entregues · versão atual ${APP_VERSION} · atualizado em ${ROADMAP_UPDATED_AT.split('-').reverse().join('/')} · tela temporária, some quando terminarmos`}
+      >
+        <div className="pt-1.5 h-2 w-full max-w-md" aria-hidden="true">
+          <div className="h-2 rounded-full bg-white/20 overflow-hidden">
+            <div className="h-full rounded-full bg-[#fff]" style={{ width: `${Math.round((delivered / Math.max(1, allItems.length)) * 100)}%` }} />
+          </div>
         </div>
-      </div>
+      </PageHero>
 
       <div className="flex flex-wrap gap-1 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1 w-fit" role="tablist">
         {FILTERS.map(f => (

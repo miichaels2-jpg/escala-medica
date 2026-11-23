@@ -9,6 +9,14 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.4.2 — 22/11/2026
+
+- **Topo azul em todas as telas:** a faixa no azul da marca, que estava só na Minha Escala e no Painel, agora abre
+  também Escalas, Mural de vagas, Corpo Clínico, Setores, Relatórios, Faturamento, Histórico, Configurações,
+  Planejamento e Plataforma — com os botões principais dentro dela. Os títulos passam a ter o mesmo nome do menu
+  (ex.: "Relatórios" em vez de "Central de Relatórios & BI Hospitalar", "Configurações" em vez de "Painel de
+  Configurações", "Setores e especialidades" em vez de "Cadastro de Setor"). A Escalas ganhou topo, que antes não tinha.
+
 ## V0.4.1 — 22/11/2026
 
 - **Acabamento visual em todas as telas:** a letra Inter passa a ser usada de fato (antes o app caía na fonte do

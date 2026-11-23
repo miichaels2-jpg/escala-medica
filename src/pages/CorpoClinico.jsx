@@ -7,6 +7,7 @@ import { birthDatePassword, generateProvisionalPassword } from '@/lib/passwordPo
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import PageHero from '@/components/PageHero';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -997,25 +998,23 @@ export default function CorpoClinico() {
 
   return (
     <div className="p-4 md:p-8 space-y-6 font-sans">
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">Corpo Clínico</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Cadastro de profissionais, valores por unidade e liberação de acessos.</p>
-        </div>
-        {isManager && (
+      <PageHero
+        title="Corpo Clínico"
+        subtitle="Cadastro de profissionais, valores por unidade e liberação de acessos."
+        actions={isManager ? (t => (
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={handleDownloadImportTemplate} variant="outline" className="h-10 font-medium text-sm rounded-xl gap-2 cursor-pointer">
-              <Download className="w-4 h-4 text-slate-500" /> Baixar modelo Excel
+            <Button onClick={handleDownloadImportTemplate} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}>
+              <Download className={`w-4 h-4 ${t.outlineIcon}`} /> Baixar modelo Excel
             </Button>
-            <Button onClick={() => importInputRef.current?.click()} variant="outline" className="h-10 font-medium text-sm rounded-xl gap-2 cursor-pointer">
-              <Upload className="w-4 h-4 text-slate-500" /> Importar planilha
+            <Button onClick={() => importInputRef.current?.click()} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}>
+              <Upload className={`w-4 h-4 ${t.outlineIcon}`} /> Importar planilha
             </Button>
-            <Button onClick={handleOpenNew} className="bg-sky-600 hover:bg-sky-700 text-white font-medium text-sm h-10 px-4 rounded-xl gap-1.5 shrink-0 cursor-pointer">
+            <Button onClick={handleOpenNew} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none font-semibold shrink-0 ${t.primary}`}>
               <UserPlus className="w-4 h-4" /> Novo profissional
             </Button>
           </div>
-        )}
-      </div>
+        )) : null}
+      />
 
       <input ref={importInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleImportFile} />
 

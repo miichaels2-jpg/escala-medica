@@ -9,6 +9,7 @@ import ManagementBI from '@/components/reports/ManagementBI';
 import { escapeHtml, getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_SCRIPT } from '@/lib/printBranding';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import PageHero from '@/components/PageHero';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -1823,25 +1824,20 @@ export default function Relatorios() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans transition-colors duration-300">
       
       {/* TOPO EXECUTIVO */}
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 sm:p-6 flex flex-col xl:flex-row xl:items-center justify-between gap-4 sm:gap-6">
-        <div className="space-y-1">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
-            Central de Relatórios & BI Hospitalar
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
-            Filtre períodos personalizados para auditoria de produtividade, furos de escala, corpo clínico e consolidação de custos.
-          </p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-stretch gap-2 shrink-0">
-          <Button onClick={() => triggerExcelExport('current')} variant="outline" disabled={!hasSearched || (activeTab === 'produtividade_profissional' && !productivityProfessionalReportReady)} className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-white font-semibold text-xs px-4 rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer shadow-sm disabled:opacity-50 transition-colors">
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" /> Exportar aba para Excel
-          </Button>
-          <Button onClick={() => triggerPrint('current')} disabled={!hasSearched || (activeTab === 'produtividade_profissional' && !productivityProfessionalReportReady)} className="bg-sky-600 hover:bg-sky-700 dark:bg-cyan-700 dark:hover:bg-cyan-600 text-white font-semibold text-xs px-4 rounded-xl shadow-sm gap-2 cursor-pointer disabled:opacity-50 border border-sky-500 dark:border-cyan-500/50 transition-colors">
-            <PrinterIcon className="w-4 h-4" /> Imprimir / Salvar PDF
-          </Button>
-        </div>
-      </div>
+      <PageHero
+        title="Relatórios"
+        subtitle="Escolha o período para ver produtividade, furos de escala, corpo clínico e custos."
+        actions={t => (
+          <div className="flex flex-col sm:flex-row items-stretch gap-2 shrink-0">
+            <Button onClick={() => triggerExcelExport('current')} disabled={!hasSearched || (activeTab === 'produtividade_profissional' && !productivityProfessionalReportReady)} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`}>
+              <FileSpreadsheet className={`w-4 h-4 ${t.outlineIcon}`} /> Exportar para Excel
+            </Button>
+            <Button onClick={() => triggerPrint('current')} disabled={!hasSearched || (activeTab === 'produtividade_profissional' && !productivityProfessionalReportReady)} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none font-semibold ${t.primary}`}>
+              <PrinterIcon className="w-4 h-4" /> Imprimir / salvar PDF
+            </Button>
+          </div>
+        )}
+      />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[250px_minmax(0,1fr)] lg:items-start">
         <aside className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm">
