@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, ChevronRight, X } from 'lucide-react';
+import { Check, ChevronRight, PlayCircle, X } from 'lucide-react';
 
 // "Primeiros passos" no Painel: guia a empresa nova até a primeira escala publicada.
 // Cada passo se marca sozinho pelos dados da empresa; a lista some quando tudo estiver feito
@@ -19,10 +19,10 @@ export default function OnboardingChecklist({ companyId, user, units = [], secto
 
   const steps = [
     { id: 'hospital', done: units.length > 0 && units.every(u => u.cnpj), title: 'Completar os dados do hospital', hint: 'Nome, CNPJ, telefone e logomarca saem nos relatórios.', path: '/configuracoes' },
-    { id: 'setores', done: sectors.length > 0, title: 'Cadastrar os setores', hint: 'UTI, Emergência, Enfermaria… cada setor tem a sua escala.', path: '/setores' },
+    { id: 'setores', done: sectors.length > 0, title: 'Cadastrar os setores', hint: 'UTI, Emergência, Enfermaria… cada setor tem a sua escala.', path: '/setores', video: 'montar-mes' },
     { id: 'equipe', done: team.length > 0, title: 'Trazer a equipe', hint: 'Cadastre os profissionais ou mande o link de cadastro (botão “Convidar equipe”).', path: '/corpo-clinico' },
-    { id: 'escala', done: shifts.length > 0, title: 'Montar a primeira escala', hint: 'Lance os plantões do mês na grade.', path: '/escalas' },
-    { id: 'publicar', done: hasPublished, title: 'Publicar a escala', hint: 'Depois de publicada, cada profissional vê os seus plantões no celular.', path: '/escalas' }
+    { id: 'escala', done: shifts.length > 0, title: 'Montar a primeira escala', hint: 'Lance os plantões do mês na grade.', path: '/escalas', video: 'escalar-pela-grade' },
+    { id: 'publicar', done: hasPublished, title: 'Publicar a escala', hint: 'Depois de publicada, cada profissional vê os seus plantões no celular.', path: '/escalas', video: 'publicar-escala' }
   ];
   const doneCount = steps.filter(s => s.done).length;
   if (hidden || doneCount === steps.length) return null;
@@ -74,6 +74,11 @@ export default function OnboardingChecklist({ companyId, user, units = [], secto
                   </span>
                 )}
               </button>
+              {!step.done && step.video && (
+                <button type="button" onClick={() => navigate(`/como-usar#${step.video}`)} className="ml-10 -mt-1.5 mb-3 inline-flex items-center gap-1 text-xs font-medium text-sky-700 dark:text-sky-300 hover:underline cursor-pointer">
+                  <PlayCircle className="w-3.5 h-3.5" /> Ver como fazer
+                </button>
+              )}
             </li>
           );
         })}

@@ -27,6 +27,7 @@ const Faturamento = lazyPage(() => import('@/pages/Faturamento'));
 const Configuracoes = lazyPage(() => import('@/pages/Configuracoes'));
 const MinhaEscala = lazyPage(() => import('@/pages/MinhaEscala'));
 const Trocas = lazyPage(() => import('@/pages/Trocas'));
+const ComoUsar = lazyPage(() => import('@/pages/ComoUsar'));
 const Planejamento = lazyPage(() => import('@/pages/Planejamento')); // TEMPORÁRIO
 const Plataforma = lazyPage(() => import('@/pages/Plataforma'));
 const Historico = lazyPage(() => import('@/pages/Historico'));
@@ -81,6 +82,7 @@ const AuthenticatedApp = () => {
             <Route path="/minha-escala" element={<MinhaEscala />} />
             <Route path="/trocas" element={<Trocas />} />
             <Route path="/historico" element={<Historico />} />
+            <Route path="/como-usar" element={<ComoUsar />} />
             <Route path="/planejamento" element={<Planejamento />} /> {/* TEMPORÁRIO */}
             <Route path="/plataforma" element={<Plataforma />} />
             <Route path="/configuracoes" element={<Configuracoes />} />

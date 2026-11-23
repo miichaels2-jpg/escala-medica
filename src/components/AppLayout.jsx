@@ -8,7 +8,7 @@ import {
   DollarSign, Users, Building2, LogOut, Menu, X, 
   AlertTriangle, Sun, Moon, Settings, FileBarChart,
   Clock, Hospital, Bell, Flame, CheckCircle2, ChevronRight, CheckCheck, Smartphone,
-  ListChecks, History, Globe
+  ListChecks, History, Globe, PlayCircle
 } from 'lucide-react';
 import { InstallAppBanner, InstallAppDialog } from '@/components/InstallAppGuide';
 import { NotificationPanel, useNotificationCenter } from '@/components/NotificationCenter';
@@ -201,6 +201,7 @@ export default function AppLayout({ children }) {
     { label: 'Faturamento', path: '/faturamento', icon: DollarSign, visible: isManager || isBilling },
     { label: 'Histórico', path: '/historico', icon: History, visible: isManager },
     { label: 'Configurações', path: '/configuracoes', icon: Settings, visible: isManager },
+    { label: 'Como usar', path: '/como-usar', icon: PlayCircle, visible: true },
     { label: 'Planejamento', path: '/planejamento', icon: ListChecks, visible: isManager }, // TEMPORÁRIO
     // Só o dono da plataforma (o campo "visible" acima não filtra o menu; quem filtra é canAccessRoute).
     ...(isPlatformOwner ? [{ label: 'Plataforma', path: '/plataforma', icon: Globe, visible: true }] : []),

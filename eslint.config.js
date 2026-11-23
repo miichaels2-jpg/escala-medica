@@ -10,6 +10,12 @@ export default [
     ignores: ["src/lib/**/*", "src/components/ui/**/*", "dist/**/*", "node_modules/**/*"],
   },
 
+  // Scripts de apoio (gravação dos tutoriais) rodam no Node.
+  {
+    files: ["scripts/**/*.{js,mjs,cjs}"],
+    languageOptions: { globals: { ...globals.node, ...globals.browser }, sourceType: "module", ecmaVersion: 2022 },
+  },
+
   // 2. Configurações recomendadas base
   pluginJs.configs.recommended,
   pluginReact.configs.flat.recommended,
