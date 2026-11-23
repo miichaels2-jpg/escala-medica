@@ -9,6 +9,17 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.4.4 — 23/11/2026
+
+- **Relatórios reorganizados:** os 12 relatórios da lista lateral viraram 4 abas no alto — Visão geral, Escalas
+  (Plantões, Trocas e repasses, Setores), Equipe (Cadastro, Produtividade, Confiabilidade, Aniversariantes) e Financeiro
+  (Custos, Apuração diária, Extrato individual). O "Resumo executivo", que repetia os números do Painel BI, foi
+  absorvido pela Visão geral, que agora começa pelas vagas sem profissional.
+- **Filtros valendo na hora:** uma linha só, com atalhos de período (este mês, mês passado, últimos 3 meses, este
+  ano ou escolher datas), setor e busca; "Situação" só nos relatórios de equipe. Saiu o botão "Aplicar filtros".
+- **Por dentro:** sem emoji nem palavras em maiúsculas ("Furo" e "Em aberto"), valores sem cor de alerta, tabelas
+  sem negrito em tudo, "Sem horário" em vez de um 07:00–19:00 inventado e plantões mostrados de 50 em 50.
+
 ## V0.4.3 — 22/11/2026
 
 - **Entrada:** os campos de usuário e senha ficam em branco. Saíram o exemplo "Ex: dr.carlos" e as bolinhas que

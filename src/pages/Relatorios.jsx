@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useDeferredValue } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { DEFAULT_REMUNERATION_TYPE, getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, getShiftDurationHours, safeFinancialNumber } from '@/lib/financialCalculations';
 import { calculateProductivityPoolAllocations, isProductivityDayComplete } from '@/lib/productivityCalculations';
@@ -14,10 +14,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  BarChart3, Users, DollarSign, Building2,
+  Users, DollarSign, Building2,
   CalendarDays, Activity, Printer as PrinterIcon,
   AlertTriangle, Stethoscope, FileSpreadsheet,
-  Filter, Check, Contact2, Gift, ArrowLeftRight, RotateCcw, Presentation, ShieldCheck
+  Contact2, Gift, ArrowLeftRight, RotateCcw, Presentation, ShieldCheck, Search, ChevronRight
 } from 'lucide-react';
 
 function safeNumber(value, fallback = 0) {
@@ -229,19 +229,44 @@ const REPORT_TITLES = {
 };
 
 const REPORT_NAVIGATION = [
-  { id: 'bi', label: 'Painel BI', description: 'Apresentação para gestão', icon: Presentation },
-  { id: 'executivo', label: 'Resumo executivo', description: 'Indicadores e cobertura', icon: BarChart3 },
+  { id: 'bi', label: 'Visão geral', description: 'Apresentação para gestão', icon: Presentation },
   { id: 'escalas', label: 'Plantões', description: 'Escalas e ocupação', icon: CalendarDays },
   { id: 'trocas', label: 'Trocas e repasses', description: 'Histórico de alterações', icon: ArrowLeftRight },
   { id: 'base_setores', label: 'Setores', description: 'Estrutura e custos', icon: Building2 },
-  { id: 'base_profissionais', label: 'Corpo clínico', description: 'Cadastro e situação', icon: Contact2 },
+  { id: 'base_profissionais', label: 'Cadastro', description: 'Cadastro e situação', icon: Contact2 },
   { id: 'aniversariantes', label: 'Aniversariantes', description: 'Datas comemorativas', icon: Gift },
   { id: 'profissionais', label: 'Produtividade', description: 'Atuação profissional', icon: Users },
   { id: 'confiabilidade', label: 'Confiabilidade', description: 'Cumprimento, coberturas e repasses', icon: ShieldCheck, managerOnly: true },
   { id: 'produtividade_diaria', label: 'Apuração diária', description: 'Atendimentos e rateio', icon: Activity },
   { id: 'produtividade_profissional', label: 'Extrato individual', description: 'Atendimentos e saldo', icon: Stethoscope },
-  { id: 'financeiro', label: 'Financeiro', description: 'Custos e orçamento', icon: DollarSign }
+  { id: 'financeiro', label: 'Custos', description: 'Custos e orçamento', icon: DollarSign }
 ];
+
+// As 4 abas do alto; cada uma junta relatórios parecidos (o "Resumo executivo" entrou na Visão geral).
+const REPORT_GROUPS = [
+  { id: 'geral', label: 'Visão geral', reports: ['bi'] },
+  { id: 'escalas', label: 'Escalas', reports: ['escalas', 'trocas', 'base_setores'] },
+  { id: 'equipe', label: 'Equipe', reports: ['base_profissionais', 'profissionais', 'confiabilidade', 'aniversariantes'] },
+  { id: 'financeiro', label: 'Financeiro', reports: ['financeiro', 'produtividade_diaria', 'produtividade_profissional'] }
+];
+const REPORTS_WITH_STATUS_FILTER = ['base_profissionais', 'profissionais', 'aniversariantes'];
+
+const PERIODS = [
+  { id: 'mes', label: 'Este mês' },
+  { id: 'mes_passado', label: 'Mês passado' },
+  { id: 'tres_meses', label: 'Últimos 3 meses' },
+  { id: 'ano', label: 'Este ano' },
+  { id: 'personalizado', label: 'Escolher datas' }
+];
+
+function periodRange(id, today = new Date()) {
+  const y = today.getFullYear(); const m = today.getMonth();
+  const d = (yy, mm, dd) => getLocalDateInputValue(new Date(yy, mm, dd));
+  if (id === 'mes_passado') return [d(y, m - 1, 1), d(y, m, 0)];
+  if (id === 'tres_meses') return [d(y, m - 2, 1), d(y, m + 1, 0)];
+  if (id === 'ano') return [d(y, 0, 1), d(y, 11, 31)];
+  return [d(y, m, 1), d(y, m + 1, 0)];
+}
 
 export default function Relatorios() {
   const {
@@ -280,47 +305,36 @@ export default function Relatorios() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProductivityProfessionalId, setSelectedProductivityProfessionalId] = useState('');
 
-  // O mês atual já vem aplicado: o painel abre com dados, sem clique extra.
-  const [hasSearched, setHasSearched] = useState(true);
-  const [appliedFilters, setAppliedFilters] = useState({
-    start: firstDay,
-    end: lastDay,
-    sector: 'todos',
-    profStatus: 'todos',
-    search: ''
-  });
+  // Os filtros valem na hora: o relatório muda enquanto a pessoa escolhe.
+  const [period, setPeriod] = useState('mes');
+  const [shiftRowsLimit, setShiftRowsLimit] = useState(50);
+  const hasSearched = true;
+  const deferredSearch = useDeferredValue(searchQuery);
+  const appliedFilters = useMemo(() => ({
+    start: dateStart,
+    end: dateEnd && dateStart && dateEnd < dateStart ? dateStart : dateEnd,
+    sector: selectedSector,
+    profStatus: profStatusFilter,
+    search: deferredSearch
+  }), [dateStart, dateEnd, selectedSector, profStatusFilter, deferredSearch]);
 
-  const handleApplyFilters = () => {
-    if (dateStart && dateEnd && dateStart > dateEnd) {
-      alert('A data inicial precisa ser anterior ou igual à data final.');
-      return;
-    }
-    setAppliedFilters({
-      start: dateStart,
-      end: dateEnd,
-      sector: selectedSector,
-      profStatus: profStatusFilter,
-      search: searchQuery
-    });
-    setHasSearched(true);
+  const choosePeriod = (id) => {
+    setPeriod(id);
+    if (id === 'personalizado') return;
+    const [start, end] = periodRange(id);
+    setDateStart(start);
+    setDateEnd(end);
   };
 
   const handleClearFilters = () => {
-    const initialFilters = {
-      start: firstDay,
-      end: lastDay,
-      sector: 'todos',
-      profStatus: 'todos',
-      search: ''
-    };
+    setPeriod('mes');
     setDateStart(firstDay);
     setDateEnd(lastDay);
     setSelectedSector('todos');
     setProfStatusFilter('todos');
     setSearchQuery('');
-    setAppliedFilters(initialFilters);
-    setHasSearched(true);
   };
+  const filtersChanged = period !== 'mes' || selectedSector !== 'todos' || profStatusFilter !== 'todos' || searchQuery !== '';
 
   const profMap = useMemo(() => {
     const map = {};
@@ -1820,6 +1834,23 @@ export default function Relatorios() {
     printWindow.document.close();
   };
 
+  const resultCountLabel =
+    activeTab === 'bi' ? `${filteredShifts.length} plantões no período` :
+    activeTab === 'escalas' ? `${filteredShifts.length} plantões` :
+    activeTab === 'trocas' ? `${swapsList.length} repasses` :
+    activeTab === 'base_setores' ? `${enrichedSectors.length} setores` :
+    activeTab === 'base_profissionais' ? `${filteredProfessionals.length} profissionais` :
+    activeTab === 'aniversariantes' ? `${birthDaysList.length} aniversariantes` :
+    activeTab === 'profissionais' ? `${professionalMetrics.length} profissionais` :
+    activeTab === 'confiabilidade' ? `${reliabilityRows.length} profissionais` :
+    activeTab === 'produtividade_diaria' ? `${productivityReport.totals.pendingDays} dia(s) pendente(s) · ${formatCurrency(productivityReport.totals.pool)} rateados` :
+    activeTab === 'financeiro' ? `${formatCurrency(financialSummary.totalCost)} em custos previstos` :
+    `${totalShiftsCount} plantões analisados`;
+  const activeGroup = REPORT_GROUPS.find(g => g.reports.includes(activeTab)) || REPORT_GROUPS[0];
+  const groupReports = activeGroup.reports.map(id => reportNavigation.find(r => r.id === id)).filter(Boolean);
+  const showStatusFilter = REPORTS_WITH_STATUS_FILTER.includes(activeTab);
+  const fieldClass = 'h-10 text-sm bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl';
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 md:p-8 space-y-6 font-sans transition-colors duration-300">
       
@@ -1839,154 +1870,138 @@ export default function Relatorios() {
         )}
       />
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[250px_minmax(0,1fr)] lg:items-start">
-        <aside className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm">
-          <div className="hidden px-3 pb-3 pt-2 lg:block">
-            <p className="text-xs font-medium text-slate-400">Navegação</p>
-            <h2 className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">Escolha um relatório</h2>
-          </div>
-          <nav aria-label="Relatórios disponíveis" className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
-            {reportNavigation.map(({ id, label, description, icon: Icon }) => {
-              const isActive = activeTab === id;
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2">
+          <nav aria-label="Grupos de relatórios" className="flex gap-1 overflow-x-auto">
+            {REPORT_GROUPS.map(group => {
+              const isActive = group.id === activeGroup.id;
+              const first = group.reports.find(id => reportNavigation.some(r => r.id === id));
+              if (!first) return null;
               return (
-                <button
-                  key={id}
-                  type="button"
-                  aria-current={isActive ? 'page' : undefined}
-                  onClick={() => setActiveTab(id)}
-                  className={`flex min-w-[190px] items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors lg:min-w-0 ${
-                    isActive
-                      ? 'border-sky-200 bg-sky-50 text-sky-800 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-300'
-                      : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:bg-slate-800/70'
-                  }`}
-                >
-                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                    isActive
-                      ? 'bg-sky-600 text-white dark:bg-cyan-600'
-                      : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                  }`}>
-                    <Icon className="h-4 w-4" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-xs font-semibold">{label}</span>
-                    <span className={`mt-0.5 block truncate text-[10px] ${
-                      isActive ? 'text-sky-700/80 dark:text-cyan-200/70' : 'text-slate-400 dark:text-slate-500'
-                    }`}>{description}</span>
-                  </span>
+                <button key={group.id} type="button" aria-current={isActive ? 'page' : undefined}
+                  onClick={() => !isActive && setActiveTab(first)}
+                  className={`shrink-0 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer transition-colors ${isActive ? 'bg-sky-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                  {group.label}
                 </button>
               );
             })}
           </nav>
-          <p className="hidden border-t border-slate-100 px-3 pt-3 text-[10px] text-slate-400 dark:border-slate-800 lg:block">
-            Um relatório por vez · {reportNavigation.findIndex(report => report.id === activeTab) + 1} de {reportNavigation.length}
-          </p>
-        </aside>
-
-        <main className="min-w-0 space-y-5">
-      {/* PAINEL DE FILTROS PERSONALIZÁVEL */}
-      <Card className="p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4 transition-colors">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-3">
-          <span className="text-xs font-semibold text-sky-600 dark:text-cyan-400 flex items-center gap-2">
-            <Filter className="w-4 h-4 text-sky-600 dark:text-cyan-400" /> Filtros do relatório
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-7 gap-3 items-end">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Data Inicial</Label>
-            <Input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 dark:[color-scheme:dark] transition-colors" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Data Final</Label>
-            <Input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 dark:[color-scheme:dark] transition-colors" />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Setor Clínico</Label>
-            <Select value={selectedSector} onValueChange={setSelectedSector}>
-              <SelectTrigger className="h-11 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white z-[99999] max-h-[300px]">
-                <SelectItem value="todos">🏥 Todos (Consolidado)</SelectItem>
-                {(sectors || []).map(s => {
-                  const sName = (s.name || '').trim();
-                  if (!sName || sName.toLowerCase() === 'setor' || sName.toLowerCase() === 'setor geral') return null;
-                  return <SelectItem key={s.id} value={String(s.id)}>{sName}{isAllUnits && unitNameById[String(s.unit_id)] ? ` · ${unitNameById[String(s.unit_id)]}` : ''}</SelectItem>;
-                })}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Status profissional</Label>
-            <Select value={profStatusFilter} onValueChange={setProfStatusFilter}>
-              <SelectTrigger className="h-11 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:ring-sky-500 dark:focus:ring-cyan-500 transition-colors">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white z-[99999]">
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="ativo">Somente Ativos</SelectItem>
-                <SelectItem value="inativo">Somente Inativos</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Busca</Label>
-            <Input placeholder="Profissional ou setor..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="h-11 text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl focus:border-sky-500 dark:focus:border-cyan-500 transition-colors" />
-          </div>
-          <div>
-            <Button onClick={handleApplyFilters} className="w-full h-11 bg-sky-600 hover:bg-sky-700 dark:bg-cyan-600 dark:hover:bg-cyan-500 text-white font-semibold text-xs rounded-xl shadow-sm gap-2 cursor-pointer transition-colors border-none dark:border-solid dark:border-cyan-500/50">
-              <Check className="w-4 h-4" /> Aplicar filtros
-            </Button>
-          </div>
-          <div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleClearFilters}
-              className="w-full h-11 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border-slate-200 dark:border-slate-700 gap-2 cursor-pointer transition-colors"
-            >
-              <RotateCcw className="w-4 h-4" /> Limpar filtros
-            </Button>
-          </div>
-        </div>
-      </Card>
-
-      {/* ESTADO INICIAL */}
-      {!hasSearched ? (
-        <Card className="p-10 md:p-16 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900/50 text-center space-y-4 shadow-sm transition-colors">
-          <div className="w-16 h-16 rounded-2xl bg-sky-50 dark:bg-cyan-500/10 text-sky-500 dark:text-cyan-400 flex items-center justify-center mx-auto border border-sky-100 dark:border-cyan-500/20">
-            <Filter className="w-8 h-8" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-sky-600 dark:text-cyan-400">{REPORT_TITLES[activeTab]}</p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-900 dark:text-white tracking-tight">Relatório pronto para configurar</h3>
-          </div>
-          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">Defina o período e os filtros desta consulta. O relatório selecionado será exibido e poderá ser exportado ou impresso individualmente.</p>
-        </Card>
-      ) : (
-        <div className="space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{REPORT_TITLES[activeTab] || 'Relatório'}</h2>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{periodLabel} · {filterSummary}</p>
+          {groupReports.length > 1 && (
+            <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex gap-1 overflow-x-auto" role="tablist" aria-label={`Relatórios de ${activeGroup.label}`}>
+              {groupReports.map(({ id, label, icon: Icon }) => (
+                <button key={id} type="button" role="tab" aria-selected={activeTab === id} onClick={() => setActiveTab(id)}
+                  className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm cursor-pointer transition-colors ${activeTab === id ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 font-medium' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                  <Icon className="w-4 h-4" /> {label}
+                </button>
+              ))}
             </div>
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              {activeTab === 'bi' ? `${filteredShifts.length} plantões no período` :
-                activeTab === 'escalas' ? `${filteredShifts.length} plantões` :
-                activeTab === 'trocas' ? `${swapsList.length} repasses` :
-                activeTab === 'base_setores' ? `${enrichedSectors.length} setores` :
-                activeTab === 'base_profissionais' ? `${filteredProfessionals.length} profissionais` :
-                activeTab === 'aniversariantes' ? `${birthDaysList.length} aniversariantes` :
-                activeTab === 'profissionais' ? `${professionalMetrics.length} profissionais` :
-                activeTab === 'confiabilidade' ? `${reliabilityRows.length} profissionais` :
-                activeTab === 'produtividade_diaria' ? `${productivityReport.totals.pendingDays} dia(s) pendente(s) · ${formatCurrency(productivityReport.totals.pool)} rateados` :
-                activeTab === 'financeiro' ? `${formatCurrency(financialSummary.totalCost)} em custos previstos` :
-                `${totalShiftsCount} plantões analisados`}
-            </span>
-          </div>
+          )}
+        </div>
 
-          <div className="space-y-6">
-            {/* ABA EXECUTIVO */}
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 sm:p-4 space-y-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1 w-full sm:w-44">
+              <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Período</Label>
+              <Select value={period} onValueChange={choosePeriod}>
+                <SelectTrigger className={fieldClass}><SelectValue /></SelectTrigger>
+                <SelectContent className="z-[99999]">
+                  {PERIODS.map(p => <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            {period === 'personalizado' && (
+              <>
+                <div className="space-y-1 w-[calc(50%-6px)] sm:w-40">
+                  <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">De</Label>
+                  <Input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className={fieldClass} />
+                </div>
+                <div className="space-y-1 w-[calc(50%-6px)] sm:w-40">
+                  <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Até</Label>
+                  <Input type="date" value={dateEnd} min={dateStart} onChange={e => setDateEnd(e.target.value)} className={fieldClass} />
+                </div>
+              </>
+            )}
+            <div className="space-y-1 w-full sm:w-56">
+              <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Setor</Label>
+              <Select value={selectedSector} onValueChange={setSelectedSector}>
+                <SelectTrigger className={fieldClass}><SelectValue /></SelectTrigger>
+                <SelectContent className="z-[99999] max-h-[300px]">
+                  <SelectItem value="todos">Todos os setores</SelectItem>
+                  {(sectors || []).map(sec => {
+                    const sName = (sec.name || '').trim();
+                    if (!sName || sName.toLowerCase() === 'setor' || sName.toLowerCase() === 'setor geral') return null;
+                    return <SelectItem key={sec.id} value={String(sec.id)}>{sName}{isAllUnits && unitNameById[String(sec.unit_id)] ? ` · ${unitNameById[String(sec.unit_id)]}` : ''}</SelectItem>;
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            {showStatusFilter && (
+              <div className="space-y-1 w-full sm:w-40">
+                <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Situação</Label>
+                <Select value={profStatusFilter} onValueChange={setProfStatusFilter}>
+                  <SelectTrigger className={fieldClass}><SelectValue /></SelectTrigger>
+                  <SelectContent className="z-[99999]">
+                    <SelectItem value="todos">Todos</SelectItem>
+                    <SelectItem value="ativo">Ativos</SelectItem>
+                    <SelectItem value="inativo">Inativos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1 flex-1 min-w-[200px]">
+              <Label className="text-xs font-medium text-slate-500 dark:text-slate-400">Buscar</Label>
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Input placeholder="Profissional ou setor" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className={`${fieldClass} pl-9`} />
+              </div>
+            </div>
+            {filtersChanged && (
+              <Button type="button" variant="ghost" onClick={handleClearFilters} className="h-10 px-3 text-sm text-slate-500 gap-1.5 cursor-pointer">
+                <RotateCcw className="w-4 h-4" /> Limpar
+              </Button>
+            )}
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {periodLabel} · {filterSummary} · <span className="font-medium text-slate-700 dark:text-slate-200">{resultCountLabel}</span>
+          </p>
+        </div>
+
+      {!hasSearched ? null : (
+        <div className="space-y-5">
+          <div className="space-y-5">
+            {/* VISÃO GERAL */}
+            {activeTab === 'bi' && vacantShiftItems.length > 0 && (
+              <Card className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900 dark:text-white">Vagas sem profissional</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{vacantShiftItems.filter(isShiftPast).length} furo(s) já passados · {vacantShiftItems.filter(v => !isShiftPast(v)).length} em aberto</p>
+                  </div>
+                  <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                </div>
+                <ul className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
+                  {vacantShiftItems.slice(0, 5).map((v, i) => {
+                    const isPast = isShiftPast(v);
+                    return (
+                      <li key={v.id || i} className="flex items-center gap-3 py-2.5 text-sm">
+                        <span className="w-24 shrink-0 tabular-nums text-slate-500 dark:text-slate-400">{formatDate(v.date)}</span>
+                        <span className="flex-1 min-w-0 truncate font-medium text-slate-900 dark:text-white">{getSectorName(v, sectors)}</span>
+                        <span className="hidden sm:block tabular-nums text-slate-500 dark:text-slate-400">{v.start_time && v.end_time ? `${v.start_time}–${v.end_time}` : 'Sem horário'}</span>
+                        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${isPast ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300' : 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300'}`}>
+                          {isPast ? 'Furo' : 'Em aberto'}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {vacantShiftItems.length > 5 && (
+                  <button type="button" onClick={() => setActiveTab('escalas')} className="mt-2 flex items-center gap-1 text-sm font-medium text-sky-700 dark:text-sky-300 hover:underline cursor-pointer">
+                    Ver todas as {vacantShiftItems.length} em Escalas <ChevronRight className="w-4 h-4" />
+                  </button>
+                )}
+              </Card>
+            )}
+
             {activeTab === 'bi' && (
               <ManagementBI
                 unitBreakdown={isAllUnits ? scopeUnitIds.map(unitId => {
@@ -2018,87 +2033,16 @@ export default function Relatorios() {
               />
             )}
 
-            {activeTab === 'executivo' && (
-              <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm relative overflow-hidden group transition-colors">
-                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Total de Plantões</p>
-                    <p className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white tabular-nums tracking-tight">{formatNumber(totalShiftsCount)}</p>
-                    <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-medium flex flex-col gap-1">
-                      <span className="text-emerald-600 dark:text-teal-400">{filledShiftsCount} Ocupados</span>
-                      {vacantShiftsCount > 0 && <span className="text-rose-600 dark:text-rose-400">{vacantShiftsCount} Furos/Vagos</span>}
-                    </div>
-                  </Card>
-                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm relative overflow-hidden group transition-colors">
-                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Taxa de Ocupação Real</p>
-                    <p className={`mt-2 text-3xl font-semibold tabular-nums tracking-tight ${coverageRate >= 98 ? 'text-emerald-600 dark:text-emerald-400' : coverageRate >= 90 ? 'text-amber-500 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>{coverageRate}%</p>
-                    <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-medium">Meta Hospitalar: &gt; 98%</div>
-                  </Card>
-                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm relative overflow-hidden group transition-colors">
-                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Custo das escalas ocupadas</p>
-                    <p className="mt-2 text-3xl font-semibold text-amber-600 dark:text-amber-400 tabular-nums tracking-tight">{formatCurrency(financialSummary.totalCost)}</p>
-                    <div className="mt-3 text-[11px] text-slate-500 dark:text-slate-400 font-medium">{formatNumber(financialSummary.hours)} Horas Calculadas</div>
-                  </Card>
-                  <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm relative overflow-hidden group transition-colors">
-                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Profissionais Filtrados</p>
-                    <p className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white tabular-nums tracking-tight">{filteredProfessionals.length}</p>
-                    <div className="mt-3 text-[10px] text-slate-500 dark:text-slate-400 font-medium flex flex-col gap-0.5">
-                       <span className={credentialAudit.expired > 0 ? 'text-rose-600 dark:text-rose-400' : ''}>{credentialAudit.expired} Docs Vencidos</span>
-                       <span className="text-amber-600 dark:text-amber-400">{credentialAudit.nearExpiry} Vencem em 30d</span>
-                    </div>
-                  </Card>
-                </div>
-
-                {vacantShiftItems.length > 0 && (
-                  <Card className="rounded-3xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-950/20 p-6 shadow-sm transition-colors">
-                    <div className="flex items-center gap-3 border-b border-rose-200 dark:border-rose-500/20 pb-4">
-                      <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-500 animate-pulse" />
-                      <h3 className="text-sm font-semibold text-rose-800 dark:text-rose-400">Ocorrências: Furos de Escala ou Vagas em Aberto ({vacantShiftItems.length})</h3>
-                    </div>
-                    <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {vacantShiftItems.slice(0, 15).map((v, i) => {
-                        const isPast = isShiftPast(v);
-                        return (
-                          <div key={i} className={`p-3 rounded-2xl border flex items-center justify-between shadow-sm transition-colors ${
-                            isPast 
-                              ? 'bg-rose-100 dark:bg-rose-950/50 border-rose-300 dark:border-rose-500/50' 
-                              : 'bg-amber-50 dark:bg-slate-900 border-amber-200 dark:border-amber-500/30'
-                          }`}>
-                            <div>
-                              <strong className="text-xs text-slate-900 dark:text-white block">{getSectorName(v, sectors)}</strong>
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400">Data: {formatDate(v.date)}</span>
-                            </div>
-                            <span className={`tabular-nums text-[10px] font-semibold px-2 py-1 rounded-lg border ${
-                              isPast 
-                                ? 'bg-rose-200 dark:bg-rose-500/20 text-rose-800 dark:text-rose-400 border-rose-300 dark:border-rose-500/30' 
-                                : 'bg-amber-100 dark:bg-amber-500/10 text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-500/30'
-                            }`}>
-                              {isPast ? 'NÃO OCUPADO' : 'EM ABERTO'}
-                            </span>
-                          </div>
-                        );
-                      })}
-                      {vacantShiftItems.length > 15 && (
-                        <div className="p-3 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-xs text-slate-500 dark:text-slate-400 font-semibold transition-colors">
-                          + {vacantShiftItems.length - 15} registros na aba Escalas
-                        </div>
-                      )}
-                    </div>
-                  </Card>
-                )}
-              </div>
-            )}
-
             {/* ABA ESCALAS */}
             {activeTab === 'escalas' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-semibold text-sm text-sky-600 dark:text-cyan-400 flex items-center gap-2">
-                    <CalendarDays className="w-5 h-5" /> Extrato de Escalas ({filteredShifts.length})
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    <CalendarDays className="w-5 h-5 text-slate-400" /> Plantões do período ({filteredShifts.length})
                   </h3>
                 </div>
                 <div className="overflow-x-auto mt-4">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="w-full text-left text-sm border-collapse">
                     <thead>
                       <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500 dark:text-slate-500">
                         <th className="py-3 px-3">Data</th>
@@ -2108,8 +2052,8 @@ export default function Relatorios() {
                         <th className="py-3 px-3">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
-                      {filteredShifts.map((s, idx) => {
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                      {filteredShifts.slice(0, shiftRowsLimit).map((s, idx) => {
                         const isVago = isVacant(s);
                         const isPast = isShiftPast(s);
                         let profNameRender = titleCase(s.professional_name) || 'Não Identificado';
@@ -2118,11 +2062,11 @@ export default function Relatorios() {
 
                         if (isVago) {
                           if (isPast) {
-                            profNameRender = <span className="text-rose-600 dark:text-rose-500">⚠️ FALTA / NÃO OCUPADO</span>;
+                            profNameRender = <span className="text-rose-700 dark:text-rose-300">Sem profissional (furo)</span>;
                             badgeClass = 'bg-rose-100 dark:bg-rose-500/20 text-rose-800 dark:text-rose-500 border-rose-200 dark:border-rose-500/50';
-                            badgeText = 'Furo de Escala';
+                            badgeText = 'Furo';
                           } else {
-                            profNameRender = <span className="text-amber-600 dark:text-amber-400">⚠️ VAGA EM ABERTO</span>;
+                            profNameRender = <span className="text-amber-700 dark:text-amber-300">Vaga em aberto</span>;
                             badgeClass = 'bg-amber-100 dark:bg-amber-500/10 text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-500/30';
                             badgeText = 'Vago';
                           }
@@ -2130,16 +2074,23 @@ export default function Relatorios() {
 
                         return (
                           <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                            <td className="py-3 px-3 font-semibold tabular-nums text-slate-700 dark:text-slate-300">{formatDate(s.date)}</td>
+                            <td className="py-3 px-3 tabular-nums text-slate-600 dark:text-slate-300">{formatDate(s.date)}</td>
                             <td className="py-3 px-3 text-slate-600 dark:text-slate-300">{getSectorName(s, sectors)}</td>
-                            <td className={`py-3 px-3 font-semibold text-slate-900 dark:text-white`}>{profNameRender}</td>
-                            <td className="py-3 px-3 tabular-nums text-slate-500 dark:text-slate-400">{s.start_time || '07:00'} - {s.end_time || '19:00'}</td>
-                            <td className="py-3 px-3"><span className={`px-2.5 py-1 rounded-md text-xs font-semibold border ${badgeClass}`}>{badgeText}</span></td>
+                            <td className="py-3 px-3 font-medium text-slate-900 dark:text-white">{profNameRender}</td>
+                            <td className="py-3 px-3 tabular-nums text-slate-500 dark:text-slate-400">{s.start_time && s.end_time ? `${s.start_time}–${s.end_time}` : 'Sem horário'}</td>
+                            <td className="py-3 px-3"><span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${badgeClass}`}>{String(badgeText).charAt(0).toUpperCase() + String(badgeText).slice(1)}</span></td>
                           </tr>
                         );
                       })}
                       {filteredShifts.length === 0 && (
                         <tr><td colSpan="5" className="py-8 text-center text-slate-500">Nenhum plantão filtrado no período.</td></tr>
+                      )}
+                      {filteredShifts.length > shiftRowsLimit && (
+                        <tr><td colSpan="5" className="pt-3 text-center">
+                          <Button type="button" variant="outline" onClick={() => setShiftRowsLimit(n => n + 100)} className="h-9 rounded-xl text-sm cursor-pointer">
+                            Mostrar mais ({filteredShifts.length - shiftRowsLimit} restantes)
+                          </Button>
+                        </td></tr>
                       )}
                     </tbody>
                   </table>
@@ -2149,14 +2100,14 @@ export default function Relatorios() {
 
             {/* NOVA ABA: TROCAS E MURAL */}
             {activeTab === 'trocas' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-semibold text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                     <ArrowLeftRight className="w-5 h-5" /> Histórico de Trocas e Repasses ({swapsList.length})
                   </h3>
                 </div>
                 <div className="overflow-x-auto mt-4">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="w-full text-left text-sm border-collapse">
                     <thead>
                       <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500">
                         <th className="py-3 px-3">Data</th>
@@ -2167,14 +2118,14 @@ export default function Relatorios() {
                         <th className="py-3 px-3 text-center">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                       {swapsList.map((s, idx) => (
                         <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                          <td className="py-3 px-3 font-semibold tabular-nums text-slate-700 dark:text-slate-300">{formatDate(s.date)}</td>
+                          <td className="py-3 px-3 tabular-nums text-slate-600 dark:text-slate-300">{formatDate(s.date)}</td>
                           <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{getSectorName(s, sectors)}</td>
                           <td className="py-3 px-3 tabular-nums text-center text-slate-500 dark:text-slate-400">{s.start_time} - {s.end_time}</td>
                           <td className="py-3 px-3 font-semibold text-rose-600 dark:text-rose-400">{s.requester}</td>
-                          <td className="py-3 px-3 font-semibold text-emerald-600 dark:text-emerald-400">{s.currentProf}</td>
+                          <td className="py-3 px-3 font-medium text-slate-900 dark:text-white">{s.currentProf}</td>
                           <td className="py-3 px-3 text-center">
                             <span className={`px-2 py-0.5 rounded text-xs font-semibold ${s.isPending ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-400' : 'bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-400'}`}>
                               {s.swapStatus}
@@ -2193,14 +2144,14 @@ export default function Relatorios() {
 
             {/* ABA BASE DE SETORES */}
             {activeTab === 'base_setores' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-semibold text-sm text-sky-600 dark:text-sky-400 flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                     <Building2 className="w-5 h-5" /> Estrutura de Setores ({enrichedSectors.length})
                   </h3>
                 </div>
                 <div className="overflow-x-auto mt-4">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="w-full text-left text-sm border-collapse">
                     <thead>
                       <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500">
                         <th className="py-3 px-3">Nome do Setor</th>
@@ -2210,10 +2161,10 @@ export default function Relatorios() {
                         <th className="py-3 px-3 text-right">Custo Projetado (R$)</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                       {enrichedSectors.map((s, idx) => (
                         <tr key={s.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                          <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">{titleCase(s.name)}</td>
+                          <td className="py-3 px-3 font-medium text-slate-900 dark:text-white">{titleCase(s.name)}</td>
                           <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{s.specialty || 'Não definida'}</td>
                           <td className="py-3 px-3">
                             <span className={`px-2 py-0.5 rounded text-xs font-semibold ${normalize(s.status) === 'inativo' ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-400' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400'}`}>
@@ -2221,7 +2172,7 @@ export default function Relatorios() {
                             </span>
                           </td>
                           <td className="py-3 px-3 text-center tabular-nums font-semibold text-slate-900 dark:text-white">{s.shiftsCount}</td>
-                          <td className="py-3 px-3 text-right tabular-nums font-semibold text-amber-600 dark:text-amber-400">{formatCurrency(s.totalCost)}</td>
+                          <td className="py-3 px-3 text-right tabular-nums font-semibold text-slate-900 dark:text-white">{formatCurrency(s.totalCost)}</td>
                         </tr>
                       ))}
                       {enrichedSectors.length === 0 && (
@@ -2235,14 +2186,14 @@ export default function Relatorios() {
 
             {/* ABA BASE DE PROFISSIONAIS */}
             {activeTab === 'base_profissionais' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-semibold text-sm text-sky-600 dark:text-sky-400 flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                     <Contact2 className="w-5 h-5" /> Base do Corpo Clínico ({filteredProfessionals.length})
                   </h3>
                 </div>
                 <div className="overflow-x-auto mt-4">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="w-full text-left text-sm border-collapse">
                     <thead>
                       <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500">
                         <th className="py-3 px-3">Nome Completo</th>
@@ -2253,13 +2204,13 @@ export default function Relatorios() {
                         <th className="py-3 px-3 text-center">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                       {filteredProfessionals.map((p, idx) => {
                         const expiryDate = p.document_expiry || p.documentExpiry || p.valid_until;
                         const isExpired = expiryDate && new Date(expiryDate) < new Date();
                         return (
                           <tr key={p.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                            <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">{titleCase(p.name)}</td>
+                            <td className="py-3 px-3 font-medium text-slate-900 dark:text-white">{titleCase(p.name)}</td>
                             <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{p.specialty}</td>
                             <td className="py-3 px-3 text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">{getProfessionalRemuneration(p, selectedUnitId)}</td>
                             <td className="py-3 px-3 text-slate-700 dark:text-slate-300 tabular-nums">{p.document || '—'}</td>
@@ -2285,14 +2236,14 @@ export default function Relatorios() {
 
             {/* NOVA ABA: ANIVERSARIANTES */}
             {activeTab === 'aniversariantes' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-semibold text-sm text-rose-500 flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                     <Gift className="w-5 h-5" /> Aniversariantes do Mês ({birthDaysList.length})
                   </h3>
                 </div>
                 <div className="overflow-x-auto mt-4">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="w-full text-left text-sm border-collapse">
                     <thead>
                       <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500">
                         <th className="py-3 px-3 text-center w-24">Dia</th>
@@ -2301,7 +2252,7 @@ export default function Relatorios() {
                         <th className="py-3 px-3">Setor / Especialidade</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                       {birthDaysList.map((p, idx) => (
                         <tr key={p.id || idx} className="hover:bg-rose-50/50 dark:hover:bg-rose-950/20 transition-colors">
                           <td className="py-3 px-3 text-center">
@@ -2309,7 +2260,7 @@ export default function Relatorios() {
                               {p.birthDayNum}
                             </span>
                           </td>
-                          <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white text-sm">{titleCase(p.name)}</td>
+                          <td className="py-3 px-3 font-medium text-slate-900 dark:text-white text-sm">{titleCase(p.name)}</td>
                           <td className="py-3 px-3 text-center tabular-nums font-semibold text-slate-500">{p.ageTurns} anos</td>
                           <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{p.specialty}</td>
                         </tr>
@@ -2325,14 +2276,14 @@ export default function Relatorios() {
 
             {/* ABA PROFISSIONAIS (PRODUTIVIDADE) */}
             {activeTab === 'profissionais' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-semibold text-sm text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                     <Stethoscope className="w-5 h-5" /> Matriz de Produtividade Clínica ({professionalMetrics.length})
                   </h3>
                 </div>
                 <div className="overflow-x-auto mt-4">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="w-full text-left text-sm border-collapse">
                     <thead>
                       <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500">
                         <th className="py-3 px-3">Profissional</th>
@@ -2342,10 +2293,10 @@ export default function Relatorios() {
                         <th className="py-3 px-3 text-right">Honorários (R$)</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                       {professionalMetrics.map((doc, idx) => (
                         <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                          <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white flex items-center gap-2.5">
+                          <td className="py-3 px-3 font-medium text-slate-900 dark:text-white flex items-center gap-2.5">
                             <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-sky-600 dark:text-cyan-400 font-semibold flex items-center justify-center text-[10px] border border-slate-200 dark:border-slate-700">
                               {doc.name.substring(0,2).toUpperCase()}
                             </div>
@@ -2353,8 +2304,8 @@ export default function Relatorios() {
                           </td>
                           <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{doc.specialty}</td>
                           <td className="py-3 px-3 text-center tabular-nums font-semibold text-slate-900 dark:text-white">{doc.shifts}</td>
-                          <td className="py-3 px-3 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">{doc.hours}h</td>
-                          <td className="py-3 px-3 text-right tabular-nums font-semibold text-amber-600 dark:text-amber-400">{formatCurrency(doc.cost)}</td>
+                          <td className="py-3 px-3 text-right tabular-nums text-slate-600 dark:text-slate-300">{doc.hours}h</td>
+                          <td className="py-3 px-3 text-right tabular-nums font-semibold text-slate-900 dark:text-white">{formatCurrency(doc.cost)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -2366,7 +2317,7 @@ export default function Relatorios() {
             {activeTab === 'produtividade_diaria' && (
               <div className="space-y-5">
                 {!productivityReport.available ? (
-                  <Card className="rounded-3xl border border-dashed border-amber-300 bg-amber-50 p-8 text-center dark:border-amber-500/30 dark:bg-amber-950/20">
+                  <Card className="rounded-2xl border border-dashed border-amber-300 bg-amber-50 p-8 text-center dark:border-amber-500/30 dark:bg-amber-950/20">
                     <AlertTriangle className="mx-auto h-8 w-8 text-amber-600 dark:text-amber-400" />
                     <h3 className="mt-3 text-base font-semibold text-amber-900 dark:text-amber-200">
                       {productivityReport.error ? 'Configuração inválida' : 'Regra de produtividade não configurada para esta unidade'}
@@ -2391,10 +2342,10 @@ export default function Relatorios() {
                       ))}
                     </div>
 
-                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                       <div className="mb-4 flex flex-col gap-2 border-b border-slate-100 pb-3 dark:border-slate-700/50 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <h3 className="text-sm font-semibold text-sky-700 dark:text-cyan-400">Fechamento diário da regra</h3>
+                          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Fechamento diário da regra</h3>
                           <p className="mt-1 text-[11px] text-slate-500">Pool configurado: {formatCurrency(productivityReport.dailyPool)} por dia. O rateio usa todos os profissionais produtivos da unidade, independentemente dos filtros de exibição.</p>
                         </div>
                         <span className="text-[10px] font-medium text-slate-500">{hospitalName}</span>
@@ -2430,9 +2381,9 @@ export default function Relatorios() {
                       </div>
                     </Card>
 
-                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                       <div className="mb-4 border-b border-slate-100 pb-3 dark:border-slate-700/50">
-                        <h3 className="text-sm font-semibold text-indigo-700 dark:text-indigo-400">Rateio por profissional e dia</h3>
+                        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Rateio por profissional e dia</h3>
                         <p className="mt-1 text-[11px] text-slate-500">Valor individual = atendimentos do profissional × pool diário ÷ atendimentos totais do dia. Os valores só são liberados quando todos os registros do dia estão completos e os plantões terminaram.</p>
                       </div>
                       <div className="overflow-x-auto">
@@ -2474,8 +2425,8 @@ export default function Relatorios() {
                       </div>
                     </Card>
 
-                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                      <h3 className="mb-4 border-b border-slate-100 pb-3 text-sm font-semibold text-emerald-700 dark:border-slate-700/50 dark:text-emerald-400">Acumulado por profissional no período</h3>
+                    <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                      <h3 className="mb-4 border-b border-slate-100 pb-3 text-sm font-semibold text-slate-900 dark:border-slate-700/50 dark:text-white">Acumulado por profissional no período</h3>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs">
                           <thead className="border-b border-slate-200 text-xs font-medium text-slate-500 dark:border-slate-700">
@@ -2510,7 +2461,7 @@ export default function Relatorios() {
             {activeTab === 'produtividade_profissional' && (
               <div className="space-y-5">
                 {!productivityReport.available ? (
-                  <Card className="rounded-3xl border border-dashed border-amber-300 bg-amber-50 p-8 text-center dark:border-amber-500/30 dark:bg-amber-950/20">
+                  <Card className="rounded-2xl border border-dashed border-amber-300 bg-amber-50 p-8 text-center dark:border-amber-500/30 dark:bg-amber-950/20">
                     <AlertTriangle className="mx-auto h-8 w-8 text-amber-600 dark:text-amber-400" />
                     <h3 className="mt-3 text-base font-semibold text-amber-900 dark:text-amber-200">
                       {productivityReport.error ? 'Configuração inválida' : 'Regra de produtividade não configurada para esta unidade'}
@@ -2521,10 +2472,10 @@ export default function Relatorios() {
                   </Card>
                 ) : (
                   <>
-                    <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(240px,0.8fr)] sm:items-end">
                         <div>
-                          <h3 className="text-sm font-semibold text-sky-700 dark:text-cyan-400">Extrato individual de produtividade</h3>
+                          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Extrato individual de produtividade</h3>
                           <p className="mt-1 text-[11px] text-slate-500">Escolha o profissional para detalhar atendimentos, plantões e valores do período.</p>
                         </div>
                         <div className="space-y-1.5">
@@ -2552,7 +2503,7 @@ export default function Relatorios() {
                     </Card>
 
                     {!selectedProductivitySummary ? (
-                      <Card className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900">
+                      <Card className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900">
                         <Users className="mx-auto h-8 w-8 text-slate-400" />
                         <h3 className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
                           {productivityReport.professionalTotals.length > 0 ? 'Selecione um profissional' : 'Nenhum profissional produtivo encontrado'}
@@ -2579,9 +2530,9 @@ export default function Relatorios() {
                           ))}
                         </div>
 
-                        <Card className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                        <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                           <div className="mb-4 border-b border-slate-100 pb-3 dark:border-slate-700/50">
-                            <h3 className="text-sm font-semibold text-indigo-700 dark:text-indigo-400">
+                            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
                               {selectedProductivitySummary.professional.name}
                             </h3>
                             <p className="mt-1 text-[11px] text-slate-500">
@@ -2712,10 +2663,10 @@ export default function Relatorios() {
             })()}
 
             {activeTab === 'financeiro' && (
-              <Card className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300 transition-colors">
+              <Card className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm transition-colors">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                  <h3 className="font-semibold text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                    <DollarSign className="w-5 h-5" /> Inteligência Financeira e Orçamento
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-slate-400" /> Custos do período
                   </h3>
                 </div>
                 <p className="mt-3 text-[11px] text-slate-500 dark:text-slate-400">
@@ -2733,22 +2684,22 @@ export default function Relatorios() {
                     <span>{financialSummary.shiftsAwaitingProduction} plantão(ões) por produtividade estão em dias ainda não fechados (falta lançar atendimentos ou o plantão não terminou) e só entram no valor depois do fechamento.</span>
                   </div>
                 )}
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mt-4">
-                  <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm dark:shadow-inner">
-                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Previsão das escalas ocupadas</span>
-                    <div className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-white mt-2">{formatCurrency(financialSummary.totalCost)}</div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 min-w-0">
+                    <span className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">Previsto (ocupados)</span>
+                    <div className="text-xl sm:text-2xl font-semibold tabular-nums text-slate-900 dark:text-white mt-1 break-words">{formatCurrency(financialSummary.totalCost)}</div>
                   </div>
-                  <div className="p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 shadow-sm dark:shadow-inner">
-                    <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-400">Valor Realizado</span>
-                    <div className="text-2xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-400 mt-2">{formatCurrency(financialSummary.executedCost)}</div>
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 min-w-0">
+                    <span className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400"><span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden="true" />Realizado</span>
+                    <div className="text-xl sm:text-2xl font-semibold tabular-nums text-slate-900 dark:text-white mt-1 break-words">{formatCurrency(financialSummary.executedCost)}</div>
                   </div>
-                  <div className="p-5 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 shadow-sm dark:shadow-inner">
-                    <span className="text-xs font-semibold text-amber-800 dark:text-amber-400">Valor Pendente</span>
-                    <div className="text-2xl font-semibold tabular-nums text-amber-700 dark:text-amber-400 mt-2">{formatCurrency(financialSummary.pendingCost)}</div>
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 min-w-0">
+                    <span className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400"><span className="w-2 h-2 rounded-full bg-amber-500" aria-hidden="true" />Pendente</span>
+                    <div className="text-xl sm:text-2xl font-semibold tabular-nums text-slate-900 dark:text-white mt-1 break-words">{formatCurrency(financialSummary.pendingCost)}</div>
                   </div>
-                  <div className="p-5 rounded-2xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 shadow-sm dark:shadow-inner">
-                    <span className="text-xs font-semibold text-rose-800 dark:text-rose-400">Desfalques (Vagas)</span>
-                    <div className="text-2xl font-semibold tabular-nums text-rose-700 dark:text-rose-400 mt-2">{formatCurrency(financialSummary.vacantCost)}</div>
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 min-w-0">
+                    <span className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400"><span className="w-2 h-2 rounded-full bg-rose-500" aria-hidden="true" />Vagas sem profissional</span>
+                    <div className="text-xl sm:text-2xl font-semibold tabular-nums text-slate-900 dark:text-white mt-1 break-words">{formatCurrency(financialSummary.vacantCost)}</div>
                   </div>
                 </div>
                 {financialSummary.payrollWithoutShifts > 0 && (
@@ -2764,7 +2715,7 @@ export default function Relatorios() {
                 <div className="mt-8 border-t border-slate-100 dark:border-slate-700/50 pt-6">
                   <h4 className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-4">Orçamento por Setor Clínico</h4>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs border-collapse">
+                    <table className="w-full text-left text-sm border-collapse">
                       <thead>
                         <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-500">
                           <th className="py-2 px-2">Setor Clínico</th>
@@ -2772,12 +2723,12 @@ export default function Relatorios() {
                           <th className="py-2 px-2 text-right">Custo Projetado</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 font-medium">
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                         {sectorMetrics.map((sec, idx) => (
                           <tr key={idx}>
                             <td className="py-3 px-2 font-semibold text-slate-900 dark:text-white">{sec.name}</td>
                             <td className="py-3 px-2 text-right tabular-nums text-slate-600 dark:text-slate-400">{sec.hours}h</td>
-                            <td className="py-3 px-2 text-right tabular-nums font-semibold text-amber-600 dark:text-amber-400">{formatCurrency(sec.cost)}</td>
+                            <td className="py-3 px-2 text-right tabular-nums font-semibold text-slate-900 dark:text-white">{formatCurrency(sec.cost)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -2789,7 +2740,6 @@ export default function Relatorios() {
           </div>
         </div>
       )}
-        </main>
       </div>
     </div>
   );
