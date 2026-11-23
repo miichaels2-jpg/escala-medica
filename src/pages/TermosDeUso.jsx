@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck, ArrowLeft, FileText, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { TERMS_VERSION } from '@/lib/terms';
 
 export default function TermosDeUso() {
   return (
@@ -20,7 +21,7 @@ export default function TermosDeUso() {
               <ShieldCheck className="w-6 h-6 text-sky-600" /> Política de Privacidade e Termos de Uso
             </h1>
             <p className="text-xs text-slate-500 font-medium mt-1">
-              Conformidade com a LGPD (Lei nº 13.709/2018)
+              Conformidade com a LGPD (Lei nº 13.709/2018) · versão {TERMS_VERSION}
             </p>
           </div>
         </div>

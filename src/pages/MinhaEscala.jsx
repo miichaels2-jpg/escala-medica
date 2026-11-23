@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppData } from '@/lib/useAppData';
 import AvailabilityCard from '@/components/AvailabilityCard';
+import PrivacyCard from '@/components/PrivacyCard';
 import { buildIcs, googleCalendarUrl, shiftEventInfo } from '@/lib/calendarExport';
 import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, normalizeFinancialText, safeFinancialNumber } from '@/lib/financialCalculations';
 import { Card } from '@/components/ui/card';
@@ -1038,6 +1039,8 @@ export default function MinhaEscala() {
           )
         )}
       </div>
+
+      <PrivacyCard user={user} professional={currentProfessional} />
     </div>
   );
 }

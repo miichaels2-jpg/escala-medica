@@ -5,6 +5,7 @@ import { usePwaInstall } from '@/lib/pwa';
 import { APP_VERSION } from '@/lib/version';
 import { formatLockWait, passwordProblem } from '@/lib/passwordPolicy';
 import { openOfficialSession } from '@/lib/authSession';
+import { TERMS_VERSION, needsTermsAcceptance } from '@/lib/terms';
 import { BrandAppIcon, BrandWordmark } from '@/components/BrandMark';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthContext';
@@ -88,7 +89,7 @@ export default function Login() {
       setShowPasswordChangeModal(true);
       return;
     }
-    if (!uRec.data?.lgpd_accepted) {
+    if (needsTermsAcceptance(uRec.data)) {
       setPendingUser(uRec);
       setAvailableUnits(uList);
       setShowLgpdModal(true);
@@ -224,20 +225,19 @@ export default function Login() {
     if (!pendingUser || !lgpdChecked) return;
     setLoadingAction(true);
     try {
-      const updatedData = { 
-        ...(pendingUser.data || {}), 
-        lgpd_accepted: true, 
-        lgpd_accepted_at: new Date().toISOString() 
-      };
+      // O banco grava a data (do servidor) e a versão dos termos; sem esse registro, não entra.
+      const { data: savedData, error: acceptError } = await supabase.rpc('accept_terms', { p_version: TERMS_VERSION });
+      if (acceptError) throw acceptError;
 
-      await supabase.from('users').update({ data: updatedData }).eq('id', pendingUser.id);
-      
-      pendingUser.data = updatedData;
+      pendingUser.data = savedData || { ...(pendingUser.data || {}), lgpd_accepted: true, lgpd_terms_version: TERMS_VERSION };
       setShowLgpdModal(false);
       continueLoginFlow(pendingUser, availableUnits);
     } catch (err) {
-      setError('Erro ao registrar o aceite dos termos.');
+      // sem o aceite registrado, a sessão aberta no login é encerrada
+      try { await supabase.auth.signOut(); } catch { /* segue */ }
+      setError('Não foi possível registrar o aceite dos termos. Tente de novo.');
       setShowLgpdModal(false);
+      setLoading(false);
     } finally {
       setLoadingAction(false);
     }

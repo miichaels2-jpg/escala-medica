@@ -15,7 +15,7 @@ export const ROADMAP_GROUPS = [
       { id: 27, title: 'Backup diário antes do 1º cliente', detail: 'Assinar o plano pago do Supabase (backup diário e recuperação por data) e fazer um teste de restauração. A assinatura é com o Michael; o teste e o passo a passo, com o Claude.', status: 'planejado' },
       { id: 28, title: 'Testes automáticos antes de publicar', detail: 'Os 74 testes que já existem ganham um comando próprio e rodam sozinhos a cada envio ao GitHub, junto com a montagem do app; se algo quebrar, a versão não sobe.', status: 'entregue', version: 'V0.4.9' },
       { id: 29, title: 'Aviso de erro em produção', detail: 'Quando aparecer a tela "Instabilidade no módulo" para alguém, o erro fica registrado num painel com tela, horário e empresa — para corrigir antes de o cliente ligar.', status: 'entregue', version: 'V0.4.9' },
-      { id: 30, title: 'LGPD na prática', detail: 'O profissional baixa os próprios dados e pode pedir exclusão; o aceite dos termos fica guardado com data e versão.', status: 'planejado' }
+      { id: 30, title: 'LGPD na prática', detail: 'O profissional baixa os próprios dados e pode pedir exclusão; o aceite dos termos fica guardado com data e versão.', status: 'entregue', version: 'V0.4.10' }
     ]
   },
   {
