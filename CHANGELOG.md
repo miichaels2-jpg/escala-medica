@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.5.5 — 23/11/2026
+
+- **Faturamento mais claro:** números do mês, produtividade e situação dos pagamentos em superfície neutra; cor só
+  para status (pago, a pagar, falta cadastro). Valores líquidos, matrícula, regime e retenção sem destaque colorido.
+- **"Falta PIX ou conta":** a coluna "Pagar em" diz o que falta e onde cadastrar (antes: "Pendente de cadastro").
+- **Marcar como pago em lote:** caixas de seleção (e "selecionar todos a pagar") com a barra "N selecionados · total ·
+  Marcar como pago", com confirmação. Só aparecem para quem está a pagar e com a produção fechada.
+- Nomes mais diretos: "A pagar" e "Esperando produção" no status; o cartão "Esperando produção" só aparece quando há.
+
 ## V0.5.4 — 23/11/2026
 
 Revisão feita logada como plantonista, no celular (login de teste na demo).

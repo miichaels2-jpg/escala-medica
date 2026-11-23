@@ -10,7 +10,7 @@ import PageHero from '@/components/PageHero';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
-  Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer, Download, AlertTriangle
+  Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer, Download, AlertTriangle, CheckCircle2
 } from 'lucide-react';
 
 function safeNumber(val, fb = 0) {
@@ -265,6 +265,17 @@ export default function Faturamento() {
   }, [isProductivityPoolUnit, productivityRuleUnitId, productivityRule?.daily_amount, shifts, monthPrefix, todayStr, now, productivityProfessionalsById]);
 
   const [paymentSavingId, setPaymentSavingId] = useState(null);
+  // "Marcar como pago" para vários de uma vez (só quem está pendente e com a apuração fechada).
+  const [selectedForPay, setSelectedForPay] = useState(() => new Set());
+  const [bulkPaying, setBulkPaying] = useState(false);
+  useEffect(() => { setSelectedForPay(new Set()); }, [monthPrefix, selectedUnitId]);
+  const canMarkPaid = item => !item.isPago && !item.awaitingProduction;
+  const toggleSelectedForPay = (profId) => setSelectedForPay(prev => {
+    const next = new Set(prev);
+    const key = String(profId);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
   const [showProductivitySettings, setShowProductivitySettings] = useState(false);
 
   // O status "PAGO" fica no banco (payment_statuses): todos os gestores veem o mesmo.
@@ -288,6 +299,25 @@ export default function Faturamento() {
     } finally {
       setPaymentSavingId(null);
     }
+  };
+
+  const handleBulkMarkPaid = async () => {
+    const items = reportData.filter(item => selectedForPay.has(String(item.prof.id)) && canMarkPaid(item));
+    if (!items.length) return;
+    const total = items.reduce((sum, item) => sum + item.valorLiquido, 0);
+    if (!confirm(`Marcar ${items.length} profissional(is) como pago(s) em ${MONTH_NAMES[currentMonth]}? Total: ${formatCurrency(total)}.`)) return;
+    setBulkPaying(true);
+    const failed = [];
+    for (const item of items) {
+      try {
+        await savePaymentStatus({ unitId: selectedUnitId, professionalId: item.prof.id, month: monthPrefix, paid: true, updatedBy: user?.full_name || user?.email || null });
+      } catch {
+        failed.push(item.prof.name);
+      }
+    }
+    setBulkPaying(false);
+    setSelectedForPay(new Set());
+    if (failed.length) alert(`Não foi possível marcar: ${failed.join(', ')}. Verifique a conexão e tente de novo.`);
   };
 
   const handleSaveProductivityConfiguration = async () => {
@@ -1181,7 +1211,7 @@ export default function Faturamento() {
       {/* BANNER PRINCIPAL */}
       <PageHero
         title="Faturamento"
-        subtitle="Apuração baseada na matriz de remuneração (fixo, produtividade ou plantão dinâmico)."
+        subtitle="Quanto pagar a cada profissional no mês e o que já foi pago."
         actions={t => (
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <Button onClick={handleExportExcel} className={`font-medium text-sm h-10 px-4 rounded-xl gap-2 cursor-pointer shadow-none ${t.outline}`} title="Baixar Relatório em Excel (Abre formatado no Excel)">
@@ -1208,36 +1238,36 @@ export default function Faturamento() {
       {/* CARDS EXECUTIVOS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-xs font-medium text-slate-400">Total Bruto Apurado</span>
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Total bruto</span>
           <div className="text-2xl font-semibold text-slate-900 dark:text-white mt-1">{formatCurrency(totals.bruto)}</div>
           <span className="text-[10px] text-slate-500 font-medium">{totals.plantões} plantões concluídos · inclui fixo mensal</span>
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Total Líquido p/ Repasse</span>
-          <div className="text-2xl font-semibold text-emerald-600 dark:text-emerald-400 mt-1">{formatCurrency(totals.liquido)}</div>
-          <span className="text-[10px] text-slate-500 font-medium">Valor acumulado na competência</span>
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Total líquido a repassar</span>
+          <div className="text-2xl font-semibold text-slate-900 dark:text-white mt-1">{formatCurrency(totals.liquido)}</div>
+          <span className="text-[10px] text-slate-500 font-medium">Depois das retenções</span>
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-xs font-semibold text-sky-600 dark:text-sky-400">Horas de plantões concluídos</span>
-          <div className="text-2xl font-semibold text-sky-600 dark:text-sky-400 mt-1">{totals.horas.toFixed(1).replace('.', ',')}h</div>
-          <span className="text-[10px] text-slate-500 font-medium">Horas assistenciais efetivadas</span>
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Horas trabalhadas</span>
+          <div className="text-2xl font-semibold text-slate-900 dark:text-white mt-1">{totals.horas.toFixed(1).replace('.', ',')}h</div>
+          <span className="text-[10px] text-slate-500 font-medium">Plantões concluídos</span>
         </Card>
 
         <Card className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-          <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">Profissionais na competência</span>
-          <div className="text-2xl font-semibold text-indigo-600 dark:text-indigo-400 mt-1">{reportData.length}</div>
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Profissionais no mês</span>
+          <div className="text-2xl font-semibold text-slate-900 dark:text-white mt-1">{reportData.length}</div>
           <span className="text-[10px] text-slate-500 font-medium">Com plantões ou regime mensal</span>
         </Card>
       </div>
 
       {(isManager || isProductivityPoolUnit) && (
-        <Card className="space-y-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-500/30 dark:bg-indigo-950/20">
+        <Card className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-indigo-950 dark:text-indigo-200">Produtividade diária</h2>
-              <p className="mt-1 text-xs text-indigo-900/80 dark:text-indigo-200/80">
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Produtividade diária</h2>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
                 {productivityRuleUnitId
                   ? <>Rateio de <strong>{formatCurrency(safeNumber(productivityRule?.daily_amount, 150))}</strong> por dia em <strong>{units.find(unit => String(unit.id) === productivityRuleUnitId)?.name || 'unidade não encontrada'}</strong>, dividido pelos atendimentos de cada profissional.</>
                   : 'Regra de rateio diário não configurada.'}
@@ -1245,12 +1275,12 @@ export default function Faturamento() {
             </div>
             <div className="flex flex-wrap items-center gap-2 shrink-0">
               {isManager && (
-                <Button type="button" variant="outline" onClick={() => setShowProductivitySettings(v => !v)} aria-expanded={showProductivitySettings} className="h-9 text-xs border-indigo-300 dark:border-indigo-500/40 text-indigo-800 dark:text-indigo-200">
+                <Button type="button" variant="outline" onClick={() => setShowProductivitySettings(v => !v)} aria-expanded={showProductivitySettings} className="h-9 text-xs">
                   {showProductivitySettings ? 'Fechar configuração' : 'Configurar'}
                 </Button>
               )}
               {isProductivityPoolUnit && isManager && (
-                <Button type="button" onClick={() => setProductionEntryOpen(true)} className="bg-indigo-600 text-white hover:bg-indigo-700 gap-2">
+                <Button type="button" onClick={() => setProductionEntryOpen(true)} className="bg-sky-600 text-white hover:bg-sky-700 gap-2">
                   Lançar atendimentos
                   {pendingProductionDays.length > 0 && (
                     <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs">{pendingProductionDays.length} dia(s) pendente(s)</span>
@@ -1260,7 +1290,7 @@ export default function Faturamento() {
             </div>
           </div>
           {isManager && (showProductivitySettings || !productivityRuleUnitId) && (
-            <div className="flex flex-col gap-2 border-t border-indigo-200 pt-3 dark:border-indigo-500/20 sm:flex-row sm:items-end">
+            <div className="flex flex-col gap-2 border-t border-slate-200 pt-3 dark:border-slate-800 sm:flex-row sm:items-end">
               <label className="flex-1 space-y-1 text-xs font-medium text-slate-600 dark:text-slate-300">
                 Unidade exclusiva para esta regra
                 <select
@@ -1278,7 +1308,7 @@ export default function Faturamento() {
             </div>
           )}
           {showProductivitySettings && (
-            <p className="text-xs text-indigo-900/80 dark:text-indigo-200/80">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
               Só uma unidade usa o rateio. Entram apenas profissionais com regime de produtividade; cada dia é fechado separadamente quando todos os atendimentos do dia forem lançados.
             </p>
           )}
@@ -1324,36 +1354,28 @@ export default function Faturamento() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Card className="flex items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-500/20 dark:bg-emerald-950/20">
-          <div>
-            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Marcado como pago</p>
-            <p className="mt-1 text-xs text-emerald-800/80 dark:text-emerald-300/80">{paymentSummary.paid.count} profissional(is)</p>
-          </div>
-          <strong className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">{formatCurrency(paymentSummary.paid.net)}</strong>
-        </Card>
-        <Card className="flex items-center justify-between gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/20 dark:bg-amber-950/20">
-          <div>
-            <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Pendente de pagamento</p>
-            <p className="mt-1 text-xs text-amber-800/80 dark:text-amber-300/80">{paymentSummary.pending.count} profissional(is)</p>
-          </div>
-          <strong className="text-lg font-semibold text-amber-700 dark:text-amber-300">{formatCurrency(paymentSummary.pending.net)}</strong>
-        </Card>
-        <Card className="flex items-center justify-between gap-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-500/20 dark:bg-indigo-950/20">
-          <div>
-            <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-400">Aguardando apuração</p>
-            <p className="mt-1 text-xs text-indigo-800/80 dark:text-indigo-300/80">{paymentSummary.awaiting.count} profissional(is)</p>
-          </div>
-          <strong className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Produção</strong>
-        </Card>
+      <div className={`grid grid-cols-1 gap-3 ${paymentSummary.awaiting.count ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+        {[
+          ['Pago', 'bg-emerald-500', paymentSummary.paid.count, formatCurrency(paymentSummary.paid.net)],
+          ['A pagar', 'bg-amber-500', paymentSummary.pending.count, formatCurrency(paymentSummary.pending.net)],
+          ...(paymentSummary.awaiting.count ? [['Esperando produção', 'bg-slate-400', paymentSummary.awaiting.count, 'Lançar atendimentos']] : [])
+        ].map(([label, dot, count, value]) => (
+          <Card key={label} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+            <div>
+              <p className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200"><span className={`h-2 w-2 rounded-full ${dot}`} />{label}</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{count} profissional(is)</p>
+            </div>
+            <strong className="text-lg font-semibold tabular-nums text-slate-900 dark:text-white">{value}</strong>
+          </Card>
+        ))}
       </div>
 
       {/* TABELA DE CONCILIAÇÃO FINANCEIRA COM STATUS DE PAGAMENTO */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
-            <h3 className="text-base font-semibold text-slate-900 dark:text-white">Espelho de Conciliação Financeira</h3>
-            <p className="text-xs text-slate-500">Apuração restrita para <b>{currentUnitName}</b>. O status de pagamento é compartilhado entre os gestores.</p>
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white">Profissionais</h3>
+            <p className="text-xs text-slate-500">Valores de <b>{currentUnitName}</b>. Quem marca como pago, marca para todos os gestores.</p>
           </div>
 
           <div className="relative w-full sm:w-72">
@@ -1367,15 +1389,40 @@ export default function Faturamento() {
           </div>
         </div>
 
+        {selectedForPay.size > 0 && (
+          <div className="flex flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-xs text-slate-700 dark:text-slate-200">
+              <b>{selectedForPay.size}</b> selecionado(s) · <b className="tabular-nums">{formatCurrency(reportData.filter(item => selectedForPay.has(String(item.prof.id))).reduce((sum, item) => sum + item.valorLiquido, 0))}</b>
+            </span>
+            <div className="flex gap-2">
+              <Button type="button" variant="ghost" onClick={() => setSelectedForPay(new Set())} className="h-9 text-xs cursor-pointer">Limpar</Button>
+              <Button type="button" onClick={handleBulkMarkPaid} disabled={bulkPaying} className="h-9 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold gap-1.5 cursor-pointer">
+                <CheckCircle2 className="w-4 h-4" /> {bulkPaying ? 'Marcando…' : 'Marcar como pago'}
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-slate-950 text-slate-500 text-xs font-semibold border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="py-3 px-4">Profissional / Matrícula</th>
-                <th className="py-3 px-4">Regime Contratual</th>
-                <th className="py-3 px-4 text-center">Volume Apurado</th>
-                <th className="py-3 px-4">Dados p/ Repasse</th>
-                <th className="py-3 px-4 text-right">Líquido a Pagar</th>
+                <th className="py-3 pl-4 pr-0 w-8">
+                  {filteredReport.some(canMarkPaid) && (
+                    <input
+                      type="checkbox"
+                      aria-label="Selecionar todos a pagar"
+                      checked={filteredReport.filter(canMarkPaid).every(item => selectedForPay.has(String(item.prof.id)))}
+                      onChange={e => setSelectedForPay(e.target.checked ? new Set(filteredReport.filter(canMarkPaid).map(item => String(item.prof.id))) : new Set())}
+                      className="h-4 w-4 accent-sky-600 cursor-pointer"
+                    />
+                  )}
+                </th>
+                <th className="py-3 px-4">Profissional</th>
+                <th className="py-3 px-4">Regime</th>
+                <th className="py-3 px-4 text-center">Trabalhado</th>
+                <th className="py-3 px-4">Pagar em</th>
+                <th className="py-3 px-4 text-right">Líquido</th>
                 <th className="py-3 px-4 text-center">Status</th>
                 <th className="py-3 px-4 text-center">Ações</th>
               </tr>
@@ -1383,32 +1430,40 @@ export default function Faturamento() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
               {filteredReport.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="py-8 text-center text-slate-400">
+                  <td colSpan="8" className="py-8 text-center text-slate-400">
                     Nenhum profissional com produção na unidade atual para esta competência.
                   </td>
                 </tr>
               ) : (
                 filteredReport.map(item => {
                   const formaPagto = item.chavePix ? (
-                    <div><span className="text-sky-600 font-semibold">{item.chavePix}</span><div className="text-[10px] text-slate-400">PIX ({item.pixTipo})</div></div>
+                    <div><span className="text-slate-800 dark:text-slate-200 font-semibold break-all">{item.chavePix}</span><div className="text-[10px] text-slate-400">PIX ({item.pixTipo})</div></div>
                   ) : item.banco ? (
                     <div><span className="text-slate-800 dark:text-slate-200 font-semibold">{item.banco}</span><div className="text-[10px] text-slate-400">Dados Bancários</div></div>
                   ) : (
-                    <span className="text-[10px] text-rose-500 italic">Pendente de cadastro</span>
+                    <div>
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-400"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" />Falta PIX ou conta</span>
+                      <div className="text-[10px] text-slate-400">Cadastrar no Corpo Clínico</div>
+                    </div>
                   );
 
                   const regimeBadge = item.remunType === 'mensal' 
-                    ? <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-semibold text-[10px]">Fixo Mensal</span> 
+                    ? <span className="text-slate-600 dark:text-slate-300">Fixo mensal</span>
                     : item.remunType === 'produtividade'
-                    ? <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md font-semibold text-[10px]">Produtividade</span>
-                    : <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-md font-semibold text-[10px]">Por Plantão</span>;
+                    ? <span className="text-slate-600 dark:text-slate-300">Produtividade</span>
+                    : <span className="text-slate-600 dark:text-slate-300">Por plantão</span>;
 
                   return (
-                    <tr key={item.prof.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-colors">
+                    <tr key={item.prof.id} className={`transition-colors ${selectedForPay.has(String(item.prof.id)) ? 'bg-sky-50/60 dark:bg-sky-950/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'}`}>
+                      <td className="py-3 pl-4 pr-0">
+                        {canMarkPaid(item) && (
+                          <input type="checkbox" aria-label={`Selecionar ${item.prof.name}`} checked={selectedForPay.has(String(item.prof.id))} onChange={() => toggleSelectedForPay(item.prof.id)} className="h-4 w-4 accent-sky-600 cursor-pointer" />
+                        )}
+                      </td>
                       <td className="py-3 px-4">
                         <div className="font-semibold text-slate-900 dark:text-white">{item.prof.name}</div>
                         <div className="flex flex-wrap items-center gap-1.5 text-[10px] tabular-nums font-semibold">
-                          <span className="text-indigo-600 dark:text-indigo-400">{item.matricula} • {item.prof.document || 'CRM'}</span>
+                          <span className="font-normal text-slate-500 dark:text-slate-400">{item.matricula} · {item.prof.document || 'CRM'}</span>
                           {item.profStatus && item.profStatus !== 'ativo' && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-sans text-xs text-slate-500 dark:bg-slate-800">{item.profStatus} · com registro</span>}
                         </div>
                       </td>
@@ -1421,12 +1476,12 @@ export default function Faturamento() {
                         <span className="font-semibold text-slate-900 dark:text-white">{item.plantõesRealizados} plantões</span>
                         <div className="text-[10px] tabular-nums text-slate-400">{item.horasRealizadas.toFixed(1).replace('.', ',')}h totais</div>
                         {item.remunType === 'produtividade' && (
-                          <div className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400">
                             {item.atendimentosApurados} atendimento(s) em dias fechados
                           </div>
                         )}
                         {item.plantõesAguardandoProducao > 0 && (
-                          <div className="mt-1 text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">{item.plantõesAguardandoProducao} dia(s) pendente(s)</div>
+                          <div className="mt-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400">{item.plantõesAguardandoProducao} dia(s) sem produção lançada</div>
                         )}
                       </td>
 
@@ -1435,7 +1490,7 @@ export default function Faturamento() {
                       </td>
 
                       <td className="py-3 px-4 text-right">
-                        <span className="font-semibold text-sm text-emerald-600 dark:text-emerald-400">
+                        <span className="font-semibold text-sm tabular-nums text-slate-900 dark:text-white">
                           {formatCurrency(item.valorLiquido)}
                         </span>
                         {item.awaitingProduction && (
@@ -1443,7 +1498,7 @@ export default function Faturamento() {
                             Saldo parcial · {item.plantõesAguardandoProducao} dia(s) pendente(s)
                           </div>
                         )}
-                        {item.taxRate > 0 && <div className="text-[10px] text-rose-500">-{item.taxRate}% retenção</div>}
+                        {item.taxRate > 0 && <div className="text-[10px] text-slate-500 dark:text-slate-400">-{item.taxRate}% retenção</div>}
                       </td>
 
                       <td className="py-3 px-4 text-center">
@@ -1451,13 +1506,15 @@ export default function Faturamento() {
                           onClick={() => handleTogglePago(item.prof.id)}
                           disabled={(item.awaitingProduction && !item.isPago) || paymentSavingId === String(item.prof.id)}
                           title={item.awaitingProduction ? item.isPago ? 'O pagamento já marcado deve ser revisado após a apuração.' : 'Aguarde o lançamento da produção para conciliar o pagamento.' : undefined}
-                          className={`px-3 py-1 rounded-full text-xs font-semibold   cursor-pointer transition-all border disabled:cursor-not-allowed disabled:opacity-60 ${
+                          className={`whitespace-nowrap px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all border disabled:cursor-not-allowed disabled:opacity-60 ${
                             item.isPago 
                               ? 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800' 
-                              : 'bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 hover:bg-slate-200'
+                              : item.awaitingProduction
+                              ? 'bg-slate-100 text-slate-500 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                              : 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30 hover:bg-amber-100'
                           }`}
                         >
-                          {item.awaitingProduction ? item.isPago ? 'Pago · revisar' : 'Apuração pendente' : item.isPago ? '✓ Pago' : 'Pendente'}
+                          {item.awaitingProduction ? item.isPago ? 'Pago · revisar' : 'Esperando produção' : item.isPago ? '✓ Pago' : 'A pagar'}
                         </button>
                       </td>
 
@@ -1470,7 +1527,7 @@ export default function Faturamento() {
                             title={item.awaitingProduction ? 'Imprimir demonstrativo; apuração pendente e sem comprovação de pagamento' : item.isPago ? 'Imprimir recibo em 2 vias' : 'Imprimir demonstrativo; não comprova pagamento'}
                             className="h-8 text-xs font-semibold gap-1 rounded-xl bg-slate-50 dark:bg-slate-800 hover:bg-white cursor-pointer"
                           >
-                            <Receipt className="w-3.5 h-3.5 text-emerald-600" /> {item.isPago && !item.awaitingProduction ? 'Recibo' : 'Demonstrativo'}
+                            <Receipt className="w-3.5 h-3.5 text-slate-500" /> {item.isPago && !item.awaitingProduction ? 'Recibo' : 'Demonstrativo'}
                           </Button>
 
                           <Button 
@@ -1479,7 +1536,7 @@ export default function Faturamento() {
                             onClick={() => setSelectedProfModal(item)}
                             className="h-8 text-xs font-semibold gap-1 rounded-xl cursor-pointer"
                           >
-                            <FileText className="w-3.5 h-3.5 text-sky-600" /> Detalhar
+                            <FileText className="w-3.5 h-3.5 text-slate-500" /> Detalhar
                           </Button>
 
                           {item.prof.phone && (
@@ -1488,7 +1545,7 @@ export default function Faturamento() {
                               variant="outline" 
                               onClick={() => handleSendStatementWhatsApp(item)}
                               title="Enviar Extrato no WhatsApp"
-                              className="h-8 px-2.5 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 cursor-pointer"
+                              className="h-8 px-2.5 rounded-xl text-slate-600 dark:text-slate-300 cursor-pointer"
                             >
                               <Send className="w-3.5 h-3.5" />
                             </Button>
