@@ -9,6 +9,19 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.4.5 — 23/11/2026
+
+- **Tela "Escala" (antes "Escalas & Plantões"):** topo com o mês, "Copiar mês anterior" e um único "Publicar"; uma
+  linha com os setores (pontinho laranja = mês em rascunho), busca, dia/noite, visão e o menu "Mais" (plantão avulso,
+  montar turnos do mês, plantão do dia, Modo TV, imprimir, voltar para rascunho); e os números do mês (cobertura,
+  vagas em aberto, furos, plantões e horas).
+- **Grade por setor (visão padrão no computador):** cada linha é uma vaga do turno, cada coluna um dia. O "+" mostra
+  quem pode assumir — mesma especialidade primeiro, horas no mês, e quem não pode e por quê — e escala com um clique;
+  em quem já está escalado dá para trocar, liberar a vaga ou editar. Usa as mesmas regras de sempre (choque de
+  horário, férias, carga horária, setor autorizado) e grava os mesmos dados. No celular abre na lista.
+- **Saíram:** o filtro "A partir de", que escondia os dias anteriores sem avisar; as faixas repetidas; o segundo
+  botão de publicar; e o botão que escondia o menu lateral (podia deixá-lo sumido nas outras telas).
+
 ## V0.4.4 — 23/11/2026
 
 - **Relatórios reorganizados:** os 12 relatórios da lista lateral viraram 4 abas no alto — Visão geral, Escalas
