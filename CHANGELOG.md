@@ -9,6 +9,17 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.5.3 — 23/11/2026
+
+- **Turnos padrão por setor:** em Setores, cada setor guarda os horários fixos de todo dia (ex.: UTI — 2 vagas
+  07–19 e 1 vaga 19–07). Na Escala, "Montar turnos do mês" já abre com esses turnos e com o mês inteiro; trocar o
+  setor no gerador carrega os turnos dele. O próprio gerador oferece "Guardar como turnos padrão do setor". Os turnos
+  ficam nos dados da empresa (`sector_shift_templates`), sem mudança no banco.
+- **Cartões de setor mais úteis:** turnos padrão, quantos profissionais estão autorizados e plantões/vagas abertas do
+  mês, com o botão "Montar mês" (abre a Escala direto no gerador daquele setor). Saíram os três contadores coloridos
+  do topo; a situação "Inativo" agora aparece de verdade (antes o cartão sempre dizia "Ativo").
+- Editar um setor não troca mais a especialidade dele por "Geral".
+
 ## V0.5.2 — 23/11/2026
 
 - **Mesmos nomes em todo o app:** menu e topo de cada tela com o mesmo nome curto — Painel, Escala, Mural, Minha
