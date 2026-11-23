@@ -9,6 +9,19 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.4.9 — 23/11/2026
+
+- **Histórico com autor garantido pelo banco:** o "quem fez" passa a vir do login oficial, descoberto pelo próprio
+  banco (antes vinha de um cabeçalho que o navegador mandava e que alguém logado poderia trocar). Ações automáticas do
+  servidor, como o alerta de furo, aparecem como "Sistema (automático)". Registros antigos não mudam.
+- **Testes antes de publicar:** os 74 testes automáticos ganharam o comando `npm test` e rodam na Vercel antes da
+  montagem do app — se algum falhar, a versão não sobe e o site continua na anterior. O GitHub também confere cada
+  envio.
+- **Aviso de erro em produção:** quando aparece a tela "Instabilidade no módulo" (ou o navegador acusa um erro), o
+  app registra tela, mensagem, versão, quem e qual empresa. Só o dono vê, na Plataforma › Erros recentes. Sem
+  repetição do mesmo erro em 10 minutos e com teto por hora.
+- **Correção:** depois de um erro, trocar de tela pelo menu já limpa o aviso de instabilidade (antes só recarregando).
+
 ## V0.4.8 — 23/11/2026
 
 - **Planejamento:** entra o item 41 — tela "Como usar" com vídeos narrados (voz feminina em português e legenda) de

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Copy, Hospital, KeyRound, Loader2, Plus, RefreshCw, UserPlus } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Hospital, KeyRound, Loader2, Plus, RefreshCw, UserPlus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { birthDatePassword, generateProvisionalPassword } from '@/lib/passwordPolicy';
 import { Button } from '@/components/ui/button';
@@ -90,6 +90,8 @@ export default function Plataforma() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [result, setResult] = useState(null); // credenciais para entregar ao cliente
+  const [appErrors, setAppErrors] = useState([]); // erros que os usuários viram (report_app_error)
+  const [openErrorId, setOpenErrorId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,6 +102,8 @@ export default function Plataforma() {
     const { data, error: loadError } = await supabase.rpc('platform_companies');
     if (loadError) setError(`Não foi possível carregar as empresas: ${loadError.message}`);
     setCompanies(Array.isArray(data) ? data : []);
+    const { data: errs } = await supabase.rpc('platform_app_errors', { p_limit: 50 });
+    setAppErrors(Array.isArray(errs) ? errs : []);
     setLoading(false);
   }, []);
 
@@ -277,6 +281,38 @@ export default function Plataforma() {
           ))}
         </div>
       )}
+
+      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Erros recentes</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">O que apareceu como erro para os usuários, de todas as empresas. Clique para ver os detalhes técnicos.</p>
+          </div>
+          <AlertTriangle className={`w-5 h-5 shrink-0 ${appErrors.length ? 'text-amber-500' : 'text-slate-300 dark:text-slate-600'}`} />
+        </div>
+        {appErrors.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Nenhum erro registrado.</p>
+        ) : (
+          <ul className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
+            {appErrors.map(err => (
+              <li key={err.id} className="py-2.5">
+                <button type="button" onClick={() => setOpenErrorId(openErrorId === err.id ? null : err.id)} className="w-full text-left cursor-pointer">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm">
+                    <span className="tabular-nums text-slate-500 dark:text-slate-400">{new Date(err.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="font-medium text-slate-900 dark:text-white">{err.message}</span>
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    {[err.company_name || 'Sem login', err.user_name, err.path, err.app_version].filter(Boolean).join(' · ')}
+                  </div>
+                </button>
+                {openErrorId === err.id && (
+                  <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-slate-50 dark:bg-slate-950 p-3 text-[11px] leading-snug text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{[err.kind, err.user_agent, err.stack].filter(Boolean).join('\n\n')}</pre>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <Dialog open={Boolean(dialog)} onOpenChange={open => { if (!open && !saving) setDialog(null); }}>
         <DialogContent className="sm:max-w-lg max-h-[90dvh] overflow-y-auto">

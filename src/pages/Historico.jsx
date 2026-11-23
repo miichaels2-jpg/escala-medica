@@ -81,7 +81,9 @@ export default function Historico() {
       .map(entry => ({
         ...entry,
         text: describeAuditEntry(entry, ctx),
-        who: entry.changed_by ? (userNameById[String(entry.changed_by)] || 'Usuário removido') : 'Não identificado (versão anterior do app)'
+        who: entry.changed_by === 'sistema' ? 'Sistema (automático)'
+          : entry.changed_by ? (userNameById[String(entry.changed_by)] || 'Usuário removido')
+          : 'Não identificado'
       }))
       .filter(entry => !term || `${entry.text} ${entry.who}`.toLowerCase().includes(term));
   }, [entries, unitFilter, search, ctx, userNameById]);
