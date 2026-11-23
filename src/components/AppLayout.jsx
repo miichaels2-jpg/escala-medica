@@ -1,6 +1,7 @@
 import React, { Component, Suspense, useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { persistSelectedUnit, useAppData } from '@/lib/useAppData';
+import { reportAppError } from '@/lib/errorReporting';
 import { supabase } from '@/lib/supabase';
 import { 
   Activity, LayoutDashboard, CalendarDays, Repeat, 
@@ -34,6 +35,7 @@ class LayoutErrorBoundary extends Component {
   }
   componentDidCatch(error, errorInfo) {
     console.error('Erro no Layout:', error, errorInfo);
+    reportAppError('tela', error, errorInfo?.componentStack || '');
   }
   render() {
     if (this.state.hasError) {
@@ -535,7 +537,7 @@ export default function AppLayout({ children }) {
         <InstallAppBanner onOpenGuide={() => setInstallGuideOpen(true)} />
 
         <main className="flex-1 overflow-y-auto pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-0">
-          <LayoutErrorBoundary>
+          <LayoutErrorBoundary key={location.pathname}>
             {children || (
               <Suspense fallback={<div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-4 border-slate-200 dark:border-slate-700 border-t-sky-600 rounded-full animate-spin" /></div>}>
                 <Outlet />
