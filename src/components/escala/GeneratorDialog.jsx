@@ -71,7 +71,7 @@ export default function GeneratorDialog({ generatorConfig, generatorFromTemplate
               </div>
 
               <div className="space-y-2">
-                {generatorConfig.slots.map((slot, index) => (
+                {generatorConfig.slots.map((slot) => (
                   <div key={slot.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-3 bg-slate-900 border border-slate-800 rounded-2xl relative group">
                     <div className="w-full sm:w-auto flex-1 min-w-0 space-y-1">
                       <Label className="text-xs text-slate-500 font-medium">Especialidade</Label>

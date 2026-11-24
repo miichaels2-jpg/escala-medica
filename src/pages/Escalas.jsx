@@ -109,10 +109,12 @@ const closeTvMode = async () => {
       return (sectors || []).length > 0 && (sectors || []).every(s => getSectorPublishedRanges(s.id).length > 0);
     }
     return getSectorPublishedRanges(selectedSectorId).length > 0;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- a função só lê publishedRanges, que já está na lista
   }, [selectedSectorId, sectors, currentYear, currentMonth, selectedUnitId, publishedRanges]);
 
   const unsubmittedSectors = useMemo(() => {
     return (sectors || []).filter(s => getSectorPublishedRanges(s.id).length === 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- a função só lê publishedRanges, que já está na lista
   }, [sectors, currentYear, currentMonth, selectedUnitId, publishedRanges]);
 
   const [publishModalOpen, setPublishModalOpen] = useState(false);
@@ -156,6 +158,7 @@ const closeTvMode = async () => {
       .flatMap(part => getSectorPublishedRanges(publishConfig.sector_id, part.year, part.month));
 
     return ranges.filter(r => r.start_date <= publishConfig.end_date && r.end_date >= publishConfig.start_date);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- a função só lê publishedRanges, que já está na lista
   }, [publishConfig, publishedRanges, selectedUnitId]);
 
   const publishTargetShifts = useMemo(() => {
@@ -166,12 +169,6 @@ const closeTvMode = async () => {
       return s.date >= publishConfig.start_date && s.date <= publishConfig.end_date;
     });
   }, [shifts, publishConfig]);
-
-  const publishImpactedProfessionalsCount = useMemo(() => {
-    const set = new Set();
-    publishTargetShifts.forEach(s => { if (s.professional_id) set.add(String(s.professional_id)); });
-    return set.size;
-  }, [publishTargetShifts]);
 
   const handleExecutePublishSector = async () => {
     if (!publishConfig.sector_id) { alert('Selecione o setor a ser publicado.'); return; }
@@ -616,6 +613,7 @@ const conflict = checkProfessionalConflict(
     });
 
     return { available, unavailable };
+// eslint-disable-next-line react-hooks/exhaustive-deps -- as funções de conflito e carga leem os mesmos dados (plantões, setores, profissionais) já listados
 }, [professionals, formData.date, formData.sector_id, formData.start_time, formData.end_time, editingShiftId, companyShifts, sectorMap]);
 
   const allScaleConflicts = useMemo(() => {
@@ -928,8 +926,8 @@ const conflict = checkProfessionalConflict(
       for (const row of rows) {
         const profId = bulkAllocationDraft[String(row.id)];
         const prof = profId ? professionalMap[String(profId)] : null;
-        // eslint-disable-next-line no-unused-vars
-        const { id, isDraft, ...payload } = row;
+         
+        const { id: _draftId, isDraft: _isDraft, ...payload } = row;
         const result = await autoHealingSaveShift(null, {
           ...payload,
           professional_id: prof?.id || null,
@@ -1068,8 +1066,6 @@ const conflict = checkProfessionalConflict(
   }, [sectors, selectedSectorId]);
   const draftSectorIds = useMemo(() => new Set((unsubmittedSectors || []).map(sec => String(sec.id))), [unsubmittedSectors]);
   const gridSectors = useMemo(() => (selectedSectorId === 'todos' ? (sectors || []) : (sectors || []).filter(sec => String(sec.id) === String(selectedSectorId))), [sectors, selectedSectorId]);
-
-  const allActiveProfessionals = useMemo(() => (professionals || []).filter(p => p?.status === 'ativo'), [professionals]);
 
   const filteredTrayProfs = useMemo(() => {
     const term = traySearch.toLowerCase().trim();
@@ -1419,15 +1415,6 @@ if (!isMural && formData.professional_id) {
     } catch (err) {
       alert('Erro ao salvar plantão: ' + (err?.message || 'Tente novamente.'));
     } finally { setSubmitting(false); }
-  };
-
-  const handleSendToMuralFromModal = async () => {
-    if (!editingShiftId) return;
-    if (!confirm('Disponibilizar no Mural?')) return;
-    try {
-      await autoHealingSaveShift(editingShiftId, { professional_id: null, professional_name: null, status: 'vago' });
-      setModalOpen(false); await syncGlobalData();
-    } catch (err) { alert(err.message); }
   };
 
   const handleDeleteShift = async (shiftId) => {

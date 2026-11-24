@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { Lock, FileWarning, PhoneCall } from 'lucide-react';
 import { Button } from '@/components/ui/button';

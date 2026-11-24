@@ -16,6 +16,18 @@ export default [
     languageOptions: { globals: { ...globals.node, ...globals.browser }, sourceType: "module", ecmaVersion: 2022 },
   },
 
+  // Arquivos de configuração e testes rodam no Node.
+  {
+    files: ["*.config.js", "tests/**/*.js"],
+    languageOptions: { globals: { ...globals.node } },
+  },
+
+  // Service worker (avisos no celular e cache): roda fora da página.
+  {
+    files: ["public/sw.js"],
+    languageOptions: { globals: { ...globals.serviceworker } },
+  },
+
   // 2. Configurações recomendadas base
   pluginJs.configs.recommended,
   pluginReact.configs.flat.recommended,
@@ -53,6 +65,8 @@ export default [
       "react/jsx-uses-react": "off", // Desnecessário no React 17+
       "react/react-in-jsx-scope": "off", // Permite JSX sem importar React explicitamente
       "react/prop-types": "off",
+      // catch vazio é de propósito: armazenamento do navegador bloqueado ou falha que não deve parar a tela.
+      "no-empty": ["error", { allowEmptyCatch: true }],
       "unused-imports/no-unused-imports": "error",
       "unused-imports/no-unused-vars": [
         "warn",

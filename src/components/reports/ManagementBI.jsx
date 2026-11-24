@@ -73,7 +73,7 @@ function ChartCard({ title, subtitle, children, className = '' }) {
 }
 
 export default function ManagementBI({
-  shifts, isVacant, shiftCost, getShiftHours, isShiftPast, financialSummary, coverageRate,
+  shifts, isVacant, shiftCost, isShiftPast, financialSummary, coverageRate,
   sectorMetrics, professionalMetrics, credentialAudit, periodLabel, hospitalName, filterSummary, unitBreakdown
 }) {
   const isDark = useIsDark();

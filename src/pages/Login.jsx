@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { InstallAppDialog } from '@/components/InstallAppGuide';
 import { usePwaInstall } from '@/lib/pwa';
@@ -14,8 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { 
-  Activity, Loader2, AlertCircle, Eye, EyeOff, ShieldCheck, 
+import { Loader2, AlertCircle, Eye, EyeOff, ShieldCheck, 
   FileText, Check, Building2, Hospital, CheckCircle2, KeyRound, Smartphone 
 } from 'lucide-react';
 
@@ -73,7 +72,7 @@ export default function Login() {
         await supabase.from('users').update({ 
           data: { ...(userRecord.data || {}), selected_unit_id: unitIdToSave } 
         }).eq('id', userRecord.id);
-      } catch (e) {}
+      } catch {}
     } else if (userRecord.data?.selected_unit_id) {
       window.localStorage.setItem('scale_selected_unit', userRecord.data.selected_unit_id);
     }
@@ -216,7 +215,7 @@ export default function Login() {
 
       setShowPasswordChangeModal(false);
       continueLoginFlow(pendingUser, availableUnits);
-    } catch (err) {
+    } catch {
       setPasswordError('Erro de sistema ao salvar a nova senha.');
     } finally {
       setLoadingAction(false);
@@ -234,7 +233,7 @@ export default function Login() {
       pendingUser.data = savedData || { ...(pendingUser.data || {}), lgpd_accepted: true, lgpd_terms_version: TERMS_VERSION };
       setShowLgpdModal(false);
       continueLoginFlow(pendingUser, availableUnits);
-    } catch (err) {
+    } catch {
       // sem o aceite registrado, a sessão aberta no login é encerrada
       try { await supabase.auth.signOut(); } catch { /* segue */ }
       setError('Não foi possível registrar o aceite dos termos. Tente de novo.');

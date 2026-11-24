@@ -56,7 +56,7 @@ export default function PrivacyCard({ user, professional }) {
       a.download = `meus-dados-scalemedic-${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (err) {
+    } catch {
       setMessage('Não foi possível gerar o arquivo agora. Tente de novo.');
     } finally { setBusy(''); }
   };
@@ -70,7 +70,7 @@ export default function PrivacyCard({ user, professional }) {
       if (error) throw error;
       await load();
       setMessage('Pedido enviado aos gestores.');
-    } catch (err) {
+    } catch {
       setMessage('Não foi possível enviar o pedido agora. Tente de novo.');
     } finally { setBusy(''); }
   };

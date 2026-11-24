@@ -16,6 +16,7 @@ import {
   CheckCircle2, Check, Trash2, ArrowRightLeft, Stethoscope, Filter, XCircle,
   Clock3, ShieldCheck, History, ArrowRight
 } from 'lucide-react';
+import { autoHealingSaveShift } from '@/lib/escalaUtils';
 
 function formatFullName(name) {
   if (!name) return 'Profissional';
@@ -69,23 +70,6 @@ function parseShiftAudit(shift) {
   const isAguardandoGestor = shift?.status === 'aguardando_aprovacao_gestor' || notes.includes('[AGUARDANDO_GESTOR]');
 
   return { offeredByName, offeredById, transferFrom, transferTo, transferText, authorizedBy, isAguardandoGestor };
-}
-
-async function autoHealingSaveShift(id, initialPayload) {
-  let payload = { ...initialPayload };
-  try {
-    if (id) {
-      const { data, error } = await supabase.from('shifts').update(payload).eq('id', id).select().single();
-      if (error) throw error;
-      return data;
-    } else {
-      const { data, error } = await supabase.from('shifts').insert([payload]).select().single();
-      if (error) throw error;
-      return data;
-    }
-  } catch (err) {
-    throw err;
-  }
 }
 
 async function safeUpdateShift(id, payload) {
@@ -222,17 +206,6 @@ export default function Trocas() {
     sectorName: id => sectorMap[String(id)]?.name || 'Setor',
     syncGlobalData
   });
-
-  const myAllocatedShifts = useMemo(() => {
-    if (!myProf?.id && !user?.full_name) return [];
-    return unitShifts.filter(s => {
-      if (!s || s.status === 'cancelado' || s.status === 'vago' || !s.professional_id) return false;
-      const matchId = myProf?.id && String(s.professional_id) === String(myProf.id);
-      const matchUserId = user?.data?.professional_id && String(s.professional_id) === String(user.data.professional_id);
-      const matchName = user?.full_name && s.professional_name && s.professional_name.toLowerCase().trim() === user.full_name.toLowerCase().trim();
-      return matchId || matchUserId || matchName;
-    });
-  }, [unitShifts, myProf, user]);
 
   const myCompanyShifts = useMemo(() => {
     const myIds = new Set([myProf?.id, user?.data?.professional_id].filter(Boolean).map(String));

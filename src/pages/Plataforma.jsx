@@ -367,7 +367,7 @@ export default function Plataforma() {
           </DialogHeader>
           {result && (
             <div className="space-y-3 text-sm">
-              {result.managerError && <p className="text-rose-600">A empresa foi criada, mas o gestor não: {result.managerError} Use "Adicionar gestor" no cartão da empresa.</p>}
+              {result.managerError && <p className="text-rose-600">A empresa foi criada, mas o gestor não: {result.managerError} Use “Adicionar gestor” no cartão da empresa.</p>}
               {result.manager && (
                 <dl className="rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-200 dark:divide-slate-800">
                   <div className="flex justify-between gap-3 px-3 py-2"><dt className="text-slate-500">Empresa</dt><dd className="font-semibold text-right">{result.companyName}</dd></div>

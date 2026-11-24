@@ -1,13 +1,13 @@
-import React, { Component, Suspense, useState, useEffect } from 'react';
+import { Component, Suspense, useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { persistSelectedUnit, useAppData } from '@/lib/useAppData';
 import { reportAppError } from '@/lib/errorReporting';
 import { supabase } from '@/lib/supabase';
 import { 
-  Activity, LayoutDashboard, CalendarDays, Repeat, 
+  Activity, LayoutDashboard, CalendarDays, 
   DollarSign, Users, Building2, LogOut, Menu, X, 
   AlertTriangle, Sun, Moon, Settings, FileBarChart,
-  Clock, Hospital, Bell, Flame, CheckCircle2, ChevronRight, CheckCheck, Smartphone,
+  Clock, Hospital, Bell, Flame, Smartphone,
   ListChecks, History, Globe, PlayCircle
 } from 'lucide-react';
 import { InstallAppBanner, InstallAppDialog } from '@/components/InstallAppGuide';

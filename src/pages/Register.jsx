@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
@@ -128,7 +128,7 @@ function AreaPicker({ hospitalName, own, common, value, onChange }) {
           <div className="flex flex-wrap gap-2">{commonShown.map(chip)}</div>
         </div>
       )}
-      {ownShown.length + commonShown.length === 0 && <p className="text-xs text-slate-500">Nada encontrado com "{query}".</p>}
+      {ownShown.length + commonShown.length === 0 && <p className="text-xs text-slate-500">Nada encontrado com “{query}”.</p>}
       {typing || isCustom ? (
         <Input autoFocus value={value} onChange={e => onChange(e.target.value)} placeholder="Digite a sua" className="h-10 rounded-xl text-sm" />
       ) : (

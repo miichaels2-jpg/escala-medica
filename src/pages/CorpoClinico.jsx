@@ -20,6 +20,7 @@ import {
   Power, Trash2, Settings, Save, Lock, Hospital, List, LayoutGrid, FileSpreadsheet,
   Download, Upload, Check, ChevronRight
 } from 'lucide-react';
+import { saveRow } from '@/lib/saveRow';
 
 const FORM_STEPS = ['Dados', 'Acesso', 'Valores'];
 
@@ -94,22 +95,7 @@ function parseImportDate(value) {
     : null;
 }
 
-async function autoHealingSave(id, initialPayload) {
-  let payload = { ...initialPayload };
-  try {
-    if (id) {
-      const { data, error } = await supabase.from('professionals').update(payload).eq('id', id).select().single();
-      if (error) throw error;
-      return data;
-    } else {
-      const { data, error } = await supabase.from('professionals').insert([payload]).select().single();
-      if (error) throw error;
-      return data;
-    }
-  } catch (err) {
-    throw err;
-  }
-}
+const autoHealingSave = (id, payload) => saveRow('professionals', id, payload);
 
 
 export default function CorpoClinico() {
