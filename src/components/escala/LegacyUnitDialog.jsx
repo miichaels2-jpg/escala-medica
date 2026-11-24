@@ -51,7 +51,7 @@ export default function LegacyUnitDialog({ handleAssignLegacyShiftUnit, legacyAs
             ))}
           </div>
           <DialogFooter className="border-t border-slate-800 pt-3">
-            <Button type="button" variant="outline" onClick={() => setLegacyAssignmentOpen(false)} className="border-slate-700 text-slate-300">
+            <Button type="button" variant="outline" onClick={() => setLegacyAssignmentOpen(false)} className="border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white">
               Fechar
             </Button>
           </DialogFooter>

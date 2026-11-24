@@ -31,3 +31,6 @@ dist-ssr
 *.sw?
 # Arquivos temporários do Supabase CLI
 supabase/.temp/
+
+# fotos do manual (regeráveis com scripts/manual/capturar.mjs)
+scripts/manual/out

@@ -163,7 +163,7 @@ export default function ShiftEditorDialog({ categorizedProfessionalsForModal, ed
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="flex-1 sm:flex-none h-10 text-xs font-semibold border-slate-700 text-slate-300 rounded-xl px-4 cursor-pointer">
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)} className="flex-1 sm:flex-none h-10 text-xs font-semibold border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl px-4 cursor-pointer">
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={submitting} className="flex-1 sm:flex-none h-10 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs px-6 rounded-xl shadow-sm cursor-pointer">

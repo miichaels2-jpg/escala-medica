@@ -1,0 +1,90 @@
+// Manual 7: Minha Escala (a tela do plantonista, no celular).
+export default {
+  id: '07-minha-escala',
+  numero: 7,
+  titulo: 'Minha Escala (plantonista)',
+  resumo: 'O dia a dia do plantonista no celular: próximo plantão, agenda, ganhos do mês, folgas e ponto.',
+  publico: 'Plantonistas',
+  secoes: [
+    {
+      titulo: 'Para que serve',
+      blocos: [
+        { p: 'A Minha Escala é a tela de quem dá plantão. Ela abre sozinha depois da entrada e reúne tudo o que importa: o próximo plantão com o endereço, quantos plantões você já cumpriu e quanto tem a receber no mês, as suas folgas e a lista de todos os próximos plantões, em todos os hospitais onde você trabalha.' },
+        { p: 'Ela mostra só a escala **publicada** pela coordenação. Plantões em rascunho ainda não aparecem.' }
+      ]
+    },
+    {
+      titulo: 'O topo da tela',
+      blocos: [
+        { figura: 'cel-minha-escala', legenda: 'Minha Escala no celular.', pontos: [
+          '`Adicionar à agenda`: coloca todos os seus plantões no calendário do celular, com lembrete 12 horas e 1 hora antes.',
+          '`Ver o Mural`: vagas abertas que você pode assumir (Manual 6).',
+          '**Sino:** avisos de escala publicada, vagas e trocas. Toque em `Ativar` para receber no celular mesmo com o app fechado.'
+        ] },
+        { lista: [
+          '**Próximo plantão:** hospital, setor, data, horário e quanto falta para começar. `Como chegar` abre o mapa com o endereço do hospital.',
+          '**Menu de baixo:** `Minha Escala`, `Escala` (a escala publicada do hospital), `Mural` e `Menu` (as outras telas, o tema claro/escuro e `Sair do sistema`).'
+        ] }
+      ]
+    },
+    {
+      titulo: 'Resumo do mês e ganhos',
+      blocos: [
+        { figura: 'cel-resumo', legenda: 'Resumo do mês: as setas trocam o mês.', pontos: [] },
+        { tabela: { cab: ['Cartão', 'O que mostra'], linhas: [
+          ['Plantões cumpridos', 'Quantos plantões você já fez no mês e o total de horas.'],
+          ['A fazer no mês', 'Quantos plantões ainda faltam no mês, quantos você tem no total e a data do próximo.'],
+          ['Meus ganhos', 'Quanto já foi realizado, quanto ainda vai realizar e o previsto no mês, pelo valor do seu cadastro. Por hospital, mostra se já está **Pago**.']
+        ] } },
+        { p: '`Ver espelho do mês (PDF)` gera o seu demonstrativo do mês: cada plantão, horas e valores, pronto para salvar ou imprimir.' },
+        { dica: 'O valor previsto depende do valor cadastrado pela coordenação. Se algo parecer errado, fale com o faturamento do hospital.' }
+      ]
+    },
+    {
+      titulo: 'Informar férias e folgas',
+      blocos: [
+        { figura: 'cel-disponibilidade', legenda: 'Cartão Minha disponibilidade.', pontos: [] },
+        { passos: [
+          'Em **Minha disponibilidade**, toque em `Informar`.',
+          'Escolha a data de início, a data de fim e o motivo (férias, folga…).',
+          'Salve. O período aparece no cartão.'
+        ] },
+        { p: 'Nesses dias, a coordenação não consegue te escalar: você não aparece como opção nas vagas e nem recebe propostas de troca para esses dias.' },
+        { atencao: 'Informe com antecedência. Plantões que você já tem nesses dias continuam seus: para sair deles, use `Passar no Mural` ou peça uma troca.' }
+      ]
+    },
+    {
+      titulo: 'Próximos plantões',
+      blocos: [
+        { figura: 'cel-proximos', legenda: 'Lista dos próximos plantões, do mais perto ao mais longe.', pontos: [
+          '`Passar no Mural`: pede para liberar o plantão para um colega (precisa da aprovação da coordenação).'
+        ] },
+        { lista: [
+          'Cada plantão mostra o hospital, o setor, o endereço com `Como chegar`, o horário, as horas e o **valor previsto**.',
+          '`Google Agenda` coloca só aquele plantão na sua agenda do Google.',
+          'Mais abaixo, **Concluídos no mês** guarda os plantões já feitos (toque em `Expandir`).',
+          'No fim da tela, **Seus dados (LGPD)**: `Baixar meus dados` e `Pedir exclusão dos meus dados`.'
+        ] }
+      ]
+    },
+    {
+      titulo: 'Ponto pelo celular (check-in)',
+      blocos: [
+        { p: 'Quando a localização do hospital está configurada (pedido feito ao suporte do ScaleMedic), aparece no plantão do dia o registro de ponto pelo GPS: `Check-in` na chegada e `Check-out` na saída. Ele é opcional e serve de comprovante de presença.' },
+        { lista: [
+          'Só funciona **perto do hospital**: até 100 metros da unidade. Permita a localização quando o celular pedir.',
+          'Fica liberado de **15 minutos antes até 15 minutos depois** do horário do plantão.',
+          'Passou do horário? Fale com a coordenação para o ajuste.'
+        ] },
+        { dica: 'Sem a localização configurada, o bloco de ponto não aparece. A presença continua sendo controlada pela coordenação.' }
+      ]
+    },
+    {
+      titulo: 'O menu do celular',
+      blocos: [
+        { figura: 'cel-menu', legenda: 'Menu aberto pelo botão Menu (embaixo, à direita).', pontos: [] },
+        { p: 'No menu ficam todas as telas liberadas para você, o botão de tema claro/escuro, a versão do sistema e `Sair do sistema`.' }
+      ]
+    }
+  ]
+};

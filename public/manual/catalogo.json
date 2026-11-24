@@ -1,0 +1,83 @@
+{
+ "versao": "0.6.5",
+ "atualizado": "24/11/2026",
+ "manuais": [
+  {
+   "id": "01-primeiro-acesso",
+   "numero": 1,
+   "titulo": "Primeiro acesso e entrada",
+   "resumo": "Como entrar no ScaleMedic pela primeira vez, criar a senha pessoal, pedir credenciamento e instalar o app no celular.",
+   "publico": "Todos: gestão, faturamento e plantonistas"
+  },
+  {
+   "id": "02-painel",
+   "numero": 2,
+   "titulo": "Painel",
+   "resumo": "A tela inicial da gestão: o que precisa de atenção hoje, quem está de plantão e como estão os hospitais.",
+   "publico": "Gestão (coordenação)"
+  },
+  {
+   "id": "03-setores",
+   "numero": 3,
+   "titulo": "Setores e turnos padrão",
+   "resumo": "Cadastrar os setores do hospital e os turnos fixos de cada um, para montar o mês inteiro em um clique.",
+   "publico": "Gestão (coordenação)"
+  },
+  {
+   "id": "04-corpo-clinico",
+   "numero": 4,
+   "titulo": "Corpo Clínico",
+   "resumo": "Cadastrar a equipe, definir o que cada um acessa, os valores por hospital e aprovar os credenciamentos.",
+   "publico": "Gestão (coordenação) e faturamento"
+  },
+  {
+   "id": "05-escala",
+   "numero": 5,
+   "titulo": "Escala",
+   "resumo": "Montar o mês, escalar os profissionais, publicar para a equipe e acompanhar o plantão do dia.",
+   "publico": "Gestão (coordenação)"
+  },
+  {
+   "id": "06-mural",
+   "numero": 6,
+   "titulo": "Mural: vagas e trocas",
+   "resumo": "Pegar vagas abertas, passar um plantão, trocar com um colega e, para a coordenação, aprovar os pedidos.",
+   "publico": "Plantonistas e gestão (coordenação)"
+  },
+  {
+   "id": "07-minha-escala",
+   "numero": 7,
+   "titulo": "Minha Escala (plantonista)",
+   "resumo": "O dia a dia do plantonista no celular: próximo plantão, agenda, ganhos do mês, folgas e ponto.",
+   "publico": "Plantonistas"
+  },
+  {
+   "id": "08-faturamento",
+   "numero": 8,
+   "titulo": "Faturamento",
+   "resumo": "Fechar o mês: quanto pagar a cada profissional, lançar a produtividade, marcar pagamentos e imprimir recibos.",
+   "publico": "Faturamento e gestão"
+  },
+  {
+   "id": "09-relatorios",
+   "numero": 9,
+   "titulo": "Relatórios",
+   "resumo": "Os números do hospital por período: cobertura, furos, custos, produtividade e confiabilidade da equipe, com Excel e PDF.",
+   "publico": "Gestão e faturamento"
+  },
+  {
+   "id": "10-historico-configuracoes",
+   "numero": 10,
+   "titulo": "Histórico e Configurações",
+   "resumo": "Quem fez o quê no sistema e quando; dados do hospital, contrato, hospitais da rede e limites de carga horária.",
+   "publico": "Gestão (coordenação)"
+  },
+  {
+   "id": "11-ajuda",
+   "numero": 11,
+   "titulo": "Ajuda dentro do sistema",
+   "resumo": "O botão “Como fazer” de cada tela, o guia que mostra onde clicar e os vídeos da tela Como usar.",
+   "publico": "Todos"
+  }
+ ]
+}

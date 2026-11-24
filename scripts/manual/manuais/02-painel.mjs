@@ -1,0 +1,70 @@
+// Manual 2: Painel (tela inicial da gestão) e avisos.
+export default {
+  id: '02-painel',
+  numero: 2,
+  titulo: 'Painel',
+  resumo: 'A tela inicial da gestão: o que precisa de atenção hoje, quem está de plantão e como estão os hospitais.',
+  publico: 'Gestão (coordenação)',
+  secoes: [
+    {
+      titulo: 'Para que serve',
+      blocos: [
+        { p: 'O Painel é a primeira tela de quem coordena. Em um só lugar ele mostra o que precisa ser resolvido (vagas, furos, escala em rascunho), quem está de plantão agora e os números do dia. A ideia é abrir o Painel no começo do turno e resolver o que aparece em **Precisa de você**.' },
+        { p: 'Quem é plantonista entra direto na **Minha Escala** e não vê o Painel.' }
+      ]
+    },
+    {
+      titulo: 'As partes da tela',
+      blocos: [
+        { figura: 'painel', legenda: 'Painel de um hospital com dois hospitais (unidades) na mesma empresa.', pontos: [
+          '**Primeiros passos:** roteiro de implantação em 5 passos (dados do hospital, setores, equipe, primeira escala e publicação). Cada passo tem `Começar` e, quando há vídeo, `Ver como fazer`. Some sozinho quando tudo está feito, ou pelo **X**.',
+          '**Mostrar no painel:** escolha entre ver **todas as unidades** juntas ou um hospital. Cada cartão resume: plantões de hoje preenchidos, vagas nos próximos 7 dias, vagas urgentes e furos do mês.',
+          '**Precisa de você:** a lista do que resolver agora, com o botão que leva direto ao lugar certo.',
+          '**Modo TV:** mostra o Painel em tela cheia, para deixar numa TV da sala da coordenação.',
+          '**Sino (Notificações):** avisos de vagas, pedidos e mudanças. Veja a seção 4.'
+        ] },
+        { p: 'Abaixo de **Precisa de você** ficam quatro números do dia:' },
+        { tabela: { cab: ['Cartão', 'O que mostra'], linhas: [
+          ['Em andamento agora', 'Quantos profissionais estão de plantão neste momento.'],
+          ['Plantões hoje', 'Total de plantões do dia, quantos ainda vão começar e quantos já terminaram.'],
+          ['Cobertura do mês', 'Percentual de plantões do mês que já têm profissional, e quantas vagas faltam preencher.'],
+          ['Custo de hoje', 'Quanto os plantões do dia custam, pelo valor cadastrado de cada profissional.']
+        ] } },
+        { p: 'Por último, **Hoje por setor** lista cada setor com quem está de plantão, quem entra mais tarde e as vagas do dia.' }
+      ]
+    },
+    {
+      titulo: 'Precisa de você: o que pode aparecer',
+      blocos: [
+        { tabela: { cab: ['Aviso', 'O que significa', 'Onde resolver'], linhas: [
+          ['Vagas nos próximos 7 dias', 'Plantões sem profissional na próxima semana.', '`Abrir na escala`: escale alguém ou deixe a vaga no Mural.'],
+          ['Furos', 'Plantões que já passaram sem ninguém.', 'Na Escala: corrija ou registre quem cobriu.'],
+          ['Escala em rascunho', 'Setores com a escala do mês ainda não publicada: os profissionais não veem nem recebem aviso.', '`Abrir escala` e publique (Manual 5).'],
+          ['Custo incompleto', 'Plantões de hoje de profissionais sem valor cadastrado ou esperando o lançamento da produção.', '`Abrir faturamento` ou complete o valor no Corpo Clínico.']
+        ] } },
+        { p: 'Quando não há nada pendente, aparece **Tudo em dia**: sem vagas nos próximos 7 dias, sem furos e com a escala do mês publicada.' },
+        { dica: 'Os setores e os números do Painel seguem o hospital escolhido no topo da tela (campo **Unidade**). Para ver todos os hospitais juntos, escolha `Todas as unidades` em **Mostrar no painel**.' }
+      ]
+    },
+    {
+      titulo: 'Notificações (o sino)',
+      blocos: [
+        { figura: 'avisos', legenda: 'Painel de notificações aberto pelo sino, no topo da tela.', pontos: [] },
+        { passos: [
+          'Toque no **sino**, no topo da tela. Um número vermelho no sino indica avisos novos.',
+          'Leia os avisos: vagas novas, pedidos de troca para aprovar, escala publicada, mudanças nos seus plantões.',
+          'Para receber os avisos **no celular, mesmo com o app fechado**, toque em `Ativar` e permita as notificações quando o navegador perguntar.',
+          '`Abrir o Mural` leva às vagas e aos pedidos.'
+        ] },
+        { atencao: 'A permissão de avisos é por aparelho. Quem usa o ScaleMedic no celular e no computador precisa ativar nos dois.' }
+      ]
+    },
+    {
+      titulo: 'Trocar de hospital',
+      blocos: [
+        { p: 'Quem coordena mais de um hospital escolhe com qual trabalhar no campo **Unidade**, no topo da tela. Escala, Corpo Clínico, Setores, Faturamento e Relatórios passam a mostrar os dados do hospital escolhido. O Painel também pode mostrar todos juntos.' },
+        { dica: 'O plantonista não precisa trocar de hospital: ele vê os plantões de todos os hospitais onde trabalha na mesma Minha Escala.' }
+      ]
+    }
+  ]
+};
