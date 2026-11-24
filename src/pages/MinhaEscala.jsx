@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppData } from '@/lib/useAppData';
 import AvailabilityCard from '@/components/AvailabilityCard';
@@ -8,14 +8,13 @@ import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEsti
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
-import { 
-  Clock, Building2, Repeat, CheckCircle2, Loader2, DollarSign, AlertCircle, 
-  Radio, ChevronLeft, ChevronRight, Send, Timer, Sparkles, Flame, ArrowRight, 
-  Layers, CalendarCheck, Zap, ChevronDown, ChevronUp, Clock3, ShieldAlert, LogIn, LogOut, MapPin, CalendarPlus
+import { CheckCircle2, Loader2, DollarSign, 
+  Radio, ChevronLeft, ChevronRight, Timer, Flame, CalendarCheck, ChevronDown, ChevronUp, Clock3, ShieldAlert, LogIn, LogOut, MapPin, CalendarPlus
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { escapeHtml } from '@/lib/printBranding';
 import { buildPrintDocument, openPrintWindow, printHeader, printLogos } from '@/lib/printLayout';
+import { autoHealingSaveShift } from '@/lib/escalaUtils';
 
 function safeNumber(val, fb = 0) {
   return safeFinancialNumber(val, fb);
@@ -68,23 +67,6 @@ function getDistanceInMeters(lat1, lon1, lat2, lon2) {
   return R * c; 
 }
 
-async function autoHealingSaveShift(id, initialPayload) {
-  let payload = { ...initialPayload };
-  try {
-    if (id) {
-      const { data, error } = await supabase.from('shifts').update(payload).eq('id', id).select().single();
-      if (error) throw error;
-      return data;
-    } else {
-      const { data, error } = await supabase.from('shifts').insert([payload]).select().single();
-      if (error) throw error;
-      return data;
-    }
-  } catch (err) {
-    throw err;
-  }
-}
-
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
@@ -92,7 +74,7 @@ const MONTH_NAMES = [
 
 export default function MinhaEscala() {
   // Minha Escala mostra os plantões de TODAS as unidades do profissional, sem trocar de unidade.
-  const { user, company, units, allCompanyProfessionals = [], allCompanySectors = [], selectedUnitId, loading: appLoading, syncGlobalData, isPaymentMarkedPaid } = useAppData();
+  const { user, company, units, allCompanyProfessionals = [], allCompanySectors = [], loading: appLoading, syncGlobalData, isPaymentMarkedPaid } = useAppData();
   const sectors = allCompanySectors;
   const navigate = useNavigate();
 
@@ -183,7 +165,7 @@ export default function MinhaEscala() {
           setLocationError('');
           resolve(coords);
         },
-        (err) => {
+        () => {
           setLocationError('GPS bloqueado. Permita a localização no navegador.');
           resolve(null);
         },

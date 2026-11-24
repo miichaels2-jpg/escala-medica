@@ -34,7 +34,7 @@ function dayLabel(iso) {
 
 // Histórico de alterações: quem criou, alocou, trocou, excluiu, publicou ou pagou, e quando.
 export default function Historico() {
-  const { company, units = [], appUsers = [], allCompanyProfessionals = [], allCompanySectors = [], selectedUnitId, allUnitsView, setUnitScope } = useAppData();
+  const { company, units = [], appUsers = [], allCompanyProfessionals = [], allCompanySectors = [], selectedUnitId, allUnitsView } = useAppData();
   const [period, setPeriod] = useState('7');
   const [type, setType] = useState('todos');
   const unitFilter = units.length > 1 && !allUnitsView ? String(selectedUnitId) : 'todas';

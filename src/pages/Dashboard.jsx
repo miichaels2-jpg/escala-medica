@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
-import { DEFAULT_REMUNERATION_TYPE, getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
+import { DEFAULT_REMUNERATION_TYPE, getShiftCostEstimate } from '@/lib/financialCalculations';
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
@@ -61,9 +61,6 @@ function toTitleCase(str) {
   }).join(' ');
 }
 
-function safeNumber(val, fb = 0) {
-  return safeFinancialNumber(val, fb);
-}
 
 function computeShiftLiveStatus(shift, liveNowDate) {
   if (!shift || !shift.date) return { isLive: false, isConcluded: false, isProgrammed: true, detail: '' };
@@ -147,6 +144,7 @@ export default function Painel() {
 
   const unsubmittedSectors = useMemo(() => {
     return (sectors || []).filter(s => getPublishedRanges(s.unit_id || unitId, s.id, currentYear, currentMonth + 1).length === 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- a função só lê publishedRanges, que já está na lista
   }, [sectors, unitId, currentYear, currentMonth, publishedRanges]);
 
   function getProfMeta(prof) {

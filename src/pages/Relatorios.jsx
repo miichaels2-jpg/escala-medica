@@ -380,7 +380,7 @@ export default function Relatorios() {
     }).sort((a, b) => a.birthDayNum - b.birthDayNum); 
   }, [filteredProfessionals, appliedFilters, currentYear, hasSearched]);
 
-  const { totalShiftsCount, filledShiftsCount, vacantShiftsCount, vacantShiftItems } = useMemo(() => {
+  const { totalShiftsCount, filledShiftsCount, vacantShiftItems } = useMemo(() => {
     let filled = 0;
     let vacantItems = [];
     filteredShifts.forEach(s => {

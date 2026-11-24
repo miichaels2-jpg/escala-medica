@@ -1,6 +1,6 @@
 // Funções puras da tela Escala (datas, nomes, ciclo do plantão) e o salvamento do plantão.
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
-import { supabase } from '@/lib/supabase';
+import { saveRow } from '@/lib/saveRow';
 
 export const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 export const WEEKDAYS = [{ short: 'Dom', weekend: true }, { short: 'Seg', weekend: false }, { short: 'Ter', weekend: false }, { short: 'Qua', weekend: false }, { short: 'Qui', weekend: false }, { short: 'Sex', weekend: false }, { short: 'Sáb', weekend: true }];
@@ -210,19 +210,4 @@ export function splitRangeByMonth(startDate, endDate) {
   return parts;
 }
 
-export async function autoHealingSaveShift(id, initialPayload) {
-  let payload = { ...initialPayload };
-  try {
-    if (id) {
-      const { data, error } = await supabase.from('shifts').update(payload).eq('id', id).select().single();
-      if (error) throw error;
-      return data;
-    } else {
-      const { data, error } = await supabase.from('shifts').insert([payload]).select().single();
-      if (error) throw error;
-      return data;
-    }
-  } catch (err) {
-    throw err;
-  }
-}
+export const autoHealingSaveShift = (id, payload) => saveRow('shifts', id, payload);

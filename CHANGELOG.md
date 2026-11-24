@@ -9,6 +9,16 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.6.3 — 24/11/2026
+
+- **Código sem avisos do verificador (lint):** de 101 para 0. Nada muda na tela.
+  - Imports e variáveis sem uso removidos, e trechos mortos apagados (ex.: um "Disponibilizar no Mural" da janela de
+    plantão que não aparecia em lugar nenhum).
+  - A função de salvar plantão, que estava copiada em três telas, virou uma só (`src/lib/saveRow.js`).
+  - O verificador agora sabe que o service worker, os testes e os arquivos de configuração rodam fora da página, e
+    aceita `catch {}` vazio (usado de propósito quando o navegador bloqueia o armazenamento).
+- Conferência: as 81 capturas de telas, janelas, impressos e Excel saíram idênticas às da V0.6.2.
+
 ## V0.6.2 — 24/11/2026
 
 - **Botão "Como fazer" mais visível:** agora fica ao lado do título da tela, em branco, com o nome escrito

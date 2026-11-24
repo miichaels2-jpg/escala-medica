@@ -761,6 +761,7 @@ export default function Faturamento() {
       item.plantõesFuturos > 0 ||
       (['mensal', 'monthly', 'salario mensal'].includes(item.remunType) && item.profStatus === 'ativo' && item.isAssignedToCurrentUnit)
     );
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- isPaymentMarkedPaid só lê paymentStatuses, que já está na lista
   }, [professionals, shifts, monthPrefix, selectedUnitId, paymentStatuses, todayStr, now, productivityAllocations, isProductivityPoolUnit]);
 
   const filteredReport = useMemo(() => {

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export default function AutoLogout({ timeoutMinutes = 60 }) {
