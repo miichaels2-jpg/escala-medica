@@ -38,7 +38,7 @@ export const ROADMAP_GROUPS = [
     items: [
       { id: 38, title: 'Escala e Relatórios mais leves por dentro', detail: 'Escala (3.300 linhas) e Relatórios (2.700) divididos em partes menores: fica mais fácil e seguro mexer, e Relatórios baixa menos que os 510 KB de hoje.', status: 'entregue', version: 'V0.6.2' },
       { id: 39, title: 'Limpar avisos antigos do código', detail: '59 avisos do verificador (blocos vazios, variáveis sem uso) que vêm de versões antigas.', status: 'entregue', version: 'V0.6.3' },
-      { id: 40, title: 'Tema claro como padrão?', detail: 'Hoje o app abre no tema escuro para quem entra pela primeira vez. Decidir se novos usuários começam no claro (cada um continua podendo trocar).', status: 'ideia' }
+      { id: 40, title: 'Tema segue o aparelho', detail: 'Quem nunca escolheu abre no claro ou no escuro conforme o celular/computador (antes, sempre escuro). A escolha pelo botão sol/lua continua valendo; sem piscada ao abrir.', status: 'entregue', version: 'V0.6.4' }
     ]
   },
   {

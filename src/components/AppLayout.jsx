@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { HelpProvider } from '@/components/help/HelpProvider';
+import { applyTheme, initialTheme, saveTheme } from '@/lib/theme';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -89,7 +90,7 @@ export default function AppLayout({ children }) {
     setMobileMenuOpen(false);
     setNotifOpen(false);
   }, [location.pathname]);
-  const [theme, setTheme] = useState('dark');
+  const [theme, setTheme] = useState(initialTheme);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   // Dono da plataforma (Michael): vê a tela "Plataforma", com todas as empresas clientes.
   const [isPlatformOwner, setIsPlatformOwner] = useState(false);
@@ -105,32 +106,12 @@ export default function AppLayout({ children }) {
     return () => clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    try {
-      const savedTheme = window.localStorage.getItem('hospital-intelligence-theme') || 'dark';
-      setTheme(savedTheme);
-      if (savedTheme === 'dark') {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    } catch {
-      setTheme('dark');
-      document.documentElement.classList.add('dark');
-    }
-  }, []);
+  useEffect(() => { applyTheme(theme); }, [theme]);
 
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
     setTheme(nextTheme);
-    if (nextTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    try {
-      window.localStorage.setItem('hospital-intelligence-theme', nextTheme);
-    } catch {}
+    saveTheme(nextTheme);
   };
 
   const handleLogout = async () => {

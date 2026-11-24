@@ -1,11 +1,13 @@
 // Visão geral: vagas em aberto e o painel de gestão (gráficos).
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { AlertTriangle, ChevronRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { lazyPage } from '@/lib/lazyPage';
 import { formatDate, getSectorName, getShiftHours, isShiftPast, isVacant } from '@/lib/reportUtils';
 
 // Os gráficos (recharts) pesam ~400 KB: só baixam quando alguém abre a Visão geral.
-const ManagementBI = lazy(() => import('@/components/reports/ManagementBI'));
+// lazyPage: se o arquivo sumiu por uma versão nova, recarrega em vez de mostrar erro.
+const ManagementBI = lazyPage(() => import('@/components/reports/ManagementBI'));
 const chartsFallback = <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-4 border-slate-200 dark:border-slate-700 border-t-sky-600 rounded-full animate-spin" /></div>;
 
 export default function OverviewReport({ activeTab, coverageRate, credentialAudit, filterSummary, filteredShifts, financialSummary, hospitalName, isAllUnits, periodLabel, professionalMetrics, scopeUnitIds, sectorMetrics, sectors, setActiveTab, shiftCost, unitNameById, vacantShiftItems }) {
