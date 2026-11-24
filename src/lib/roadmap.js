@@ -30,7 +30,8 @@ export const ROADMAP_GROUPS = [
       { id: 37, title: 'Revisar a visão do plantonista', detail: 'A varredura foi feita como gestor. Revisar Minha Escala, Mural e trocas logado como profissional, no celular, que é onde ele usa.', status: 'entregue', version: 'V0.5.4' },
       { id: 41, title: 'Tela "Como usar" com vídeos', detail: 'Vídeos sem som, com cursor e legendas, gravados por script com os dados da demo (scripts/tutoriais). 9 vídeos: montar o mês, escalar pela Grade, publicar, cadastrar profissional, aprovar pedido no Mural, fechar o mês; e, para o plantonista, Minha Escala, pegar vaga e passar plantão. Narração fica para depois.', status: 'entregue', version: 'V0.5.10' },
       { id: 42, title: 'Impressos no mesmo padrão', detail: 'Recibo, demonstrativo, escala do mês (quadro por setor), plantão do dia, fechamento, espelho e relatórios com o mesmo cabeçalho, rodapé com página e emissão e marca d’água só quando ela diz algo (rascunho, não comprova pagamento, logo no recibo pago).', status: 'entregue', version: 'V0.5.7' },
-      { id: 43, title: 'Ajuda dentro de cada tela', detail: 'Botão "Como fazer" no topo das telas: guia passo a passo que destaca onde clicar e vídeo numa janelinha flutuante que continua de onde parou. Abre sozinho na primeira visita.', status: 'entregue', version: 'V0.6.1' }
+      { id: 43, title: 'Ajuda dentro de cada tela', detail: 'Botão "Como fazer" no topo das telas: guia passo a passo que destaca onde clicar e vídeo numa janelinha flutuante que continua de onde parou. Abre sozinho na primeira visita.', status: 'entregue', version: 'V0.6.1' },
+      { id: 44, title: 'Manuais de treinamento em PDF', detail: 'Tela Material de treinamento (só o dono): 11 manuais com marca ScaleMedic, fotos numeradas e passo a passo, e o manual completo. Gerados por script (scripts/manual) com dados fictícios.', status: 'entregue', version: 'V0.6.5' }
     ]
   },
   {

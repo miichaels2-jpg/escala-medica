@@ -12,7 +12,7 @@ function CopyField({ label, value }) {
     catch { window.prompt('Copie:', value); }
   };
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 min-w-0">
       <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
       <div className="flex items-center gap-2">
         <code className="flex-1 min-w-0 truncate rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 text-sm">{value}</code>
@@ -33,7 +33,7 @@ export default function InviteTeamDialog({ open, onOpenChange, code }) {
           <DialogTitle>Convidar equipe</DialogTitle>
         </DialogHeader>
         {code ? (
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             <p className="text-sm text-slate-600 dark:text-slate-300">Mande o link para os profissionais (por WhatsApp, e-mail…). Cada um preenche a própria ficha e ela chega na aba <b>Pendentes</b> para você aprovar.</p>
             <CopyField label="Link (já abre com o hospital preenchido)" value={link} />
             <CopyField label="Código do hospital (para quem abrir pela tela de entrada)" value={code} />

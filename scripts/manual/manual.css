@@ -1,0 +1,83 @@
+/* Visual do manual de treinamento: identidade ScaleMedic (azul #0284c7), A4. */
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; font: 10.5pt/1.55 Inter, Arial, sans-serif; color: #0f172a; }
+h1, h2, h3, .wm { font-family: 'Plus Jakarta Sans', Inter, sans-serif; letter-spacing: -0.01em; }
+p { margin: 0 0 8pt; }
+b { font-weight: 600; }
+.muted { color: #64748b; font-size: 9pt; }
+.ui { display: inline-block; padding: 0 5px; border: 1px solid #bae6fd; background: #f0f9ff; color: #075985; border-radius: 4px; font-weight: 600; font-size: 0.92em; line-height: 1.35; }
+
+/* Capa */
+.capa { position: relative; height: 297mm; padding: 22mm 20mm; background: #0284c7; color: #fff; overflow: hidden; display: flex; flex-direction: column; break-after: page; }
+.capa-top { display: flex; align-items: center; gap: 14px; }
+.capa-top .wm { font-size: 22pt; font-weight: 800; }
+.capa-top .wm b { color: #bae6fd; font-weight: 800; }
+.capa-mid { margin-top: auto; margin-bottom: auto; position: relative; z-index: 1; max-width: 140mm; }
+.kicker { text-transform: uppercase; letter-spacing: 0.14em; font-size: 9pt; font-weight: 600; color: #bae6fd; margin-bottom: 10pt; }
+.capa h1 { font-size: 34pt; line-height: 1.1; margin: 0 0 14pt; font-weight: 800; }
+.capa .resumo { font-size: 13pt; color: #e0f2fe; }
+.capa .publico { margin-top: 18pt; font-size: 10.5pt; color: #e0f2fe; }
+.capa-bottom { display: flex; justify-content: space-between; font-size: 9pt; color: #bae6fd; position: relative; z-index: 1; }
+.capa-art { position: absolute; right: -110px; top: 120px; opacity: 0.9; }
+
+/* Sumário */
+.sumario { break-after: page; padding-top: 4mm; }
+.sumario h2 { font-size: 18pt; margin: 0 0 12pt; color: #0369a1; }
+.sumario ol { padding-left: 18pt; margin: 0 0 18pt; }
+.sumario li { margin-bottom: 6pt; font-size: 11pt; }
+
+/* Seções */
+.secao { break-before: page; }
+.secao + .secao { break-before: auto; margin-top: 16pt; }
+h2 { font-size: 16pt; margin: 0 0 10pt; display: flex; align-items: center; gap: 10px; color: #0f172a; break-after: avoid; }
+h2 span { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 7px; background: #0284c7; color: #fff; font-size: 11pt; }
+h3 { font-size: 12pt; margin: 14pt 0 6pt; color: #0369a1; break-after: avoid; }
+ul { margin: 0 0 10pt; padding-left: 16pt; }
+ul li { margin-bottom: 3pt; }
+
+/* Passo a passo */
+ol.passos { list-style: none; counter-reset: passo; padding: 0; margin: 4pt 0 12pt; }
+ol.passos > li { counter-increment: passo; position: relative; padding-left: 34px; margin-bottom: 10pt; }
+ol.passos > li::before { content: counter(passo); position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%; background: #e0f2fe; color: #0369a1; font-weight: 700; font-size: 10pt; display: flex; align-items: center; justify-content: center; }
+.ptxt { padding-top: 2px; }
+
+/* Fotos com pontos numerados */
+figure { margin: 8pt 0 14pt; }
+.shot, figcaption { break-inside: avoid; }
+figcaption { break-before: avoid; }
+figure.side { break-inside: avoid; }
+figure.side { display: flex; gap: 16px; align-items: flex-start; }
+figure.side > div { flex: 1; }
+.shot { position: relative; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08); }
+.shot.phone { width: 62mm; flex-shrink: 0; border-radius: 14px; }
+.shot img { display: block; width: 100%; }
+.hl { position: absolute; border: 2.5px solid #f97316; border-radius: 6px; }
+.num { position: absolute; transform: translate(-125%, -50%); width: 20px; height: 20px; border-radius: 50%; background: #f97316; color: #fff; font: 700 9pt/20px Inter, sans-serif; text-align: center; box-shadow: 0 0 0 2px #fff; }
+.num.dentro { transform: translate(-40%, -50%); }
+figcaption { font-size: 9pt; color: #64748b; margin-top: 5pt; }
+ol.pontos { margin: 8pt 0 0; padding-left: 0; list-style: none; counter-reset: ponto; }
+ol.pontos li { counter-increment: ponto; position: relative; padding-left: 28px; margin-bottom: 5pt; }
+ol.pontos li::before { content: counter(ponto); position: absolute; left: 0; top: 1px; width: 19px; height: 19px; border-radius: 50%; background: #f97316; color: #fff; font: 700 8.5pt/19px Inter, sans-serif; text-align: center; }
+
+/* Caixas */
+.box { display: flex; gap: 10px; padding: 9pt 12pt; border-radius: 8px; margin: 8pt 0 12pt; break-inside: avoid; font-size: 10pt; }
+.box b { flex-shrink: 0; }
+.dica { background: #f0f9ff; border: 1px solid #bae6fd; }
+.dica b { color: #0369a1; }
+.atencao { background: #fffbeb; border: 1px solid #fcd34d; }
+.atencao b { color: #b45309; }
+
+table { width: 100%; border-collapse: collapse; margin: 6pt 0 14pt; font-size: 9.5pt; break-inside: avoid; }
+th { text-align: left; background: #f1f5f9; color: #334155; font-weight: 600; }
+th, td { padding: 6pt 8pt; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+.quebra { break-after: page; }
+
+/* Manual completo: abertura de cada módulo */
+.abre-modulo { break-before: page; padding: 70mm 0 0; }
+.abre-modulo h1 { font-size: 30pt; margin: 0 0 10pt; color: #0369a1; }
+.abre-modulo .resumo { font-size: 12pt; color: #475569; }
+.abre-modulo + .secao { break-before: page; }
+
+figure:not(.side) .shot { margin-left: auto; margin-right: auto; }
+.abre-modulo .kicker { color: #0284c7; }

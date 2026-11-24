@@ -8,7 +8,7 @@ import {
   DollarSign, Users, Building2, LogOut, Menu, X, 
   AlertTriangle, Sun, Moon, Settings, FileBarChart,
   Clock, Hospital, Bell, Flame, Smartphone,
-  ListChecks, History, Globe, PlayCircle
+  ListChecks, History, Globe, PlayCircle, BookOpen
 } from 'lucide-react';
 import { InstallAppBanner, InstallAppDialog } from '@/components/InstallAppGuide';
 import { NotificationPanel, useNotificationCenter } from '@/components/NotificationCenter';
@@ -186,7 +186,7 @@ export default function AppLayout({ children }) {
     { label: 'Como usar', path: '/como-usar', icon: PlayCircle, visible: true },
     { label: 'Planejamento', path: '/planejamento', icon: ListChecks, visible: isManager }, // TEMPORÁRIO
     // Só o dono da plataforma (o campo "visible" acima não filtra o menu; quem filtra é canAccessRoute).
-    ...(isPlatformOwner ? [{ label: 'Plataforma', path: '/plataforma', icon: Globe, visible: true }] : []),
+    ...(isPlatformOwner ? [{ label: 'Plataforma', path: '/plataforma', icon: Globe, visible: true }, { label: 'Treinamento', path: '/treinamento', icon: BookOpen, visible: true }] : []),
   ].filter(item => canAccessRoute(user, item.path))
     // Plantonista: a própria agenda vem primeiro.
     .sort((a, b) => ['assistencial', 'medico'].includes(userAppRole) ? (b.path === '/minha-escala') - (a.path === '/minha-escala') : 0);

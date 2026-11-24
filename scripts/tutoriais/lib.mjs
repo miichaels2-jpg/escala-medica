@@ -158,7 +158,9 @@ export async function login(cdp, base, username, password) {
   if (!username || !password) throw new Error('Defina usuário e senha nas variáveis de ambiente.');
   await cdp.send('Page.navigate', { url: base + '/login' }); await sleep(2500);
   await cdp.ev(`localStorage.clear(); sessionStorage.clear(); 1`);
-  await cdp.send('Page.navigate', { url: base + '/login' }); await sleep(3500);
+  await cdp.send('Page.navigate', { url: base + '/login' });
+  // espera o formulário aparecer (a tela de entrada pode demorar a carregar)
+  for (let i = 0; i < 30 && !(await cdp.ev(`!!document.querySelector('form input[type=password]')`)); i++) await sleep(500);
   await cdp.ev(`(() => { const set = (el, v) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); };
     set(document.querySelector('form input'), ${JSON.stringify(username)}); set(document.querySelector('form input[type=password]'), ${JSON.stringify(password)});
     setTimeout(() => document.querySelector('form button[type=submit]').click(), 200); return 1; })()`);

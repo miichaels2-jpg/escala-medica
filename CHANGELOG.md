@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.6.5 — 24/11/2026
+
+- **Material de treinamento** (nova tela, só para o dono da plataforma): 11 manuais em PDF, um por assunto, e o
+  manual completo (70 páginas). Cada manual tem capa e marca ScaleMedic, sumário, explicação da tela, fotos com pontos
+  numerados e passo a passo: primeiro acesso, Painel, Setores, Corpo Clínico, Escala, Mural, Minha Escala,
+  Faturamento, Relatórios, Histórico e Configurações, e a ajuda do sistema. As fotos usam a demo com nomes, e-mails,
+  telefones e CPFs trocados por fictícios e sem logo de cliente.
+- Gerador dos manuais em `scripts/manual` (`capturar.mjs` tira as fotos sem salvar nada; `gerar.mjs` monta os
+  PDFs): quando uma tela mudar, os manuais são refeitos em minutos.
+- Corpo Clínico › Convidar equipe: o link e o botão Copiar estouravam a janela.
+- Escala: botões “Cancelar” das janelas de plantão e de unidade dos plantões antigos ficavam apagados.
+
 ## V0.6.4 — 24/11/2026
 
 - **Tema segue o aparelho:** quem nunca escolheu um tema abre o ScaleMedic no claro ou no escuro conforme o celular

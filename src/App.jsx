@@ -30,6 +30,7 @@ const Trocas = lazyPage(() => import('@/pages/Trocas'));
 const ComoUsar = lazyPage(() => import('@/pages/ComoUsar'));
 const Planejamento = lazyPage(() => import('@/pages/Planejamento')); // TEMPORÁRIO
 const Plataforma = lazyPage(() => import('@/pages/Plataforma'));
+const Treinamento = lazyPage(() => import('@/pages/Treinamento'));
 const Historico = lazyPage(() => import('@/pages/Historico'));
 
 const PageLoading = () => (
@@ -85,6 +86,7 @@ const AuthenticatedApp = () => {
             <Route path="/como-usar" element={<ComoUsar />} />
             <Route path="/planejamento" element={<Planejamento />} /> {/* TEMPORÁRIO */}
             <Route path="/plataforma" element={<Plataforma />} />
+            <Route path="/treinamento" element={<Treinamento />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
           </Route>
         </Route>
