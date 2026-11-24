@@ -22,6 +22,7 @@ import { BrandAppIcon, BrandWordmark } from '@/components/BrandMark';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { HelpProvider } from '@/components/help/HelpProvider';
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -259,6 +260,7 @@ export default function AppLayout({ children }) {
     .trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase();
 
   return (
+    <HelpProvider>
     <div className="flex h-screen h-[100dvh] overflow-hidden bg-slate-100 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200">
       
       {/* SIDEBAR DESKTOP */}
@@ -592,5 +594,6 @@ export default function AppLayout({ children }) {
 
       <InstallAppDialog open={installGuideOpen} onOpenChange={setInstallGuideOpen} />
     </div>
+    </HelpProvider>
   );
 }

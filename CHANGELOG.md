@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.6.1 — 24/11/2026
+
+- **Botão "Como fazer" no topo das telas** (chapéu na faixa azul) em Escala, Setores, Corpo Clínico, Mural,
+  Faturamento e Minha Escala. Lista só as tarefas daquela tela e de quem está usando (gestão ou plantonista).
+  Na primeira visita à tela abre sozinho uma vez; fechou, não volta (o botão fica).
+- **"Mostrar na tela": guia passo a passo** que destaca onde clicar ("clique aqui em Montar mês"), explica cada
+  passo e avança quando a pessoa clica. Não faz nada sozinho: quem faz é a pessoa. Segue entre telas (Setores →
+  Escala) e janelas; quando falta algo (ex.: mês sem vaga), explica o que fazer.
+- **Vídeo numa janelinha flutuante** no canto, por cima do sistema: dá para assistir e fazer ao mesmo tempo,
+  recolher ou fechar. O vídeo continua de onde a pessoa parou, e o que já foi visto ganha ✓.
+- Tela "Como usar": botão "Fazer junto na tela" em cada vídeo, que abre a tela certa já com o guia.
+
 ## V0.5.10 — 23/11/2026
 
 - **Mais 4 vídeos em "Como usar"** (agora 9, em quatro assuntos): cadastrar um profissional, aprovar um pedido no
