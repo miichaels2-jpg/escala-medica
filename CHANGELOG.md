@@ -9,6 +9,14 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.6.4 — 24/11/2026
+
+- **Tema segue o aparelho:** quem nunca escolheu um tema abre o ScaleMedic no claro ou no escuro conforme o celular
+  ou computador (antes, todo mundo começava no escuro). Quem já trocou pelo botão sol/lua continua com a escolha.
+- O tema é aplicado antes da tela aparecer: acabou a "piscada" escura ao abrir o app no tema claro.
+- Telas conferidas no tema claro (13 telas, página inteira).
+- Gráficos da Visão geral (Relatórios): se uma versão nova sair com a tela aberta, recarrega sozinho em vez de dar erro.
+
 ## V0.6.3 — 24/11/2026
 
 - **Código sem avisos do verificador (lint):** de 101 para 0. Nada muda na tela.

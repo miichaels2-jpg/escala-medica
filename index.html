@@ -11,6 +11,14 @@
     <!-- Aplicativo instalável (Android / Chrome) -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#0284c7" />
+    <script>
+      // Tema antes da tela aparecer (mesma regra de src/lib/theme.js): escolha salva ou o do aparelho.
+      try {
+        var t = localStorage.getItem('hospital-intelligence-theme');
+        if (t !== 'dark' && t !== 'light') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        if (t === 'dark') document.documentElement.classList.add('dark');
+      } catch (e) {}
+    </script>
     <meta name="mobile-web-app-capable" content="yes" />
 
     <!-- Aplicativo instalável (iPhone / iPad - Safari) -->
