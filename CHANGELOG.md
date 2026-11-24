@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.6.2 — 24/11/2026
+
+- **Botão "Como fazer" mais visível:** agora fica ao lado do título da tela, em branco, com o nome escrito
+  (antes era só um chapéu no canto).
+- **Escala e Relatórios divididos em partes menores** (nada muda na tela). Escala: de 3.260 para 2.130 linhas, com as
+  janelas (lançar plantão, gerador, alocação, publicar, copiar mês, unidade de plantões antigos), o Modo TV, a aba
+  Plantão do dia e os impressos em arquivos próprios. Relatórios: de 2.715 para 839 linhas, com cada grupo de
+  relatórios, o Excel e a impressão em arquivos próprios.
+- **Relatórios abrem mais rápido:** os gráficos da Visão geral (~400 KB) só baixam quando ela é aberta; a tela em si
+  caiu de 521 KB para 115 KB.
+- Conferência: telas, janelas, impressos e Excel da versão anterior e da nova comparados texto a texto (81 capturas).
+
 ## V0.6.1 — 24/11/2026
 
 - **Botão "Como fazer" no topo das telas** (chapéu na faixa azul) em Escala, Setores, Corpo Clínico, Mural,

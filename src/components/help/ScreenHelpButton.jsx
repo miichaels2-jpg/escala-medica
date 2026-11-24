@@ -52,13 +52,13 @@ export default function ScreenHelpButton() {
         <button
           type="button"
           aria-label="Como fazer nesta tela"
-          title="Como fazer nesta tela"
-          className="flex items-center justify-center w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 border border-white/30 text-white cursor-pointer print:hidden"
+          title="Passo a passo e vídeo desta tela"
+          className="inline-flex items-center gap-1.5 h-8 pl-2.5 pr-3 rounded-full bg-[#fff] hover:bg-[#f0f9ff] text-[#0369a1] text-sm font-semibold shadow-sm cursor-pointer print:hidden"
         >
-          <GraduationCap className="w-[18px] h-[18px]" />
+          <GraduationCap className="w-4 h-4" /> Como fazer
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={8} className="w-[min(340px,calc(100vw-24px))] p-0 rounded-2xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+      <PopoverContent align="start" sideOffset={8} className="w-[min(340px,calc(100vw-24px))] p-0 rounded-2xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
         <div className="px-4 pt-4 pb-2">
           <p className="font-semibold">Como fazer nesta tela</p>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
