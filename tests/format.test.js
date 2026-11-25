@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatCurrency, formatDateBR, getLocalDateString, normalize, safeNumber } from '../src/lib/format.js';
+import { formatCurrency, formatDateBR, getLocalDateString, normalize, safeNumber, suggestUsername } from '../src/lib/format.js';
 
 test('texto para comparar', () => {
   assert.equal(normalize(' Clínica Médica '), 'clinica medica');
@@ -21,4 +21,10 @@ test('valores: ponto de milhar não vira centavo', () => {
   assert.equal(safeNumber('1200,5'), 1200.5);
   assert.equal(safeNumber('', 7), 7);
   assert.equal(formatCurrency(1234.5).replace(/\s/g, ' '), 'R$ 1.234,50');
+});
+
+test('login sugerido', () => {
+  assert.equal(suggestUsername('Maria da Silva'), 'maria.silva');
+  assert.equal(suggestUsername('  João  '), 'joao');
+  assert.equal(suggestUsername(''), '');
 });

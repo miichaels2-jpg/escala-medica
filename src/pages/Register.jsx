@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { UFS, isValidCNPJ, isValidCPF, isValidPhone, maskCNPJ, maskCPF, maskPhone, onlyDigits } from '@/lib/brDocs';
 import { AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, Loader2, Plus, Search } from 'lucide-react';
 import { BrandAppIcon } from '@/components/BrandMark';
-import { normalize } from '@/lib/format';
+import { normalize, suggestUsername } from '@/lib/format';
 
 // Categoria → conselho, CBO sugerido e áreas mais comuns (o hospital pode ter outras).
 const CATEGORIES = [
@@ -43,12 +43,6 @@ const EMPTY = {
   category: 'medico', council_number: '', council_uf: '', document_expiry: '', specialty: '', rqe: '', cbo: '225125',
   receipt_type: 'pf', cnpj: '', legal_name: '', pix_type: 'CPF', pix_key: '', bank_info: '', lgpd: false
 };
-
-function suggestUsername(name) {
-  const parts = String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z\s]/g, '').trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '';
-  return parts.length === 1 ? parts[0] : `${parts[0]}.${parts[parts.length - 1]}`;
-}
 
 // Chave PIX sugerida a partir do que a pessoa já informou.
 function pixFrom(form, type) {

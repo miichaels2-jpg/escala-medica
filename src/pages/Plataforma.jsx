@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Check, Copy, Hospital, KeyRound, Loader2, Plus, RefreshCw, UserPlus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { birthDatePassword, generateProvisionalPassword } from '@/lib/passwordPolicy';
+import { suggestUsername } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
 import { Input } from '@/components/ui/input';
@@ -20,12 +21,6 @@ const EMPTY_COMPANY = { name: '', unit_name: '', plan: 'trial', ...EMPTY_MANAGER
 
 export function registrationLink(code) {
   return `${window.location.origin}/register?empresa=${code}`;
-}
-
-function suggestUsername(name) {
-  const parts = String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z\s]/g, '').trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '';
-  return parts.length === 1 ? parts[0] : `${parts[0]}.${parts[parts.length - 1]}`;
 }
 
 function firstAccessPassword(manager) {

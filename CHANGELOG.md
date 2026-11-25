@@ -9,6 +9,14 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.7.1 — 25/11/2026
+
+Limpeza final da varredura.
+
+- As últimas funções com duas cópias agora ficam num lugar só: nome do profissional do plantão e regra de vaga (`shiftLiveStatus`), dados financeiros e atendimentos salvos do profissional (o Faturamento usa os de `reportUtils`) e o login sugerido a partir do nome (`format`, usado no Cadastro e na Plataforma).
+- Atualização simples de três pacotes usados só para montar o site (alertas de segurança: de 5 para 2; os 2 que restam são do pacote do Excel e só valem para um uso que o sistema não faz).
+- Teste novo para o login sugerido.
+
 ## V0.6.10 — 25/11/2026
 
 Organização do código (nada muda na tela, exceto a correção abaixo):
