@@ -2105,7 +2105,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
       <BulkAllocationDialog autoFillBulkAllocation={autoFillBulkAllocation} backToGenerator={backToGenerator} bulkAllocationDraft={bulkAllocationDraft} bulkAllocationOpen={bulkAllocationOpen} discardGeneratedSchedule={discardGeneratedSchedule} generatedAllocationRows={generatedAllocationRows} generatorSkippedCount={generatorSkippedCount} generatorSourceInfo={generatorSourceInfo} getBulkCandidates={getBulkCandidates} handleSaveGeneratedSchedule={handleSaveGeneratedSchedule} professionalMap={professionalMap} sectorMap={sectorMap} setBulkAllocationDraft={setBulkAllocationDraft} submitting={submitting} />
 
-      <PublishDialog existingPublishedOverlaps={existingPublishedOverlaps} handleApplyQuickRange={handleApplyQuickRange} handleExecutePublishSector={handleExecutePublishSector} publishConfig={publishConfig} publishModalOpen={publishModalOpen} sectors={sectors} setPublishConfig={setPublishConfig} setPublishModalOpen={setPublishModalOpen} submitting={submitting} />
+      <PublishDialog existingPublishedOverlaps={existingPublishedOverlaps} handleApplyQuickRange={handleApplyQuickRange} handleExecutePublishSector={handleExecutePublishSector} professionals={professionals} shifts={shifts} publishConfig={publishConfig} publishModalOpen={publishModalOpen} sectors={sectors} setPublishConfig={setPublishConfig} setPublishModalOpen={setPublishModalOpen} submitting={submitting} />
 
       <CopyMonthDialog duplicateConfig={duplicateConfig} duplicateModalOpen={duplicateModalOpen} handleExecuteDuplicate={handleExecuteDuplicate} sectors={sectors} setDuplicateConfig={setDuplicateConfig} setDuplicateModalOpen={setDuplicateModalOpen} submitting={submitting} />
 

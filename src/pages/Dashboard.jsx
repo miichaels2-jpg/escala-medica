@@ -5,6 +5,7 @@ import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
 import OnboardingChecklist from '@/components/OnboardingChecklist';
+import MonthTrend from '@/components/MonthTrend';
 import { Minimize2, AlertTriangle, CheckCircle2,
   ArrowRightLeft, DollarSign, Building2,
   Radio, X, Send
@@ -143,17 +144,9 @@ export default function Painel() {
 
   function getProfMeta(prof) {
     if (!prof) return {};
-    let localMeta = {};
-    try {
-      const stored = window.localStorage.getItem(`prof_meta_${prof.id}`);
-      const parsed = stored ? JSON.parse(stored) : null;
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) localMeta = parsed;
-    } catch (error) {
-      console.warn(`Não foi possível carregar os dados locais do profissional ${prof.id}:`, error);
-    }
     const serverMeta = [prof.data, prof.metadata]
       .filter(source => source && typeof source === 'object' && !Array.isArray(source));
-    return Object.assign({}, localMeta, ...serverMeta);
+    return Object.assign({}, ...serverMeta);
   }
 
   const mergeProfForUnit = (p, targetUnitId) => {
@@ -214,9 +207,10 @@ export default function Painel() {
     return { profById: byId, profByName: byName };
   }, [professionals, unitId]);
 
+  // Em "Todas as unidades", os plantões de todas; senão, os da unidade escolhida.
   const unitShifts = useMemo(() => {
-    return (shifts || []).filter(s => String(s.unit_id) === String(unitId) && s.status !== 'cancelado');
-  }, [shifts, unitId]);
+    return (shifts || []).filter(s => (isAllUnits ? scopeUnitIds.includes(String(s.unit_id)) : String(s.unit_id) === String(unitId)) && s.status !== 'cancelado');
+  }, [shifts, unitId, isAllUnits, scopeUnitIds]);
 
   const todayShifts = useMemo(() => {
     return unitShifts
@@ -623,6 +617,19 @@ export default function Painel() {
           </div>
         )}
       </section>
+
+      {isManager && (
+        <MonthTrend
+          shifts={unitShifts}
+          professionals={professionals}
+          sectors={sectors}
+          now={currentTime}
+          onOpenDay={date => {
+            const vacancy = vacantShifts.find(v => String(v.date || '').slice(0, 10) === date);
+            if (vacancy) handleResolveAlert(vacancy);
+          }}
+        />
+      )}
     </div>
   );
 }

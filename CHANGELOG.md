@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.7.2 — 25/11/2026
+
+Mostrar o resultado do mês para quem decide.
+
+- **Apresentação do mês** (Relatórios › Visão geral, no lugar do antigo "Modo apresentação", que só abria a tela em tela cheia): 6 slides em tela cheia — capa com os logos, cobertura por dia, vagas e furos por setor, custo por setor comparado com o mês anterior, equipe (horas, diurno × noturno, quem mais esteve de plantão) e resumo com o próximo mês. Setas do teclado (ou passador de slides), escolha do mês e PDF com um slide por página, sempre no tema claro. Abre no mês que acabou de fechar quando o atual ainda está no começo.
+- **Painel › Como estamos indo** (gestão): cobertura, vagas, custo previsto e horas do mês com a variação sobre o mês anterior, e um calendário do mês com os dias de vaga aberta ou furo; clicar num dia com vaga abre a vaga na escala.
+- **Custo antes de publicar**: a janela de publicar mostra quantos plantões, quantos sem profissional e o custo estimado do período, comparado com o período anterior.
+- Cálculo único do resumo do mês em `src/lib/monthSummary.js` (mesma base de custo dos Relatórios), com testes.
+- Correção: no Painel em "Todas as unidades", "Hoje por setor", a cobertura e as vagas do mês contavam só os plantões de uma unidade (os setores das outras apareciam como "Sem plantão hoje").
+- O Painel não lê mais a cópia antiga dos dados do profissional no navegador.
+- Planejamento: itens 47 a 67 (ideias de 25/11).
+
 ## V0.7.1 — 25/11/2026
 
 Limpeza final da varredura.
