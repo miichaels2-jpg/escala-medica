@@ -1,10 +1,11 @@
 // Funções puras da tela Escala (datas, nomes, ciclo do plantão) e o salvamento do plantão.
-import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
+import { getShiftDateTimeRange, getShiftName, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { saveRow } from '@/lib/saveRow';
 import { formatDateBR, getLocalDateString, normalize } from '@/lib/format';
 import { escapeHtml } from '@/lib/printBranding';
 
-export { escapeHtml, formatDateBR, getLocalDateString, normalize };
+export { escapeHtml, formatDateBR, getLocalDateString, getShiftName, normalize };
+export { isShiftVacant as isVacant };
 
 export const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 export const WEEKDAYS = [{ short: 'Dom', weekend: true }, { short: 'Seg', weekend: false }, { short: 'Ter', weekend: false }, { short: 'Qua', weekend: false }, { short: 'Qui', weekend: false }, { short: 'Sex', weekend: false }, { short: 'Sáb', weekend: true }];
@@ -32,14 +33,6 @@ export function stripPublicationTags(notes) {
     .replace(/\[VIGENCIA:[^\]]*\]/gi, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
-}
-
-export function getShiftName(shift) {
-  return shift.professional_name || shift.professional?.name || shift.professionalName || '';
-}
-
-export function isVacant(shift) {
-  return isShiftVacant(shift);
 }
 
 // Os status vêm em maiúsculas (o Modo TV usa assim); na tela normal aparecem como frase.

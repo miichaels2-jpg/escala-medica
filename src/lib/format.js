@@ -34,3 +34,10 @@ export function formatCurrency(value) {
 
 // Mesma data, com "—" quando não há (impressos, tabelas de valores).
 export const formatDateOrDash = value => formatDateBR(value, '—');
+
+// Login sugerido a partir do nome: "Maria da Silva" → "maria.silva".
+export function suggestUsername(name) {
+  const parts = String(name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z\s]/g, '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  return parts.length === 1 ? parts[0] : `${parts[0]}.${parts[parts.length - 1]}`;
+}

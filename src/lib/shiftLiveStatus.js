@@ -48,3 +48,8 @@ export function isShiftVacant(shift) {
   const status = normalize(shift?.status);
   return ['vago', 'vaga'].includes(status) || !hasProfessionalId;
 }
+
+// Nome do profissional do plantão, qualquer que seja o formato em que veio.
+export function getShiftName(shift) {
+  return shift.professional_name || shift.professional?.name || shift.professionalName || '';
+}

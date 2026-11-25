@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useAppData } from '@/lib/useAppData';
-import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate } from '@/lib/financialCalculations';
+import { getMonthlySalaryForUnit, getShiftCostEstimate } from '@/lib/financialCalculations';
 import { calculateProductivityPoolAllocations } from '@/lib/productivityCalculations';
 import { supabase } from '@/lib/supabase';
 import { escapeHtml } from '@/lib/printBranding';
@@ -14,6 +14,7 @@ import {
   Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer, Download, AlertTriangle, CheckCircle2
 } from 'lucide-react';
 import { formatCurrency, formatDateOrDash, getLocalDateString, safeNumber } from '@/lib/format';
+import { getProfessionalMeta, getStoredProductivityAttendance } from '@/lib/reportUtils';
 
 function roundCurrency(val) {
   return Math.round((safeNumber(val) + Number.EPSILON) * 100) / 100;
@@ -62,19 +63,6 @@ function isBillableShift(shift) {
   if (!shift.professional_id) return false;
   return !['vaga', 'aberto', 'descoberto', 'sem profissional', 'plantao sem profissional']
     .some(marker => professionalName.includes(marker));
-}
-
-function getProfessionalMeta(professional) {
-  return getProfessionalFinancialMeta(professional);
-}
-
-function getStoredProductivityAttendance(professional, unitId, date) {
-  const stored = getProfessionalMeta(professional)
-    .daily_productivity_attendance?.[String(unitId)]?.[String(date)];
-  const rawCount = typeof stored === 'object' && stored !== null ? stored.count : stored;
-  if (rawCount === null || rawCount === undefined || rawCount === '') return null;
-  const count = Number(rawCount);
-  return Number.isSafeInteger(count) && count >= 0 ? count : null;
 }
 
 function isProductivityProfessional(professional) {

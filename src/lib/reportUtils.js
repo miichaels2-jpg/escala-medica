@@ -1,10 +1,13 @@
 // Formatação, cálculos de período e catálogo dos relatórios (tela Relatórios).
 import { Activity, ArrowLeftRight, Building2, CalendarDays, Contact2, DollarSign, Gift, ShieldCheck, Stethoscope, Users } from 'lucide-react';
 import { DEFAULT_REMUNERATION_TYPE, getProfessionalFinancialMeta, getShiftDurationHours } from '@/lib/financialCalculations';
-import { isShiftVacant } from '@/lib/shiftLiveStatus';
+import { getShiftName, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { formatCurrency, formatDateOrDash as formatDate, normalize, safeNumber } from '@/lib/format';
 
-export { formatCurrency, formatDate, normalize, safeNumber };
+export { formatCurrency, formatDate, getShiftName, normalize, safeNumber };
+// Mesma regra de vaga usada no Painel e em Escalas: um plantão com
+// profissional atribuído não é vaga só porque o status ficou desatualizado.
+export { isShiftVacant as isVacant };
 export { isCredentialExpired, parseLocalDate } from '@/lib/dates';
 
 export function formatUnitRate(value) {
@@ -54,20 +57,10 @@ export function titleCase(str) {
   }).join(' ');
 }
 
-export function getShiftName(shift) {
-  return shift.professional_name || shift.professional?.name || shift.professionalName || '';
-}
-
 export function getSectorName(shift, sectors) {
   if (shift.sector_name && normalize(shift.sector_name) !== 'setor geral' && normalize(shift.sector_name) !== 'setor') return shift.sector_name;
   const sector = sectors.find(item => String(item.id) === String(shift.sector_id));
   return sector?.name || 'Setor Não Informado';
-}
-
-// Mesma regra de vaga usada no Painel e em Escalas: um plantão com
-// profissional atribuído não é vaga só porque o status ficou desatualizado.
-export function isVacant(shift) {
-  return isShiftVacant(shift);
 }
 
 export function roundHours(value) {
