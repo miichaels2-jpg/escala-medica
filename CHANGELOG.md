@@ -9,6 +9,13 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.6.7 — 25/11/2026
+
+- Planilhas Excel: em alguns Excel o topo (logo, título e cabeçalho da tabela) aparecia duas vezes ao abrir, porque a
+  célula selecionada ficava na parte fixa. Agora a planilha abre na primeira linha de dados, logo abaixo do cabeçalho.
+- A setinha do filtro tapava o fim dos títulos das colunas de números (Plantões, Horas, Bruto): o título fica no alto
+  da célula e a setinha embaixo.
+
 ## V0.6.6 — 24/11/2026
 
 - **Planilhas Excel de verdade (.xlsx)** no Fechamento de honorários e em todos os Relatórios, no mesmo padrão dos

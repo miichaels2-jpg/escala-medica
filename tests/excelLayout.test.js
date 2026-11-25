@@ -49,6 +49,8 @@ test('aba com cabeçalho fixo, filtro, totais e página pronta para imprimir', a
   assert.ok(header > 0, 'cabeçalho da tabela');
   assert.equal(ws.views[0].state, 'frozen');
   assert.equal(ws.views[0].ySplit, header);
+  // A parte que rola começa logo abaixo do cabeçalho (senão o Excel repete o topo).
+  assert.equal(ws.views[0].topLeftCell, `A${header + 1}`);
   assert.equal(ws.getCell(header + 1, 3).value, 2400);
   assert.equal(ws.getCell(header + 1, 3).numFmt, '"R$" #,##0.00');
   assert.equal(ws.getCell(header + 1, 2).numFmt, '[h]:mm');
