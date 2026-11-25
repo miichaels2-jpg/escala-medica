@@ -7,14 +7,18 @@ export function appUserIdFromSession(session) {
   return session?.user?.app_metadata?.app_user_id || null;
 }
 
-// Até a V0.6.7 o Corpo Clínico guardava neste navegador uma cópia dos dados de cada profissional
-// editado (CPF, PIX, banco, salário). Os dados ficam só no banco: a cópia é apagada.
+// Cópias antigas guardadas no navegador, que hoje ficam só no banco: dados de cada profissional
+// editado (CPF, PIX, banco, salário; até a V0.6.7), especialidade dos plantões e publicações e
+// pagamentos das versões anteriores à V0.3 (até a V0.6.8).
+const LEGACY_PREFIXES = ['prof_meta_', 'shift_spec_', 'scale_published_ranges_', 'scale_shared_state_uploaded_'];
+const LEGACY_KEYS = ['scale_faturamento_pagos'];
+
 export function purgeLegacyLocalData() {
   try {
     const keys = [];
     for (let i = 0; i < window.localStorage.length; i += 1) {
       const key = window.localStorage.key(i);
-      if (key && key.startsWith('prof_meta_')) keys.push(key);
+      if (key && (LEGACY_KEYS.includes(key) || LEGACY_PREFIXES.some(prefix => key.startsWith(prefix)))) keys.push(key);
     }
     keys.forEach(key => window.localStorage.removeItem(key));
   } catch {}

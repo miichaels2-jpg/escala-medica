@@ -937,7 +937,6 @@ const conflict = checkProfessionalConflict(
         });
         if (!result?.id) continue;
         saved += 1;
-        try { window.localStorage.setItem(`shift_spec_${result.id}`, row.target_specialty); } catch { /* armazenamento indisponível */ }
         if (prof) savedAllocations.push({ shift: { ...payload, id: result.id }, prof });
       }
 
@@ -1406,7 +1405,6 @@ if (!isMural && formData.professional_id) {
         ? String((shifts || []).find(s => String(s.id) === String(editingShiftId))?.professional_id || '')
         : '';
       const saved = await autoHealingSaveShift(editingShiftId, payload);
-      if (saved?.id || editingShiftId) try { window.localStorage.setItem(`shift_spec_${saved?.id || editingShiftId}`, finalSpecialty); } catch {}
       if (!isMural && prof && String(prof.id) !== previousProfessionalId && !isPast) {
         await notifyAllocations([{ shift: { ...payload, id: saved?.id || editingShiftId }, prof }]);
       }

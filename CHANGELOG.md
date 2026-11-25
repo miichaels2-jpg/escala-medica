@@ -9,6 +9,19 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.6.9 — 25/11/2026
+
+Limpeza (nada muda para quem usa):
+
+- 46 dos 65 pacotes instalados não eram usados (Stripe, mapas, 3D, editor de texto, gerador de PDF, moment, lodash,
+  date-fns, zod e outros) e foram removidos; restam 19. Somem junto vários alertas de segurança desses pacotes.
+- 39 arquivos sem uso apagados: 38 componentes de tela prontos que nenhuma tela usava (cerca de 3.200 linhas) e um
+  arquivo de funções antigas.
+- Fim da camada antiga de publicações e pagamentos guardados no navegador (anterior à V0.3): migração de chaves,
+  envio único ao banco e o modo "salvo só neste navegador". Tudo fica no banco, como já era na prática (−130 linhas).
+- A especialidade de cada plantão deixou de ser copiada no navegador (já é salva no banco). As cópias antigas são
+  apagadas ao abrir o sistema.
+
 ## V0.6.8 — 25/11/2026
 
 Correções da varredura de 25/11:
