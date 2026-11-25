@@ -21,24 +21,9 @@ import {
   Download, Upload, Check, ChevronRight
 } from 'lucide-react';
 import { saveRow } from '@/lib/saveRow';
+import { safeNumber } from '@/lib/format';
 
 const FORM_STEPS = ['Dados', 'Acesso', 'Valores'];
-
-function safeNumber(val, fb = 0) {
-  if (val === null || val === undefined || val === '') return fb;
-  if (typeof val === 'number') return Number.isFinite(val) ? val : fb;
-  let normalized = String(val).replace(/[R$\s]/g, '');
-  if (normalized.includes(',') && normalized.includes('.')) {
-    normalized = normalized.lastIndexOf(',') > normalized.lastIndexOf('.')
-      ? normalized.replace(/\./g, '').replace(',', '.')
-      : normalized.replace(/,/g, '');
-  } else {
-    normalized = normalized.replace(',', '.');
-  }
-  if (!normalized) return fb;
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : fb;
-}
 
 const DEFAULT_CATEGORIES = [
   { id: 'medico', label: 'Médico(a)', council: 'CRM', isDefault: true },

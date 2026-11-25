@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { UFS, isValidCNPJ, isValidCPF, isValidPhone, maskCNPJ, maskCPF, maskPhone, onlyDigits } from '@/lib/brDocs';
 import { AlertCircle, ArrowLeft, ArrowRight, Check, CheckCircle2, Loader2, Plus, Search } from 'lucide-react';
 import { BrandAppIcon } from '@/components/BrandMark';
+import { normalize } from '@/lib/format';
 
 // Categoria → conselho, CBO sugerido e áreas mais comuns (o hospital pode ter outras).
 const CATEGORIES = [
@@ -61,7 +62,6 @@ function pixFrom(form, type) {
 const selectClass = 'h-11 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/40';
 const inputClass = 'h-11 rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-sm';
 
-const normalize = text => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 // Mesma área com outra terminação ("Cardiologista" × "Cardiologia", "Cirurgião" × "Cirurgia").
 const areaStem = text => normalize(text).split(/\s+/).map(w => w.replace(/(ista|iao|ia|ao|o|a)$/, '')).join(' ');
 

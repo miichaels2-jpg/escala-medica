@@ -2,7 +2,7 @@ import { useLocation } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useQuery } from '@tanstack/react-query';
 
-export default function PageNotFound({}) {
+export default function PageNotFound() {
     const location = useLocation();
     const pageName = location.pathname.substring(1);
 
@@ -13,7 +13,7 @@ export default function PageNotFound({}) {
                 const { data: { user }, error } = await supabase.auth.getUser();
                 if (error || !user) return { user: null, isAuthenticated: false };
                 return { user, isAuthenticated: true };
-            } catch (error) {
+            } catch {
                 return { user: null, isAuthenticated: false };
             }
         }
@@ -35,7 +35,7 @@ export default function PageNotFound({}) {
                             Página não encontrada
                         </h2>
                         <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                            A página <span className="font-bold text-slate-700 dark:text-slate-200">"{pageName || 'inicial'}"</span> não foi encontrada neste aplicativo.
+                            A página <span className="font-bold text-slate-700 dark:text-slate-200">“{pageName || 'inicial'}”</span> não foi encontrada neste aplicativo.
                         </p>
                     </div>
 

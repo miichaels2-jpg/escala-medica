@@ -7,8 +7,8 @@ const CHECK_EVERY_MS = 5 * 60 * 1000;
 const LAST_RUN_KEY = 'scale_urgent_alerts_last_run';
 let running = false;
 
-function formatDateBR(value) {
-  const [y, m, d] = String(value || '').slice(0, 10).split('-');
+function formatDayMonth(value) {
+  const [, m, d] = String(value || '').slice(0, 10).split('-');
   return d ? `${d}/${m}` : '';
 }
 
@@ -44,7 +44,7 @@ export function useUrgentVacancyAlerts({ enabled, companyId, shifts, professiona
           type: 'lembrete_plantao',
           category: 'escala',
           title: `${kind === '1h' ? 'Seu plantão começa em 1 hora' : 'Lembrete: plantão nas próximas 12 h'}`,
-          message: `${sectorName(shift.sector_id)}${unitName(shift.unit_id) ? ` · ${unitName(shift.unit_id)}` : ''} · ${formatDateBR(shift.date)} ${shift.start_time}–${shift.end_time}`,
+          message: `${sectorName(shift.sector_id)}${unitName(shift.unit_id) ? ` · ${unitName(shift.unit_id)}` : ''} · ${formatDayMonth(shift.date)} ${shift.start_time}–${shift.end_time}`,
           data: { shift_id: shift.id, date: shift.date },
           dedupe_key: key
         })));
@@ -55,7 +55,7 @@ export function useUrgentVacancyAlerts({ enabled, companyId, shifts, professiona
           unit_id: shift.unit_id,
           type: 'vaga_urgente',
           category: 'vaga',
-          title: `Vaga urgente: ${sectorName(shift.sector_id)} ${formatDateBR(shift.date)} ${shift.start_time}`,
+          title: `Vaga urgente: ${sectorName(shift.sector_id)} ${formatDayMonth(shift.date)} ${shift.start_time}`,
           message: `${unitName(shift.unit_id) ? `${unitName(shift.unit_id)} · ` : ''}${shift.start_time}–${shift.end_time} · ${urgency.label}. Abra o Mural para assumir.`,
           data: { shift_id: shift.id, date: shift.date },
           dedupe_key: urgentAlertKey(shift, professional)

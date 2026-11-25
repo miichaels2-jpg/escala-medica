@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.6.10 — 25/11/2026
+
+Organização do código (nada muda na tela, exceto a correção abaixo):
+
+- **Corpo Clínico lia "12.500" como R$ 12,50**: a tela tinha uma cópia antiga da leitura de valores que não entendia
+  ponto de milhar (o Faturamento lia certo, R$ 12.500). Agora todas as telas usam a mesma leitura.
+- Funções que existiam em várias cópias (datas, valores em R$, texto sem acento; até 6 cópias da mesma) ficam num só
+  lugar, `src/lib/format.js`, com testes. −119 linhas.
+- O verificador de código passa a olhar também `src/lib` (regras de negócio, cálculos, permissões), que antes ficava de
+  fora: zero erros e zero avisos no projeto todo.
+- Planilha do fechamento: total de descontos arredondado a centavos dentro da célula.
+
 ## V0.6.9 — 25/11/2026
 
 Limpeza (nada muda para quem usa):

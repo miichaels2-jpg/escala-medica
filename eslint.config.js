@@ -7,7 +7,7 @@ import pluginUnusedImports from "eslint-plugin-unused-imports";
 export default [
   // 1. Pastas ignoradas globalmente
   {
-    ignores: ["src/lib/**/*", "src/components/ui/**/*", "dist/**/*", "node_modules/**/*"],
+    ignores: ["src/components/ui/**/*", "dist/**/*", "node_modules/**/*"],
   },
 
   // Scripts de apoio (gravação dos tutoriais) rodam no Node.

@@ -1,16 +1,11 @@
 // Formatação, cálculos de período e catálogo dos relatórios (tela Relatórios).
 import { Activity, ArrowLeftRight, Building2, CalendarDays, Contact2, DollarSign, Gift, ShieldCheck, Stethoscope, Users } from 'lucide-react';
-import { DEFAULT_REMUNERATION_TYPE, getProfessionalFinancialMeta, getShiftDurationHours, safeFinancialNumber } from '@/lib/financialCalculations';
+import { DEFAULT_REMUNERATION_TYPE, getProfessionalFinancialMeta, getShiftDurationHours } from '@/lib/financialCalculations';
 import { isShiftVacant } from '@/lib/shiftLiveStatus';
+import { formatCurrency, formatDateOrDash as formatDate, normalize, safeNumber } from '@/lib/format';
+
+export { formatCurrency, formatDate, normalize, safeNumber };
 export { isCredentialExpired, parseLocalDate } from '@/lib/dates';
-
-export function safeNumber(value, fallback = 0) {
-  return safeFinancialNumber(value, fallback);
-}
-
-export function formatCurrency(value) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(safeNumber(value));
-}
 
 export function formatUnitRate(value) {
   return new Intl.NumberFormat('pt-BR', {
@@ -23,18 +18,6 @@ export function formatUnitRate(value) {
 
 export function formatNumber(value) {
   return new Intl.NumberFormat('pt-BR').format(safeNumber(value));
-}
-
-export function formatDate(value) {
-  if (!value) return '—';
-  const clean = String(value).split('T')[0];
-  const parts = clean.split('-');
-  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
-  return clean;
-}
-
-export function normalize(value) {
-  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
 // Seções do relatório impresso, no mesmo estilo do modelo único (src/lib/printLayout.js).

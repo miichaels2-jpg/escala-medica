@@ -6,20 +6,12 @@ import PushToggle from '@/components/PushToggle';
 import { fetchMyNotifications, markNotificationsRead } from '@/lib/notifications';
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { getProfessionalUnitIds, isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
+import { formatDateBR, normalize } from '@/lib/format';
 
 const READ_VACANCIES_KEY = 'scale_read_notifs';
 const REFRESH_MS = 60_000;
 // Gestor recebe aviso só das vagas próximas; a lista completa fica no Painel e em Escalas.
 const MANAGER_VACANCY_WINDOW_MS = 72 * 60 * 60 * 1000;
-
-function normalize(value) {
-  return String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-}
-
-function formatDateBR(value) {
-  const [y, m, d] = String(value || '').slice(0, 10).split('-');
-  return d ? `${d}/${m}/${y}` : '';
-}
 
 function timeAgo(value) {
   const diffMin = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000));

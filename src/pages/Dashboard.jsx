@@ -12,18 +12,12 @@ import { Minimize2, AlertTriangle, CheckCircle2,
 import { useNavigate } from 'react-router-dom';
 import UnitsOverview, { ALL_UNITS, requestUnitSwitch } from '@/components/UnitsOverview';
 import { getProfessionalUnitIds } from '@/lib/sectorAccess';
+import { getLocalDateString } from '@/lib/format';
 
 
 const WEEKDAYS_LONG = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-
-function getLocalDateString(d = new Date()) {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
 
 function fmtDate(dateStr) {
   if (!dateStr) return '';

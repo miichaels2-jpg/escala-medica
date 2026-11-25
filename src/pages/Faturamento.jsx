@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useAppData } from '@/lib/useAppData';
-import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, safeFinancialNumber } from '@/lib/financialCalculations';
+import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate } from '@/lib/financialCalculations';
 import { calculateProductivityPoolAllocations } from '@/lib/productivityCalculations';
 import { supabase } from '@/lib/supabase';
 import { escapeHtml } from '@/lib/printBranding';
@@ -13,14 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { 
   Search, Receipt, Send, ChevronLeft, ChevronRight, FileText, Printer, Download, AlertTriangle, CheckCircle2
 } from 'lucide-react';
-
-function safeNumber(val, fb = 0) {
-  return safeFinancialNumber(val, fb);
-}
-
-function formatCurrency(val) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(safeNumber(val));
-}
+import { formatCurrency, formatDateOrDash, getLocalDateString, safeNumber } from '@/lib/format';
 
 function roundCurrency(val) {
   return Math.round((safeNumber(val) + Number.EPSILON) * 100) / 100;
@@ -30,19 +23,6 @@ const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
-
-function getLocalDateString(d = new Date()) {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function formatDateBR(dateValue) {
-  if (!dateValue) return '—';
-  const parts = String(dateValue).split('T')[0].split('-');
-  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(dateValue);
-}
 
 function normalizeText(value) {
   return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -465,7 +445,7 @@ export default function Faturamento() {
         const rowDate = getSpreadsheetDate(getSpreadsheetCellValue(row.getCell(columns.date)), '');
         const dayProfessionals = byDate.get(rowDate);
         if (!dayProfessionals) {
-          errors.push(`${name}: a data ${formatDateBR(rowDate) || '(vazia)'} não tem plantão de produtividade nesta competência.`);
+          errors.push(`${name}: a data ${formatDateOrDash(rowDate) || '(vazia)'} não tem plantão de produtividade nesta competência.`);
           return;
         }
         const idValue = columns.professionalId
@@ -478,16 +458,16 @@ export default function Faturamento() {
           if (matches.length > 1) errors.push(`${name}: nome duplicado; inclua o ID PROFISSIONAL.`);
         }
         if (!professional) {
-          errors.push(`${name}: não está escalado(a) em ${formatDateBR(rowDate)}.`);
+          errors.push(`${name}: não está escalado(a) em ${formatDateOrDash(rowDate)}.`);
           return;
         }
         if (!/^\d+$/.test(countString) || !Number.isSafeInteger(Number(countString))) {
-          errors.push(`${name} (${formatDateBR(rowDate)}): quantidade de atendimentos inválida.`);
+          errors.push(`${name} (${formatDateOrDash(rowDate)}): quantidade de atendimentos inválida.`);
           return;
         }
         const key = productionKey(rowDate, professional.id);
         if (Object.prototype.hasOwnProperty.call(imported, key)) {
-          errors.push(`${name} (${formatDateBR(rowDate)}): linha repetida no arquivo.`);
+          errors.push(`${name} (${formatDateOrDash(rowDate)}): linha repetida no arquivo.`);
           return;
         }
         imported[key] = countString;
@@ -519,7 +499,7 @@ export default function Faturamento() {
       const raw = String(productionDraft[productionKey(day.date, professional.id)] ?? '').trim();
       if (raw === '') return;
       if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
-        invalid.push(`${formatDateBR(day.date)} · ${professional.name}`);
+        invalid.push(`${formatDateOrDash(day.date)} · ${professional.name}`);
         return;
       }
       if (stored !== null && Number(raw) === stored) return;
@@ -886,7 +866,7 @@ export default function Faturamento() {
               attendance: filteredTotals.atendimentos,
               hours: filteredTotals.horas,
               gross: filteredTotals.bruto,
-              discount: filteredTotals.bruto - filteredTotals.liquido,
+              discount: Math.round((filteredTotals.bruto - filteredTotals.liquido) * 100) / 100,
               net: filteredTotals.liquido
             }
           },
@@ -1506,7 +1486,7 @@ export default function Faturamento() {
                           inputMode="numeric"
                           value={productionDraft[key] ?? ''}
                           onChange={event => setProductionDraft(previous => ({ ...previous, [key]: event.target.value }))}
-                          aria-label={`Atendimentos de ${professional.name} em ${formatDateBR(day.date)}`}
+                          aria-label={`Atendimentos de ${professional.name} em ${formatDateOrDash(day.date)}`}
                           placeholder="—"
                           className="h-9 text-right tabular-nums"
                         />
