@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { clearStoredSession } from '@/lib/authSession';
 
 export default function AutoLogout({ timeoutMinutes = 60 }) {
   useEffect(() => {
@@ -16,11 +17,8 @@ export default function AutoLogout({ timeoutMinutes = 60 }) {
         console.error('Erro ao encerrar sessão no Supabase:', err);
       }
 
-      // 2. Encerra apenas a sessão. Não usar localStorage.clear(): ele apagaria
-      // também as escalas publicadas, os status de pagamento e as preferências
-      // gravadas neste navegador.
-      window.localStorage.removeItem('scale_logged_user');
-      window.localStorage.removeItem('escala_medica_session');
+      // 2. Encerra apenas a sessão neste navegador.
+      clearStoredSession();
       
       // 3. Força um reload completo da página para redirecionar ao login
       window.location.href = '/login';

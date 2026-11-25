@@ -1,7 +1,8 @@
 // Exportar para Excel e imprimir os relatórios (tela Relatórios).
 import { DEFAULT_REMUNERATION_TYPE } from '@/lib/financialCalculations';
-import { REPORT_PRINT_CSS, REPORT_TITLES, formatCurrency, formatDate, formatNumber, formatUnitRate, getProductivityDayStatus, getProfessionalRemuneration, getSectorName, getShiftHours, getShiftName, isShiftPast, isVacant, titleCase } from '@/lib/reportUtils';
+import { REPORT_PRINT_CSS, REPORT_TITLES, formatCurrency, formatDate, formatNumber, formatUnitRate, getProductivityDayStatus, isCredentialExpired, getProfessionalRemuneration, getSectorName, getShiftHours, getShiftName, isShiftPast, isVacant, titleCase } from '@/lib/reportUtils';
 import { buildPrintDocument, openPrintWindow, printHeader, printLogos } from '@/lib/printLayout';
+import { escapeHtml } from '@/lib/printBranding';
 
 // Planilha .xlsx no modelo único (src/lib/excelLayout.js): uma aba por relatório.
 export async function exportReportExcel(requestedMode, { activeTab, appliedFilters, birthDaysList, company, coverageRate, credentialAudit, currentUnitObj, enrichedSectors, filledShiftsCount, filterSummary, filteredProfessionals, filteredShifts, financialSummary, hasSearched, hospitalName, periodLabel, productivityProfessionalReportReady, productivityReport, professionalMetrics, reliabilityRows = [], sectorMetrics, sectors, selectedProductivityRows, selectedProductivitySummary, selectedUnitId, shiftCost, swapsList, totalShiftsCount, vacantShiftItems = [] }) {
@@ -23,7 +24,7 @@ export async function exportReportExcel(requestedMode, { activeTab, appliedFilte
     const sheet = (name, title, blocks, extra = {}) => addSheet(book, { name, orgName: hospitalName, title, subtitle: periodLabel, meta: [['Filtros', filterSummary]], blocks, ...extra });
     const sector = s => getSectorName(s, sectors);
     const hoursRange = s => `${s.start_time || ''} às ${s.end_time || ''}`;
-    const isExpired = date => Boolean(date) && new Date(date) < new Date();
+    const isExpired = isCredentialExpired;
 
     if (wants('executivo')) {
       sheet('Resumo', REPORT_TITLES.executivo, [
@@ -409,9 +410,9 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
         const isPast = isShiftPast(v);
         printHtml += `
           <tr>
-            <td class="font-bold">${formatDate(v.date)}</td>
-            <td>${getSectorName(v, sectors)}</td>
-            <td class="text-center font-bold">${v.start_time} - ${v.end_time}</td>
+            <td class="font-bold">${escapeHtml(formatDate(v.date))}</td>
+            <td>${escapeHtml(getSectorName(v, sectors))}</td>
+            <td class="text-center font-bold">${escapeHtml(v.start_time)} - ${escapeHtml(v.end_time)}</td>
             <td class="text-center ${isPast ? 'furo' : 'vago'}">${isPast ? 'NÃO OCUPADO (FALTA)' : 'VAGA PENDENTE'}</td>
           </tr>
         `;
@@ -449,11 +450,11 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
 
       printHtml += `
         <tr>
-          <td class="font-bold">${formatDate(s.date)}</td>
-          <td>${getSectorName(s, sectors)}</td>
-          <td class="${rowClass}">${profName}</td>
-          <td class="text-center font-bold">${s.start_time} - ${s.end_time}</td>
-          <td class="text-center ${rowClass}">${badgeText.toUpperCase()}</td>
+          <td class="font-bold">${escapeHtml(formatDate(s.date))}</td>
+          <td>${escapeHtml(getSectorName(s, sectors))}</td>
+          <td class="${rowClass}">${escapeHtml(profName)}</td>
+          <td class="text-center font-bold">${escapeHtml(s.start_time)} - ${escapeHtml(s.end_time)}</td>
+          <td class="text-center ${rowClass}">${escapeHtml(badgeText.toUpperCase())}</td>
         </tr>
       `;
     });
@@ -482,12 +483,12 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
       swapsList.forEach(s => {
         printHtml += `
           <tr>
-            <td class="font-bold">${formatDate(s.date)}</td>
-            <td>${getSectorName(s, sectors)}</td>
-            <td class="text-center font-bold">${s.start_time} - ${s.end_time}</td>
-            <td style="color:#be123c; font-weight:bold;">${s.requester}</td>
-            <td style="color:#059669; font-weight:bold;">${s.currentProf}</td>
-            <td class="text-center font-bold">${s.swapStatus}</td>
+            <td class="font-bold">${escapeHtml(formatDate(s.date))}</td>
+            <td>${escapeHtml(getSectorName(s, sectors))}</td>
+            <td class="text-center font-bold">${escapeHtml(s.start_time)} - ${escapeHtml(s.end_time)}</td>
+            <td style="color:#be123c; font-weight:bold;">${escapeHtml(s.requester)}</td>
+            <td style="color:#059669; font-weight:bold;">${escapeHtml(s.currentProf)}</td>
+            <td class="text-center font-bold">${escapeHtml(s.swapStatus)}</td>
           </tr>
         `;
       });
@@ -513,9 +514,9 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
     enrichedSectors.forEach(s => {
       printHtml += `
         <tr>
-          <td class="font-bold">${titleCase(s.name)}</td>
-          <td>${s.specialty || 'Não def.'}</td>
-          <td>${(s.status || 'Ativo').toUpperCase()}</td>
+          <td class="font-bold">${escapeHtml(titleCase(s.name))}</td>
+          <td>${escapeHtml(s.specialty || 'Não def.')}</td>
+          <td>${escapeHtml((s.status || 'Ativo').toUpperCase())}</td>
           <td class="text-center">${s.shiftsCount}</td>
           <td class="text-right font-bold">${formatCurrency(s.totalCost)}</td>
         </tr>
@@ -532,7 +533,7 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
           <tr>
             <th>Nome Completo</th>
             <th>Especialidade</th>
-            <th>Remuneração (${hospitalName})</th>
+            <th>Remuneração (${escapeHtml(hospitalName)})</th>
             <th>Documento (CRM)</th>
             <th>Vencimento Doc.</th>
             <th class="text-center">Status</th>
@@ -542,15 +543,15 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
     `;
     filteredProfessionals.forEach(p => {
       const expiryDate = p.document_expiry || p.documentExpiry || p.valid_until;
-      const isExpired = expiryDate && new Date(expiryDate) < new Date();
+      const isExpired = isCredentialExpired(expiryDate);
       printHtml += `
         <tr>
-          <td class="font-bold">${titleCase(p.name)}</td>
-          <td>${p.specialty}</td>
-          <td>${getProfessionalRemuneration(p, selectedUnitId)}</td>
-          <td>${p.document || '—'}</td>
-          <td class="${isExpired ? 'furo' : ''}">${formatDate(expiryDate)}</td>
-          <td class="text-center">${(p.status || 'Ativo').toUpperCase()}</td>
+          <td class="font-bold">${escapeHtml(titleCase(p.name))}</td>
+          <td>${escapeHtml(p.specialty)}</td>
+          <td>${escapeHtml(getProfessionalRemuneration(p, selectedUnitId))}</td>
+          <td>${escapeHtml(p.document || '—')}</td>
+          <td class="${isExpired ? 'furo' : ''}">${escapeHtml(formatDate(expiryDate))}</td>
+          <td class="text-center">${escapeHtml((p.status || 'Ativo').toUpperCase())}</td>
         </tr>
       `;
     });
@@ -577,10 +578,10 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
       birthDaysList.forEach(p => {
         printHtml += `
           <tr>
-            <td class="text-center font-bold" style="font-size: 14px;">Dia ${p.birthDateFormatted}</td>
-            <td class="font-bold" style="font-size: 14px;">${titleCase(p.name)}</td>
+            <td class="text-center font-bold" style="font-size: 14px;">Dia ${escapeHtml(p.birthDateFormatted)}</td>
+            <td class="font-bold" style="font-size: 14px;">${escapeHtml(titleCase(p.name))}</td>
             <td class="text-center">${p.ageTurns} anos</td>
-            <td>${p.specialty || 'Geral'}</td>
+            <td>${escapeHtml(p.specialty || 'Geral')}</td>
           </tr>
         `;
       });
@@ -606,8 +607,8 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
     professionalMetrics.forEach(doc => {
       printHtml += `
         <tr>
-          <td class="font-bold">${doc.name}</td>
-          <td>${doc.specialty}</td>
+          <td class="font-bold">${escapeHtml(doc.name)}</td>
+          <td>${escapeHtml(doc.specialty)}</td>
           <td class="text-center font-bold">${doc.shifts}</td>
           <td class="text-center">${doc.hours}h</td>
           <td class="text-right font-bold">${formatCurrency(doc.cost)}</td>
@@ -622,8 +623,8 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
       <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Apuração diária de produtividade</div>
       <p style="font-size:9px; color:#475569; margin-bottom:10px;">
         ${productivityReport.available
-          ? `Unidade da regra: ${hospitalName} · Pool configurado: ${formatCurrency(productivityReport.dailyPool)} por dia. Cada diária é rateada proporcionalmente aos atendimentos cadastrados para profissionais com remuneração por produtividade. Dias pendentes não compõem o total rateado.`
-          : productivityReport.error || `A regra de produtividade não está configurada para a unidade selecionada (${hospitalName}); não há valores apurados neste relatório.`}
+          ? `Unidade da regra: ${escapeHtml(hospitalName)} · Pool configurado: ${formatCurrency(productivityReport.dailyPool)} por dia. Cada diária é rateada proporcionalmente aos atendimentos cadastrados para profissionais com remuneração por produtividade. Dias pendentes não compõem o total rateado.`
+          : escapeHtml(productivityReport.error) || `A regra de produtividade não está configurada para a unidade selecionada (${escapeHtml(hospitalName)}); não há valores apurados neste relatório.`}
       </p>
       <div class="grid-cards">
         <div class="grid-card"><div class="card-title">Atendimentos em dias fechados</div><div class="card-value">${productivityReport.available ? formatNumber(productivityReport.totals.attendance) : '—'}</div></div>
@@ -636,7 +637,7 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
         <tbody>
           ${productivityReport.days.map(day => `
             <tr>
-              <td class="font-semibold">${formatDate(day.date)}</td>
+              <td class="font-semibold">${escapeHtml(formatDate(day.date))}</td>
               <td class="text-center">${day.complete ? formatNumber(day.totalAttendance) : 'Pendente'}</td>
               <td class="text-center">${day.items.reduce((sum, item) => sum + item.shifts, 0)}</td>
               <td class="text-right font-semibold">${day.complete ? formatCurrency(day.totalAttendance > 0 ? day.poolAmount : 0) : '—'}</td>
@@ -652,10 +653,10 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
         <tbody>
           ${productivityReport.rows.map(row => `
             <tr>
-              <td class="font-semibold">${formatDate(row.date)}</td>
-              <td>${titleCase(row.professional.name)}</td>
-              <td>${row.professional.specialty || '—'}</td>
-              <td>${row.sectors}</td>
+              <td class="font-semibold">${escapeHtml(formatDate(row.date))}</td>
+              <td>${escapeHtml(titleCase(row.professional.name))}</td>
+              <td>${escapeHtml(row.professional.specialty || '—')}</td>
+              <td>${escapeHtml(row.sectors)}</td>
               <td class="text-center">${row.shifts}</td>
               <td class="text-center">${row.complete ? formatNumber(productivityReport.days.find(day => day.date === row.date)?.totalAttendance) : 'Pendente'}</td>
               <td class="text-center">${row.attendance ?? 'Não lançado'}</td>
@@ -673,8 +674,8 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
         <tbody>
           ${productivityReport.professionalTotals.map(item => `
             <tr>
-              <td class="font-semibold">${titleCase(item.professional.name)}</td>
-              <td>${item.professional.specialty || '—'}</td>
+              <td class="font-semibold">${escapeHtml(titleCase(item.professional.name))}</td>
+              <td>${escapeHtml(item.professional.specialty || '—')}</td>
               <td class="text-center">${item.shifts}</td>
               <td class="text-center">${formatNumber(item.attendance)}</td>
               <td class="text-right font-semibold">${formatCurrency(item.amount)}</td>
@@ -691,9 +692,9 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
     printHtml += `
       <div class="section-title ${mode === 'all' ? 'break-before' : 'break-inside-avoid'}">Extrato individual de produtividade</div>
       <p style="font-size:10px; font-weight:bold; margin-bottom:5px;">
-        Profissional: ${titleCase(selectedProductivitySummary.professional.name)}
-        · Especialidade: ${selectedProductivitySummary.professional.specialty || 'Não informada'}
-        · Unidade: ${hospitalName}
+        Profissional: ${escapeHtml(titleCase(selectedProductivitySummary.professional.name))}
+        · Especialidade: ${escapeHtml(selectedProductivitySummary.professional.specialty || 'Não informada')}
+        · Unidade: ${escapeHtml(hospitalName)}
       </p>
       <p style="font-size:9px; color:#475569; margin-bottom:12px;">
         Pool diário configurado: ${formatCurrency(productivityReport.dailyPool)}.
@@ -714,14 +715,14 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
             const day = productivityReport.days.find(item => item.date === row.date);
             return `
               <tr>
-                <td class="font-semibold">${formatDate(row.date)}</td>
-                <td>${row.sectors}</td>
+                <td class="font-semibold">${escapeHtml(formatDate(row.date))}</td>
+                <td>${escapeHtml(row.sectors)}</td>
                 <td class="text-center">${row.shifts}</td>
                 <td class="text-center">${row.attendance ?? 'Não lançado'}</td>
                 <td class="text-center">${row.complete ? formatNumber(day?.totalAttendance) : 'Pendente'}</td>
                 <td class="text-right">${row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
                 <td class="text-right font-semibold">${row.complete ? formatCurrency(row.amount) : '—'}</td>
-                <td>${row.complete ? 'Rateado' : `Pendente · ${row.pendingReason}`}</td>
+                <td>${row.complete ? 'Rateado' : `Pendente · ${escapeHtml(row.pendingReason)}`}</td>
               </tr>
             `;
           }).join('')}
@@ -778,7 +779,7 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
     sectorMetrics.forEach(sec => {
       printHtml += `
         <tr>
-          <td class="font-bold">${sec.name}</td>
+          <td class="font-bold">${escapeHtml(sec.name)}</td>
           <td class="text-center">${sec.hours}h</td>
           <td class="text-right font-bold">${formatCurrency(sec.cost)}</td>
         </tr>
@@ -788,7 +789,7 @@ export function printReport(requestedMode, { activeTab, birthDaysList, company, 
   }
 
   const html = buildPrintDocument({
-    docTitle: `${REPORT_TITLES[activeTab] || 'Relatório'} · ${hospitalName}`,
+    docTitle: `${REPORT_TITLES[activeTab] || 'Relatório'} · ${escapeHtml(hospitalName)}`,
     orientation: ['produtividade_diaria', 'produtividade_profissional'].includes(activeTab) ? 'landscape' : 'portrait',
     issuedBy: user?.full_name || '',
     css: REPORT_PRINT_CSS,

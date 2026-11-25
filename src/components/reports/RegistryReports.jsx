@@ -1,7 +1,7 @@
 // Bases de setores e profissionais, aniversariantes e produção por profissional.
 import { Building2, Contact2, Gift, Stethoscope } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { formatCurrency, formatDate, getProfessionalRemuneration, normalize, titleCase } from '@/lib/reportUtils';
+import { formatCurrency, formatDate, getProfessionalRemuneration, isCredentialExpired, normalize, titleCase } from '@/lib/reportUtils';
 
 export default function RegistryReports({ activeTab, birthDaysList, enrichedSectors, filteredProfessionals, hospitalName, professionalMetrics, selectedUnitId }) {
   return (
@@ -71,7 +71,7 @@ export default function RegistryReports({ activeTab, birthDaysList, enrichedSect
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                 {filteredProfessionals.map((p, idx) => {
                   const expiryDate = p.document_expiry || p.documentExpiry || p.valid_until;
-                  const isExpired = expiryDate && new Date(expiryDate) < new Date();
+                  const isExpired = isCredentialExpired(expiryDate);
                   return (
                     <tr key={p.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
                       <td className="py-3 px-3 font-medium text-slate-900 dark:text-white">{titleCase(p.name)}</td>

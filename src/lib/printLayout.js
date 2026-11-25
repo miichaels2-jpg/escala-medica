@@ -4,7 +4,8 @@ import { escapeHtml, getCompanyLogoUrl, getUnitLogoUrl, PRINT_WHEN_IMAGES_READY_
 
 // Texto dentro de content: "..." no CSS (o rodapé da página).
 export function cssString(value) {
-  return `"${String(value ?? '').replace(/[\\"]/g, '\\$&').replace(/[\r\n]+/g, ' ')}"`;
+  // "<" vira \3c: um nome como "</style><script>" não sai do bloco de estilo.
+  return `"${String(value ?? '').replace(/[\\"]/g, '\\$&').replace(/</g, '\\3c ').replace(/[\r\n]+/g, ' ')}"`;
 }
 
 // Logo da empresa e logo da unidade, lado a lado (a unidade pode ter as duas).

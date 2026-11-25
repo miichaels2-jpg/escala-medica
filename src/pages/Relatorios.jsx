@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Printer as PrinterIcon, FileSpreadsheet, RotateCcw, Search } from 'lucide-react';
-import { safeNumber, formatCurrency, formatDate, normalize, countLabel, titleCase, getShiftName, getSectorName, isVacant, roundHours, isShiftPast, getShiftHours, getProfessionalMeta, getStoredProductivityAttendance, isMonthlyType, isProductivityType, getRemunerationType, monthDaysInPeriod, monthsInPeriod, getLocalDateInputValue, REPORT_NAVIGATION, REPORT_GROUPS, REPORTS_WITH_STATUS_FILTER, PERIODS, periodRange } from '@/lib/reportUtils';
+import { parseLocalDate, safeNumber, formatCurrency, formatDate, normalize, countLabel, titleCase, getShiftName, getSectorName, isVacant, roundHours, isShiftPast, getShiftHours, getProfessionalMeta, getStoredProductivityAttendance, isMonthlyType, isProductivityType, getRemunerationType, monthDaysInPeriod, monthsInPeriod, getLocalDateInputValue, REPORT_NAVIGATION, REPORT_GROUPS, REPORTS_WITH_STATUS_FILTER, PERIODS, periodRange } from '@/lib/reportUtils';
 import { exportReportExcel, printReport } from '@/lib/reportExport';
 import OverviewReport from '@/components/reports/OverviewReport';
 import ScheduleReports from '@/components/reports/ScheduleReports';
@@ -627,8 +627,8 @@ export default function Relatorios() {
     filteredProfessionals.forEach(p => {
       const expiry = p.document_expiry || p.documentExpiry || p.valid_until || '';
       if (!expiry) { missing += 1; return; }
-      const expiryDate = new Date(expiry);
-      if (Number.isNaN(expiryDate.getTime())) { missing += 1; return; }
+      const expiryDate = parseLocalDate(expiry);
+      if (!expiryDate) { missing += 1; return; }
       
       expiryDate.setHours(0, 0, 0, 0);
       const diffDays = Math.round((expiryDate.getTime() - todayObj.getTime()) / (1000 * 60 * 60 * 24));

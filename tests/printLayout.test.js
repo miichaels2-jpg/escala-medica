@@ -40,3 +40,10 @@ test('nome curto para a escala', () => {
   assert.equal(shortPersonName('João Cândido Teixeira Almeida Jr'), 'João Almeida');
   assert.equal(shortPersonName('Ana'), 'Ana');
 });
+
+test('rodapé: nome com "<" não sai do bloco de estilo', () => {
+  const css = cssString('</style><script>alert(1)</script>');
+  assert.ok(!css.includes('<'));
+  const html = buildPrintDocument({ issuedBy: '</style><script>alert(1)</script>', body: '' });
+  assert.ok(!html.includes('<script>alert(1)'));
+});

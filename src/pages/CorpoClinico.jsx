@@ -184,24 +184,16 @@ export default function CorpoClinico() {
     coop_tax_rate: 0, pix_type: 'CPF',
     pix_key: '', bank_info: '', password: '',
     receipt_type: 'pf', cnpj: '', legal_name: '',
-    document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
+    document_expiry: '', // vazio até alguém conferir a credencial
     authorized_sectors: [],
     allowed_unit_ids: [] 
   });
 
   function getProfMeta(prof) {
     if (!prof) return {};
-    let localMeta = {};
-    try {
-      const stored = window.localStorage.getItem(`prof_meta_${prof.id}`);
-      const parsed = stored ? JSON.parse(stored) : null;
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) localMeta = parsed;
-    } catch (error) {
-      console.warn(`Não foi possível carregar os dados locais do profissional ${prof.id}:`, error);
-    }
     const serverMeta = [prof.data, prof.metadata]
       .filter(source => source && typeof source === 'object' && !Array.isArray(source));
-    return Object.assign({}, localMeta, ...serverMeta);
+    return Object.assign({}, ...serverMeta);
   }
 
   const resetForm = () => {
@@ -216,7 +208,7 @@ export default function CorpoClinico() {
       coop_tax_rate: 0, pix_type: 'CPF',
       pix_key: '', bank_info: '', password: '',
       receipt_type: 'pf', cnpj: '', legal_name: '',
-      document_expiry: new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
+      document_expiry: '', // vazio até alguém conferir a credencial
       authorized_sectors: (allCompanySectors || []).map(s => String(s.id)),
       allowed_unit_ids: [String(selectedUnitId || units[0]?.id || 'unit_h1')] 
     });
@@ -230,7 +222,8 @@ export default function CorpoClinico() {
     setEditingProf(prof);
     const meta = getProfMeta(prof);
     const generatedMatricula = meta.registration_id || prof.registration_id || `MAT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-    const expiry = prof.document_expiry || meta.document_expiry || new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0];
+    // Sem validade cadastrada fica vazio: antes inventava "daqui a 180 dias" e salvava.
+    const expiry = prof.document_expiry || meta.document_expiry || '';
     const authSectors = authorizedSectorIdsFor({ data: meta }, allCompanySectors || []);
     const profStatus = prof.status || meta.status || 'ativo';
 
@@ -350,8 +343,6 @@ export default function CorpoClinico() {
       const payload = { status: nextStatus };
       await autoHealingSave(prof.id, payload);
       
-      const updatedMeta = { ...meta, status: nextStatus };
-      try { window.localStorage.setItem(`prof_meta_${prof.id}`, JSON.stringify(updatedMeta)); } catch {}
 
       await syncGlobalData();
     } catch (err) {
@@ -766,14 +757,7 @@ export default function CorpoClinico() {
       let updatedRows = [...importRows];
       for (const row of readyRows) {
         try {
-          const saved = await autoHealingSave(null, row.payload);
-          if (saved?.id) {
-            try {
-              window.localStorage.setItem(`prof_meta_${saved.id}`, JSON.stringify(row.richMeta));
-            } catch (error) {
-              console.warn('Não foi possível salvar os metadados locais do profissional importado:', error);
-            }
-          }
+          await autoHealingSave(null, row.payload);
           updatedRows = updatedRows.map(item => item.lineNumber === row.lineNumber ? { ...item, imported: true, importError: '' } : item);
           setImportRows(updatedRows);
         } catch (error) {
@@ -915,13 +899,6 @@ export default function CorpoClinico() {
       let savedProf = await autoHealingSave(editingProf?.id, profPayload);
       const savedProfId = savedProf?.id || editingProf?.id;
 
-      if (savedProfId) {
-        try {
-          window.localStorage.setItem(`prof_meta_${savedProfId}`, JSON.stringify(richMeta));
-        } catch (error) {
-          console.warn('Não foi possível salvar os metadados locais do profissional:', error);
-        }
-      }
 
       const userDataPayload = {
         company_id: company?.id || 'cmp_principal',
