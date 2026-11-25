@@ -9,6 +9,21 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.6.6 — 24/11/2026
+
+- **Planilhas Excel de verdade (.xlsx)** no Fechamento de honorários e em todos os Relatórios, no mesmo padrão dos
+  impressos: logos da empresa e da unidade, unidade, título, período e data de emissão no topo; valores em R$, horas e
+  datas como números (dá para somar e filtrar); cabeçalho da tabela fixo e com filtro; linhas alternadas; totais; cor só
+  para situação (pago, pendente, furo, vaga). Prontas para imprimir direto do Excel: A4, cabem na largura da folha,
+  cabeçalho repetido em cada página e “Página X de Y” no rodapé. Antes eram páginas da web com extensão .xls, que o
+  Excel abria com aviso e com valores como texto.
+- Relatórios › Visão geral exporta uma aba por relatório (12 abas), incluindo **Resumo executivo** e
+  **Confiabilidade**, que antes saíam vazias na planilha.
+- Modelos de importação (Corpo Clínico e Atendimentos) com o mesmo visual de cabeçalho; as colunas não mudaram.
+- **Escala no modo claro**: as janelas Montar escala, Lançar/editar plantão, Plantões antigos, Alocação em lote,
+  Copiar mês e Publicar ficavam escuras mesmo no tema claro. Agora seguem o tema; o modo escuro não mudou.
+- Manuais de treinamento: fotos dessas janelas refeitas no tema claro e dica da planilha nova em Relatórios.
+
 ## V0.6.5 — 24/11/2026
 
 - **Material de treinamento** (nova tela, só para o dono da plataforma): 11 manuais em PDF, um por assunto, e o

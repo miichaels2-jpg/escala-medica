@@ -66,6 +66,7 @@ export default {
           'Use a **Busca** para achar um profissional ou setor.',
           'Clique em `Exportar para Excel` ou `Imprimir / salvar PDF`. No PDF, escolha “Salvar como PDF” na janela de impressão para guardar o arquivo.'
         ] },
+        { dica: 'A planilha já vem pronta para trabalhar: valores em R$, horas e datas como números (dá para somar e filtrar), filtro e cabeçalho fixo em cada tabela, e na `Visão geral` uma aba para cada relatório. Para imprimir direto do Excel, ela já cabe na largura da folha, com número de página no rodapé.' },
         { figura: 'relatorios-plantoes', legenda: 'Escalas › Plantões: o relatório de ocupação do período.', pontos: [] }
       ]
     }

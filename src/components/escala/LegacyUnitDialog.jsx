@@ -12,30 +12,30 @@ export default function LegacyUnitDialog({ handleAssignLegacyShiftUnit, legacyAs
       {/* 6A. PÓS-GERAÇÃO: CONFIRMAÇÃO PARA ALOCAÇÃO DOS PROFISSIONAIS            */}
       {/* ========================================================================= */}
       <Dialog open={legacyAssignmentOpen} onOpenChange={setLegacyAssignmentOpen}>
-        <DialogContent className="w-[96vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-950 border border-slate-800 text-white shadow-sm rounded-3xl p-5">
-          <DialogHeader className="border-b border-slate-800 pb-4">
-            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-amber-400">
+        <DialogContent className="w-[96vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-sm rounded-3xl p-5">
+          <DialogHeader className="border-b border-slate-200 dark:border-slate-800 pb-4">
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-amber-700 dark:text-amber-400">
               <AlertTriangle className="h-5 w-5" /> Conferir plantões sem unidade
             </DialogTitle>
-            <p className="pt-2 text-xs leading-relaxed text-slate-400">
+            <p className="pt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
               Escolha a unidade correta para cada registro. Nenhum valor é atribuído automaticamente quando a unidade não pode ser determinada com segurança.
             </p>
           </DialogHeader>
           <div className="space-y-3 py-3">
             {unassignedShifts.map(shift => (
-              <div key={shift.id} className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(180px,240px)_auto] sm:items-center">
+              <div key={shift.id} className="grid gap-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(180px,240px)_auto] sm:items-center">
                 <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-white">{sectorMap[String(shift.sector_id)]?.name || 'Setor não identificado'} · {formatDateBR(shift.date)}</p>
-                  <p className="mt-1 truncate text-[11px] text-slate-400">{shift.start_time || '07:00'}–{shift.end_time || '19:00'} · {professionalMap[String(shift.professional_id)]?.name || shift.professional_name || 'Sem profissional identificado'}</p>
+                  <p className="truncate text-xs font-semibold text-slate-900 dark:text-white">{sectorMap[String(shift.sector_id)]?.name || 'Setor não identificado'} · {formatDateBR(shift.date)}</p>
+                  <p className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400">{shift.start_time || '07:00'}–{shift.end_time || '19:00'} · {professionalMap[String(shift.professional_id)]?.name || shift.professional_name || 'Sem profissional identificado'}</p>
                 </div>
                 <Select
                   value={legacyUnitDrafts[String(shift.id)] || ''}
                   onValueChange={value => setLegacyUnitDrafts(prev => ({ ...prev, [String(shift.id)]: value }))}
                 >
-                  <SelectTrigger className="h-9 border-slate-700 bg-slate-950 text-xs text-white">
+                  <SelectTrigger className="h-9 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-xs text-slate-900 dark:text-white">
                     <SelectValue placeholder="Escolha a unidade correta" />
                   </SelectTrigger>
-                  <SelectContent className="z-[99999] border-slate-800 bg-slate-900 text-white">
+                  <SelectContent className="z-[99999] border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
                     {units.map(unit => <SelectItem key={unit.id} value={String(unit.id)}>{unit.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -50,8 +50,8 @@ export default function LegacyUnitDialog({ handleAssignLegacyShiftUnit, legacyAs
               </div>
             ))}
           </div>
-          <DialogFooter className="border-t border-slate-800 pt-3">
-            <Button type="button" variant="outline" onClick={() => setLegacyAssignmentOpen(false)} className="border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white">
+          <DialogFooter className="border-t border-slate-200 dark:border-slate-800 pt-3">
+            <Button type="button" variant="outline" onClick={() => setLegacyAssignmentOpen(false)} className="border-slate-300 dark:border-slate-700 bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white">
               Fechar
             </Button>
           </DialogFooter>
