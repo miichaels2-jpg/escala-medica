@@ -7,11 +7,27 @@ export function appUserIdFromSession(session) {
   return session?.user?.app_metadata?.app_user_id || null;
 }
 
+// Até a V0.6.7 o Corpo Clínico guardava neste navegador uma cópia dos dados de cada profissional
+// editado (CPF, PIX, banco, salário). Os dados ficam só no banco: a cópia é apagada.
+export function purgeLegacyLocalData() {
+  try {
+    const keys = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith('prof_meta_')) keys.push(key);
+    }
+    keys.forEach(key => window.localStorage.removeItem(key));
+  } catch {}
+}
+
+// Encerra a sessão neste navegador. Não usar localStorage.clear(): apagaria também as
+// preferências (tema, unidade escolhida, ajuda já vista).
 export function clearStoredSession() {
   try {
     window.localStorage.removeItem('scale_logged_user');
     window.localStorage.removeItem('escala_medica_session');
   } catch {}
+  purgeLegacyLocalData();
 }
 
 // Abre a sessão oficial depois que o login do ScaleMedic aceitou a senha. Desde a V0.3.1 o

@@ -9,6 +9,23 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.6.8 — 25/11/2026
+
+Correções da varredura de 25/11:
+
+- **Segurança nos impressos**: o impresso dos Relatórios colocava nomes de profissionais, setores e especialidades
+  direto no HTML; um cadastro com código no lugar do nome rodaria esse código na sessão de quem imprimisse. Agora todo
+  texto do banco é filtrado, como nos outros impressos. O rodapé de todos os impressos também deixou de aceitar "<" no
+  nome de quem imprime.
+- **Validade da credencial não é mais inventada**: o cadastro novo vinha com "daqui a 1 ano" e a edição de quem não
+  tinha validade mostrava (e salvava) "daqui a 180 dias". Agora o campo fica vazio até alguém preencher.
+- **Dados pessoais fora do navegador**: o Corpo Clínico guardava no navegador uma cópia dos dados de cada profissional
+  editado (CPF, PIX, banco, salário). A cópia deixou de existir e as antigas são apagadas ao abrir o sistema e ao sair.
+- Relatórios: credencial aparecia vencida no seu último dia válido (data lida no fuso de Londres).
+- Mural: vaga "Geral" ou sem especialidade aparecia como "Clínica Médica"; agora aparece "Geral", como a regra de quem
+  pode pegar a vaga e o aviso do servidor já tratavam.
+- React Router atualizado para a versão 7 (correção de segurança).
+
 ## V0.6.7 — 25/11/2026
 
 - Planilhas Excel: em alguns Excel o topo (logo, título e cabeçalho da tabela) aparecia duas vezes ao abrir, porque a

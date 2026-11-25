@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { persistSelectedUnit, useAppData } from '@/lib/useAppData';
 import { reportAppError } from '@/lib/errorReporting';
 import { supabase } from '@/lib/supabase';
+import { clearStoredSession } from '@/lib/authSession';
 import { 
   Activity, LayoutDashboard, CalendarDays, 
   DollarSign, Users, Building2, LogOut, Menu, X, 
@@ -118,8 +119,7 @@ export default function AppLayout({ children }) {
     try {
       await supabase.auth.signOut();
     } catch {}
-    window.localStorage.removeItem('scale_logged_user');
-    window.localStorage.removeItem('escala_medica_session');
+    clearStoredSession();
     window.location.href = '/login';
   };
 

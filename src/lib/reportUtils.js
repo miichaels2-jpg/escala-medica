@@ -2,6 +2,7 @@
 import { Activity, ArrowLeftRight, Building2, CalendarDays, Contact2, DollarSign, Gift, ShieldCheck, Stethoscope, Users } from 'lucide-react';
 import { DEFAULT_REMUNERATION_TYPE, getProfessionalFinancialMeta, getShiftDurationHours, safeFinancialNumber } from '@/lib/financialCalculations';
 import { isShiftVacant } from '@/lib/shiftLiveStatus';
+export { isCredentialExpired, parseLocalDate } from '@/lib/dates';
 
 export function safeNumber(value, fallback = 0) {
   return safeFinancialNumber(value, fallback);

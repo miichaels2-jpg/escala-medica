@@ -25,21 +25,13 @@ function formatFullName(name) {
   return `${parts[0]} ${parts[parts.length - 1]}`;
 }
 
+// Mesma leitura da regra de quem pode pegar a vaga (NotificationCenter) e do servidor:
+// sem especialidade ou "Geral" é vaga para qualquer especialidade (antes aparecia "Clínica Médica").
 function extractSpecialty(shift, prof) {
-  if (shift?.target_specialty && shift.target_specialty.trim() && shift.target_specialty.toLowerCase() !== 'geral') {
-    return shift.target_specialty.trim();
-  }
-  if (shift?.notes) {
-    const match = shift.notes.match(/\[ESP:([^\]]+)\]/i);
-    if (match && match[1]) return match[1].trim();
-  }
-  try {
-    if (shift?.id) {
-      const cached = window.localStorage.getItem(`shift_spec_${shift.id}`);
-      if (cached) return cached;
-    }
-  } catch {}
-  return prof?.specialty || shift?.target_specialty || 'Clínica Médica';
+  const fromNotes = String(shift?.notes || '').match(/\[ESP:([^\]]+)\]/i)?.[1] || '';
+  const target = String(shift?.target_specialty || '').trim() || fromNotes.trim();
+  if (target && target.toLowerCase() !== 'geral') return target;
+  return prof?.specialty || 'Geral';
 }
 
 // "sábado, 17 de outubro" → "Sábado, 17 de outubro"
