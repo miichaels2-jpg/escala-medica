@@ -250,9 +250,10 @@ export function addSheet(book, { name, orgName = '', title = '', subtitle = '', 
       cell.font = { name: FONT, size: 9, bold: true, color: { argb: HEAD_INK } };
       cell.fill = solid(HEAD_BG);
       cell.border = { bottom: line(HEAD_LINE), top: line(HEAD_LINE) };
-      cell.alignment = { vertical: 'middle', wrapText: true, indent: 1, horizontal: NUMERIC.has(column.type) ? 'right' : 'left' };
+      cell.alignment = { vertical: 'top', wrapText: true, indent: 1, horizontal: NUMERIC.has(column.type) ? 'right' : 'left' };
     });
-    headerRow.height = 30;
+    // Título no alto da célula: a setinha do filtro fica embaixo, sem tapar o texto.
+    headerRow.height = 34;
     const headerNumber = r;
     r += 1;
 
@@ -321,9 +322,10 @@ export function addSheet(book, { name, orgName = '', title = '', subtitle = '', 
     r += 1;
   }
 
+  // Sem topLeftCell o Excel começa a parte que rola na linha 1 e mostra o topo duas vezes.
   ws.views = [singleHeaderRow
-    ? { state: 'frozen', ySplit: singleHeaderRow, showGridLines: false }
-    : { showGridLines: false }];
+    ? { state: 'frozen', ySplit: singleHeaderRow, topLeftCell: `A${singleHeaderRow + 1}`, activeCell: `A${singleHeaderRow + 1}`, showGridLines: false }
+    : { showGridLines: false, activeCell: 'A1' }];
   if (singleHeaderRow) {
     ws.autoFilter = { from: { row: singleHeaderRow, column: 1 }, to: { row: singleLastRow, column: tables[0].columns.length } };
   }
