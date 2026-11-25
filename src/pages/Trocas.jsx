@@ -17,6 +17,7 @@ import {
   Clock3, ShieldCheck, History, ArrowRight
 } from 'lucide-react';
 import { autoHealingSaveShift } from '@/lib/escalaUtils';
+import { formatDateBR, getLocalDateString } from '@/lib/format';
 
 function formatFullName(name) {
   if (!name) return 'Profissional';
@@ -39,17 +40,6 @@ function formatLongDate(dateStr) {
   const text = new Date(String(dateStr).slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
-
-function formatDateBR(dateStr) {
-  if (!dateStr) return '';
-  const parts = String(dateStr).split('T')[0].split('-');
-  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(dateStr);
-}
-
-function getLocalDateString(d = new Date()) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 
 function parseShiftAudit(shift) {
   const notes = String(shift?.notes || '');

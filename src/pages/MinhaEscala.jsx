@@ -4,7 +4,7 @@ import { useAppData } from '@/lib/useAppData';
 import AvailabilityCard from '@/components/AvailabilityCard';
 import PrivacyCard from '@/components/PrivacyCard';
 import { buildIcs, googleCalendarUrl, shiftEventInfo } from '@/lib/calendarExport';
-import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, normalizeFinancialText, safeFinancialNumber } from '@/lib/financialCalculations';
+import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, normalizeFinancialText } from '@/lib/financialCalculations';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
@@ -15,20 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import { escapeHtml } from '@/lib/printBranding';
 import { buildPrintDocument, openPrintWindow, printHeader, printLogos } from '@/lib/printLayout';
 import { autoHealingSaveShift } from '@/lib/escalaUtils';
-
-function safeNumber(val, fb = 0) {
-  return safeFinancialNumber(val, fb);
-}
-
-function formatCurrency(val) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(safeNumber(val));
-}
-
-function formatDateBR(dateStr) {
-  if (!dateStr) return '—';
-  const parts = String(dateStr).trim().split('T')[0].split('-');
-  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(dateStr);
-}
+import { formatCurrency, formatDateOrDash } from '@/lib/format';
 
 function getShiftDateTime(date, time) {
   const [year, month, day] = String(date || '').split('T')[0].split('-').map(Number);
@@ -460,7 +447,7 @@ export default function MinhaEscala() {
     const requesterName = currentProfessional?.name || user?.full_name || 'Profissional';
     const requesterId = currentProfessional?.id || user?.id || '';
 
-    if (!confirm(`Deseja solicitar a liberação do seu plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) no Mural?\n\nO pedido será enviado para aprovação da coordenação antes de ser liberado.`)) {
+    if (!confirm(`Deseja solicitar a liberação do seu plantão de ${formatDateOrDash(shift.date)} (${shift.start_time} às ${shift.end_time}) no Mural?\n\nO pedido será enviado para aprovação da coordenação antes de ser liberado.`)) {
       return;
     }
 
@@ -505,7 +492,7 @@ export default function MinhaEscala() {
       const state = s.state === 'concluido' ? 'Cumprido' : s.state === 'ativo' ? 'Em andamento' : 'A fazer';
       const points = (s.checkinTime || s.checkoutTime) ? `<div class="pl-muted">ponto ${s.checkinTime || '--'} → ${s.checkoutTime || '--'}</div>` : '';
       return `<tr>
-        <td class="pl-num" style="text-align:left">${formatDateBR(s.date)} <span class="pl-muted">${new Date(s.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' })}</span></td>
+        <td class="pl-num" style="text-align:left">${formatDateOrDash(s.date)} <span class="pl-muted">${new Date(s.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' })}</span></td>
         <td>${unitIds.length > 1 ? `<b>${escapeHtml(s.unitName)}</b> · ` : ''}${escapeHtml(s.sectorName)}</td>
         <td class="pl-num" style="text-align:left">${escapeHtml(s.start_time)}–${escapeHtml(s.end_time)}${points}</td>
         <td class="pl-num">${String(s.duration).replace('.', ',')} h</td>
@@ -626,7 +613,7 @@ export default function MinhaEscala() {
                 <span className="hidden sm:inline text-slate-400">·</span>
                 <span>{featuredShift.sectorName}</span>
                 <span className="hidden sm:inline text-slate-400">·</span>
-                <span className="text-sm font-semibold">{formatDateBR(featuredShift.date)} · {featuredShift.start_time}–{featuredShift.end_time}</span>
+                <span className="text-sm font-semibold">{formatDateOrDash(featuredShift.date)} · {featuredShift.start_time}–{featuredShift.end_time}</span>
               </h3>
               {featuredShift.unitAddress && (
                 <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(featuredShift.unitAddress)}`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-sky-700 dark:hover:text-sky-300 hover:underline">
@@ -752,7 +739,7 @@ export default function MinhaEscala() {
           <div className="text-3xl font-semibold text-slate-900 dark:text-white mt-3">
             {monthMetrics.futuros}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1 font-medium">{upcomingShifts.length ? `${upcomingShifts.length} no total · o próximo em ${formatDateBR(upcomingShifts[0].date).slice(0, 5)}` : 'Nenhum plantão marcado'}</p>
+          <p className="text-[11px] text-slate-500 mt-1 font-medium">{upcomingShifts.length ? `${upcomingShifts.length} no total · o próximo em ${formatDateOrDash(upcomingShifts[0].date).slice(0, 5)}` : 'Nenhum plantão marcado'}</p>
         </Card>
       </div>
 
@@ -809,7 +796,7 @@ export default function MinhaEscala() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold tabular-nums text-slate-900 dark:text-white">
-                          {formatDateBR(shift.date)}
+                          {formatDateOrDash(shift.date)}
                         </span>
                         <span className="text-[10px] font-medium text-slate-500">
                           ({new Date(shift.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' })})
@@ -926,7 +913,7 @@ export default function MinhaEscala() {
                 <div key={shift.id} className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 text-xs flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
                     <span className="tabular-nums font-semibold text-slate-900 dark:text-white block">
-                      {formatDateBR(shift.date)}
+                      {formatDateOrDash(shift.date)}
                     </span>
                     <span className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-semibold px-2 py-0.5 rounded-lg shrink-0">
                       ✓ Concluído

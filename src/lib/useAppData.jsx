@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { resolveSignedInUser } from '@/lib/authSession';
 import { inferUnassignedShiftUnitId, resolveUnitId } from '@/lib/unitAssignment';
@@ -434,16 +434,18 @@ export function useAppData() {
   const isManager = isAdmin || isCoordinator;
   const isAssistencial = userAppRole === 'assistencial' || userAppRole === 'medico';
 
-  // BLINDAGEM DE DADOS: Fatiando os dados globais para mostrar SÓ os da unidade selecionada
-  const unitSectors = useMemo(() => globalState.sectors.filter(s => !s.unit_id || String(s.unit_id) === String(globalState.selectedUnitId)), [globalState.sectors, globalState.selectedUnitId]);
-  const unitShifts = useMemo(() => globalState.shifts.filter(s => String(s.unit_id) === String(globalState.selectedUnitId)), [globalState.shifts, globalState.selectedUnitId]);
-  const unitSwaps = useMemo(() => globalState.swaps.filter(s => String(s.unit_id) === String(globalState.selectedUnitId)), [globalState.swaps, globalState.selectedUnitId]);
-  
-  const unitProfessionals = useMemo(() => globalState.professionals.filter(p => {
+  // Só os dados da unidade selecionada. Lidos antes do useMemo: o estado geral é trocado
+  // inteiro a cada carga, então cada lista nova recalcula o que depende dela.
+  const { sectors, shifts, swaps, professionals, selectedUnitId } = globalState;
+  const unitSectors = useMemo(() => sectors.filter(s => !s.unit_id || String(s.unit_id) === String(selectedUnitId)), [sectors, selectedUnitId]);
+  const unitShifts = useMemo(() => shifts.filter(s => String(s.unit_id) === String(selectedUnitId)), [shifts, selectedUnitId]);
+  const unitSwaps = useMemo(() => swaps.filter(s => String(s.unit_id) === String(selectedUnitId)), [swaps, selectedUnitId]);
+
+  const unitProfessionals = useMemo(() => professionals.filter(p => {
     const allowedUnits = p.data?.allowed_unit_ids || [];
-    return String(p.unit_id) === String(globalState.selectedUnitId) ||
-      allowedUnits.some(unitId => String(unitId) === String(globalState.selectedUnitId));
-  }), [globalState.professionals, globalState.selectedUnitId]);
+    return String(p.unit_id) === String(selectedUnitId) ||
+      allowedUnits.some(unitId => String(unitId) === String(selectedUnitId));
+  }), [professionals, selectedUnitId]);
 
   const professionalMap = useMemo(() => {
     const m = {};
@@ -458,8 +460,8 @@ export function useAppData() {
   }, [unitSectors]);
 
   const currentProfessional = useMemo(() => {
-    if (user && globalState.professionals.length) {
-      const found = globalState.professionals.find(p => 
+    if (user && professionals.length) {
+      const found = professionals.find(p => 
         String(p.user_id) === String(user.id) || 
         String(p.id) === String(user.data?.professional_id) ||
         (p.email && user.email && p.email.toLowerCase() === user.email.toLowerCase())
@@ -473,7 +475,7 @@ export function useAppData() {
       specialty: user?.data?.specialty || 'Clínica Geral',
       status: 'ativo'
     };
-  }, [user, globalState.professionals]);
+  }, [user, professionals]);
 
   return {
     ...globalState,

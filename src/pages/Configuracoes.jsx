@@ -13,13 +13,7 @@ import {
   Building2, Save, Trash2, 
   Settings, Hospital, FileText, MapPin, Edit, Plus, RotateCcw, AlertTriangle, Phone, Copy, Image as ImageIcon, UploadCloud
 } from 'lucide-react';
-
-function getLocalDateString(d = new Date()) {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+import { getLocalDateString } from '@/lib/format';
 
 function getUnitStorageErrorMessage(error) {
   if (error?.code === 'PGRST205' || error?.code === '42P01') {

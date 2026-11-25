@@ -1,32 +1,13 @@
 // Funções puras da tela Escala (datas, nomes, ciclo do plantão) e o salvamento do plantão.
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { saveRow } from '@/lib/saveRow';
+import { formatDateBR, getLocalDateString, normalize } from '@/lib/format';
+import { escapeHtml } from '@/lib/printBranding';
+
+export { escapeHtml, formatDateBR, getLocalDateString, normalize };
 
 export const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 export const WEEKDAYS = [{ short: 'Dom', weekend: true }, { short: 'Seg', weekend: false }, { short: 'Ter', weekend: false }, { short: 'Qua', weekend: false }, { short: 'Qui', weekend: false }, { short: 'Sex', weekend: false }, { short: 'Sáb', weekend: true }];
-
-export function getLocalDateString(d = new Date()) {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-export function formatDateBR(dateStr) {
-  if (!dateStr) return '';
-  const parts = String(dateStr).split('-');
-  return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
-}
-
-export function escapeHtml(value) {
-  return String(value ?? '').replace(/[&<>"']/g, character => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  })[character]);
-}
 
 // Intervalo real (data + hora) do plantão. Plantões que viram a noite
 // (ex.: 19:00–07:00) terminam no dia seguinte.
@@ -52,11 +33,6 @@ export function stripPublicationTags(notes) {
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
-
-export function normalize(value) {
-  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-}
-
 
 export function getShiftName(shift) {
   return shift.professional_name || shift.professional?.name || shift.professionalName || '';

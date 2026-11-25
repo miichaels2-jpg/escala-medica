@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import { createContext, useState, useContext, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { USER_PUBLIC_COLUMNS } from '@/lib/useAppData';
 import { clearStoredSession, resolveSignedInUser } from '@/lib/authSession';
@@ -102,7 +102,7 @@ export const AuthProvider = ({ children }) => {
     clearStoredSession();
     try {
       await supabase.auth.signOut();
-    } catch (e) {}
+    } catch {}
     
     if (shouldRedirect) {
       window.location.href = '/login';
