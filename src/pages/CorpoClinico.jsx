@@ -473,7 +473,10 @@ export default function CorpoClinico() {
       const guide = workbook.addWorksheet('Orientações');
       guide.addRows(instructions);
       guide.columns = [{ width: 34 }, { width: 110 }];
-      guide.getRow(1).font = { bold: true };
+      const { styleImportHeader } = await import('@/lib/excelLayout');
+      styleImportHeader(template);
+      styleImportHeader(guide);
+      guide.getColumn(2).alignment = { wrapText: true, vertical: 'top' };
       const buffer = await workbook.xlsx.writeBuffer();
       const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       const link = document.createElement('a');

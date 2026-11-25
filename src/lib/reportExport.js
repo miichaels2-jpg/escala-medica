@@ -3,7 +3,8 @@ import { DEFAULT_REMUNERATION_TYPE } from '@/lib/financialCalculations';
 import { REPORT_PRINT_CSS, REPORT_TITLES, formatCurrency, formatDate, formatNumber, formatUnitRate, getProductivityDayStatus, getProfessionalRemuneration, getSectorName, getShiftHours, getShiftName, isShiftPast, isVacant, titleCase } from '@/lib/reportUtils';
 import { buildPrintDocument, openPrintWindow, printHeader, printLogos } from '@/lib/printLayout';
 
-export function exportReportExcel(requestedMode, { activeTab, appliedFilters, birthDaysList, enrichedSectors, filterSummary, filteredProfessionals, filteredShifts, financialSummary, hasSearched, hospitalName, periodLabel, productivityProfessionalReportReady, productivityReport, professionalMetrics, sectorMetrics, sectors, selectedProductivityRows, selectedProductivitySummary, selectedUnitId, shiftCost, swapsList }) {
+// Planilha .xlsx no modelo único (src/lib/excelLayout.js): uma aba por relatório.
+export async function exportReportExcel(requestedMode, { activeTab, appliedFilters, birthDaysList, company, coverageRate, credentialAudit, currentUnitObj, enrichedSectors, filledShiftsCount, filterSummary, filteredProfessionals, filteredShifts, financialSummary, hasSearched, hospitalName, periodLabel, productivityProfessionalReportReady, productivityReport, professionalMetrics, reliabilityRows = [], sectorMetrics, sectors, selectedProductivityRows, selectedProductivitySummary, selectedUnitId, shiftCost, swapsList, totalShiftsCount, vacantShiftItems = [] }) {
   // No Painel BI, exportar/imprimir gera o relatório completo do período.
   const mode = activeTab === 'bi' ? 'all' : requestedMode;
   if (!hasSearched) {
@@ -15,383 +16,333 @@ export function exportReportExcel(requestedMode, { activeTab, appliedFilters, bi
     return;
   }
 
-  let html = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-    <head>
-    <meta charset="utf-8">
-    <style>
-      body { font-family: 'Segoe UI', Arial, sans-serif; }
-      table { border-collapse: collapse; width: 100%; font-size: 13px; }
-      th { background-color: #0e7490; color: #ffffff; font-weight: bold; padding: 12px; border: 1px solid #cbd5e1; text-align: left; text-transform: uppercase; }
-      td { padding: 10px; border: 1px solid #cbd5e1; vertical-align: middle; }
-      .row-alt { background-color: #f8fafc; }
-      .vago { color: #d97706; font-weight: bold; background-color: #fef3c7; }
-      .furo { color: #be123c; font-weight: bold; background-color: #ffe4e6; }
-      .header-main { background-color: #ffffff; text-align: center; padding: 15px; border: none; }
-      .h1 { font-size: 24px; font-weight: bold; color: #0f172a; margin: 0; }
-      .h2 { font-size: 14px; color: #475569; margin: 5px 0 0 0; }
-      .money { mso-number-format:"_-* #\\,##0\\.00_-\\;\\-* #\\,##0\\.00_-\\;_-* &quot;-&quot;??_-\\;_-@_-"; }
-      .section-title { font-size: 16px; font-weight: bold; color: #0f172a; background-color: #e2e8f0; padding: 10px; text-align: left; border: 1px solid #cbd5e1; }
-    </style>
-    </head>
-    <body>
-      <table>
-        <tr>
-          <td colspan="7" class="header-main">
-            <div class="h1">${hospitalName} - ${REPORT_TITLES[activeTab] || 'Relatório de Gestão'}</div>
-            <div class="h2">Período: ${periodLabel} · ${filterSummary} · Gerado em ${new Date().toLocaleDateString('pt-BR')}</div>
-          </td>
-        </tr>
-        <tr><td colspan="7" style="border:none;"></td></tr>
-  `;
+  try {
+    const { addSheet, createWorkbook, downloadWorkbook, excelFileName } = await import('@/lib/excelLayout');
+    const book = await createWorkbook({ company, unit: currentUnitObj });
+    const wants = tab => mode === 'all' || activeTab === tab;
+    const sheet = (name, title, blocks, extra = {}) => addSheet(book, { name, orgName: hospitalName, title, subtitle: periodLabel, meta: [['Filtros', filterSummary]], blocks, ...extra });
+    const sector = s => getSectorName(s, sectors);
+    const hoursRange = s => `${s.start_time || ''} às ${s.end_time || ''}`;
+    const isExpired = date => Boolean(date) && new Date(date) < new Date();
 
-  if (mode === 'all' || activeTab === 'escalas') {
-    html += `
-        <tr><td colspan="7" class="section-title">EXTRATO DETALHADO DE ESCALAS (Cronológico)</td></tr>
-        <tr>
-          <th>Data do Plantão</th>
-          <th>Setor de Atuação</th>
-          <th>Profissional Alocado</th>
-          <th>Horário</th>
-          <th>Status Operacional</th>
-          <th>Carga (h)</th>
-          <th>Custo Estimado (R$)</th>
-        </tr>
-    `;
-    filteredShifts.forEach((s, i) => {
-      const isVago = isVacant(s);
-      const isPast = isShiftPast(s);
-      let statusTexto = s.status || 'Confirmado';
-      let profName = titleCase(getShiftName(s)) || 'Não Identificado';
-      let rowClass = i % 2 === 0 ? '' : 'class="row-alt"';
+    if (wants('executivo')) {
+      sheet('Resumo', REPORT_TITLES.executivo, [
+        { type: 'summary', items: [
+          { label: 'Total de plantões', value: totalShiftsCount, type: 'int' },
+          { label: 'Plantões preenchidos', value: filledShiftsCount, type: 'int' },
+          { label: 'Taxa de cobertura (meta: acima de 98%)', value: coverageRate, type: 'percent', tone: coverageRate >= 98 ? 'good' : coverageRate >= 90 ? 'warn' : 'bad' },
+          { label: 'Custo das escalas ocupadas', value: financialSummary.totalCost, type: 'money' },
+          { label: 'Horas assistenciais', value: financialSummary.hours, type: 'hours' },
+          { label: 'Profissionais ativos', value: filteredProfessionals.length, type: 'int' },
+          { label: 'Credenciais vencidas', value: credentialAudit?.expired ?? 0, type: 'int', tone: credentialAudit?.expired ? 'bad' : undefined }
+        ] },
+        { type: 'table', title: `Furos e vagas abertas (${vacantShiftItems.length})`, empty: 'Nenhum furo ou vaga aberta no período.', columns: [
+          { header: 'Data', key: 'date', type: 'date' },
+          { header: 'Setor', key: 'sector', width: 28 },
+          { header: 'Horário', key: 'time', width: 16 },
+          { header: 'Situação', key: 'status', width: 22 }
+        ], rows: vacantShiftItems.map(v => ({
+          date: v.date,
+          sector: sector(v),
+          time: hoursRange(v),
+          status: isShiftPast(v) ? { v: 'Não ocupado (furo)', tone: 'bad' } : { v: 'Vaga pendente', tone: 'warn' }
+        })) }
+      ]);
+    }
 
-      if (isVago) {
-        if (isPast) { profName = 'FALTA / NÃO OCUPADO'; statusTexto = 'Furo de Escala'; rowClass = 'class="furo"'; }
-        else { profName = 'VAGA EM ABERTO'; statusTexto = 'Vago'; rowClass = 'class="vago"'; }
-      }
+    if (wants('escalas')) {
+      sheet('Plantões', REPORT_TITLES.escalas, [{ type: 'table', columns: [
+        { header: 'Data', key: 'date', type: 'date' },
+        { header: 'Setor', key: 'sector', width: 24 },
+        { header: 'Profissional', key: 'professional', width: 28 },
+        { header: 'Horário', key: 'time', width: 16 },
+        { header: 'Situação', key: 'status', width: 16 },
+        { header: 'Horas', key: 'hours', type: 'hours' },
+        { header: 'Custo estimado', key: 'cost', type: 'money' }
+      ], rows: filteredShifts.map(s => {
+        const vacant = isVacant(s);
+        const past = isShiftPast(s);
+        return {
+          _tone: vacant ? (past ? 'bad' : 'warn') : undefined,
+          date: s.date,
+          sector: sector(s),
+          professional: vacant ? (past ? 'Não ocupado' : 'Vaga em aberto') : (titleCase(getShiftName(s)) || 'Não identificado'),
+          time: hoursRange(s),
+          status: vacant ? (past ? 'Furo de escala' : 'Vago') : titleCase(s.status || 'Confirmado'),
+          hours: getShiftHours(s),
+          cost: shiftCost(s)
+        };
+      }), totals: {
+        label: `Total (${filteredShifts.length})`,
+        hours: filteredShifts.reduce((sum, s) => sum + getShiftHours(s), 0),
+        cost: filteredShifts.reduce((sum, s) => sum + shiftCost(s), 0)
+      } }]);
+    }
 
-      const cost = shiftCost(s);
-      html += `
-        <tr ${rowClass}>
-          <td>${formatDate(s.date)}</td>
-          <td>${getSectorName(s, sectors)}</td>
-          <td>${profName}</td>
-          <td>${s.start_time || ''} às ${s.end_time || ''}</td>
-          <td>${statusTexto}</td>
-          <td>${getShiftHours(s)}h</td>
-          <td class="money">${cost.toFixed(2).replace('.', ',')}</td>
-        </tr>
-      `;
-    });
-    html += `<tr><td colspan="7" style="border:none; height:20px;"></td></tr>`;
+    if (wants('trocas')) {
+      sheet('Trocas', REPORT_TITLES.trocas, [{ type: 'table', empty: 'Nenhuma troca ou repasse no período.', columns: [
+        { header: 'Data', key: 'date', type: 'date' },
+        { header: 'Setor', key: 'sector', width: 24 },
+        { header: 'Horário', key: 'time', width: 16 },
+        { header: 'Solicitante', key: 'requester', width: 26 },
+        { header: 'Assumido por', key: 'current', width: 26 },
+        { header: 'Situação', key: 'status', width: 20 }
+      ], rows: swapsList.map(s => ({
+        date: s.date,
+        sector: sector(s),
+        time: hoursRange(s),
+        requester: s.requester,
+        current: s.currentProf,
+        status: { v: s.swapStatus, tone: s.swapStatus === 'Aguardando Gestão' ? 'warn' : 'good' }
+      })) }]);
+    }
+
+    if (wants('base_setores')) {
+      sheet('Setores', REPORT_TITLES.base_setores, [{ type: 'table', columns: [
+        { header: 'Setor', key: 'name', width: 28, bold: true },
+        { header: 'Especialidade', key: 'specialty', width: 22 },
+        { header: 'Situação', key: 'status', width: 12 },
+        { header: 'Plantões', key: 'shifts', type: 'int' },
+        { header: 'Custo projetado', key: 'cost', type: 'money', width: 17 }
+      ], rows: enrichedSectors.map(s => ({
+        name: titleCase(s.name),
+        specialty: s.specialty || 'Não definida',
+        status: titleCase(s.status || 'Ativo'),
+        shifts: s.shiftsCount,
+        cost: s.totalCost
+      })), totals: {
+        shifts: enrichedSectors.reduce((sum, s) => sum + (s.shiftsCount || 0), 0),
+        cost: enrichedSectors.reduce((sum, s) => sum + (s.totalCost || 0), 0)
+      } }]);
+    }
+
+    if (wants('base_profissionais')) {
+      sheet('Corpo clínico', REPORT_TITLES.base_profissionais, [{ type: 'table', columns: [
+        { header: 'Nome', key: 'name', width: 28, bold: true },
+        { header: 'Especialidade', key: 'specialty', width: 18 },
+        { header: 'Situação', key: 'status', width: 11 },
+        { header: 'Documento (CRM)', key: 'document', width: 15 },
+        { header: 'Validade', key: 'expiry', type: 'date' },
+        { header: 'Telefone', key: 'phone', width: 16 },
+        { header: 'E-mail', key: 'email', width: 26 },
+        { header: 'Regime', key: 'regime', width: 14 },
+        { header: `Remuneração (${hospitalName})`, key: 'pay', width: 24 },
+        { header: 'Banco', key: 'bank', width: 16 },
+        { header: 'Chave PIX', key: 'pix', width: 22 }
+      ], rows: filteredProfessionals.map(p => {
+        const expiry = p.document_expiry || p.documentExpiry || p.valid_until;
+        return {
+          name: titleCase(p.name),
+          specialty: p.specialty || '',
+          status: titleCase(p.status || 'Ativo'),
+          document: p.document || '',
+          expiry: expiry ? { v: expiry, tone: isExpired(expiry) ? 'bad' : undefined } : null,
+          phone: p.phone || p.telefone || '',
+          email: p.email || '',
+          regime: titleCase(p.remuneration_type || p.payment_type || DEFAULT_REMUNERATION_TYPE),
+          pay: getProfessionalRemuneration(p, selectedUnitId),
+          bank: p.bank_name || p.banco || '',
+          pix: p.pix_key || p.chave_pix || p.pix || ''
+        };
+      }) }]);
+    }
+
+    if (wants('aniversariantes')) {
+      sheet('Aniversariantes', `${REPORT_TITLES.aniversariantes} (${birthDaysList.length})`, [{ type: 'table', empty: 'Nenhum aniversariante no período.', columns: [
+        { header: 'Dia', key: 'day', width: 10 },
+        { header: 'Nome', key: 'name', width: 30, bold: true },
+        { header: 'Completa (anos)', key: 'age', type: 'int', width: 14 },
+        { header: 'Especialidade', key: 'specialty', width: 22 }
+      ], rows: birthDaysList.map(p => ({ day: p.birthDateFormatted, name: titleCase(p.name), age: p.ageTurns, specialty: p.specialty || 'Geral' })) }]);
+    }
+
+    if (wants('profissionais')) {
+      sheet('Produtividade', REPORT_TITLES.profissionais, [{ type: 'table', columns: [
+        { header: 'Profissional', key: 'name', width: 28, bold: true },
+        { header: 'Especialidade', key: 'specialty', width: 20 },
+        { header: 'Setores no período', key: 'sectors', width: 30 },
+        { header: 'Plantões', key: 'shifts', type: 'int' },
+        { header: 'Horas', key: 'hours', type: 'hours' },
+        { header: 'Honorários brutos', key: 'cost', type: 'money', width: 18 }
+      ], rows: professionalMetrics.map(doc => ({ name: doc.name, specialty: doc.specialty, sectors: doc.sectors, shifts: doc.shifts, hours: doc.hours, cost: doc.cost })), totals: {
+        shifts: professionalMetrics.reduce((sum, doc) => sum + doc.shifts, 0),
+        hours: professionalMetrics.reduce((sum, doc) => sum + doc.hours, 0),
+        cost: professionalMetrics.reduce((sum, doc) => sum + doc.cost, 0)
+      } }]);
+    }
+
+    if (wants('confiabilidade') && (activeTab === 'confiabilidade' || reliabilityRows.length)) {
+      sheet('Confiabilidade', REPORT_TITLES.confiabilidade, [
+        { type: 'note', text: 'Índice = plantões que a pessoa manteve ÷ plantões que eram dela (mantidos + repassados ao Mural). Vagas cobertas = vagas abertas ou repasses de colegas que ela assumiu. Faltas e ponto não entram.' },
+        { type: 'table', empty: 'Nenhum plantão de profissional no período.', columns: [
+          { header: '#', key: 'rank', type: 'int', width: 6 },
+          { header: 'Profissional', key: 'name', width: 28, bold: true },
+          { header: 'Especialidade', key: 'specialty', width: 18 },
+          { header: 'Escalados', key: 'scheduled', type: 'int' },
+          { header: 'Realizados', key: 'done', type: 'int' },
+          { header: 'Horas', key: 'hours', type: 'int', width: 9 },
+          { header: 'Noites', key: 'nights', type: 'int', width: 9 },
+          { header: 'Fins de semana', key: 'weekends', type: 'int' },
+          { header: 'Vagas cobertas', key: 'covered', type: 'int' },
+          { header: 'Repasses', key: 'released', type: 'int' },
+          { header: 'Trocas diretas', key: 'directSwaps', type: 'int' },
+          { header: 'Índice', key: 'index', type: 'percent' }
+        ], rows: reliabilityRows.map((row, i) => ({
+          ...row,
+          rank: i + 1,
+          index: row.index === null ? { v: '—', tone: 'muted' } : { v: row.index, tone: row.index >= 95 ? 'good' : row.index >= 85 ? 'warn' : 'bad' }
+        })) }
+      ]);
+    }
+
+    if (wants('produtividade_diaria')) {
+      const pr = productivityReport;
+      sheet('Apuração por dia', REPORT_TITLES.produtividade_diaria, [
+        { type: 'note', tone: pr.available ? undefined : 'warn', text: pr.available
+          ? `Pool diário configurado: ${formatCurrency(pr.dailyPool)}. Rateio proporcional aos atendimentos; o dia só fecha depois que todos os profissionais produtivos escalados forem conferidos e os plantões terminarem.`
+          : pr.error || `A regra de produtividade não está configurada para ${hospitalName}; não há valores apurados.` },
+        ...(pr.available ? [{ type: 'summary', title: 'Consolidado do período', items: [
+          { label: 'Atendimentos em dias fechados', value: pr.totals.attendance, type: 'int' },
+          { label: 'Plantões produtivos', value: pr.totals.shifts, type: 'int' },
+          { label: 'Pool rateado', value: pr.totals.pool, type: 'money' },
+          { label: 'Dias pendentes', value: pr.totals.pendingDays, type: 'int', tone: pr.totals.pendingDays ? 'warn' : 'good' }
+        ] }] : []),
+        { type: 'table', columns: [
+          { header: 'Data', key: 'date', type: 'date' },
+          { header: 'Atendimentos', key: 'attendance', type: 'int' },
+          { header: 'Plantões', key: 'shifts', type: 'int' },
+          { header: 'Pool aplicado', key: 'pool', type: 'money' },
+          { header: 'Valor por atendimento', key: 'rate', type: 'rate', width: 18 },
+          { header: 'Situação', key: 'status', width: 34 }
+        ], rows: pr.days.map(day => ({
+          date: day.date,
+          attendance: day.complete ? day.totalAttendance : 'Pendente',
+          shifts: day.items.reduce((sum, item) => sum + item.shifts, 0),
+          pool: day.complete ? (day.totalAttendance > 0 ? day.poolAmount : 0) : '—',
+          rate: day.complete && day.totalAttendance > 0 ? day.poolAmount / day.totalAttendance : '—',
+          status: { v: getProductivityDayStatus(day), tone: day.complete ? 'good' : 'warn' }
+        })) }
+      ]);
+      sheet('Rateio por dia', 'Rateio por profissional e dia', [
+        { type: 'table', columns: [
+          { header: 'Data', key: 'date', type: 'date' },
+          { header: 'Profissional', key: 'name', width: 26 },
+          { header: 'Especialidade', key: 'specialty', width: 18 },
+          { header: 'Setor(es)', key: 'sectors', width: 18 },
+          { header: 'Plantões', key: 'shifts', type: 'int' },
+          { header: 'Atendimentos do dia', key: 'dayTotal', type: 'int' },
+          { header: 'Atendimentos individuais', key: 'attendance', type: 'int' },
+          { header: 'Valor por atendimento', key: 'rate', type: 'rate' },
+          { header: 'Valor rateado', key: 'amount', type: 'money' },
+          { header: 'Situação', key: 'status', width: 34 }
+        ], rows: pr.rows.map(row => {
+          const daily = pr.days.find(day => day.date === row.date);
+          return {
+            date: row.date,
+            name: titleCase(row.professional.name),
+            specialty: row.professional.specialty || '—',
+            sectors: row.sectors,
+            shifts: row.shifts,
+            dayTotal: row.complete ? daily?.totalAttendance : 'Pendente',
+            attendance: row.attendance ?? 'Não lançado',
+            rate: row.unitRate === null ? '—' : row.unitRate,
+            amount: row.complete ? row.amount : '—',
+            status: row.complete ? { v: 'Rateado', tone: 'good' } : { v: `Pendente · ${row.pendingReason}`, tone: 'warn' }
+          };
+        }) }
+      ]);
+      sheet('Acumulado', 'Produtividade acumulada por profissional', [
+        { type: 'table', columns: [
+          { header: 'Profissional', key: 'name', width: 26, bold: true },
+          { header: 'Especialidade', key: 'specialty', width: 18 },
+          { header: 'Plantões', key: 'shifts', type: 'int' },
+          { header: 'Atendimentos fechados', key: 'attendance', type: 'int' },
+          { header: 'Valor acumulado', key: 'amount', type: 'money' },
+          { header: 'Dias pendentes', key: 'pending', type: 'int' },
+          { header: 'Situação', key: 'status', width: 16 }
+        ], rows: pr.professionalTotals.map(item => ({
+          name: titleCase(item.professional.name),
+          specialty: item.professional.specialty || '—',
+          shifts: item.shifts,
+          attendance: item.attendance,
+          amount: item.amount,
+          pending: item.pendingDays,
+          status: item.pendingDays ? { v: 'Saldo parcial', tone: 'warn' } : { v: 'Completo', tone: 'good' }
+        })) }
+      ]);
+    }
+
+    if (wants('produtividade_profissional') && selectedProductivitySummary) {
+      const summary = selectedProductivitySummary;
+      sheet('Extrato individual', REPORT_TITLES.produtividade_profissional, [
+        { type: 'summary', items: [
+          { label: 'Profissional', value: titleCase(summary.professional.name) },
+          { label: 'Especialidade', value: summary.professional.specialty || '—' },
+          { label: 'Valor fechado no período', value: summary.amount, type: 'money' },
+          { label: 'Dias pendentes', value: summary.pendingDays, type: 'int', tone: summary.pendingDays ? 'warn' : 'good' }
+        ] },
+        { type: 'note', text: `Valor por atendimento = pool diário (${formatCurrency(productivityReport.dailyPool)}) ÷ total de atendimentos da unidade no dia. Valor individual = atendimentos do profissional × valor por atendimento. Dias pendentes não entram no saldo fechado.` },
+        { type: 'table', columns: [
+          { header: 'Data', key: 'date', type: 'date' },
+          { header: 'Setor(es)', key: 'sectors', width: 22 },
+          { header: 'Plantões', key: 'shifts', type: 'int' },
+          { header: 'Atendimentos do profissional', key: 'attendance', type: 'int', width: 15 },
+          { header: 'Atendimentos no dia', key: 'dayTotal', type: 'int', width: 14 },
+          { header: 'Valor por atendimento', key: 'rate', type: 'rate', width: 15 },
+          { header: 'Valor rateado', key: 'amount', type: 'money' },
+          { header: 'Situação', key: 'status', width: 34 }
+        ], rows: selectedProductivityRows.map(row => {
+          const day = productivityReport.days.find(item => item.date === row.date);
+          return {
+            date: row.date,
+            sectors: row.sectors,
+            shifts: row.shifts,
+            attendance: row.attendance ?? 'Não lançado',
+            dayTotal: row.complete ? day?.totalAttendance : 'Pendente',
+            rate: row.unitRate === null ? '—' : row.unitRate,
+            amount: row.complete ? row.amount : '—',
+            status: row.complete ? { v: 'Rateado', tone: 'good' } : { v: `Pendente · ${row.pendingReason}`, tone: 'warn' }
+          };
+        }), totals: { label: 'Total fechado', shifts: summary.shifts, attendance: summary.attendance, amount: summary.amount } }
+      ]);
+    }
+
+    if (wants('financeiro')) {
+      const fs = financialSummary;
+      sheet('Financeiro', REPORT_TITLES.financeiro, [
+        { type: 'summary', items: [
+          { label: 'Previsão das escalas ocupadas', value: fs.totalCost, type: 'money' },
+          { label: 'Realizado (plantões concluídos)', value: fs.executedCost, type: 'money', tone: 'good' },
+          { label: 'Pendente a realizar', value: fs.pendingCost, type: 'money', tone: 'warn' },
+          { label: 'Retido (vagas e furos)', value: fs.vacantCost, type: 'money', tone: 'bad' }
+        ] },
+        { type: 'note', text: 'Mesma base do Faturamento: salário mensal proporcional aos dias do período e dividido entre os plantões do profissional; produtividade pelo rateio dos dias fechados; demais regimes pela tarifa cadastrada.' },
+        ...(fs.shiftsMissingRate > 0 || fs.shiftsAwaitingProduction > 0 ? [{ type: 'note', tone: 'warn', text: `Atenção: ${fs.shiftsMissingRate} plantão(ões) sem tarifa ou profissional identificado; ${fs.shiftsAwaitingProduction} plantão(ões) por produtividade aguardam lançamento. Valores pendentes não entram nos totais.` }] : []),
+        { type: 'table', title: 'Custos por setor', columns: [
+          { header: 'Setor', key: 'name', width: 30, bold: true },
+          { header: 'Plantões', key: 'total', type: 'int' },
+          { header: 'Vagos', key: 'vacant', type: 'int', width: 9 },
+          { header: 'Horas', key: 'hours', type: 'hours' },
+          { header: 'Custo', key: 'cost', type: 'money', width: 18 }
+        ], rows: sectorMetrics.map(sec => ({ name: sec.name, total: sec.total, vacant: sec.vacant ? { v: sec.vacant, tone: 'warn' } : 0, hours: sec.hours, cost: sec.cost })), totals: {
+          total: sectorMetrics.reduce((sum, sec) => sum + sec.total, 0),
+          vacant: sectorMetrics.reduce((sum, sec) => sum + sec.vacant, 0),
+          hours: sectorMetrics.reduce((sum, sec) => sum + sec.hours, 0),
+          cost: sectorMetrics.reduce((sum, sec) => sum + sec.cost, 0)
+        } }
+      ]);
+    }
+
+    if (!book.wb.worksheets.length) {
+      alert('Este relatório não tem dados para exportar.');
+      return;
+    }
+    const name = mode === 'all' ? 'Relatório completo' : (REPORT_TITLES[activeTab] || 'Relatório');
+    await downloadWorkbook(book, excelFileName(name, hospitalName, `${formatDate(appliedFilters.start).replace(/\//g, '-')} a ${formatDate(appliedFilters.end).replace(/\//g, '-')}`));
+  } catch (error) {
+    console.error('Falha ao gerar a planilha do relatório:', error);
+    alert(`Não foi possível gerar a planilha. ${error?.message || 'Tente novamente.'}`);
   }
-
-  if (mode === 'all' || activeTab === 'trocas') {
-    html += `
-        <tr><td colspan="6" class="section-title">HISTÓRICO DE TROCAS E REPASSES (MURAL)</td></tr>
-        <tr>
-          <th>Data do Plantão</th>
-          <th>Setor Clínico</th>
-          <th>Horário</th>
-          <th>Dono Original (Solicitante)</th>
-          <th>Assumido Por (Atual)</th>
-          <th>Status da Troca</th>
-        </tr>
-    `;
-    swapsList.forEach((s, i) => {
-      const rowClass = i % 2 === 0 ? '' : 'class="row-alt"';
-      html += `
-        <tr ${rowClass}>
-          <td>${formatDate(s.date)}</td>
-          <td>${getSectorName(s, sectors)}</td>
-          <td>${s.start_time || ''} às ${s.end_time || ''}</td>
-          <td style="font-weight:bold; color:#be123c;">${s.requester}</td>
-          <td style="font-weight:bold; color:#059669;">${s.currentProf}</td>
-          <td>${s.swapStatus}</td>
-        </tr>
-      `;
-    });
-    html += `<tr><td colspan="6" style="border:none; height:20px;"></td></tr>`;
-  }
-
-  if (mode === 'all' || activeTab === 'base_setores') {
-    html += `
-        <tr><td colspan="5" class="section-title">ESTRUTURA DE SETORES</td></tr>
-        <tr>
-          <th>Nome do Setor</th>
-          <th>Especialidade Exigida</th>
-          <th>Status</th>
-          <th>Plantões no Período</th>
-          <th>Custo Projetado (R$)</th>
-        </tr>
-    `;
-    enrichedSectors.forEach((s, i) => {
-      const rowClass = i % 2 === 0 ? '' : 'class="row-alt"';
-      html += `
-        <tr ${rowClass}>
-          <td style="font-weight:bold;">${titleCase(s.name)}</td>
-          <td>${s.specialty || 'Não def.'}</td>
-          <td>${(s.status || 'Ativo').toUpperCase()}</td>
-          <td>${s.shiftsCount}</td>
-          <td class="money">${s.totalCost.toFixed(2).replace('.', ',')}</td>
-        </tr>
-      `;
-    });
-    html += `<tr><td colspan="5" style="border:none; height:20px;"></td></tr>`;
-  }
-
-  if (mode === 'all' || activeTab === 'base_profissionais') {
-    html += `
-        <tr><td colspan="11" class="section-title">BASE DE PROFISSIONAIS (CORPO CLÍNICO)</td></tr>
-        <tr>
-          <th>Nome Completo</th>
-          <th>Especialidade</th>
-          <th>Status</th>
-          <th>Documento (CRM)</th>
-          <th>Vencimento Doc.</th>
-          <th>Telefone</th>
-          <th>E-mail</th>
-          <th>Tipo Remuneração</th>
-          <th>Remuneração (${hospitalName})</th>
-          <th>Banco</th>
-          <th>Chave PIX</th>
-        </tr>
-    `;
-    filteredProfessionals.forEach((p, i) => {
-      const rowClass = i % 2 === 0 ? '' : 'class="row-alt"';
-      const vencimento = formatDate(p.document_expiry || p.documentExpiry || p.valid_until);
-      const isVencido = p.document_expiry && new Date(p.document_expiry) < new Date() ? 'class="furo"' : '';
-      html += `
-        <tr ${rowClass}>
-          <td style="font-weight:bold;">${titleCase(p.name)}</td>
-          <td>${p.specialty || 'Não inf.'}</td>
-          <td>${(p.status || 'Ativo').toUpperCase()}</td>
-          <td>${p.document || 'Não inf.'}</td>
-          <td ${isVencido}>${vencimento}</td>
-          <td>${p.phone || p.telefone || 'Não inf.'}</td>
-          <td>${p.email || 'Não inf.'}</td>
-          <td>${titleCase(p.remuneration_type || p.payment_type || DEFAULT_REMUNERATION_TYPE)}</td>
-          <td>${getProfessionalRemuneration(p, selectedUnitId)}</td>
-          <td>${p.bank_name || p.banco || 'Não inf.'}</td>
-          <td>${p.pix_key || p.chave_pix || p.pix || 'Não inf.'}</td>
-        </tr>
-      `;
-    });
-    html += `<tr><td colspan="11" style="border:none; height:20px;"></td></tr>`;
-  }
-
-  if (mode === 'all' || activeTab === 'aniversariantes') {
-    html += `
-        <tr><td colspan="4" class="section-title">ANIVERSARIANTES DO MÊS (${birthDaysList.length})</td></tr>
-        <tr>
-          <th>Dia do Aniversário</th>
-          <th>Nome do Profissional</th>
-          <th>Idade que Completa</th>
-          <th>Setor Principal / Especialidade</th>
-        </tr>
-    `;
-    birthDaysList.forEach((p, i) => {
-      const rowClass = i % 2 === 0 ? '' : 'class="row-alt"';
-      html += `
-        <tr ${rowClass}>
-          <td style="font-weight:bold; text-align:center;">Dia ${p.birthDateFormatted}</td>
-          <td style="font-weight:bold;">${titleCase(p.name)}</td>
-          <td style="text-align:center;">${p.ageTurns} anos</td>
-          <td>${p.specialty || 'Geral'}</td>
-        </tr>
-      `;
-    });
-    html += `<tr><td colspan="4" style="border:none; height:20px;"></td></tr>`;
-  }
-
-  if (mode === 'all' || activeTab === 'profissionais') {
-    html += `
-        <tr><td colspan="6" class="section-title">MATRIZ DE PRODUTIVIDADE MÉDICA (No Período)</td></tr>
-        <tr>
-          <th>Nome do Profissional</th>
-          <th>Especialidade Principal</th>
-          <th>Setores Atuados no Período</th>
-          <th>Nº Plantões</th>
-          <th>Horas Realizadas</th>
-          <th>Honorários Brutos (R$)</th>
-        </tr>
-    `;
-    professionalMetrics.forEach((doc, i) => {
-      const rowClass = i % 2 === 0 ? '' : 'class="row-alt"';
-      html += `
-        <tr ${rowClass}>
-          <td style="font-weight:bold;">${doc.name}</td>
-          <td>${doc.specialty}</td>
-          <td>${doc.sectors}</td>
-          <td style="text-align:center;">${doc.shifts}</td>
-          <td style="text-align:center;">${doc.hours}h</td>
-          <td class="money">${doc.cost.toFixed(2).replace('.', ',')}</td>
-        </tr>
-      `;
-    });
-    html += `<tr><td colspan="6" style="border:none; height:20px;"></td></tr>`;
-  }
-
-  if (mode === 'all' || activeTab === 'produtividade_diaria') {
-    html += `
-      <tr><td colspan="6" class="section-title">APURAÇÃO DIÁRIA DE PRODUTIVIDADE</td></tr>
-      <tr><td colspan="6">${productivityReport.available
-        ? `Unidade da regra: ${hospitalName} · Pool diário configurado: ${formatCurrency(productivityReport.dailyPool)} · Rateio proporcional por atendimentos, fechado somente após conferência de todos os profissionais produtivos escalados e conclusão dos plantões.`
-        : productivityReport.error || `A regra de produtividade não está configurada para a unidade selecionada (${hospitalName}); não há valores apurados neste relatório.`}</td></tr>
-      <tr>
-        <th>Data</th><th>Atendimentos apurados</th><th>Plantões</th><th>Pool diário aplicado (R$)</th><th>Valor por atendimento (R$)</th><th>Status</th>
-      </tr>
-    `;
-    productivityReport.days.forEach(day => {
-      html += `
-        <tr>
-          <td>${formatDate(day.date)}</td>
-          <td>${day.complete ? formatNumber(day.totalAttendance) : 'Pendente'}</td>
-          <td>${day.items.reduce((sum, item) => sum + item.shifts, 0)}</td>
-          <td class="money">${day.complete ? formatCurrency(day.totalAttendance > 0 ? day.poolAmount : 0) : '—'}</td>
-          <td class="money">${day.complete && day.totalAttendance > 0 ? formatCurrency(day.poolAmount / day.totalAttendance) : '—'}</td>
-          <td>${getProductivityDayStatus(day)}</td>
-        </tr>
-      `;
-    });
-    html += `
-      <tr><td colspan="11" class="section-title">RATEIO POR PROFISSIONAL E DIA</td></tr>
-      <tr>
-        <th>Data</th><th>Profissional</th><th>Especialidade</th><th>Setor(es)</th><th>Plantões</th><th>Total atendimentos do dia</th><th>Atendimentos individuais</th><th>Valor por atendimento</th><th>Pool diário</th><th>Valor rateado</th><th>Situação</th>
-      </tr>
-    `;
-    productivityReport.rows.forEach(row => {
-      const daily = productivityReport.days.find(day => day.date === row.date);
-      html += `
-        <tr>
-          <td>${formatDate(row.date)}</td>
-          <td>${titleCase(row.professional.name)}</td>
-          <td>${row.professional.specialty || '—'}</td>
-          <td>${row.sectors}</td>
-          <td>${row.shifts}</td>
-          <td>${row.complete ? formatNumber(daily?.totalAttendance) : 'Pendente'}</td>
-          <td>${row.attendance ?? 'não lançado'}</td>
-          <td class="money">${row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
-          <td class="money">${row.complete ? formatCurrency(daily?.totalAttendance > 0 ? productivityReport.dailyPool : 0) : '—'}</td>
-          <td class="money">${row.complete ? formatCurrency(row.amount) : '—'}</td>
-          <td>${row.complete ? 'Rateado' : `Pendente · ${row.pendingReason}`}</td>
-        </tr>
-      `;
-    });
-    html += `
-      <tr><td colspan="7" class="section-title">ACUMULADO POR PROFISSIONAL NO PERÍODO</td></tr>
-      <tr><th>Profissional</th><th>Especialidade</th><th>Plantões</th><th>Atendimentos fechados</th><th>Valor acumulado</th><th>Dias pendentes</th><th>Situação</th></tr>
-    `;
-    productivityReport.professionalTotals.forEach(item => {
-      html += `<tr><td>${titleCase(item.professional.name)}</td><td>${item.professional.specialty || '—'}</td><td>${item.shifts}</td><td>${item.attendance}</td><td class="money">${formatCurrency(item.amount)}</td><td>${item.pendingDays}</td><td>${item.pendingDays ? 'Saldo parcial' : 'Completo'}</td></tr>`;
-    });
-    html += `
-      <tr><td colspan="6" class="section-title">CONSOLIDADO DO PERÍODO (UNIDADE)</td></tr>
-      <tr>
-        <td>Atendimentos em dias fechados: ${productivityReport.available ? formatNumber(productivityReport.totals.attendance) : '—'}</td>
-        <td>Plantões produtivos: ${productivityReport.available ? productivityReport.totals.shifts : '—'}</td>
-        <td>Pool rateado: ${productivityReport.available ? formatCurrency(productivityReport.totals.pool) : '—'}</td>
-        <td>Dias pendentes: ${productivityReport.available ? productivityReport.totals.pendingDays : '—'}</td>
-        <td colspan="2">Pool diário configurado: ${productivityReport.available ? formatCurrency(productivityReport.dailyPool) : '—'}</td>
-      </tr>
-      <tr><td colspan="6" style="border:none; height:20px;"></td></tr>
-    `;
-  }
-
-  if ((mode === 'all' || activeTab === 'produtividade_profissional') && selectedProductivitySummary) {
-    html += `
-      <tr><td colspan="8" class="section-title">EXTRATO INDIVIDUAL DE PRODUTIVIDADE</td></tr>
-      <tr><td colspan="8">Profissional: ${titleCase(selectedProductivitySummary.professional.name)} · Especialidade: ${selectedProductivitySummary.professional.specialty || '—'} · Período: ${periodLabel} · Unidade: ${hospitalName}</td></tr>
-      <tr><td colspan="8">Regra: valor por atendimento = pool diário configurado (${formatCurrency(productivityReport.dailyPool)}) ÷ total de atendimentos da unidade no dia. Valor individual = atendimentos do profissional × valor por atendimento. Dias pendentes não entram no saldo fechado.</td></tr>
-      <tr>
-        <th>Data</th><th>Setor(es)</th><th>Plantões</th><th>Atendimentos do profissional</th><th>Atendimentos totais no dia</th><th>Valor por atendimento</th><th>Valor rateado</th><th>Situação</th>
-      </tr>
-    `;
-    selectedProductivityRows.forEach(row => {
-      const day = productivityReport.days.find(item => item.date === row.date);
-      html += `
-        <tr>
-          <td>${formatDate(row.date)}</td>
-          <td>${row.sectors}</td>
-          <td>${row.shifts}</td>
-          <td>${row.attendance ?? 'Não lançado'}</td>
-          <td>${row.complete ? formatNumber(day?.totalAttendance) : 'Pendente'}</td>
-          <td class="money">${row.unitRate === null ? '—' : formatUnitRate(row.unitRate)}</td>
-          <td class="money">${row.complete ? formatCurrency(row.amount) : '—'}</td>
-          <td>${row.complete ? 'Rateado' : `Pendente · ${row.pendingReason}`}</td>
-        </tr>
-      `;
-    });
-    html += `
-      <tr>
-        <td colspan="2"><strong>Total do período fechado</strong></td>
-        <td>${selectedProductivitySummary.shifts}</td>
-        <td>${formatNumber(selectedProductivitySummary.attendance)}</td>
-        <td>—</td>
-        <td>—</td>
-        <td class="money"><strong>${formatCurrency(selectedProductivitySummary.amount)}</strong></td>
-        <td>${selectedProductivitySummary.pendingDays ? `${selectedProductivitySummary.pendingDays} dia(s) pendente(s) · saldo parcial` : 'Completo'}</td>
-      </tr>
-      <tr><td colspan="8" style="border:none; height:20px;"></td></tr>
-    `;
-  }
-
-  if (mode === 'all' || activeTab === 'financeiro') {
-    html += `
-        <tr><td colspan="4" class="section-title">RELATÓRIO FINANCEIRO OPERACIONAL</td></tr>
-        <tr><td colspan="4" style="font-size:10px; color:#475569;">Mesma base do Faturamento: salário mensal proporcional aos dias do período e dividido entre os plantões do profissional; produtividade pelo rateio dos dias fechados; demais regimes pela tarifa cadastrada.</td></tr>
-        ${financialSummary.shiftsMissingRate > 0 || financialSummary.shiftsAwaitingProduction > 0 ? `<tr><td colspan="4" style="font-weight:bold; color:#92400e;">Atenção: ${financialSummary.shiftsMissingRate} plantão(ões) sem tarifa ou profissional identificado; ${financialSummary.shiftsAwaitingProduction} plantão(ões) por produtividade aguardam lançamento. Valores pendentes não integram os totais.</td></tr>` : ''}
-        <tr>
-          <th colspan="2">Previsão das escalas ocupadas</th>
-          <th colspan="2" style="background-color: #047857;">Realizado Concluído</th>
-        </tr>
-        <tr>
-          <td colspan="2" class="money" style="font-weight:bold; font-size:16px;">${financialSummary.totalCost.toFixed(2).replace('.', ',')}</td>
-          <td colspan="2" class="money" style="font-weight:bold; font-size:16px; color:#047857;">${financialSummary.executedCost.toFixed(2).replace('.', ',')}</td>
-        </tr>
-        <tr>
-          <th colspan="2" style="background-color: #b45309;">Valor Pendente a Realizar</th>
-          <th colspan="2" style="background-color: #be123c;">Valor Retido (Vagas e Furos)</th>
-        </tr>
-        <tr>
-          <td colspan="2" class="money" style="font-weight:bold; font-size:16px; color:#b45309;">${financialSummary.pendingCost.toFixed(2).replace('.', ',')}</td>
-          <td colspan="2" class="money" style="font-weight:bold; font-size:16px; color:#be123c;">${financialSummary.vacantCost.toFixed(2).replace('.', ',')}</td>
-        </tr>
-        <tr><td colspan="4" style="border:none; height: 20px;"></td></tr>
-        <tr><td colspan="4" class="section-title">CUSTOS DESDOBRADOS POR SETOR CLÍNICO</td></tr>
-        <tr>
-          <th colspan="2">Setor Clínico / Unidade</th>
-          <th class="text-center">Horas Assistenciais</th>
-          <th class="text-right">Alocação Orçamentária (R$)</th>
-        </tr>
-    `;
-    sectorMetrics.forEach((sec, i) => {
-      const rowClass = i % 2 === 0 ? '' : 'class="row-alt"';
-      html += `
-        <tr ${rowClass}>
-          <td colspan="2" style="font-weight:bold;">${sec.name}</td>
-          <td style="text-align:center;">${sec.hours}h</td>
-          <td class="money">${sec.cost.toFixed(2).replace('.', ',')}</td>
-        </tr>
-      `;
-    });
-  }
-
-  html += `
-      </table>
-    </body>
-    </html>
-  `;
-
-  const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `Relatorio_${mode === 'all' ? 'Completo' : activeTab}_${appliedFilters.start}_a_${appliedFilters.end}.xls`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
 }
 
 export function printReport(requestedMode, { activeTab, birthDaysList, company, coverageRate, credentialAudit, currentUnitObj, enrichedSectors, filledShiftsCount, filterSummary, filteredProfessionals, filteredShifts, financialSummary, hasSearched, hospitalName, periodLabel, productivityProfessionalReportReady, productivityReport, professionalMetrics, sectorMetrics, sectors, selectedProductivityRows, selectedProductivitySummary, selectedUnitId, swapsList, totalShiftsCount, user, vacantShiftItems }) {

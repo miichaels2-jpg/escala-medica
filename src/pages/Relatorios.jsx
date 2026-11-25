@@ -668,9 +668,9 @@ export default function Relatorios() {
   const productivityProfessionalReportReady = productivityReport.available && Boolean(selectedProductivitySummary);
 
   // ==========================================
-  // EXPORTAÇÃO EXCEL NATIVA
+  // EXPORTAÇÃO EXCEL (.xlsx)
   // ==========================================
-  const triggerExcelExport = (requestedMode) => exportReportExcel(requestedMode, { activeTab, appliedFilters, birthDaysList, enrichedSectors, filterSummary, filteredProfessionals, filteredShifts, financialSummary, hasSearched, hospitalName, periodLabel, productivityProfessionalReportReady, productivityReport, professionalMetrics, sectorMetrics, sectors, selectedProductivityRows, selectedProductivitySummary, selectedUnitId, shiftCost, swapsList });
+  const triggerExcelExport = (requestedMode) => exportReportExcel(requestedMode, { activeTab, appliedFilters, birthDaysList, company, coverageRate, credentialAudit, currentUnitObj, enrichedSectors, filledShiftsCount, filterSummary, filteredProfessionals, filteredShifts, financialSummary, hasSearched, hospitalName, periodLabel, productivityProfessionalReportReady, productivityReport, professionalMetrics, reliabilityRows, sectorMetrics, sectors, selectedProductivityRows, selectedProductivitySummary, selectedUnitId, shiftCost, swapsList, totalShiftsCount, vacantShiftItems });
 
   // ==========================================
   // IMPRESSÃO HTML PURA (Isolada, A4 Branco c/ Quebra) COM LOGOS

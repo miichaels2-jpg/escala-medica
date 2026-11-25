@@ -395,8 +395,7 @@ export default function Faturamento() {
         row.getCell(4).numFmt = 'dd/mm/yyyy';
         row.getCell(6).numFmt = '"R$" #,##0.00';
       });
-      worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF312E81' } };
+      (await import('@/lib/excelLayout')).styleImportHeader(worksheet);
       worksheet.views = [{ state: 'frozen', ySplit: 1 }];
 
       const buffer = await workbook.xlsx.writeBuffer();
@@ -830,110 +829,75 @@ export default function Faturamento() {
   }, [reportData]);
 
   // =========================================================================
-  // EXPORTAÇÃO EXCEL NATIVA (COM ESTILOS CONTÁBEIS E DE TEMPO)
+  // EXPORTAÇÃO EXCEL (.xlsx no modelo único de src/lib/excelLayout.js)
   // =========================================================================
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (filteredReport.length === 0) return alert('Não há dados para exportar neste mês.');
-
-    const hospitalName = currentUnitName;
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
-    const emissao = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR');
-
-    const formatHourForExcel = (num) => {
-      const h = Math.floor(safeNumber(num));
-      const m = Math.round((safeNumber(num) - h) * 60);
-      return `${h}:${String(m).padStart(2, '0')}`;
-    };
-
-    const rowsHtml = filteredReport.map(item => {
-      const formaPagamento = item.chavePix ? `PIX (${item.pixTipo}): ${item.chavePix}` : (item.banco ? `Banco: ${item.banco}` : 'Pendente de Cadastro');
-      const regime = item.remunType === 'mensal' ? 'Fixo Mensal' : item.remunType === 'produtividade' ? 'Produtividade' : 'Por Plantão (Tabela)';
-
-      return `
-        <tr>
-          <td style="border: 1px solid #cbd5e1;">${escapeHtml(item.prof.name)}</td>
-          <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${escapeHtml(item.matricula)}</td>
-          <td style="border: 1px solid #cbd5e1;">${escapeHtml(item.prof.specialty || 'Geral')}</td>
-          <td style="border: 1px solid #cbd5e1;">${regime}</td>
-          <td class="num" style="border: 1px solid #cbd5e1;">${item.plantõesRealizados}</td>
-          <td class="num" style="border: 1px solid #cbd5e1;">${item.remunType === 'produtividade' ? item.atendimentosApurados : ''}</td>
-          <td class="time" style="border: 1px solid #cbd5e1;">${formatHourForExcel(item.horasRealizadas)}</td>
-          <td class="money" style="border: 1px solid #cbd5e1;">${item.valorBruto.toFixed(2).replace('.', ',')}</td>
-          <td class="money" style="border: 1px solid #cbd5e1; color: #ef4444;">${item.valorDesconto.toFixed(2).replace('.', ',')}</td>
-          <td class="money" style="border: 1px solid #cbd5e1; font-weight: bold; color: #059669;">${item.valorLiquido.toFixed(2).replace('.', ',')}</td>
-          <td style="border: 1px solid #cbd5e1; mso-number-format:'\\@';">${escapeHtml(formaPagamento)}</td>
-          <td style="border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: ${item.awaitingProduction ? '#b45309' : item.isPago ? '#059669' : '#f59e0b'};">${item.awaitingProduction ? 'Apuração pendente · saldo parcial' : item.isPago ? 'PAGO' : 'Pendente'}</td>
-        </tr>
-      `;
-    }).join('');
-
-    const htmlTemplate = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8" />
-        <style>
-          table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 12px; }
-          th { background-color: #1e293b; color: #ffffff; border: 1px solid #cbd5e1; font-weight: bold; text-align: center; padding: 10px; }
-          td { padding: 6px; vertical-align: middle; }
-          .money { mso-number-format: "_-\\[\\$R\\$-pt-BR\\]\\* \\#\\,\\#\\#0\\.00_-"; text-align: right; }
-          .time { mso-number-format: "\\[h\\]\\:mm"; text-align: center; font-weight: bold; }
-          .num { mso-number-format: "0"; text-align: center; }
-        </style>
-      </head>
-      <body>
-        <table>
-          <tr>
-            <td colspan="12" style="font-size: 20px; font-weight: bold; text-align: center; background-color: #0f172a; color: #ffffff; padding: 12px;">${escapeHtml(hospitalName)}</td>
-          </tr>
-          <tr>
-            <td colspan="12" style="font-size: 14px; font-weight: bold; text-align: center; background-color: #1e293b; color: #94a3b8; padding: 6px;">RELATÓRIO OFICIAL DE FATURAMENTO E REPASSE</td>
-          </tr>
-          <tr>
-            <td colspan="5" style="font-weight: bold; padding: 10px 0;">Competência Mês: ${competencia}</td>
-            <td colspan="7" style="text-align: right; padding: 10px 0;">Emissão do Relatório: ${emissao}</td>
-          </tr>
-          <tr><td colspan="12" style="padding-bottom: 8px;">Busca: ${escapeHtml(searchQuery.trim() || 'Todos os profissionais')}</td></tr>
-          <tr><td colspan="12"></td></tr>
-          <tr>
-            <th>Profissional</th>
-            <th>Matrícula</th>
-            <th>Especialidade</th>
-            <th>Regime Contratual</th>
-            <th>Plantões Cumpridos</th>
-            <th>Atendimentos Apurados</th>
-            <th>Horas Totais</th>
-            <th>Valor Bruto (R$)</th>
-            <th>Descontos/Taxa (R$)</th>
-            <th>Valor Líquido (R$)</th>
-            <th>Dados p/ Pagamento</th>
-            <th>Status do Repasse</th>
-          </tr>
-          ${rowsHtml}
-          <tr><td colspan="12"></td></tr>
-          <tr>
-            <td colspan="4" style="font-weight: bold; text-align: right; padding: 8px;">TOTAIS DOS PROFISSIONAIS LISTADOS:</td>
-            <td class="num" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${filteredTotals.plantões}</td>
-            <td class="num" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${filteredTotals.atendimentos}</td>
-            <td class="time" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${formatHourForExcel(filteredTotals.horas)}</td>
-            <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc;">${filteredTotals.bruto.toFixed(2).replace('.', ',')}</td>
-            <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc; color: #ef4444;">${(filteredTotals.bruto - filteredTotals.liquido).toFixed(2).replace('.', ',')}</td>
-            <td class="money" style="font-weight: bold; border: 1px solid #000; background-color: #f8fafc; color: #059669; font-size: 14px;">${filteredTotals.liquido.toFixed(2).replace('.', ',')}</td>
-            <td colspan="2"></td>
-          </tr>
-          ${shiftsAwaitingProduction > 0 ? `<tr><td colspan="12" style="padding: 8px; color: #92400e; font-weight: bold;">Atenção: ${shiftsAwaitingProduction} dia(s) por produtividade aguardam lançamento completo. Os saldos parciais incluem somente diárias já fechadas.</td></tr>` : ''}
-        </table>
-      </body>
-      </html>
-    `;
-
-    const blob = new Blob([htmlTemplate], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Fechamento_Honorarios_${currentUnitName.replace(/[^a-zA-Z0-9]/g, '_')}_${monthPrefix}.xls`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const anyProductivity = filteredReport.some(item => item.remunType === 'produtividade');
+    const paidCount = filteredReport.filter(item => item.isPago && !item.awaitingProduction).length;
+    try {
+      const { addSheet, createWorkbook, downloadWorkbook, excelFileName } = await import('@/lib/excelLayout');
+      const book = await createWorkbook({ company, unit: currentUnitObj });
+      const columns = [
+        { header: 'Profissional', key: 'name', width: 30, bold: true },
+        { header: 'Matrícula', key: 'registration', width: 17 },
+        { header: 'Especialidade', key: 'specialty', width: 20 },
+        { header: 'Regime', key: 'regime', width: 15 },
+        { header: 'Plantões', key: 'shifts', type: 'int', width: 10 },
+        ...(anyProductivity ? [{ header: 'Atendimentos', key: 'attendance', type: 'int', width: 13 }] : []),
+        { header: 'Horas', key: 'hours', type: 'hours', width: 10 },
+        { header: 'Bruto', key: 'gross', type: 'money' },
+        { header: 'Descontos', key: 'discount', type: 'money', width: 14 },
+        { header: 'Líquido', key: 'net', type: 'money', bold: true },
+        { header: 'Pagar em', key: 'payTo', width: 30 },
+        { header: 'Situação', key: 'status', width: 19 }
+      ];
+      const rows = filteredReport.map(item => ({
+        name: item.prof.name,
+        registration: item.matricula && item.matricula !== 'MAT-XXXX' ? item.matricula : '',
+        specialty: item.prof.specialty || '—',
+        regime: item.remunType === 'mensal' ? 'Fixo mensal' : item.remunType === 'produtividade' ? 'Produtividade' : 'Por plantão',
+        shifts: item.plantõesRealizados,
+        attendance: item.remunType === 'produtividade' ? item.atendimentosApurados : null,
+        hours: item.horasRealizadas,
+        gross: item.valorBruto,
+        discount: item.valorDesconto || null,
+        net: item.valorLiquido,
+        payTo: item.chavePix ? `PIX ${item.pixTipo ? `(${item.pixTipo}) ` : ''}${item.chavePix}` : item.banco ? item.banco : { v: 'Falta PIX ou conta', tone: 'bad' },
+        status: item.awaitingProduction
+          ? { v: 'Esperando produção', tone: 'warn' }
+          : item.isPago ? { v: 'Pago', tone: 'good' } : { v: 'A pagar', tone: 'muted' }
+      }));
+      addSheet(book, {
+        name: 'Fechamento',
+        orgName: currentUnitName,
+        title: 'Fechamento de honorários',
+        subtitle: `Competência ${competencia}`,
+        meta: [['Busca', searchQuery.trim()], ['Profissionais', filteredReport.length], ['Pagos', `${paidCount} de ${filteredReport.length}`]],
+        landscape: true,
+        blocks: [
+          {
+            type: 'table',
+            columns,
+            rows,
+            totals: {
+              shifts: filteredTotals.plantões,
+              attendance: filteredTotals.atendimentos,
+              hours: filteredTotals.horas,
+              gross: filteredTotals.bruto,
+              discount: filteredTotals.bruto - filteredTotals.liquido,
+              net: filteredTotals.liquido
+            }
+          },
+          ...(shiftsAwaitingProduction > 0 ? [{ type: 'note', tone: 'warn', text: `Atenção: ${shiftsAwaitingProduction} dia(s) de produtividade ainda sem todos os atendimentos lançados. Para esses profissionais o valor é parcial e inclui só os dias fechados.` }] : [])
+        ]
+      });
+      await downloadWorkbook(book, excelFileName('Fechamento de honorários', currentUnitName, monthPrefix));
+    } catch (error) {
+      console.error('Falha ao gerar a planilha do fechamento:', error);
+      alert(`Não foi possível gerar a planilha. ${error?.message || 'Tente novamente.'}`);
+    }
   };
 
   const handlePrintConsolidatedReport = () => {
