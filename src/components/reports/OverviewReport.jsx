@@ -1,5 +1,5 @@
 // Visão geral: vagas em aberto e o painel de gestão (gráficos).
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import { AlertTriangle, ChevronRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { lazyPage } from '@/lib/lazyPage';
@@ -8,9 +8,11 @@ import { formatDate, getSectorName, getShiftHours, isShiftPast, isVacant } from 
 // Os gráficos (recharts) pesam ~400 KB: só baixam quando alguém abre a Visão geral.
 // lazyPage: se o arquivo sumiu por uma versão nova, recarrega em vez de mostrar erro.
 const ManagementBI = lazyPage(() => import('@/components/reports/ManagementBI'));
+const BoardPresentation = lazyPage(() => import('@/components/reports/BoardPresentation'));
 const chartsFallback = <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-4 border-slate-200 dark:border-slate-700 border-t-sky-600 rounded-full animate-spin" /></div>;
 
-export default function OverviewReport({ activeTab, coverageRate, credentialAudit, filterSummary, filteredShifts, financialSummary, hospitalName, isAllUnits, periodLabel, professionalMetrics, scopeUnitIds, sectorMetrics, sectors, setActiveTab, shiftCost, unitNameById, vacantShiftItems }) {
+export default function OverviewReport({ activeTab, coverageRate, credentialAudit, filteredShifts, financialSummary, isAllUnits, presentation, professionalMetrics, scopeUnitIds, sectorMetrics, sectors, setActiveTab, shiftCost, unitNameById, vacantShiftItems }) {
+  const [presenting, setPresenting] = useState(false);
   return (
     <>
       {/* VISÃO GERAL */}
@@ -72,10 +74,14 @@ export default function OverviewReport({ activeTab, coverageRate, credentialAudi
             sectorMetrics={sectorMetrics}
             professionalMetrics={professionalMetrics}
             credentialAudit={credentialAudit}
-            periodLabel={periodLabel}
-            hospitalName={hospitalName}
-            filterSummary={filterSummary}
+            onPresent={presentation ? () => setPresenting(true) : undefined}
           />
+        </Suspense>
+      )}
+
+      {presenting && presentation && (
+        <Suspense fallback={null}>
+          <BoardPresentation open onClose={() => setPresenting(false)} {...presentation} />
         </Suspense>
       )}
 

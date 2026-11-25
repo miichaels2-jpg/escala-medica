@@ -4,9 +4,41 @@
 //
 // status: 'entregue' | 'em_andamento' | 'planejado' | 'ideia'
 
-export const ROADMAP_UPDATED_AT = '2026-11-23';
+export const ROADMAP_UPDATED_AT = '2026-11-25';
 
 export const ROADMAP_GROUPS = [
+  // Ideias combinadas em 25/11/2026 para deixar o app mais acolhedor e mais fácil de vender.
+  {
+    title: 'Próximos · V0.7 · mostrar resultado e acolher quem usa',
+    items: [
+      { id: 47, title: 'Apresentação do mês para a diretoria', detail: 'Em Relatórios › Visão geral: 6 slides em tela cheia (capa, cobertura, vagas e furos, custo por setor, equipe, resumo e próximo mês), sempre comparando com o mês anterior; setas do teclado ou passador de slides e PDF com um slide por página.', status: 'entregue', version: 'V0.7.2' },
+      { id: 48, title: 'Painel "Como estamos indo"', detail: 'Cobertura, vagas, custo e horas do mês com a variação sobre o mês anterior, e um calendário que mostra de relance os dias com vaga aberta ou furo (clicar abre a vaga na escala).', status: 'entregue', version: 'V0.7.2' },
+      { id: 49, title: 'Custo antes de publicar', detail: 'Na janela de publicar: quantos plantões, quantos sem profissional e o custo estimado do período, comparado com o período anterior.', status: 'entregue', version: 'V0.7.2' },
+      { id: 50, title: 'Boas-vindas do plantonista', detail: '"Bom dia, Dra. Ana. Seu próximo plantão é amanhã, 07h, na UTI. Este mês: 8 de 12 plantões e R$ 9.600 a receber." Uma frase no lugar de números soltos.', status: 'planejado' },
+      { id: 51, title: 'Reconhecimento', detail: 'Quem cobre uma vaga urgente recebe um "obrigado"; o gestor pode agradecer com um botão; mensagem de aniversário no próprio app.', status: 'planejado' },
+      { id: 52, title: 'Desfazer', detail: 'Ao tirar alguém da escala ou apagar um plantão, 10 segundos de "Desfazer".', status: 'planejado' },
+      { id: 53, title: 'Informe de rendimentos do ano', detail: 'PDF com tudo o que o profissional recebeu de cada unidade no ano, para o imposto de renda.', status: 'planejado' },
+      { id: 54, title: 'Envio da nota fiscal (PJ)', detail: 'O profissional anexa a nota no app antes do pagamento; o gestor vê quem já mandou e o "Marcar como pago" libera depois.', status: 'planejado' },
+      { id: 60, title: 'Ponto do plantão', detail: 'Entrada e saída pelo celular (localização ou QR code no setor): prova de presença e fechamento pelo que foi feito de verdade.', status: 'planejado' }
+    ]
+  },
+  {
+    title: 'Ideias · para depois',
+    items: [
+      { id: 55, title: 'Preferências do plantonista', detail: '"Prefiro noturno", "não faço domingo", "quero mais na UTI": o gerador respeita e quem tem interesse recebe primeiro o aviso da vaga.', status: 'ideia' },
+      { id: 56, title: 'Documento vencendo, aviso para o profissional', detail: 'CRM, cursos e vacinas com arquivo anexado e lembrete para o próprio profissional 30 dias antes.', status: 'ideia' },
+      { id: 57, title: 'Bônus para vaga difícil', detail: '"+R$ 300 se cobrir até amanhã", que entra sozinho no fechamento.', status: 'ideia' },
+      { id: 58, title: 'Sobreaviso', detail: 'Lista de quem fica de reserva em cada dia; se abrir um furo, eles são chamados primeiro.', status: 'ideia' },
+      { id: 59, title: 'Comunicados por setor com "li"', detail: 'Aviso oficial para a equipe de um setor, e o gestor vê quem já leu.', status: 'ideia' },
+      { id: 61, title: 'Bilhete de passagem de plantão', detail: 'Campo curto que quem entra lê ao abrir o plantão ("leito 4 aguardando tomografia").', status: 'ideia' },
+      { id: 62, title: 'Busca rápida (Ctrl+K)', detail: 'Achar profissional, setor ou plantão de qualquer tela.', status: 'ideia' },
+      { id: 63, title: 'Telas vazias que orientam', detail: 'Trocar "nenhum registro" por uma frase e o botão do próximo passo.', status: 'ideia' },
+      { id: 64, title: 'Demonstração que se monta sozinha', detail: 'Link que cria um hospital fictício para o cliente testar e apaga tudo em 7 dias.', status: 'ideia' },
+      { id: 65, title: 'Cobrança dentro da Plataforma', detail: 'Plano por número de profissionais, PIX ou boleto recorrente e aviso de atraso.', status: 'ideia' },
+      { id: 66, title: 'Saúde dos clientes', detail: 'Na Plataforma: acessos de cada empresa e quando publicou a última escala, para ligar antes de o cliente desistir.', status: 'ideia' },
+      { id: 67, title: 'Avisos pelo WhatsApp', detail: 'Canal que todo médico usa, mas a versão oficial cobra por mensagem e exige aprovação da Meta: depois dos primeiros clientes pagantes.', status: 'ideia' }
+    ]
+  },
   // Varredura completa do app em 23/11/2026 (todas as telas, computador e celular, dados reais da demo).
   {
     title: 'Próximos · prioridade 1 · segurança e confiança',
@@ -68,7 +100,7 @@ export const ROADMAP_GROUPS = [
       { id: 9, title: 'Ranking de confiabilidade (só gestor)', detail: 'Quem mais cobre vagas, falta ou troca.', status: 'entregue', version: 'V0.2.7' },
       { id: 10, title: 'Limite de carga horária', detail: 'Aviso ao passar de X horas na semana ou emendar plantões sem descanso.', status: 'entregue', version: 'V0.2.2' },
       { id: 11, title: 'Histórico de alterações', detail: 'Quem alocou, trocou, apagou ou publicou, e quando.', status: 'entregue', version: 'V0.2.1' },
-      { id: 12, title: 'Relatório mensal automático por e-mail', detail: 'BI do mês anterior para a diretoria todo dia 1º.', status: 'ideia' },
+      { id: 12, title: 'Relatório mensal automático por e-mail', detail: 'A apresentação do mês (V0.7.2) em PDF para a diretoria todo dia 1º. Depende do domínio e do envio de e-mails (item 19).', status: 'ideia' },
       { id: 16, title: 'Liberação de telas por profissional', detail: 'Acesso tela a tela no Corpo Clínico, com opção de editar sem ser gestor (ex.: administrativo com acesso a tudo).', status: 'entregue', version: 'V0.2.2' }
     ]
   },

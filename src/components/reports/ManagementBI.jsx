@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis
 } from 'recharts';
-import { Activity, AlertTriangle, CalendarDays, CheckCircle2, Clock, DollarSign, Maximize2, Minimize2, Users } from 'lucide-react';
+import { Activity, AlertTriangle, CalendarDays, CheckCircle2, Clock, DollarSign, Presentation, Users } from 'lucide-react';
 
 // Paleta validada (scripts/validate_palette.js do skill de dataviz) nos dois modos:
 // série 1 = azul, série 2 = laranja.
@@ -74,27 +74,10 @@ function ChartCard({ title, subtitle, children, className = '' }) {
 
 export default function ManagementBI({
   shifts, isVacant, shiftCost, isShiftPast, financialSummary, coverageRate,
-  sectorMetrics, professionalMetrics, credentialAudit, periodLabel, hospitalName, filterSummary, unitBreakdown
+  sectorMetrics, professionalMetrics, credentialAudit, unitBreakdown, onPresent
 }) {
   const isDark = useIsDark();
   const colors = isDark ? PALETTE.dark : PALETTE.light;
-  const containerRef = useRef(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  useEffect(() => {
-    const onChange = () => setIsFullscreen(document.fullscreenElement === containerRef.current);
-    document.addEventListener('fullscreenchange', onChange);
-    return () => document.removeEventListener('fullscreenchange', onChange);
-  }, []);
-
-  const togglePresentation = async () => {
-    try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await containerRef.current?.requestFullscreen?.();
-    } catch (error) {
-      console.warn('Modo apresentação indisponível neste navegador:', error);
-    }
-  };
 
   const data = useMemo(() => {
     const byDate = new Map();
@@ -148,29 +131,18 @@ export default function ManagementBI({
   const shiftTotal = data.day + data.night;
 
   return (
-    <div
-      ref={containerRef}
-      className={`space-y-4 ${isFullscreen ? 'bg-slate-50 dark:bg-slate-950 p-6 sm:p-10 overflow-y-auto' : ''}`}
-    >
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-        {isFullscreen ? (
-          <div>
-            <p className="text-sm font-semibold text-sky-700 dark:text-sky-400">Painel de gestão</p>
-            <h2 className="text-3xl font-semibold text-slate-900 dark:text-white">{hospitalName}</h2>
-            <p className="text-base text-slate-500 dark:text-slate-400">{periodLabel} · {filterSummary}</p>
-          </div>
-        ) : (
-          <span />
-        )}
-        <button
-          type="button"
-          onClick={togglePresentation}
-          className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer self-start sm:self-auto"
-        >
-          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          {isFullscreen ? 'Sair da apresentação' : 'Modo apresentação'}
-        </button>
-      </div>
+    <div className="space-y-4">
+      {onPresent && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onPresent}
+            className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
+          >
+            <Presentation className="w-4 h-4" /> Apresentação do mês
+          </button>
+        </div>
+      )}
 
       {Array.isArray(unitBreakdown) && unitBreakdown.length > 1 && (
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-x-auto">
@@ -202,7 +174,7 @@ export default function ManagementBI({
         </div>
       )}
 
-      <div className={`grid grid-cols-2 md:grid-cols-3 gap-3 ${isFullscreen ? "2xl:grid-cols-6" : ""}`}>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Kpi icon={CalendarDays} label="Plantões no período" value={num(shifts.length)} detail={`${num(filled)} preenchidos`} />
         <Kpi icon={CheckCircle2} label="Cobertura da escala" value={`${coverageRate}%`} detail="Meta: acima de 98%" tone={coverageRate >= 98 ? 'good' : coverageRate >= 90 ? 'warn' : 'bad'} />
         <Kpi icon={AlertTriangle} label="Vagas sem profissional" value={num(data.openVacancies + data.overdueVacancies)} detail={`${num(data.overdueVacancies)} já passaram (furo) · ${num(data.openVacancies)} futuras`} tone={data.overdueVacancies > 0 ? 'bad' : data.openVacancies > 0 ? 'warn' : 'good'} />

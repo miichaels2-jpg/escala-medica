@@ -659,6 +659,20 @@ export default function Relatorios() {
     appliedStatusName,
     appliedFilters.search ? `Busca: ${appliedFilters.search}` : ''
   ].filter(Boolean).join(' · ');
+  // Apresentação do mês: mesmo escopo (unidade e setor) dos relatórios, mas o mês é escolhido nela.
+  const presentation = useMemo(() => ({
+    shifts: shifts.filter(shift => {
+      if (appliedFilters.sector !== 'todos' && String(shift.sector_id) !== String(appliedFilters.sector)) return false;
+      const secName = normalize(getSectorName(shift, sectors));
+      return secName && secName !== 'setor' && !secName.includes('setor geral');
+    }),
+    professionals,
+    sectors,
+    company,
+    unit: isAllUnits ? null : currentUnitObj,
+    hospitalName,
+    scopeLabel: appliedSectorName
+  }), [shifts, appliedFilters.sector, sectors, professionals, company, isAllUnits, currentUnitObj, hospitalName, appliedSectorName]);
   const selectedProductivitySummary = productivityReport.professionalTotals.find(
     item => String(item.professional.id) === String(selectedProductivityProfessionalId)
   );
@@ -818,7 +832,7 @@ export default function Relatorios() {
       {!hasSearched ? null : (
         <div className="space-y-5">
           <div className="space-y-5">
-            <OverviewReport activeTab={activeTab} coverageRate={coverageRate} credentialAudit={credentialAudit} filterSummary={filterSummary} filteredShifts={filteredShifts} financialSummary={financialSummary} hospitalName={hospitalName} isAllUnits={isAllUnits} periodLabel={periodLabel} professionalMetrics={professionalMetrics} scopeUnitIds={scopeUnitIds} sectorMetrics={sectorMetrics} sectors={sectors} setActiveTab={setActiveTab} shiftCost={shiftCost} unitNameById={unitNameById} vacantShiftItems={vacantShiftItems} />
+            <OverviewReport activeTab={activeTab} coverageRate={coverageRate} credentialAudit={credentialAudit} filteredShifts={filteredShifts} financialSummary={financialSummary} isAllUnits={isAllUnits} presentation={isManager ? presentation : null} professionalMetrics={professionalMetrics} scopeUnitIds={scopeUnitIds} sectorMetrics={sectorMetrics} sectors={sectors} setActiveTab={setActiveTab} shiftCost={shiftCost} unitNameById={unitNameById} vacantShiftItems={vacantShiftItems} />
 
             <ScheduleReports activeTab={activeTab} filteredShifts={filteredShifts} sectors={sectors} setShiftRowsLimit={setShiftRowsLimit} shiftRowsLimit={shiftRowsLimit} swapsList={swapsList} />
 
