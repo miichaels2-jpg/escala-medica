@@ -86,6 +86,9 @@ export default function MinhaEscala() {
   }, []);
 
   const companyId = user?.data?.company_id || user?.company_id || company?.id || 'cmp_principal';
+  // Registro de chegada por GPS: desligado por padrão. Profissional PJ/cooperado não bate ponto
+  // (controle de jornada pode caracterizar vínculo); só liga para empresa com funcionários (companies.data.gps_check_in).
+  const gpsCheckInEnabled = company?.data?.gps_check_in === true;
   const myProfId = user?.data?.professional_id || user?.id;
 
   const currentYear = currentDate.getFullYear();
@@ -341,12 +344,12 @@ export default function MinhaEscala() {
     return upcoming.sort((a, b) => a.startDateTime.getTime() - b.startDateTime.getTime())[0];
   }, [enrichedShifts, activeShiftNow]);
 
-  const pendingCheckoutShift = useMemo(() => enrichedShifts
+  const pendingCheckoutShift = useMemo(() => !gpsCheckInEnabled ? null : enrichedShifts
     .filter(s => s.checkinTime && !s.checkoutTime &&
       now.getTime() >= s.startDateTime.getTime() - 900000 &&
       now.getTime() <= s.endDateTime.getTime() + 900000)
     .sort((a, b) => b.startDateTime.getTime() - a.startDateTime.getTime())[0] || null,
-  [enrichedShifts, now]);
+  [enrichedShifts, now, gpsCheckInEnabled]);
 
   const featuredShift = activeShiftNow || pendingCheckoutShift || nextHighlightedShift;
   const featuredShiftUnit = featuredShift
@@ -530,7 +533,7 @@ export default function MinhaEscala() {
 
     const rowsHtml = allOrdered.map(s => {
       const state = s.state === 'concluido' ? 'Cumprido' : s.state === 'ativo' ? 'Em andamento' : 'A fazer';
-      const points = (s.checkinTime || s.checkoutTime) ? `<div class="pl-muted">ponto ${s.checkinTime || '--'} → ${s.checkoutTime || '--'}</div>` : '';
+      const points = gpsCheckInEnabled && (s.checkinTime || s.checkoutTime) ? `<div class="pl-muted">ponto ${s.checkinTime || '--'} → ${s.checkoutTime || '--'}</div>` : '';
       return `<tr>
         <td class="pl-num" style="text-align:left">${formatDateOrDash(s.date)} <span class="pl-muted">${new Date(s.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short' })}</span></td>
         <td>${unitIds.length > 1 ? `<b>${escapeHtml(s.unitName)}</b> · ` : ''}${escapeHtml(s.sectorName)}</td>
@@ -660,7 +663,7 @@ export default function MinhaEscala() {
                   <MapPin className="w-3.5 h-3.5 shrink-0" /> {featuredShift.unitAddress} · <span className="text-sky-700 dark:text-sky-300">Como chegar</span>
                 </a>
               )}
-              {featuredShiftHasCoordinates && (
+              {gpsCheckInEnabled && featuredShiftHasCoordinates && (
                 <p className="text-[11px] font-semibold mt-1 flex items-center gap-1 text-slate-500 dark:text-slate-400">
                   <MapPin className="w-3 h-3 shrink-0" />
                   Ponto opcional: GPS a até 100 m, disponível 15 min antes/depois do horário.
@@ -669,7 +672,7 @@ export default function MinhaEscala() {
             </div>
           </div>
 
-          {featuredShiftHasCoordinates && (
+          {gpsCheckInEnabled && featuredShiftHasCoordinates && (
           <div className="grid grid-cols-2 sm:flex sm:flex-col sm:min-w-44 gap-2 shrink-0">
             {locationError && <span className="col-span-2 text-[10px] text-rose-600 dark:text-rose-400 font-semibold leading-tight">{locationError}</span>}
             <Button 
@@ -994,7 +997,7 @@ export default function MinhaEscala() {
                     )}
                   </div>
                   
-                  {(shift.checkinTime || shift.checkoutTime) && (
+                  {gpsCheckInEnabled && (shift.checkinTime || shift.checkoutTime) && (
                     <div className="flex items-center justify-between text-[10px] tabular-nums text-slate-500 bg-white dark:bg-slate-900 p-1.5 rounded-lg mt-0.5 border border-slate-100 dark:border-slate-800">
                       <span>In: <b className="text-emerald-600">{shift.checkinTime || '--:--'}</b></span>
                       <span>Out: <b className="text-rose-600">{shift.checkoutTime || '--:--'}</b></span>

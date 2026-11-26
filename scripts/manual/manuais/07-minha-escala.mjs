@@ -68,18 +68,6 @@ export default {
       ]
     },
     {
-      titulo: 'Ponto pelo celular (check-in)',
-      blocos: [
-        { p: 'Quando a localização do hospital está configurada (pedido feito ao suporte do ScaleMedic), aparece no plantão do dia o registro de ponto pelo GPS: `Check-in` na chegada e `Check-out` na saída. Ele é opcional e serve de comprovante de presença.' },
-        { lista: [
-          'Só funciona **perto do hospital**: até 100 metros da unidade. Permita a localização quando o celular pedir.',
-          'Fica liberado de **15 minutos antes até 15 minutos depois** do horário do plantão.',
-          'Passou do horário? Fale com a coordenação para o ajuste.'
-        ] },
-        { dica: 'Sem a localização configurada, o bloco de ponto não aparece. A presença continua sendo controlada pela coordenação.' }
-      ]
-    },
-    {
       titulo: 'O menu do celular',
       blocos: [
         { figura: 'cel-menu', legenda: 'Menu aberto pelo botão Menu (embaixo, à direita).', pontos: [] },
