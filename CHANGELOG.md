@@ -9,6 +9,12 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.8.5 — 26/11/2026
+
+Erros em português.
+
+- **Plataforma › Erros recentes** e a tela **Instabilidade no Módulo** mostram o erro em português (ex.: "Cannot read properties of null (reading 'name')" vira "A tela tentou usar uma informação que ainda não tinha carregado (campo "name")"). Cobre informação não carregada, parte do sistema não encontrada, falha ao baixar parte do app, sem conexão, registro repetido, sem permissão e valor inválido. O texto original continua nos detalhes técnicos (clique no erro). Regras em `src/lib/errorText.js`, com testes.
+
 ## V0.8.4 — 26/11/2026
 
 Correções da transferência e lixeira na Escala.

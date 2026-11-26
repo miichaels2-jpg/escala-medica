@@ -5,6 +5,7 @@ import { reportAppError } from '@/lib/errorReporting';
 import { supabase } from '@/lib/supabase';
 import { clearStoredSession } from '@/lib/authSession';
 import { listMyCompanies, switchCompany } from '@/lib/companyAccess';
+import { errorInPortuguese } from '@/lib/errorText';
 import { 
   Activity, LayoutDashboard, CalendarDays, 
   DollarSign, Users, Building2, LogOut, Menu, X, 
@@ -47,7 +48,7 @@ class LayoutErrorBoundary extends Component {
         <div className="p-8 max-w-xl mx-auto my-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl text-center shadow-sm text-slate-900 dark:text-white">
           <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
           <h2 className="text-lg font-semibold">Instabilidade no Módulo</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 my-3">{this.state.error?.message || 'Erro inesperado na visualização.'}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 my-3">{errorInPortuguese(this.state.error?.message) || 'Erro inesperado na visualização.'}</p>
           <Button onClick={() => window.location.reload()} className="bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs h-10 px-6 cursor-pointer">
             Recarregar Página
           </Button>
