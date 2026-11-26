@@ -281,7 +281,7 @@ export default function Painel() {
         shiftsMissingRate += 1;
         return;
       }
-      const estimate = getShiftCostEstimate(prof, s);
+      const estimate = getShiftCostEstimate(prof, s, company);
       const shiftCost = estimate.amount;
       if (estimate.missingRate) shiftsMissingRate += 1;
       if (estimate.requiresProduction) shiftsAwaitingProduction += 1;
@@ -292,7 +292,7 @@ export default function Painel() {
     });
     return { executedValue, plannedValue, totalToday: plannedValue, shiftsMissingRate, shiftsAwaitingProduction };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todayShifts, profById, profByName, rawProfById, todayStr, unitId]);
+  }, [todayShifts, profById, profByName, rawProfById, todayStr, unitId, company]);
 
   const sectorsCoverage = useMemo(() => {
     const map = {};

@@ -435,7 +435,7 @@ export default function Relatorios() {
         return;
       }
 
-      const estimate = getShiftCostEstimate(professional, { ...shift, duration_hours: getShiftHours(shift) });
+      const estimate = getShiftCostEstimate(professional, { ...shift, duration_hours: getShiftHours(shift) }, company);
       byShift.set(id, estimate.amount);
       if (estimate.missingRate) missingRate.add(id);
     });
@@ -476,7 +476,7 @@ export default function Relatorios() {
     }
 
     return { byShift, missingRate, pendingProduction, payrollWithoutShifts, professionalsWithoutShifts };
-  }, [filteredShifts, getProf, productivityReport, appliedFilters, hasSearched, professionals, scopeUnitIds, isAllUnits]);
+  }, [filteredShifts, getProf, productivityReport, appliedFilters, hasSearched, professionals, scopeUnitIds, isAllUnits, company]);
 
   const shiftCost = useCallback(shift => costModel.byShift.get(String(shift.id)) || 0, [costModel]);
 

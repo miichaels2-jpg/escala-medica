@@ -2,6 +2,7 @@
 // calendário que mostra de relance os dias com vaga aberta ou furo.
 import { useMemo } from 'react';
 import { ArrowDownRight, ArrowRight, ArrowUpRight } from 'lucide-react';
+import { useAppData } from '@/lib/useAppData';
 import { monthLabel, percentChange, plural, previousMonth, professionalFinder, summarizeMonth } from '@/lib/monthSummary';
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -23,6 +24,7 @@ function Change({ value, unit, goodWhenUp, previousName }) {
 }
 
 export default function MonthTrend({ shifts = [], professionals = [], sectors = [], now = new Date(), onOpenDay }) {
+  const { company } = useAppData();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const today = `${month}-${String(now.getDate()).padStart(2, '0')}`;
   const minute = Math.floor(now.getTime() / 60000);
@@ -33,10 +35,11 @@ export default function MonthTrend({ shifts = [], professionals = [], sectors = 
       shifts,
       getProf: professionalFinder(professionals),
       sectorName: s => byId.get(String(s.sector_id)) || s.sector_name || 'Setor',
-      now: new Date(minute * 60000)
+      now: new Date(minute * 60000),
+      company
     };
     return { cur: summarizeMonth({ ...options, month }), prev: summarizeMonth({ ...options, month: previousMonth(month) }) };
-  }, [shifts, professionals, sectors, month, minute]);
+  }, [shifts, professionals, sectors, month, minute, company]);
 
   const calendar = useMemo(() => {
     const [y, m] = month.split('-').map(Number);

@@ -3,7 +3,7 @@ export default {
   id: '10-historico-configuracoes',
   numero: 10,
   titulo: 'Histórico e Configurações',
-  resumo: 'Quem fez o quê no sistema e quando; dados do hospital, contrato, hospitais da rede e limites de carga horária.',
+  resumo: 'Quem fez o quê no sistema e quando; dados do hospital, contrato, hospitais da rede, limites de carga horária e retenção padrão.',
   publico: 'Gestão (coordenação)',
   secoes: [
     {
@@ -28,7 +28,7 @@ export default {
           '`Hospital Atual`: dados do hospital escolhido no topo.',
           '`Contrato Matriz`: dados da empresa contratante e vigência do contrato com o ScaleMedic.',
           '`Gerenciar Hospitais`: os hospitais da rede.',
-          '`Regras da escala`: limites de carga horária.'
+          '`Regras da escala`: limites de carga horária e retenção padrão.'
         ] },
         { passos: [
           '**Logomarca da Unidade:** `Procurar Imagem` (PNG ou JPG, até 2 MB). Sai nos documentos deste hospital. `Remover Imagem` apaga.',
@@ -71,7 +71,9 @@ export default {
           '**Máximo de horas seguidas, sem descanso.**',
           'Ao escalar alguém acima desses limites, a Escala avisa e pede confirmação. O `Preencher automaticamente` do gerador nunca passa dos limites.'
         ] },
-        { p: 'Ajuste os números conforme a política do hospital e clique em `Salvar limites`.' }
+        { p: 'Ajuste os números conforme a política do hospital e clique em `Salvar limites`.' },
+        { h: 'Retenção padrão' },
+        { p: 'Logo abaixo, **Retenção padrão**: o percentual descontado do valor bruto de todos os profissionais no Faturamento, no recibo e no informe de rendimentos. Digite o percentual (ex.: 11) e clique em `Salvar retenção`. Quem tem percentual próprio no cadastro (Corpo Clínico, passo 3) fica com o dele.' }
       ]
     }
   ]

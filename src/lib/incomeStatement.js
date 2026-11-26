@@ -2,7 +2,7 @@
 // para conferir a declaração do Imposto de Renda. Mesma regra do fechamento (Faturamento):
 // entra o plantão realizado (status realizado ou já terminado); mensalista recebe o fixo da
 // unidade em cada mês em que trabalhou nela; produtividade só tem valor no fechamento da unidade.
-import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, getShiftDurationHours, normalizeFinancialText, safeFinancialNumber } from './financialCalculations.js';
+import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getRetentionRate, getShiftCostEstimate, getShiftDurationHours, normalizeFinancialText } from './financialCalculations.js';
 import { getShiftDateTimeRange, isShiftVacant } from './shiftLiveStatus.js';
 
 export const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -37,12 +37,12 @@ function isDone(shift, now) {
  * @param {number} o.year
  * @param {Function} [o.isPaid] (unitId, professionalId, "AAAA-MM") → boolean
  * @param {Date} [o.now]
+ * @param {object} [o.company] tabela de valores dos setores e retenção padrão
  */
-export function buildIncomeStatement({ professional, shifts = [], units = [], year, isPaid = () => false, now = new Date() }) {
+export function buildIncomeStatement({ professional, shifts = [], units = [], year, isPaid = () => false, now = new Date(), company = null }) {
   const profId = String(professional?.id || '');
   const kind = remunerationKindOf(professional);
-  const meta = getProfessionalFinancialMeta(professional);
-  const taxRate = safeFinancialNumber(meta.coop_tax_rate ?? 0);
+  const taxRate = getRetentionRate(professional, company);
   const unitById = new Map(units.map(u => [String(u.id), u]));
   const byUnit = new Map();
 
@@ -74,7 +74,7 @@ export function buildIncomeStatement({ professional, shifts = [], units = [], ye
     row.shifts += 1;
     row.hours += hours;
     if (kind === 'plantao') {
-      const estimate = getShiftCostEstimate(professional, { ...shift, duration_hours: hours });
+      const estimate = getShiftCostEstimate(professional, { ...shift, duration_hours: hours }, company);
       row.gross += estimate.amount;
       if (estimate.missingRate) row.missingRate += 1;
     } else if (kind === 'produtividade') {

@@ -1,5 +1,5 @@
 {
- "versao": "0.8.10",
+ "versao": "0.9.1",
  "atualizado": "26/11/2026",
  "manuais": [
   {
@@ -69,7 +69,7 @@
    "id": "10-historico-configuracoes",
    "numero": 10,
    "titulo": "Histórico e Configurações",
-   "resumo": "Quem fez o quê no sistema e quando; dados do hospital, contrato, hospitais da rede e limites de carga horária.",
+   "resumo": "Quem fez o quê no sistema e quando; dados do hospital, contrato, hospitais da rede, limites de carga horária e retenção padrão.",
    "publico": "Gestão (coordenação)"
   },
   {

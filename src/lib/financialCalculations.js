@@ -77,7 +77,47 @@ export function getShiftDurationHours(shift) {
   return (end <= start ? end + 24 * 60 - start : end - start) / 60;
 }
 
-export function getShiftCostEstimate(professional, shift) {
+// Tabela de valores do setor (V0.9.1): vale para toda a equipe do setor; o valor do cadastro do
+// profissional (unit_rates) é exceção e vence campo a campo. Fica nos dados da empresa, como os turnos padrão.
+export const SECTOR_RATE_FIELDS = [
+  { key: 'semana_dia', label: 'Dia de semana · diurno', own: 'diurno' },
+  { key: 'semana_noite', label: 'Dia de semana · noturno', own: 'noturno' },
+  { key: 'fds_dia', label: 'Fim de semana · diurno', own: 'fds' },
+  { key: 'fds_noite', label: 'Fim de semana · noturno', own: 'fds' },
+  { key: 'meio', label: 'Meio expediente (até 6 h)', own: 'meio' }
+];
+export const HALF_SHIFT_MAX_HOURS = 6;
+
+const hasValue = value => value !== '' && value !== null && value !== undefined && Number.isFinite(safeFinancialNumber(value, NaN));
+
+export function getSectorRates(company, sectorId) {
+  const raw = company?.data?.sector_rates?.[String(sectorId ?? '')];
+  if (!raw || typeof raw !== 'object') return {};
+  return Object.fromEntries(SECTOR_RATE_FIELDS.filter(f => hasValue(raw[f.key])).map(f => [f.key, safeFinancialNumber(raw[f.key])]));
+}
+
+// Dados da empresa com a tabela do setor trocada (tabela vazia remove o setor).
+export function withSectorRates(companyData, sectorId, rates) {
+  const data = { ...(companyData || {}) };
+  const all = { ...(data.sector_rates || {}) };
+  const clean = Object.fromEntries(SECTOR_RATE_FIELDS.filter(f => hasValue(rates?.[f.key])).map(f => [f.key, safeFinancialNumber(rates[f.key])]));
+  if (Object.keys(clean).length) all[String(sectorId)] = clean;
+  else delete all[String(sectorId)];
+  data.sector_rates = all;
+  return data;
+}
+
+// Retenção (%): a do cadastro, quando marcada como exceção (ou maior que zero em cadastros antigos);
+// senão, o padrão do estabelecimento (Configurações).
+export function getRetentionRate(professional, company) {
+  const meta = getProfessionalFinancialMeta(professional);
+  const own = safeFinancialNumber(meta.coop_tax_rate, 0);
+  if (meta.retention_override === true) return own;
+  if (meta.retention_override !== false && own > 0) return own;
+  return safeFinancialNumber(company?.data?.default_retention_rate, 0);
+}
+
+export function getShiftCostEstimate(professional, shift, company) {
   if (!professional || !shift) return { amount: 0, missingRate: false };
 
   const meta = getProfessionalFinancialMeta(professional);
@@ -113,6 +153,13 @@ export function getShiftCostEstimate(professional, shift) {
 
   if (['plantao', 'shift'].includes(remunerationType)) {
     const rates = meta.unit_rates?.[String(shift.unit_id)] || {};
+    const sectorRates = getSectorRates(company, shift.sector_id);
+    const pick = (...values) => values.find(hasValue);
+    const hours = getShiftDurationHours(shift);
+    if (hours > 0 && hours <= HALF_SHIFT_MAX_HOURS) {
+      const half = pick(rates.meio, sectorRates.meio);
+      if (half !== undefined) return { amount: safeFinancialNumber(half), missingRate: false };
+    }
     const date = String(shift.date || '').split('T')[0];
     const shiftDate = date ? new Date(`${date}T12:00:00`) : null;
     const isWeekend = shiftDate && !Number.isNaN(shiftDate.getTime()) &&
@@ -120,8 +167,10 @@ export function getShiftCostEstimate(professional, shift) {
     const startTime = String(shift.start_time || '07:00').padStart(5, '0');
     const isNight = normalizeFinancialText(shift.shift_type) === 'noturno' ||
       startTime >= '18:00' || startTime < '06:00';
-    const rate = isWeekend ? rates.fds : (isNight ? rates.noturno : rates.diurno);
-    const missingRate = rate === '' || rate === null || rate === undefined;
+    const rate = isWeekend
+      ? pick(rates.fds, isNight ? sectorRates.fds_noite : sectorRates.fds_dia)
+      : pick(isNight ? rates.noturno : rates.diurno, isNight ? sectorRates.semana_noite : sectorRates.semana_dia);
+    const missingRate = rate === undefined;
     return { amount: missingRate ? 0 : safeFinancialNumber(rate), missingRate };
   }
 

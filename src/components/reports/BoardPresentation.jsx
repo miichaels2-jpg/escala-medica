@@ -156,12 +156,12 @@ export default function BoardPresentation({ open, onClose, shifts = [], professi
   const getProf = useMemo(() => professionalFinder(professionals), [professionals]);
 
   const data = useMemo(() => {
-    const options = { shifts, getProf, sectorName };
+    const options = { shifts, getProf, sectorName, company };
     const cur = summarizeMonth({ ...options, month });
     const prev = summarizeMonth({ ...options, month: previousMonth(month) });
     const next = summarizeMonth({ ...options, month: nextMonth(month) });
     return { cur, prev, next };
-  }, [shifts, getProf, sectorName, month]);
+  }, [shifts, getProf, sectorName, month, company]);
 
   const { cur, prev, next } = data;
   const curName = monthLabel(month, { withYear: false });

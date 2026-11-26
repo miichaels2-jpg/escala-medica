@@ -71,13 +71,13 @@ export default {
           '`Cadastrar profissional` salva tudo e cria o acesso ao sistema.'
         ] },
         { tabela: { cab: ['Regime contratual', 'Como o Faturamento calcula'], linhas: [
-          ['Por plantão', 'Um valor por plantão em cada hospital: **diurno**, **noturno** e **fim de semana**.'],
+          ['Por plantão', 'Pela **tabela de valores do setor** do plantão (tela Setores). Em cada hospital, dá para pôr um **valor próprio** só para este profissional: diurno, noturno, fim de semana e meio expediente. O que ficar em branco vem da tabela do setor.'],
           ['Fixo mensal', 'Um valor por mês em cada hospital, independente do número de plantões.'],
           ['Produtividade / comissão', 'Pelos atendimentos lançados no dia, dividindo o valor do dia entre quem atendeu (veja o Manual 8).']
         ] } },
         { passos: [
-          'Escolha o **Regime Contratual** e preencha os valores de **cada hospital** liberado no passo 2.',
-          'Se houver desconto de pessoa jurídica ou cooperativa, informe a **Retenção PJ/Coop (%)**.',
+          'Escolha o **Regime Contratual**. Por plantão, deixe em branco para usar a tabela do setor, ou preencha o valor próprio de cada hospital liberado no passo 2. Fixo mensal: o valor de cada hospital.',
+          '**Retenção (%) própria:** em branco, vale a **retenção padrão** do estabelecimento (Configurações › Regras da escala). Preencha só se este profissional tiver um percentual diferente; para não reter nada dele, digite 0.',
           'Em **Dados para Recebimento**, escolha pessoa física ou jurídica e informe a **chave PIX** (ou os dados bancários, se não usar PIX).',
           'Clique em `Cadastrar profissional`. Aparece a mensagem com o **usuário e a senha do primeiro acesso**. Se o cadastro tem **e-mail**, o profissional recebe esses dados por e-mail na hora, de **naoresponda@scalemedic.com.br** (a mensagem confirma o envio). Sem e-mail, anote e passe à pessoa.'
         ] },

@@ -176,9 +176,9 @@ export default function MinhaEscala() {
     const estimate = getShiftCostEstimate({
       ...currentProfessional,
       remuneration_type: remunerationType
-    }, shift);
+    }, shift, company);
     return { type: 'valor', value: estimate.amount, missingRate: estimate.missingRate };
-  }, [profMeta, currentProfessional, isMonthlyRemuneration, isProductivityRemuneration]);
+  }, [profMeta, currentProfessional, isMonthlyRemuneration, isProductivityRemuneration, company]);
 
   // AÇÃO DE PONTO: VALIDA TEMPO (15m MÁX) E ESPAÇO (GEOFENCE 100m)
   const handleCheckAction = async (shift, actionType) => {
@@ -514,7 +514,8 @@ export default function MinhaEscala() {
       units,
       year,
       isPaid: (unitId, profId, month) => Boolean(isPaymentMarkedPaid?.(unitId, profId, month)),
-      now: new Date()
+      now: new Date(),
+      company
     });
     const html = buildIncomeStatementHtml({ statement, professional, company, issuedBy: user?.full_name || '' });
     if (!openPrintWindow(html, 'width=1000,height=800')) alert('Permita pop-ups para abrir o informe.');
