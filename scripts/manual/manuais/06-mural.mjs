@@ -29,7 +29,7 @@ export default {
           '`Que eu posso assumir`: filtra só as vagas que você pode pegar. `Todas` mostra todas.',
           '**Especialidade:** filtra as vagas por especialidade.'
         ] },
-        { p: 'A coordenação vê a lixeira em cada vaga, para excluir uma vaga criada por engano.' }
+        { p: 'A coordenação vê a lixeira em cada vaga, para excluir uma vaga criada por engano. Excluiu a errada? Por 10 segundos aparece `Desfazer` no canto da tela.' }
       ]
     },
     {
@@ -41,7 +41,7 @@ export default {
         ] },
         { passos: [
           'Abra o **Mural** (menu de baixo, no celular).',
-          'Escolha a vaga e toque em `Assumir`.',
+          'Escolha a vaga e toque em `Assumir`. Se a vaga começava em menos de 24 horas, você recebe um **obrigado** e a coordenação fica sabendo que foi você quem cobriu.',
           'Confira setor, data e horário na confirmação e confirme.',
           'Pronto: o plantão já é seu. Aparece em **Meus plantões** e na **Minha Escala**, e a coordenação é avisada.'
         ] },

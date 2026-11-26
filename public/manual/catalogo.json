@@ -1,5 +1,5 @@
 {
- "versao": "0.7.7",
+ "versao": "0.7.8",
  "atualizado": "26/11/2026",
  "manuais": [
   {
@@ -48,7 +48,7 @@
    "id": "07-minha-escala",
    "numero": 7,
    "titulo": "Minha Escala (plantonista)",
-   "resumo": "O dia a dia do plantonista no celular: próximo plantão, agenda, ganhos do mês, folgas e ponto.",
+   "resumo": "O dia a dia do plantonista no celular: próximo plantão, agenda, ganhos do mês, nota fiscal, informe de rendimentos e folgas.",
    "publico": "Plantonistas"
   },
   {

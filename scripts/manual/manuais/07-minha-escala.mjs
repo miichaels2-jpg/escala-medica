@@ -3,7 +3,7 @@ export default {
   id: '07-minha-escala',
   numero: 7,
   titulo: 'Minha Escala (plantonista)',
-  resumo: 'O dia a dia do plantonista no celular: próximo plantão, agenda, ganhos do mês, folgas e ponto.',
+  resumo: 'O dia a dia do plantonista no celular: próximo plantão, agenda, ganhos do mês, nota fiscal, informe de rendimentos e folgas.',
   publico: 'Plantonistas',
   secoes: [
     {
@@ -21,6 +21,7 @@ export default {
           '`Ver o Mural`: vagas abertas que você pode assumir (Manual 6).',
           '**Sino:** avisos de escala publicada, vagas e trocas. Toque em `Ativar` para receber no celular mesmo com o app fechado.'
         ] },
+        { p: 'No alto, uma frase resume o seu momento: "Bom dia, Ana! Seu próximo plantão é amanhã, às 7h, no setor UTI. Em novembro: 8 de 12 plantões feitos e R$ 9.600 a receber até agora." Durante o plantão, ela diz até que horas você fica; no dia do seu aniversário, deseja feliz aniversário.' },
         { lista: [
           '**Próximo plantão:** hospital, setor, data, horário e quanto falta para começar. `Como chegar` abre o mapa com o endereço do hospital.',
           '**Menu de baixo:** `Minha Escala`, `Escala` (a escala publicada do hospital), `Mural` e `Menu` (as outras telas, o tema claro/escuro e `Sair do sistema`).'
@@ -37,7 +38,22 @@ export default {
           ['Meus ganhos', 'Quanto já foi realizado, quanto ainda vai realizar e o previsto no mês, pelo valor do seu cadastro. Por hospital, mostra se já está **Pago**.']
         ] } },
         { p: '`Ver espelho do mês (PDF)` gera o seu demonstrativo do mês: cada plantão, horas e valores, pronto para salvar ou imprimir.' },
+        { p: '**Informe de rendimentos (IR):** escolha o ano (o anterior ou o atual). O PDF traz tudo o que você recebeu de cada hospital no ano, mês a mês, com o CNPJ de cada um: bruto, retenção, líquido e se já foi pago. Serve para conferir a declaração do Imposto de Renda; o comprovante oficial continua sendo o de cada fonte pagadora.' },
         { dica: 'O valor previsto depende do valor cadastrado pela coordenação. Se algo parecer errado, fale com o faturamento do hospital.' }
+      ]
+    },
+    {
+      titulo: 'Nota fiscal (para quem é PJ)',
+      blocos: [
+        { p: 'Se o seu cadastro é de **pessoa jurídica (PJ)**, aparece o cartão **Nota fiscal do mês**, com uma linha para cada hospital em que você trabalhou no mês.' },
+        { figura: 'cel-nota', legenda: 'Cartão da nota fiscal na Minha Escala.', pontos: [] },
+        { passos: [
+          'Emita a nota do mês no sistema da sua prefeitura, como de costume.',
+          'Na linha do hospital, toque em `Enviar nota` e escolha o PDF ou a foto da nota (até 10 MB).',
+          'A situação muda para **Enviada, aguardando conferência**. `Ver` abre o arquivo enviado.',
+          'Quando o faturamento conferir, ela vira **Aceita** e você recebe o aviso. Se vier **Devolvida**, o motivo aparece logo abaixo: corrija e toque em `Enviar outra`.'
+        ] },
+        { dica: 'Mande a nota assim que fechar o mês: o faturamento libera o pagamento depois que a nota é aceita.' }
       ]
     },
     {

@@ -79,7 +79,8 @@ export default {
         ] },
         { h: 'Plantão já preenchido' },
         { figura: 'escala-preenchido', largura: '55%', legenda: 'Clique num plantão com profissional.', pontos: [
-          '`Liberar vaga` tira a pessoa do plantão e ele volta a ser vaga (aparece no Mural). Em **Trocar por**, clique em outro nome para substituir direto.'
+          '`Liberar vaga` tira a pessoa do plantão e ele volta a ser vaga (aparece no Mural). Em **Trocar por**, clique em outro nome para substituir direto.',
+          'Tirou por engano? Por **10 segundos** aparece, no canto da tela, o aviso com `Desfazer`: a pessoa volta para o plantão. O mesmo vale para **excluir um plantão**.'
         ] },
         { p: '`Editar` abre o plantão completo: data, setor, especialidade, horários e quem está escalado. Na visão `Calendário`, também dá para **arrastar** um profissional da lista da esquerda até o dia.' },
         { dica: 'Vaga aberta em escala publicada aparece no Mural para a especialidade certa. Quem pegar a vaga entra na escala sozinho, e a coordenação é avisada.' }
@@ -92,6 +93,7 @@ export default {
           'Com o setor escolhido, clique em `Publicar` (no alto da tela).',
           { texto: 'Confira o **Setor a ser publicado** e o período (**Data Inicial** e **Data Final**). Os atalhos `7 Dias`, `15 Dias` e `Mês Inteiro` preenchem as datas.', figura: 'escala-publicar', largura: '62%', legenda: 'Janela de publicação.', pontos: [
             '`Mês Inteiro`: publica o mês todo. Dá para publicar aos poucos, só a primeira quinzena, por exemplo.',
+            'O quadro de resumo mostra quantos plantões entram, quantos ainda estão **sem profissional** e o **custo estimado** do período, comparado com o período anterior. Confira antes de publicar.',
             '`Oficializar Escala` publica.'
           ] },
           'Clique em `Oficializar Escala`. Cada profissional escalado recebe o aviso no celular, e os plantões aparecem para ele na Minha Escala.'
