@@ -14,6 +14,7 @@ import { ManagerSwapApprovals, MySwapsList, SwapProposalDialog, useDirectSwaps }
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
+import { Link } from 'react-router-dom';
 import { 
   Flame, Calendar, Building2, 
   CheckCircle2, Check, Trash2, ArrowRightLeft, Stethoscope, Filter, XCircle,
@@ -640,6 +641,12 @@ Plantão confirmado: ${sectorName}, ${formatDateBR(shift.date)} (${shift.start_t
                     ? (draftVacancyCount > 0 ? 'Nenhuma vaga de escala publicada está aberta.' : 'Todas as escalas estão preenchidas e não há repasses pendentes.')
                     : 'Quando abrir uma vaga no seu setor e especialidade, sem choque com a sua escala, ela aparece aqui.'}
               </p>
+              {isManager && managerView === 'todas' && draftVacancyCount > 0 && (
+                <Button asChild size="sm" className="mt-2 bg-sky-600 hover:bg-sky-500 text-white"><Link to="/escalas">Abrir a Escala para publicar</Link></Button>
+              )}
+              {!isManager && myProf?.id && (
+                <Button asChild size="sm" variant="outline" className="mt-2"><Link to="/minha-escala">Ver a minha escala</Link></Button>
+              )}
             </Card>
           ) : (
             <div className="space-y-5">

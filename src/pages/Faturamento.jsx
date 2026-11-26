@@ -1343,7 +1343,7 @@ export default function Faturamento() {
               {filteredReport.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="py-8 text-center text-slate-400">
-                    Nenhum profissional com produção na unidade atual para esta competência.
+                    Nenhum profissional com produção na unidade atual para esta competência. A produção aparece quando há plantões com profissional na escala do mês.
                   </td>
                 </tr>
               ) : (

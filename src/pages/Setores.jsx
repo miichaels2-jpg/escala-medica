@@ -8,6 +8,7 @@ import { getSectorTemplates, templateSummary, vacanciesPerDay, withSectorTemplat
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
+import EmptyState from '@/components/EmptyState';
 import SpecialtyPicker from '@/components/SpecialtyPicker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -185,8 +186,14 @@ export default function Setores() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filteredSectors.length === 0 ? (
-          <div className="col-span-full py-12 text-center border-2 border-dashed border-slate-300 dark:border-slate-800 rounded-3xl bg-white/50 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400">
-            {sectors.length ? 'Nenhum setor com esse nome.' : 'Nenhum setor ainda. Clique em "Novo setor" para começar.'}
+          <div className="col-span-full border-2 border-dashed border-slate-300 dark:border-slate-800 rounded-3xl bg-white/50 dark:bg-slate-900/50">
+            {sectors.length ? (
+              <EmptyState icon={Search} title="Nenhum setor com esse nome" actions={[{ label: 'Limpar busca', onClick: () => setSearchQuery('') }]} />
+            ) : (
+              <EmptyState icon={Building2} title="Comece pelos setores do hospital"
+                text={isManager ? 'Cadastre cada setor (UTI, Emergência, Enfermaria...) com os turnos fixos. Depois, na Escala, o mês inteiro se monta com um clique.' : 'A coordenação ainda não cadastrou os setores desta unidade.'}
+                actions={isManager ? [{ label: 'Novo setor', icon: Plus, onClick: () => handleOpenModal() }] : []} />
+            )}
           </div>
         ) : (
           filteredSectors.map((sector) => {
