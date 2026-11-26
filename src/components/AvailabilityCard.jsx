@@ -105,7 +105,7 @@ export default function AvailabilityCard({ professional, onSaved }) {
           ))}
         </ul>
       ) : !adding && (
-        <p className="text-xs text-slate-500 dark:text-slate-400">Nenhum período informado.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Nenhum período informado. Marque férias, congressos ou dias em que não pode: a coordenação deixa de te escalar nessas datas.</p>
       )}
 
       {error && <p role="alert" className="text-xs font-medium text-rose-600 dark:text-rose-400">{error}</p>}

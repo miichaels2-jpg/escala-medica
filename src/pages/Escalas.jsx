@@ -11,6 +11,7 @@ import { offerUndo } from '@/lib/undo';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
+import EmptyState from '@/components/EmptyState';
 import ScheduleGrid from '@/components/escala/ScheduleGrid';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
@@ -2106,6 +2107,15 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                   <span className="inline-flex items-center gap-1.5"><span className="h-1.5 w-4 rounded-full bg-rose-500" /> Furo</span>
                   <span className="inline-flex items-center gap-1.5"><CheckCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Publicada</span>
                 </div>
+                {isManager && monthlyShifts.length === 0 && (
+                  <EmptyState compact icon={CalendarDays} className="border-b border-slate-200 dark:border-slate-800"
+                    title="Este mês ainda não tem plantões"
+                    text="Monte os turnos do mês a partir dos turnos padrão dos setores ou copie a escala do mês anterior. Depois é só arrastar a equipe para os dias."
+                    actions={[
+                      { label: 'Montar turnos do mês', icon: SlidersHorizontal, onClick: () => openGenerator() },
+                      { label: 'Copiar mês anterior', icon: Copy, onClick: () => setDuplicateModalOpen(true) }
+                    ]} />
+                )}
                 <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 text-center py-2">
                   {WEEKDAYS.map(day => (<div key={day.short} className="text-xs font-medium text-slate-400">{day.short}</div>))}
                 </div>

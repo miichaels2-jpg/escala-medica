@@ -4,12 +4,13 @@ import { DEFAULT_REMUNERATION_TYPE, getShiftCostEstimate } from '@/lib/financial
 import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
+import EmptyState from '@/components/EmptyState';
 import OnboardingChecklist from '@/components/OnboardingChecklist';
 import MonthTrend from '@/components/MonthTrend';
 import TeamCare from '@/components/TeamCare';
 import { Minimize2, AlertTriangle, CheckCircle2,
   ArrowRightLeft, DollarSign, Building2,
-  Radio, X, Send
+  Radio, X, Send, CalendarDays
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import UnitsOverview, { ALL_UNITS, requestUnitSwitch } from '@/components/UnitsOverview';
@@ -574,7 +575,9 @@ export default function Painel() {
           <span className="text-xs text-slate-500 dark:text-slate-400">{sectorsCoverage.filter(sec => sec.total > 0).length} de {sectorsCoverage.length} setor(es) com plantão hoje</span>
         </div>
         {todayShifts.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Nenhum plantão hoje{isAllUnits ? ' nas unidades' : ' nesta unidade'}.</p>
+          <EmptyState compact icon={CalendarDays} title={`Nenhum plantão hoje${isAllUnits ? ' nas unidades' : ' nesta unidade'}`}
+            text={isManager ? 'Os plantões de hoje aparecem aqui assim que estiverem na escala.' : undefined}
+            actions={isManager ? [{ label: 'Abrir a Escala', icon: CalendarDays, to: '/escalas' }] : []} />
         ) : (
           <div className="mt-3 space-y-3">
             {sectorsCoverage.filter(sec => sec.total > 0).map(sec => {

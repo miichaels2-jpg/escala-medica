@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { saveRow } from '@/lib/saveRow';
 import { sendAccessEmail } from '@/lib/accessEmail';
+import EmptyState from '@/components/EmptyState';
 import { safeNumber } from '@/lib/format';
 import { parseCsv, prepareProfessionalRow } from '@/lib/professionalImport';
 
@@ -1016,10 +1017,27 @@ export default function CorpoClinico() {
           );
         })}
         {sortedFilteredList.length === 0 && (
-          <div className={viewMode === 'list' ? 'py-12 text-center rounded-2xl border border-dashed border-slate-300 dark:border-slate-700' : 'col-span-full py-12 text-center rounded-2xl border border-dashed border-slate-300 dark:border-slate-700'}>
-            <Users className="w-8 h-8 mx-auto mb-2 text-slate-400" />
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Nenhum profissional encontrado</p>
-            <p className="text-xs text-slate-500 mt-1">Tente ajustar a busca ou os filtros selecionados.</p>
+          <div className={viewMode === 'list' ? 'rounded-2xl border border-dashed border-slate-300 dark:border-slate-700' : 'col-span-full rounded-2xl border border-dashed border-slate-300 dark:border-slate-700'}>
+            {professionals.length === 0 ? (
+              <EmptyState icon={Users} title="A sua equipe ainda não está aqui"
+                text={isManager ? 'Cadastre um a um, importe a planilha da equipe ou mande o link de credenciamento para cada profissional preencher a própria ficha.' : 'A coordenação ainda não cadastrou profissionais nesta unidade.'}
+                actions={isManager ? [
+                  { label: 'Novo profissional', icon: UserPlus, onClick: handleOpenNew },
+                  { label: 'Importar planilha', icon: Upload, onClick: () => importInputRef.current?.click() },
+                  { label: 'Convidar equipe', icon: Send, onClick: () => setInviteOpen(true) }
+                ] : []} />
+            ) : (searchQuery.trim() || categoryFilter !== 'todas') ? (
+              <EmptyState icon={Search} title="Ninguém com essa busca" text="Confira a grafia do nome, CPF ou conselho, ou limpe os filtros."
+                actions={[{ label: 'Limpar busca', onClick: () => { setSearchQuery(''); setCategoryFilter('todas'); } }]} />
+            ) : activeTab === 'pendentes' ? (
+              <EmptyState icon={Users} title="Nenhuma ficha esperando aprovação" text="Quem preencher o credenciamento aparece aqui para você conferir e aprovar."
+                actions={isManager ? [{ label: 'Convidar equipe', icon: Send, onClick: () => setInviteOpen(true) }] : []} />
+            ) : activeTab === 'inativos' ? (
+              <EmptyState icon={Users} title="Ninguém desativado" text="Quem for desativado fica aqui, com o histórico guardado, e pode ser reativado quando quiser." />
+            ) : (
+              <EmptyState icon={Users} title="Nenhum profissional ativo" text="Os cadastros estão nas abas Pendentes ou Inativos."
+                actions={isManager ? [{ label: 'Novo profissional', icon: UserPlus, onClick: handleOpenNew }] : []} />
+            )}
           </div>
         )}
       </div>

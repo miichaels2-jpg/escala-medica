@@ -187,6 +187,7 @@ export default function ManagementBI({
         <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-10 text-center">
           <Activity className="w-8 h-8 mx-auto text-slate-400" />
           <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">Nenhum plantão no período e filtros escolhidos.</p>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Troque o período ou os filtros acima. Os números aparecem assim que a escala do período estiver montada.</p>
         </div>
       ) : (
         <>

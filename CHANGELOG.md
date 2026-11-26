@@ -9,6 +9,19 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.8.10 — 26/11/2026
+
+Telas vazias que orientam (item 63).
+
+- No lugar de "nenhum registro", uma frase do porquê e o botão do próximo passo:
+  - **Corpo Clínico:** equipe vazia oferece `Novo profissional`, `Importar planilha` e `Convidar equipe`; busca sem resultado oferece `Limpar busca`; abas Pendentes e Inativos explicam o que aparece ali;
+  - **Setores:** "Comece pelos setores do hospital", com `Novo setor`;
+  - **Escala:** mês sem plantões mostra, no calendário, `Montar turnos do mês` e `Copiar mês anterior`;
+  - **Painel** (sem plantão hoje: `Abrir a Escala`), **Mural** (vagas esperando publicação: `Abrir a Escala para publicar`; plantonista: `Ver a minha escala`), **Faturamento**, **Relatórios** e **indisponibilidade** com a explicação do que fazer.
+- Componente único `src/components/EmptyState.jsx`.
+- Planejamento: item 63 entregue; item 67 (avisos pelo WhatsApp) retirado.
+- Manual **05 · Escala** com a dica do mês vazio; PDFs regenerados.
+
 ## V0.8.9 — 26/11/2026
 
 Planejamento atualizado.

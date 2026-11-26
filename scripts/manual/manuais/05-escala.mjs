@@ -45,6 +45,7 @@ export default {
       titulo: 'Montar o mês inteiro',
       blocos: [
         { p: 'Há dois caminhos para abrir o gerador: `Montar mês` no cartão do setor (tela Setores) ou, na Escala, `Mais` › `Montar turnos do mês`.' },
+        { dica: 'Mês ainda sem plantões? O calendário mostra o aviso **Este mês ainda não tem plantões**, com os botões `Montar turnos do mês` e `Copiar mês anterior`: é só escolher um.' },
         { figura: 'escala-mais', largura: '80%', legenda: 'Menu Mais da Escala.', pontos: [
           '`Plantão avulso`: cria um plantão só (seção 6).',
           '`Montar turnos do mês`: abre o gerador do mês.',

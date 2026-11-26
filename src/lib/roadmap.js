@@ -43,11 +43,10 @@ export const ROADMAP_GROUPS = [
       { id: 59, title: 'Comunicados por setor com "li"', detail: 'Aviso oficial para a equipe de um setor, e o gestor vê quem já leu.', status: 'planejado' },
       { id: 61, title: 'Bilhete de passagem de plantão', detail: 'Campo curto que quem entra lê ao abrir o plantão ("leito 4 aguardando tomografia").', status: 'planejado' },
       { id: 62, title: 'Busca rápida (Ctrl+K)', detail: 'Achar profissional, setor ou plantão de qualquer tela.', status: 'planejado' },
-      { id: 63, title: 'Telas vazias que orientam', detail: 'Trocar "nenhum registro" por uma frase e o botão do próximo passo.', status: 'planejado' },
+      { id: 63, title: 'Telas vazias que orientam', detail: 'Trocar "nenhum registro" por uma frase e o botão do próximo passo: Corpo Clínico (cadastrar, importar, convidar; limpar busca), Setores, Escala (mês sem plantões: montar turnos ou copiar mês anterior), Painel, Mural, Faturamento, Relatórios e indisponibilidade.', status: 'entregue', version: 'V0.8.10' },
       { id: 64, title: 'Demonstração que se monta sozinha', detail: 'Link que cria um hospital fictício para o cliente testar e apaga tudo em 7 dias.', status: 'planejado' },
       { id: 65, title: 'Cobrança dentro da Plataforma', detail: 'Plano por número de profissionais, PIX ou boleto recorrente e aviso de atraso.', status: 'planejado' },
       { id: 66, title: 'Saúde dos clientes', detail: 'Na Plataforma: acessos de cada empresa e quando publicou a última escala, para ligar antes de o cliente desistir.', status: 'planejado' },
-      { id: 67, title: 'Avisos pelo WhatsApp', detail: 'Canal que todo médico usa, mas a versão oficial cobra por mensagem e exige aprovação da Meta: depois dos primeiros clientes pagantes.', status: 'planejado' }
     ]
   },
   // Varredura completa do app em 23/11/2026 (todas as telas, computador e celular, dados reais da demo).
