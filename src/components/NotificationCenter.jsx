@@ -136,7 +136,7 @@ export function NotificationPanel({ center, isManager, onClose }) {
 
   const openNotice = async notice => {
     if (!notice.read) await center.markNoticesRead([notice.id]);
-    const target = notice.type === 'escala_publicada' || notice.type === 'plantao_alocado' ? '/minha-escala' : '/trocas';
+    const target = ['escala_publicada', 'plantao_alocado', 'agradecimento', 'aniversario'].includes(notice.type) ? '/minha-escala' : '/trocas';
     go(target);
   };
 

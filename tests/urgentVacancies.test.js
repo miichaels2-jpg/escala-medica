@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getShiftUrgency, findUrgentAlerts, urgentAlertKey, findShiftReminders } from '../src/lib/urgentVacancies.js';
+import { getShiftUrgency, findUrgentAlerts, urgentAlertKey, findShiftReminders, URGENT_COVER_TAG, THANKED_TAG, recentUrgentCovers, withTag } from '../src/lib/urgentVacancies.js';
 
 const now = new Date(2026, 9, 18, 10, 0); // 18/10/2026 10:00
 const vaga = (id, date, start, end, extra = {}) => ({ id, date, start_time: start, end_time: end, status: 'vago', professional_id: null, unit_id: 'A', sector_id: 's1', ...extra });
@@ -45,4 +45,17 @@ test('lembretes do próprio plantão: 12 h e 1 h antes, só escala publicada', (
   const list = findShiftReminders({ shifts, isPublished, now });
   assert.deepEqual(list.map(r => `${r.shift.id}:${r.kind}`), ['a:12h', 'b:1h']);
   assert.equal(list[0].key, 'lembrete_12h:a:p1');
+});
+
+test('coberturas urgentes recentes e marca de agradecimento', () => {
+  assert.equal(withTag('[ESP:UTI]', URGENT_COVER_TAG), '[ESP:UTI] [COBERTURA_URGENTE]');
+  assert.equal(withTag(`x ${THANKED_TAG}`, THANKED_TAG), `x ${THANKED_TAG}`);
+  const today = new Date(2026, 10, 25, 12);
+  const list = recentUrgentCovers([
+    { id: 'a', date: '2026-11-20', professional_id: 'p1', status: 'confirmado', notes: URGENT_COVER_TAG },
+    { id: 'b', date: '2026-11-24', professional_id: 'p2', status: 'confirmado', notes: `${URGENT_COVER_TAG} ${THANKED_TAG}` },
+    { id: 'c', date: '2026-10-01', professional_id: 'p3', status: 'confirmado', notes: URGENT_COVER_TAG },
+    { id: 'd', date: '2026-11-24', professional_id: 'p4', status: 'confirmado', notes: '' }
+  ], today);
+  assert.deepEqual(list.map(i => [i.shift.id, i.thanked]), [['b', true], ['a', false]]);
 });

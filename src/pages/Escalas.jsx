@@ -7,6 +7,7 @@ import { checkWorkload, getWorkloadRules } from '@/lib/workload';
 import { getSectorTemplates, templatesToSlots, withSectorTemplates } from '@/lib/sectorTemplates';
 import { getShiftDateTimeRange } from '@/lib/shiftLiveStatus';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
+import { offerUndo } from '@/lib/undo';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
@@ -1266,12 +1267,32 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
     }
   };
 
+  // Tira o profissional e oferece "Desfazer" por 10 s (no lugar da confirmação).
+  // Se alguém assumir a vaga pelo Mural nesse meio-tempo, o desfazer não passa por cima.
+  const releaseShift = async (shift) => {
+    const name = professionalMap[String(shift.professional_id)]?.name || shift.professional_name || 'O profissional';
+    const before = { professional_id: shift.professional_id ?? null, professional_name: shift.professional_name ?? null, status: shift.status && shift.status !== 'vago' ? shift.status : 'confirmado' };
+    await autoHealingSaveShift(shift.id, { professional_id: null, professional_name: null, status: 'vago' });
+    await syncGlobalData();
+    offerUndo({
+      title: `${name} saiu do plantão de ${formatDateBR(shift.date)}`,
+      description: 'A vaga ficou aberta no Mural. Você tem 10 segundos para desfazer.',
+      onUndo: async () => {
+        const { data: current, error } = await supabase.from('shifts').select('professional_id,professional_name').eq('id', shift.id).maybeSingle();
+        if (error) throw error;
+        if (!current) throw new Error('O plantão não existe mais.');
+        if (current.professional_id && String(current.professional_id) !== String(before.professional_id)) {
+          throw new Error(`A vaga já foi assumida por ${current.professional_name || 'outro profissional'}.`);
+        }
+        await autoHealingSaveShift(shift.id, before);
+        await syncGlobalData();
+      }
+    });
+  };
+
   const handleGridUnassign = async (shift) => {
-    const name = professionalMap[String(shift.professional_id)]?.name || shift.professional_name || 'o profissional';
-    if (!confirm(`Tirar ${name} deste plantão? A vaga fica aberta e aparece no Mural.`)) return false;
     try {
-      await autoHealingSaveShift(shift.id, { professional_id: null, professional_name: null, status: 'vago' });
-      await syncGlobalData();
+      await releaseShift(shift);
       return true;
     } catch (err) {
       alert('Não foi possível liberar a vaga: ' + (err?.message || 'tente novamente.'));
@@ -1415,13 +1436,27 @@ if (!isMural && formData.professional_id) {
     } finally { setSubmitting(false); }
   };
 
+  // Guarda a linha inteira antes de apagar: o "Desfazer" grava o mesmo plantão de volta.
   const handleDeleteShift = async (shiftId) => {
-    if (!confirm('Excluir plantão?')) return;
     try {
+      const { data: row, error: readError } = await supabase.from('shifts').select('*').eq('id', shiftId).maybeSingle();
+      if (readError) throw readError;
       const { error } = await supabase.from('shifts').delete().eq('id', shiftId);
       if (error) throw error;
       setModalOpen(false);
-      await syncGlobalData(); 
+      await syncGlobalData();
+      if (row) {
+        const who = row.professional_id ? (professionalMap[String(row.professional_id)]?.name || row.professional_name) : '';
+        offerUndo({
+          title: `Plantão de ${formatDateBR(row.date)} excluído`,
+          description: `${row.start_time || ''}–${row.end_time || ''} · ${sectorMap[String(row.sector_id)]?.name || 'Setor'}${who ? ` · ${who}` : ''}. Você tem 10 segundos para desfazer.`,
+          onUndo: async () => {
+            const { error: insertError } = await supabase.from('shifts').insert([row]);
+            if (insertError) throw insertError;
+            await syncGlobalData();
+          }
+        });
+      }
     } catch (err) { alert(err.message); }
   };
 
@@ -1746,11 +1781,8 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             onClick={() => {
               const firstConflict = allScaleConflicts[0];
               if (firstConflict?.b?.id) {
-                if (confirm(`Liberar vaga conflitante de ${professionalMap[firstConflict.b.professional_id]?.name || 'profissional'} em ${sectorMap[firstConflict.b.sector_id]?.name || 'setor'} no dia ${firstConflict.b.date}?`)) {
-                  autoHealingSaveShift(firstConflict.b.id, { professional_id: null, professional_name: null, status: 'vago' })
-                    .then(() => syncGlobalData())
-                    .catch(err => alert('Erro ao liberar a vaga conflitante: ' + (err?.message || 'Tente novamente.')));
-                }
+                releaseShift(firstConflict.b)
+                  .catch(err => alert('Erro ao liberar a vaga conflitante: ' + (err?.message || 'Tente novamente.')));
               }
             }}
             className="h-9 bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs px-4 rounded-xl shadow-sm shrink-0 cursor-pointer"
