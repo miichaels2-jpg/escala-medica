@@ -16,6 +16,7 @@ import { escapeHtml } from '@/lib/printBranding';
 import { buildPrintDocument, openPrintWindow, printHeader, printLogos } from '@/lib/printLayout';
 import { autoHealingSaveShift } from '@/lib/escalaUtils';
 import { formatCurrency, formatDateOrDash } from '@/lib/format';
+import { birthDateOf, buildWelcome, isBirthday } from '@/lib/welcome';
 
 function getShiftDateTime(date, time) {
   const [year, month, day] = String(date || '').split('T')[0].split('-').map(Number);
@@ -443,6 +444,27 @@ export default function MinhaEscala() {
     };
   }, [monthShifts, units, company, isMonthlyRemuneration, profMeta, currentProfessional, isPaymentMarkedPaid, monthPrefix]);
 
+  // Boas-vindas: uma frase com o próximo plantão e o mês, no lugar de números soltos.
+  const nowMinute = Math.floor(now.getTime() / 60000);
+  const welcome = useMemo(() => {
+    const at = new Date(nowMinute * 60000);
+    const multiUnit = (units || []).length > 1;
+    const allPaid = earnings.rows.length > 0 && earnings.rows.every(row => row.paid);
+    const showAmount = !isMonthlyRemuneration && !isProductivityRemuneration && !earnings.missingRate && !allPaid;
+    return buildWelcome({
+      name: currentProfessional?.name || user?.full_name,
+      now: at,
+      activeShift: activeShiftNow,
+      nextShift: nextHighlightedShift && { ...nextHighlightedShift, unitName: multiUnit ? nextHighlightedShift.unitName : '' },
+      monthName: MONTH_NAMES[currentMonth]?.toLowerCase(),
+      done: monthMetrics.cumpridos,
+      total: monthMetrics.totalMes,
+      amount: showAmount ? earnings.done : null,
+      paid: allPaid,
+      birthday: isBirthday(birthDateOf(currentProfessional), at)
+    });
+  }, [nowMinute, units, earnings, isMonthlyRemuneration, isProductivityRemuneration, currentProfessional, user, activeShiftNow, nextHighlightedShift, currentMonth, monthMetrics]);
+
   const handlePassShiftToMural = async (shift) => {
     const requesterName = currentProfessional?.name || user?.full_name || 'Profissional';
     const requesterId = currentProfessional?.id || user?.id || '';
@@ -541,8 +563,8 @@ export default function MinhaEscala() {
     <div className="p-3 sm:p-4 md:p-8 space-y-4 sm:space-y-6 font-sans bg-slate-100 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
       
       <PageHero
-        title={<>Olá, Dr(a). {currentProfessional?.name ? currentProfessional.name.split(' ')[0] : user?.full_name?.split(' ')[0] || 'Profissional'}!</>}
-        subtitle="Seus próximos plantões, ganhos do mês e vagas para pegar."
+        title={welcome.title}
+        subtitle={welcome.lines.join(' ')}
         actions={t => (
           <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
             <Button

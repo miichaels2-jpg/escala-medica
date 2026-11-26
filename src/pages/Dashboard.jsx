@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
 import OnboardingChecklist from '@/components/OnboardingChecklist';
 import MonthTrend from '@/components/MonthTrend';
+import TeamCare from '@/components/TeamCare';
 import { Minimize2, AlertTriangle, CheckCircle2,
   ArrowRightLeft, DollarSign, Building2,
   Radio, X, Send
@@ -78,7 +79,7 @@ function computeShiftLiveStatus(shift, liveNowDate) {
 }
 
 export default function Painel() {
-  const { user, company, units = [], selectedUnitId, isManager, shifts: selectedUnitShifts, sectors: selectedUnitSectors, professionals: selectedUnitProfessionals, loading, publishedRanges, getPublishedRanges, allCompanyShifts = [], allCompanySectors = [], allCompanyProfessionals = [], allUnitsView, setUnitScope } = useAppData();
+  const { user, company, units = [], selectedUnitId, isManager, shifts: selectedUnitShifts, sectors: selectedUnitSectors, professionals: selectedUnitProfessionals, loading, publishedRanges, getPublishedRanges, allCompanyShifts = [], allCompanySectors = [], allCompanyProfessionals = [], allUnitsView, setUnitScope, syncGlobalData } = useAppData();
   // Unidades que o gestor administra (mesma regra do seletor do cabeçalho).
   const managedUnits = useMemo(() => {
     const allowed = Array.isArray(user?.data?.allowed_unit_ids) ? user.data.allowed_unit_ids.map(String) : [];
@@ -628,6 +629,18 @@ export default function Painel() {
             const vacancy = vacantShifts.find(v => String(v.date || '').slice(0, 10) === date);
             if (vacancy) handleResolveAlert(vacancy);
           }}
+        />
+      )}
+
+      {isManager && (
+        <TeamCare
+          shifts={unitShifts}
+          professionals={professionals}
+          sectors={sectors}
+          company={company}
+          user={user}
+          now={currentTime}
+          onChanged={syncGlobalData}
         />
       )}
     </div>

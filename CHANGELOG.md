@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.7.3 — 25/11/2026
+
+Acolher quem usa.
+
+- **Boas-vindas do plantonista**: o topo da Minha Escala troca o "Olá, Dr(a)." por uma frase com o próximo plantão (ou o que está em andamento) e o mês: "Bom dia, Ana! Seu próximo plantão é amanhã, às 7h, no setor UTI. Em novembro: 8 de 12 plantões feitos e R$ 9.600 a receber até agora." Mês já pago aparece como "pagamento confirmado"; no dia do aniversário, "Feliz aniversário".
+- **Reconhecimento**: quem pega pelo Mural uma vaga que começava em menos de 24 h recebe um "obrigado" na confirmação, e o plantão fica marcado como cobertura de última hora. No Painel, o quadro **Equipe** (gestão) mostra essas coberturas dos últimos 14 dias com o botão **Agradecer** (o aviso chega no sino e no celular do profissional) e os aniversários da semana com **Dar parabéns** no dia. O quadro só aparece quando há algo para mostrar.
+- **Desfazer**: tirar alguém do plantão, liberar a vaga em choque e excluir um plantão (Escala e Mural) não perguntam mais "tem certeza?"; a ação acontece e fica 10 segundos de **Desfazer** no canto da tela. Se alguém assumir a vaga pelo Mural nesse meio-tempo, o desfazer avisa e não passa por cima.
+- Frases e datas em `src/lib/welcome.js`, coberturas em `src/lib/urgentVacancies.js`, com testes.
+
 ## V0.7.2 — 25/11/2026
 
 Mostrar o resultado do mês para quem decide.

@@ -70,3 +70,23 @@ export function findShiftReminders({ shifts, isPublished, now = new Date() }) {
   });
   return reminders;
 }
+
+// Reconhecimento: o plantão coberto em cima da hora pelo Mural ganha a marca
+// [COBERTURA_URGENTE]; quando a gestão agradece, ganha [AGRADECIDO].
+export const URGENT_COVER_TAG = '[COBERTURA_URGENTE]';
+export const THANKED_TAG = '[AGRADECIDO]';
+
+export function withTag(notes, tag) {
+  const text = String(notes || '');
+  return text.includes(tag) ? text : `${text} ${tag}`.trim();
+}
+
+// Coberturas urgentes dos últimos `days` dias (e as que ainda vão acontecer), mais recentes primeiro.
+export function recentUrgentCovers(shifts, now = new Date(), days = 14) {
+  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days);
+  const fromKey = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`;
+  return (shifts || [])
+    .filter(s => s?.professional_id && !isShiftVacant(s) && String(s.notes || '').includes(URGENT_COVER_TAG) && String(s.date || '').slice(0, 10) >= fromKey)
+    .map(s => ({ shift: s, thanked: String(s.notes || '').includes(THANKED_TAG) }))
+    .sort((a, b) => String(b.shift.date).localeCompare(String(a.shift.date)) || String(b.shift.start_time || '').localeCompare(String(a.shift.start_time || '')));
+}

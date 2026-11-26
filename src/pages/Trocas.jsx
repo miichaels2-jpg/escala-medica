@@ -2,7 +2,9 @@ import { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { getProfessionalUnitIds, isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { findUnavailability } from '@/lib/availability';
-import { getShiftUrgency } from '@/lib/urgentVacancies';
+import { URGENT_COVER_TAG, getShiftUrgency, withTag } from '@/lib/urgentVacancies';
+import { offerUndo } from '@/lib/undo';
+import { firstName } from '@/lib/welcome';
 import { supabase } from '@/lib/supabase';
 import { getShiftDateTimeRange } from '@/lib/shiftLiveStatus';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
@@ -481,7 +483,9 @@ export default function Trocas() {
         ? `[TRANSFERENCIA: ${originName} -> ${myProf.name}] [TRANSFER_TO: ${myProf.name}] [DATA: ${new Date().toLocaleDateString('pt-BR')}]` 
         : `[ASSUNCAO_DIRETA: ${myProf.name}]`;
 
-      const updatedNotes = `${cleanNotes} ${transferAudit}`.trim();
+      // Vaga urgente coberta: fica marcada para a gestão poder agradecer no Painel.
+      const urgency = getShiftUrgency(shift);
+      const updatedNotes = urgency ? withTag(`${cleanNotes} ${transferAudit}`, URGENT_COVER_TAG) : `${cleanNotes} ${transferAudit}`.trim();
 
       await safeUpdateShift(shift.id, {
         professional_id: myProf.id,
@@ -494,7 +498,11 @@ export default function Trocas() {
         await notifyRequester(shift, audit, 'Seu plantão foi assumido', `${myProf.name} assumiu o plantão de ${formatDateBR(shift.date)} (${shift.start_time} às ${shift.end_time}) que você liberou no Mural.`, 'troca_assumida');
       }
       await syncGlobalData();
-      alert(`Plantão confirmado com sucesso para ${myProf.name}!`);
+      alert(urgency
+        ? `Obrigado, ${firstName(myProf.name)}! Essa vaga ${urgency.minutesLeft <= 0 ? 'já tinha começado' : `começava em menos de ${Math.max(1, Math.ceil(urgency.minutesLeft / 60))} h`} e estava sem ninguém. A coordenação vai saber que foi você.
+
+Plantão confirmado: ${sectorName}, ${formatDateBR(shift.date)} (${shift.start_time || '07:00'} às ${shift.end_time || '19:00'}).`
+        : `Plantão confirmado com sucesso para ${myProf.name}!`);
     } catch (err) {
       alert('Erro ao assumir plantão: ' + err.message);
     } finally {
@@ -502,12 +510,25 @@ export default function Trocas() {
     }
   };
 
+  // Mesmo "Desfazer" da tela de Escalas: guarda a linha e grava de volta se pedir.
   const handleDeleteVaga = async (shiftId) => {
-    if (!confirm('Excluir esta vaga definitivamente?')) return;
     try {
+      const { data: row, error: readError } = await supabase.from('shifts').select('*').eq('id', shiftId).maybeSingle();
+      if (readError) throw readError;
       const { error } = await supabase.from('shifts').delete().eq('id', shiftId);
       if (error) throw error;
       await syncGlobalData();
+      if (row) {
+        offerUndo({
+          title: `Vaga de ${formatDateBR(row.date)} excluída`,
+          description: `${row.start_time || ''}–${row.end_time || ''} · ${sectorMap[String(row.sector_id)]?.name || 'Setor'}. Você tem 10 segundos para desfazer.`,
+          onUndo: async () => {
+            const { error: insertError } = await supabase.from('shifts').insert([row]);
+            if (insertError) throw insertError;
+            await syncGlobalData();
+          }
+        });
+      }
     } catch (err) {
       alert('Erro ao excluir: ' + err.message);
     }
