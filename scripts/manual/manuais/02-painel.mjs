@@ -87,7 +87,7 @@ export default {
     {
       titulo: 'Trocar de hospital',
       blocos: [
-        { p: 'Quem coordena mais de um hospital escolhe com qual trabalhar no campo **Unidade**, no topo da tela. Escala, Corpo Clínico, Setores, Faturamento e Relatórios passam a mostrar os dados do hospital escolhido. O Painel também pode mostrar todos juntos.' },
+        { p: 'Quem coordena mais de um hospital escolhe com qual trabalhar no campo **Unidade**, no topo da tela. Escala, Corpo Clínico, Setores, Faturamento, Indicadores e Relatórios passam a mostrar os dados do hospital escolhido. O Painel também pode mostrar todos juntos.' },
         { dica: 'O plantonista não precisa trocar de hospital: ele vê os plantões de todos os hospitais onde trabalha na mesma Minha Escala.' }
       ]
     }

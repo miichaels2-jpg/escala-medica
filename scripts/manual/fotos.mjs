@@ -72,6 +72,10 @@ export const SHOTS = [
 
   // ---------- Relatórios ----------
   { id: 'relatorios', as: 'gestor', view: 'pc', path: '/relatorios', marks: [B('Visão geral'), SEL('main button[role=combobox]', null, { index: 0 }), S('Exportar para Excel'), S('Imprimir')] },
+  // ---------- Indicadores ----------
+  { id: 'indicadores', as: 'gestor', view: 'pc', path: '/indicadores', altura: 1150, steps: [['selectValue', 'section[aria-label=Filtros] select', 'anterior']], marks: [SEL('section[aria-label=Filtros] select', null, { index: 0 }), SEL('section[aria-label=Filtros] select', null, { index: 1 }), SEL('section[aria-label=Filtros] select', null, { index: 2 }), B('Ver lista')] },
+  { id: 'indicadores-distribuicao', as: 'gestor', view: 'pc', path: '/indicadores', altura: 1700, steps: [['selectValue', 'section[aria-label=Filtros] select', 'anterior']], clip: { alvos: [SEL('section', 'Distribuição da equipe', { last: true })], margem: [14, 14, 14, 14] }, marks: [] },
+  { id: 'indicadores-lista', ...DIALOG, as: 'gestor', view: 'pc', path: '/indicadores', steps: [['selectValue', 'section[aria-label=Filtros] select', 'anterior'], ['clickIn', SEL('section', 'Segurança do plantão', { last: true }), 'Ver lista'], ['wait', 1200]], marks: [S('Exportar Excel'), S('Imprimir')] },
   { id: 'relatorios-apresentacao', as: 'gestor', view: 'pc', path: '/relatorios', steps: [['click', S('Apresentação do mês')], ['wait', 3500]], marks: [] },
   { id: 'relatorios-plantoes', as: 'gestor', view: 'pc', path: '/relatorios', steps: [['click', B('Escalas')], ['wait', 900], ['click', B('Plantões')], ['wait', 1500]], marks: [] },
   { id: 'relatorios-confiabilidade', as: 'gestor', view: 'pc', path: '/relatorios', steps: [['click', B('Equipe')], ['wait', 900], ['click', B('Confiabilidade')], ['wait', 1500]], marks: [] },

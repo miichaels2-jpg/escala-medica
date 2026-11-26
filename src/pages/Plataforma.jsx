@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Check, Copy, Hospital, KeyRound, Loader2, Plus, RefreshCw, UserPlus } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Hospital, KeyRound, Loader2, LockOpen, Pencil, Plus, RefreshCw, UserPlus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { birthDatePassword, generateProvisionalPassword } from '@/lib/passwordPolicy';
 import { suggestUsername } from '@/lib/format';
@@ -168,6 +168,34 @@ export default function Plataforma() {
     load();
   };
 
+  // Funções novas do banco (migração 20261126150000): avisa se ainda não foi aplicada.
+  const rpcMessage = err => (/could not find the function|PGRST202/i.test(`${err?.code} ${err?.message}`)
+    ? 'Falta aplicar a atualização do banco 20261126150000_platform_rename_unlock.sql no editor SQL do Supabase.'
+    : err?.message || 'Não foi possível salvar.');
+
+  const rename = async (kind, item) => {
+    const name = window.prompt(kind === 'company' ? 'Novo nome da empresa:' : 'Novo nome do hospital:', item.name || '');
+    if (name === null || !name.trim() || name.trim() === item.name) return;
+    const { error: rpcError } = kind === 'company'
+      ? await supabase.rpc('platform_rename_company', { p_company_id: item.id, p_name: name.trim() })
+      : await supabase.rpc('platform_rename_unit', { p_unit_id: String(item.id), p_name: name.trim() });
+    if (rpcError) return window.alert(rpcMessage(rpcError));
+    load();
+  };
+
+  const [unlockLogin, setUnlockLogin] = useState('');
+  const [unlockResult, setUnlockResult] = useState(null);
+  const unlock = async e => {
+    e.preventDefault();
+    const login = unlockLogin.trim();
+    if (!login) return;
+    setUnlockResult(null);
+    const { data, error: rpcError } = await supabase.rpc('platform_unlock_login', { p_login: login });
+    if (rpcError) return setUnlockResult({ ok: false, text: rpcMessage(rpcError) });
+    setUnlockResult({ ok: true, text: data > 0 ? `Acesso de ${login} liberado. Já pode entrar de novo.` : `${login} não estava bloqueado. Se não consegue entrar, a senha pode estar errada: use Redefinir senha.` });
+    setUnlockLogin('');
+  };
+
   const credentialsText = r => [
     `ScaleMedic — ${r.companyName}`,
     `Endereço: ${window.location.origin}`,
@@ -210,7 +238,10 @@ export default function Plataforma() {
             <section key={company.id} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="text-lg font-bold truncate">{company.name}</h2>
+                  <h2 className="flex items-center gap-1.5 text-lg font-bold min-w-0">
+                    <span className="truncate">{company.name}</span>
+                    <button type="button" onClick={() => rename('company', company)} aria-label={`Renomear ${company.name}`} title="Renomear empresa" className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"><Pencil className="w-3.5 h-3.5" /></button>
+                  </h2>
                   <p className="text-xs text-slate-500">
                     {planLabel(company.plan)} · desde {new Date(company.created_date).toLocaleDateString('pt-BR')}
                   </p>
@@ -234,8 +265,9 @@ export default function Plataforma() {
                 <div className="flex flex-wrap gap-2">
                   {company.units.length === 0 && <p className="text-sm text-slate-500">Nenhum hospital ainda.</p>}
                   {company.units.map(u => (
-                    <span key={u.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-800 px-2.5 py-1 text-xs font-medium">
+                    <span key={u.id} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-800 pl-2.5 pr-1 py-1 text-xs font-medium">
                       <Hospital className="w-3.5 h-3.5 text-slate-400" /> {u.name}
+                      <button type="button" onClick={() => rename('unit', u)} aria-label={`Renomear ${u.name}`} title="Renomear hospital" className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"><Pencil className="w-3 h-3" /></button>
                     </span>
                   ))}
                 </div>
@@ -276,6 +308,16 @@ export default function Plataforma() {
           ))}
         </div>
       )}
+
+      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
+        <h2 className="flex items-center gap-2 text-lg font-semibold"><LockOpen className="w-4 h-4 text-slate-400" /> Desbloquear acesso</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Quem erra a senha 5 vezes seguidas fica bloqueado por 15 minutos. Digite o usuário ou o e-mail da pessoa para liberar na hora (de qualquer empresa).</p>
+        <form onSubmit={unlock} className="mt-3 flex flex-wrap gap-2">
+          <Input value={unlockLogin} onChange={e => setUnlockLogin(e.target.value)} placeholder="usuário ou e-mail" className="h-10 max-w-xs" aria-label="Usuário ou e-mail" />
+          <Button type="submit" disabled={!unlockLogin.trim()} className="h-10 gap-1.5"><LockOpen className="w-4 h-4" /> Desbloquear</Button>
+        </form>
+        {unlockResult && <p role="status" className={`mt-2 text-sm ${unlockResult.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-300'}`}>{unlockResult.text}</p>}
+      </section>
 
       <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
         <div className="flex items-start justify-between gap-3">
