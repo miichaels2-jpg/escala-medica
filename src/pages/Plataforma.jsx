@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Check, Copy, Hospital, KeyRound, Loader2, LockOpen, Pencil, Plus, RefreshCw, UserPlus } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Hospital, KeyRound, Loader2, LockOpen, Pencil, Plus, RefreshCw, UserPlus, Users } from 'lucide-react';
+import PlatformPeopleDialog from '@/components/PlatformPeopleDialog';
 import { supabase } from '@/lib/supabase';
 import { birthDatePassword, generateProvisionalPassword } from '@/lib/passwordPolicy';
 import { suggestUsername } from '@/lib/format';
@@ -78,6 +79,7 @@ function ManagerFields({ value, onChange }) {
 export default function Plataforma() {
   const [isOwner, setIsOwner] = useState(null);
   const [companies, setCompanies] = useState([]);
+  const [peopleCompany, setPeopleCompany] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [dialog, setDialog] = useState(null); // { type: 'company' } | { type: 'manager' | 'unit', company }
@@ -266,6 +268,7 @@ export default function Plataforma() {
                     {planLabel(company.plan)} · desde {new Date(company.created_date).toLocaleDateString('pt-BR')}
                   </p>
                 </div>
+                <Button type="button" variant="outline" size="sm" onClick={() => setPeopleCompany(company)} className="h-8 gap-1.5 shrink-0"><Users className="w-3.5 h-3.5" /> Pessoas e acessos</Button>
               </div>
 
               <dl className="grid grid-cols-4 gap-2 text-center">
@@ -419,6 +422,8 @@ export default function Plataforma() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <PlatformPeopleDialog company={peopleCompany} companies={companies} onClose={() => setPeopleCompany(null)} onChanged={load} rpcMessage={rpcMessage} />
 
       <Dialog open={Boolean(result)} onOpenChange={open => { if (!open) setResult(null); }}>
         <DialogContent className="sm:max-w-lg">
