@@ -116,7 +116,7 @@ export const scrubJs = tokenPairs => `(() => {
     if (rule) out = out.replace(rule, m => map.get(m) ?? m); // uma passada: o nome trocado não é trocado de novo
     out = out.replace(/[\\w.+-]+@[\\w-]+(\\.[\\w-]+)+/g, fakeMail);
     out = out.replace(/\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}/g, '123.456.789-00');
-    out = out.replace(/https?:\\/\\/localhost:\\d+/g, 'https://scalemedic-app.vercel.app'); // foto tirada da versão local
+    out = out.replace(/https?:\\/\\/localhost:\\d+/g, 'https://scalemedic.com.br'); // foto tirada da versão local
     out = out.replace(/\\(?\\b\\d{2}\\)?\\s?9?\\d{4}-?\\d{4}\\b/g, m => (m.includes('3456-7890') ? m : '(11) 98765-4321'));
     out = out.replace(/\\b\\d{10,11}\\b/g, '11987654321');
     return out;

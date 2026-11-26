@@ -14,6 +14,7 @@ export const SHOTS = [
   // ---------- Entrada ----------
   { id: 'login', as: 'anon', view: 'pc', path: '/login', clip: { alvos: [SEL('form'), S('Instalar o app')], margem: [200, 60, 20, 60] }, marks: [SEL('form input', null, { index: 0 }), SEL('input[type=password]'), SEL('input[type=checkbox]'), SEL('form button[type=submit]'), S('Instalar o app'), SEL('a', 'Solicite seu credenciamento')] },
   { id: 'login-cel', as: 'anon', view: 'cel', path: '/login', marks: [] },
+  { id: 'recuperar-senha', as: 'anon', view: 'cel', path: '/login', steps: [['click', S('Esqueceu a senha?')], ['wait', 900]], marks: [SEL('[role=dialog] input[type=email]'), S('Enviar link')] },
   { id: 'instalar', as: 'anon', view: 'cel', path: '/login', steps: [['click', S('Instalar o app')], ['wait', 1200]], marks: [] },
   { id: 'credenciamento', as: 'anon', view: 'pc', path: '/register', altura: 1400, clip: { alvos: [SEL('form')], margem: [24, 24, 24, 24] }, marks: [SEL('input', null, { index: 0 }), SEL('ol[aria-label=Etapas]')] },
 

@@ -5,6 +5,7 @@ import { usePwaInstall } from '@/lib/pwa';
 import { APP_VERSION } from '@/lib/version';
 import { formatLockWait, passwordProblem } from '@/lib/passwordPolicy';
 import { openOfficialSession } from '@/lib/authSession';
+import { isRealEmail, recoveryRequestError } from '@/lib/passwordRecovery';
 import { listMyCompanies, switchCompany } from '@/lib/companyAccess';
 import { TERMS_VERSION, needsTermsAcceptance } from '@/lib/terms';
 import { isManagerUser } from '@/lib/accessControl';
@@ -16,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Loader2, AlertCircle, Eye, EyeOff, ShieldCheck, 
-  FileText, Check, Building2, Hospital, CheckCircle2, KeyRound, Smartphone 
+  FileText, Check, Building2, Hospital, CheckCircle2, KeyRound, Smartphone, Mail 
 } from 'lucide-react';
 
 export default function Login() {
@@ -52,6 +53,12 @@ export default function Login() {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [installGuideOpen, setInstallGuideOpen] = useState(false);
+  // Esqueceu a senha: link por e-mail (V0.8.6).
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotError, setForgotError] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotSending, setForgotSending] = useState(false);
   const { isInstalled } = usePwaInstall();
 
   useEffect(() => {
@@ -302,6 +309,30 @@ export default function Login() {
     proceedWithLogin(pendingUser, selectedUnitForLogin);
   };
 
+  const openForgot = () => {
+    setForgotEmail(loginId.includes('@') ? loginId.trim() : '');
+    setForgotError('');
+    setForgotSent(false);
+    setForgotOpen(true);
+  };
+
+  const handleSendRecovery = async (e) => {
+    e.preventDefault();
+    setForgotError('');
+    const email = forgotEmail.trim().toLowerCase();
+    if (!isRealEmail(email)) return setForgotError('Digite o e-mail do seu cadastro. Se você não tem e-mail cadastrado, procure a coordenação ou o RH da sua unidade.');
+    setForgotSending(true);
+    try {
+      const { error: sendError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/redefinir-senha` });
+      if (sendError) throw sendError;
+      setForgotSent(true);
+    } catch (err) {
+      setForgotError(recoveryRequestError(err));
+    } finally {
+      setForgotSending(false);
+    }
+  };
+
   const resetModals = () => {
     setShowPasswordChangeModal(false);
     setShowLgpdModal(false);
@@ -350,7 +381,7 @@ export default function Login() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Senha</Label>
-              <Button type="button" variant="link" className="h-auto p-0 text-[11px] font-semibold text-sky-600 hover:text-sky-500 transition-colors cursor-pointer" onClick={() => alert('Procure a coordenação ou RH da sua unidade para solicitar o reset de senha da sua conta.')}>
+              <Button type="button" variant="link" className="h-auto p-0 text-[11px] font-semibold text-sky-600 hover:text-sky-500 transition-colors cursor-pointer" onClick={openForgot}>
                 Esqueceu a senha?
               </Button>
             </div>
@@ -419,6 +450,50 @@ export default function Login() {
       )}
 
       <InstallAppDialog open={installGuideOpen} onOpenChange={setInstallGuideOpen} />
+
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-3xl p-6 shadow-2xl z-[9999]">
+          <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-4 mb-2">
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-slate-900 dark:text-white">
+              <Mail className="w-6 h-6 text-sky-600 dark:text-sky-400" /> Recuperar a senha
+            </DialogTitle>
+          </DialogHeader>
+          {forgotSent ? (
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <p className="text-xs font-medium text-emerald-900 dark:text-emerald-200 leading-relaxed">
+                  Se <strong>{forgotEmail.trim().toLowerCase()}</strong> estiver cadastrado, você vai receber em alguns minutos um e-mail do ScaleMedic com o link para criar uma senha nova. O link vale por 1 hora. Confira também a caixa de spam.
+                </p>
+              </div>
+              <Button type="button" onClick={() => setForgotOpen(false)} className="h-11 w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs cursor-pointer">Entendi</Button>
+            </div>
+          ) : (
+            <form onSubmit={handleSendRecovery} className="space-y-4">
+              <p className="text-sm text-slate-600 dark:text-slate-400 font-medium leading-relaxed">
+                Digite o e-mail do seu cadastro. Vamos mandar um link para você criar uma senha nova.
+              </p>
+              {forgotError && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs font-semibold text-rose-600 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> {forgotError}
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">E-mail</Label>
+                <Input type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} autoComplete="email" required
+                  placeholder="seu@email.com" className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl" />
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">Sem e-mail no cadastro? Procure a coordenação ou o RH da sua unidade para trocar a senha.</p>
+              <DialogFooter className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                <Button type="button" variant="outline" onClick={() => setForgotOpen(false)} className="h-11 w-full text-xs font-medium border-slate-200 dark:border-slate-700 text-slate-500 cursor-pointer">Voltar</Button>
+                <Button type="submit" disabled={forgotSending} className="h-11 w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs cursor-pointer">
+                  {forgotSending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Enviando...</> : 'Enviar link'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <div className="relative mt-6 sm:mt-0 sm:absolute sm:bottom-6 text-center z-0 flex flex-col items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
         <p className="text-[10px] text-slate-400 font-medium">

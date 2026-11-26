@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.8.6 — 26/11/2026
+
+Domínio próprio e recuperação de senha por e-mail.
+
+- **Endereço novo: scalemedic.com.br.** O endereço antigo (scalemedic-app.vercel.app) e o www levam para ele, na mesma página. Quem instalou o app ou ativou os avisos no celular precisa fazer de novo no endereço novo.
+- **Esqueceu a senha?** Na tela de entrada, quem tem e-mail no cadastro pede um link e cria a senha nova sozinho, na tela nova **/redefinir-senha**. O link vale por 1 hora. A senha nova é salva no cadastro do ScaleMedic e vale na hora. Quem não tem e-mail no cadastro continua pedindo à coordenação. Regras em `src/lib/passwordRecovery.js`, com testes.
+- Modelo do e-mail em português em `supabase/templates/recuperar-senha.html` (colar no Supabase › Authentication › Emails, junto com o envio pelo domínio).
+- Manual **01 · Primeiro acesso e entrada** com o endereço novo e o passo a passo da recuperação; endereço novo nos demais scripts de manual e tutorial; PDFs regenerados.
+
 ## V0.8.5 — 26/11/2026
 
 Erros em português.
