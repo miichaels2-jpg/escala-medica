@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import WorkloadRulesCard from '@/components/WorkloadRulesCard';
+import RetentionCard from '@/components/RetentionCard';
 import { 
   Building2, Save, Trash2, 
   Settings, Hospital, FileText, MapPin, Edit, Plus, RotateCcw, AlertTriangle, Phone, Copy, Image as ImageIcon, UploadCloud
@@ -488,7 +489,7 @@ export default function Configuracoes() {
         )}
 
         {/* ABA: REGRAS DA ESCALA */}
-        {activeTab === 'regras' && <WorkloadRulesCard />}
+        {activeTab === 'regras' && <div className="space-y-6"><WorkloadRulesCard /><RetentionCard /></div>}
 
         {/* ABA: CONTRATO MATRIZ */}
         {activeTab === 'contrato' && (

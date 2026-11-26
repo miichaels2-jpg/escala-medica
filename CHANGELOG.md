@@ -9,6 +9,16 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.9.1 — 26/11/2026
+
+Valores do plantão por setor e retenção padrão (pedido do Lima&Lima).
+
+- **Setores › Valores do plantão:** cada setor tem a sua tabela, que vale para toda a equipe: **dia de semana** (diurno e noturno), **fim de semana** (diurno e noturno) e **meio expediente** (plantão de até 6 horas, em qualquer dia). Noturno é o plantão que começa a partir das 18h (ou antes das 6h). O cartão do setor mostra os valores para a gestão.
+- **Corpo Clínico, passo 3:** o valor por hospital do profissional vira **valor próprio opcional**, com o campo novo de meio expediente. Ele vence só nos campos preenchidos; o resto vem da tabela do setor. Quem já tinha valores cadastrados continua recebendo por eles.
+- **Configurações › Regras da escala › Retenção padrão:** um percentual para todo o estabelecimento. A retenção do cadastro do profissional passa a ser exceção: em branco, vale a padrão; 0 deixa sem retenção. Cadastros antigos com percentual maior que zero continuam com o deles.
+- Faturamento, recibo, demonstrativo, informe de rendimentos, Minha Escala, Painel, Relatórios, apresentação do mês e a janela de publicar usam as novas regras. Regra em `src/lib/financialCalculations.js` (`getSectorRates`, `getRetentionRate`), com testes.
+- Manuais **03 · Setores**, **04 · Corpo Clínico** e **10 · Configurações** atualizados; PDFs regenerados.
+
 ## V0.8.10 — 26/11/2026
 
 Telas vazias que orientam (item 63).

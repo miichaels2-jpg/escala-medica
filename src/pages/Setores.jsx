@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase';
 import { isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { isShiftVacant } from '@/lib/shiftLiveStatus';
 import { getSectorTemplates, templateSummary, vacanciesPerDay, withSectorTemplates } from '@/lib/sectorTemplates';
+import { SECTOR_RATE_FIELDS, getSectorRates, withSectorRates } from '@/lib/financialCalculations';
+import { formatCurrency } from '@/lib/format';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
@@ -16,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   Building2, Plus, Search, Edit, Trash2,
-  Save, X, Clock, Users, CalendarPlus
+  Save, X, Clock, Users, CalendarPlus, DollarSign
 } from 'lucide-react';
 
 const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -34,6 +36,8 @@ export default function Setores() {
   const [formData, setFormData] = useState({ name: '', status: 'ativo' });
   // Turnos padrão do setor (company.data.sector_shift_templates)
   const [turns, setTurns] = useState([]);
+  // Valores do plantão do setor (company.data.sector_rates), V0.9.1
+  const [rates, setRates] = useState({});
 
   const companyId = user?.data?.company_id || user?.company_id || company?.id || 'cmp_principal';
   const unitId = selectedUnitId || user?.data?.selected_unit_id || 'unit_h1';
@@ -79,6 +83,8 @@ export default function Setores() {
     setFormData({ name: sector?.name || '', status: sector?.active === false ? 'inativo' : 'ativo' });
     const saved = sector ? getSectorTemplates(company, sector.id) : [];
     setTurns(saved.map(t => ({ ...newTurn(), ...t })));
+    const savedRates = sector ? getSectorRates(company, sector.id) : {};
+    setRates(Object.fromEntries(Object.entries(savedRates).map(([k, v]) => [k, String(v)])));
     setModalOpen(true);
   };
 
@@ -125,11 +131,17 @@ export default function Setores() {
       }
 
       const before = editingSector ? getSectorTemplates(company, editingSector.id) : [];
-      if (sectorId && (turns.length || before.length)) {
+      const ratesBefore = editingSector ? getSectorRates(company, editingSector.id) : {};
+      const touchesTurns = turns.length || before.length;
+      const touchesRates = Object.values(rates).some(v => String(v).trim() !== '') || Object.keys(ratesBefore).length;
+      if (sectorId && (touchesTurns || touchesRates)) {
         const { data: row, error: readError } = await supabase.from('companies').select('data').eq('id', company.id).single();
         if (readError) throw readError;
-        const { error } = await supabase.from('companies').update({ data: withSectorTemplates(row?.data, sectorId, turns) }).eq('id', company.id);
-        if (error) throw new Error('o setor foi salvo, mas os turnos padrão não. ' + error.message);
+        let nextData = row?.data || {};
+        if (touchesTurns) nextData = withSectorTemplates(nextData, sectorId, turns);
+        if (touchesRates) nextData = withSectorRates(nextData, sectorId, rates);
+        const { error } = await supabase.from('companies').update({ data: nextData }).eq('id', company.id);
+        if (error) throw new Error('o setor foi salvo, mas os turnos padrão e os valores não. ' + error.message);
       }
 
       setModalOpen(false);
@@ -199,6 +211,9 @@ export default function Setores() {
           filteredSectors.map((sector) => {
             const isInactive = sector.active === false;
             const templates = getSectorTemplates(company, sector.id);
+            const sectorRates = getSectorRates(company, sector.id);
+            const rateSummary = [['semana_dia', 'Dia'], ['semana_noite', 'Noite'], ['fds_dia', 'FDS dia'], ['fds_noite', 'FDS noite'], ['meio', 'Meio']]
+              .filter(([key]) => sectorRates[key] !== undefined).map(([key, label]) => `${label} ${formatCurrency(sectorRates[key])}`);
             const st = sectorStats[sector.id] || { team: 0, shifts: 0, vacancies: 0 };
 
             return (
@@ -223,6 +238,15 @@ export default function Setores() {
                       )}
                     </div>
                   </div>
+                  {isManager && (
+                    <div className="flex items-start gap-2.5">
+                      <DollarSign className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
+                      <dt className="sr-only">Valores do plantão</dt>
+                      {rateSummary.length
+                        ? <dd className="text-slate-700 dark:text-slate-200 text-xs leading-relaxed tabular-nums">{rateSummary.join(' · ')}</dd>
+                        : <dd className="text-slate-500 dark:text-slate-400">Sem tabela de valores · <button type="button" onClick={() => handleOpenModal(sector)} className="text-sky-700 dark:text-sky-300 font-medium hover:underline cursor-pointer">cadastrar</button></dd>}
+                    </div>
+                  )}
                   <div className="flex items-start gap-2.5">
                     <Users className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
                     <dd className="text-slate-700 dark:text-slate-200"><span className="tabular-nums">{st.team}</span> {st.team === 1 ? 'profissional autorizado' : 'profissionais autorizados'}</dd>
@@ -325,6 +349,26 @@ export default function Setores() {
               <Button type="button" variant="outline" onClick={addTurn} className="h-9 text-xs font-semibold rounded-xl px-3 gap-1.5 cursor-pointer">
                 <Plus className="w-3.5 h-3.5" /> {turns.length ? 'Adicionar turno' : 'Cadastrar turnos'}
               </Button>
+            </div>
+
+            <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">Valores do plantão</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Quanto se paga por plantão neste setor, para toda a equipe. Quem tem valor próprio no cadastro (Corpo Clínico) recebe o dele. Noturno é o plantão que começa a partir das 18h; meio expediente, o de até 6 horas.</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SECTOR_RATE_FIELDS.map(field => (
+                  <label key={field.key} className={`flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 py-2 ${field.key === 'meio' ? 'sm:col-span-2' : ''}`}>
+                    <span className="text-xs text-slate-600 dark:text-slate-300">{field.label}</span>
+                    <span className="flex items-center gap-1 text-xs text-slate-500">R$
+                      <Input type="number" min="0" step="0.01" inputMode="decimal" value={rates[field.key] ?? ''} placeholder="—"
+                        onChange={e => setRates(r => ({ ...r, [field.key]: e.target.value }))}
+                        className="h-9 w-28 text-right text-sm bg-white dark:bg-slate-950" />
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Deixe em branco o que não se aplica. Sem valor de meio expediente, o plantão curto segue a tabela normal.</p>
             </div>
 
             <DialogFooter className="pt-4 flex flex-col-reverse sm:flex-row sm:justify-end border-t border-slate-100 dark:border-slate-800 gap-2">

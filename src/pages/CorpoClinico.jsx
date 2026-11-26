@@ -148,7 +148,7 @@ export default function CorpoClinico() {
     monthly_salary: '',
     unit_monthly_salaries: {},
     unit_rates: {}, // NOVO: Matriz de valores por unidade
-    coop_tax_rate: 0, pix_type: 'CPF',
+    coop_tax_rate: '', pix_type: 'CPF',
     pix_key: '', bank_info: '', password: '',
     receipt_type: 'pf', cnpj: '', legal_name: '',
     document_expiry: '', // vazio até alguém conferir a credencial
@@ -172,7 +172,7 @@ export default function CorpoClinico() {
       unit_id: selectedUnitId || (units[0]?.id || 'unit_h1'),
       status: 'ativo', app_role: 'assistencial', screen_access: defaultScreensForRole('assistencial'), can_edit: false,
       remuneration_type: 'plantao', monthly_salary: '', unit_monthly_salaries: {}, unit_rates: {},
-      coop_tax_rate: 0, pix_type: 'CPF',
+      coop_tax_rate: '', pix_type: 'CPF',
       pix_key: '', bank_info: '', password: '',
       receipt_type: 'pf', cnpj: '', legal_name: '',
       document_expiry: '', // vazio até alguém conferir a credencial
@@ -230,7 +230,9 @@ export default function CorpoClinico() {
       monthly_salary: String(safeNumber(legacyMonthlySalary, 0)),
       unit_monthly_salaries: savedMonthlySalaries,
       unit_rates: meta.unit_rates || {},
-      coop_tax_rate: safeNumber(meta.coop_tax_rate ?? prof.coop_tax_rate, 0),
+      // Em branco = retenção padrão do estabelecimento (Configurações). Cadastro antigo com valor > 0 conta como próprio.
+      coop_tax_rate: (meta.retention_override === true || (meta.retention_override !== false && safeNumber(meta.coop_tax_rate ?? prof.coop_tax_rate, 0) > 0))
+        ? String(safeNumber(meta.coop_tax_rate ?? prof.coop_tax_rate, 0)) : '',
       pix_type: meta.pix_type || 'CPF',
       pix_key: meta.pix_key || '',
       bank_info: meta.bank_info || '',
@@ -657,7 +659,7 @@ export default function CorpoClinico() {
         ...existingMeta,
         username: cleanUsername, category: formData.category, app_role: formData.app_role,
         main_sector: formData.main_sector, specialty: formData.specialty, rqe: formData.rqe, cbo: formData.cbo,
-        registration_id: formData.registration_id, coop_tax_rate: safeNumber(formData.coop_tax_rate),
+        registration_id: formData.registration_id, coop_tax_rate: safeNumber(formData.coop_tax_rate), retention_override: String(formData.coop_tax_rate ?? '').trim() !== '',
         remuneration_type: formData.remuneration_type, 
         monthly_salary: monthlySalary,
         unit_monthly_salaries: unitMonthlySalaries,
@@ -1388,31 +1390,39 @@ export default function CorpoClinico() {
                 )}
                 
                 <div className="space-y-1">
-                  <Label className="text-[11px] font-semibold">Retenção PJ/Coop (%) - Opcional</Label>
-                  <Input type="number" step="0.1" value={formData.coop_tax_rate} onChange={e => setFormData({...formData, coop_tax_rate: e.target.value})} placeholder="Ex: 5" className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                  <Label className="text-[11px] font-semibold">Retenção (%) própria · opcional</Label>
+                  <Input type="number" step="0.01" min="0" max="100" value={formData.coop_tax_rate} onChange={e => setFormData({...formData, coop_tax_rate: e.target.value})} placeholder={`Padrão do estabelecimento: ${String(safeNumber(company?.data?.default_retention_rate, 0)).replace('.', ',')}%`} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800" />
+                  <p className="text-[10px] text-slate-500">Em branco, vale a retenção padrão (Configurações › Regras da escala). Para não reter nada deste profissional, digite 0.</p>
                 </div>
               </div>
 
               {formData.remuneration_type === 'plantao' && (
                 <div className="space-y-3 pt-2">
-                  <Label className="text-xs font-medium text-slate-500">Tabela de Preços por Hospital Permitido</Label>
+                  <div>
+                    <Label className="text-xs font-medium text-slate-500">Valor próprio por hospital · opcional</Label>
+                    <p className="mt-0.5 text-[10px] text-slate-500">Em branco, vale a tabela de valores do setor do plantão (tela Setores). Preencha só o que for diferente para este profissional.</p>
+                  </div>
                   {formData.allowed_unit_ids.map(uid => {
                     const uName = units.find(x => String(x.id) === String(uid))?.name || 'Unidade';
                     return (
                       <div key={uid} className="p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2 shadow-sm">
                         <Label className="text-xs font-semibold text-sky-600 dark:text-sky-400 flex items-center gap-1.5"><Hospital className="w-3.5 h-3.5"/> {uName}</Label>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                           <div>
                             <Label className="text-[10px] text-slate-500">Plantão Diurno (R$)</Label>
-                            <Input type="number" step="0.01" placeholder="Ex: 1200" value={formData.unit_rates[uid]?.diurno || ''} onChange={e => handleUnitRateChange(uid, 'diurno', e.target.value)} className="h-8 text-xs border-slate-200 dark:border-slate-800" />
+                            <Input type="number" step="0.01" placeholder="Tabela do setor" value={formData.unit_rates[uid]?.diurno || ''} onChange={e => handleUnitRateChange(uid, 'diurno', e.target.value)} className="h-8 text-xs border-slate-200 dark:border-slate-800" />
                           </div>
                           <div>
                             <Label className="text-[10px] text-slate-500">Plantão Noturno (R$)</Label>
-                            <Input type="number" step="0.01" placeholder="Ex: 1400" value={formData.unit_rates[uid]?.noturno || ''} onChange={e => handleUnitRateChange(uid, 'noturno', e.target.value)} className="h-8 text-xs border-slate-200 dark:border-slate-800" />
+                            <Input type="number" step="0.01" placeholder="Tabela do setor" value={formData.unit_rates[uid]?.noturno || ''} onChange={e => handleUnitRateChange(uid, 'noturno', e.target.value)} className="h-8 text-xs border-slate-200 dark:border-slate-800" />
                           </div>
                           <div>
                             <Label className="text-[10px] text-slate-500">Fim de Semana (R$)</Label>
-                            <Input type="number" step="0.01" placeholder="Ex: 1800" value={formData.unit_rates[uid]?.fds || ''} onChange={e => handleUnitRateChange(uid, 'fds', e.target.value)} className="h-8 text-xs border-slate-200 dark:border-slate-800" />
+                            <Input type="number" step="0.01" placeholder="Tabela do setor" value={formData.unit_rates[uid]?.fds || ''} onChange={e => handleUnitRateChange(uid, 'fds', e.target.value)} className="h-8 text-xs border-slate-200 dark:border-slate-800" />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] text-slate-500">Meio expediente (R$)</Label>
+                            <Input type="number" step="0.01" placeholder="Tabela do setor" value={formData.unit_rates[uid]?.meio || ''} onChange={e => handleUnitRateChange(uid, 'meio', e.target.value)} className="h-8 text-xs border-slate-200 dark:border-slate-800" />
                           </div>
                         </div>
                       </div>

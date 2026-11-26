@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useAppData } from '@/lib/useAppData';
-import { getMonthlySalaryForUnit, getShiftCostEstimate } from '@/lib/financialCalculations';
+import { getMonthlySalaryForUnit, getRetentionRate, getShiftCostEstimate } from '@/lib/financialCalculations';
 import { calculateProductivityPoolAllocations } from '@/lib/productivityCalculations';
 import { supabase } from '@/lib/supabase';
 import { escapeHtml } from '@/lib/printBranding';
@@ -642,7 +642,7 @@ export default function Faturamento() {
         ? meta.allowed_unit_ids
         : Array.isArray(p.unit_ids) ? p.unit_ids : (p.unit_id ? [p.unit_id] : []);
       const isAssignedToCurrentUnit = assignedUnitIds.some(unitId => String(unitId) === String(selectedUnitId)) || isPrimaryUnit;
-      const taxRate = meta.coop_tax_rate ?? p.coop_tax_rate ?? 0;
+      const taxRate = getRetentionRate(p, company);
       const matricula = meta.registration_id || p.registration_id || 'MAT-XXXX';
       const chavePix = (meta.pix_key || p.pix_key || '').trim();
       const pixTipo = meta.pix_type || p.pix_type || 'CPF';
@@ -697,7 +697,7 @@ export default function Faturamento() {
         }, {
           ...shift,
           duration_hours: schedule.duration
-        });
+        }, company);
 
         if (isRealizado) {
           profRef.plantõesRealizados += 1;
@@ -787,7 +787,7 @@ export default function Faturamento() {
       (['mensal', 'monthly', 'salario mensal'].includes(item.remunType) && item.profStatus === 'ativo' && item.isAssignedToCurrentUnit)
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps -- isPaymentMarkedPaid só lê paymentStatuses, que já está na lista
-  }, [professionals, shifts, monthPrefix, selectedUnitId, paymentStatuses, todayStr, now, productivityAllocations, isProductivityPoolUnit]);
+  }, [professionals, shifts, monthPrefix, selectedUnitId, paymentStatuses, todayStr, now, productivityAllocations, isProductivityPoolUnit, company]);
 
   const filteredReport = useMemo(() => {
     const term = normalizeText(searchQuery);
@@ -1008,7 +1008,8 @@ export default function Faturamento() {
       shifts: (allCompanyShifts.length ? allCompanyShifts : shifts).filter(s => canSee(s.unit_id)),
       units: units.filter(u => canSee(u.id)),
       year,
-      isPaid: (unitId, profId, month) => isPaymentMarkedPaid(unitId, profId, month)
+      isPaid: (unitId, profId, month) => isPaymentMarkedPaid(unitId, profId, month),
+      company
     });
     const html = buildIncomeStatementHtml({ statement, professional, company, issuedBy: user?.full_name || '' });
     if (!openPrintWindow(html, 'width=1000,height=800')) alert('Permita os pop-ups para abrir o informe.');

@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {
   getMonthlySalaryForUnit,
   getShiftCostEstimate,
+  getRetentionRate,
+  getSectorRates,
+  withSectorRates,
   getShiftDurationHours,
   safeFinancialNumber
 } from '../src/lib/financialCalculations.js';
@@ -124,4 +127,47 @@ test('classifies an unpadded night start time as night shift', () => {
     getShiftCostEstimate(professional, { unit_id: 'unit-1', date: '2026-10-14', start_time: '7:00', end_time: '19:00' }).amount,
     900
   );
+});
+
+test('tabela do setor vale para quem não tem valor próprio; o valor do cadastro vence campo a campo', () => {
+  const company = { data: { sector_rates: { 'sec-1': { semana_dia: 800, semana_noite: 1000, fds_dia: 1100, fds_noite: 1300, meio: 450 } } } };
+  const semValor = { data: { remuneration_type: 'plantao' } };
+  const comExcecao = { data: { remuneration_type: 'plantao', unit_rates: { 'unit-1': { diurno: 950 } } } };
+  const base = { unit_id: 'unit-1', sector_id: 'sec-1' };
+  // quarta-feira diurno e noturno, sábado diurno e noturno
+  assert.deepEqual(getShiftCostEstimate(semValor, { ...base, date: '2026-12-02', start_time: '07:00', end_time: '19:00' }, company), { amount: 800, missingRate: false });
+  assert.equal(getShiftCostEstimate(semValor, { ...base, date: '2026-12-02', start_time: '19:00', end_time: '07:00' }, company).amount, 1000);
+  assert.equal(getShiftCostEstimate(semValor, { ...base, date: '2026-12-05', start_time: '07:00', end_time: '19:00' }, company).amount, 1100);
+  assert.equal(getShiftCostEstimate(semValor, { ...base, date: '2026-12-05', start_time: '19:00', end_time: '07:00' }, company).amount, 1300);
+  // exceção do profissional só no diurno de semana
+  assert.equal(getShiftCostEstimate(comExcecao, { ...base, date: '2026-12-02', start_time: '07:00', end_time: '19:00' }, company).amount, 950);
+  assert.equal(getShiftCostEstimate(comExcecao, { ...base, date: '2026-12-02', start_time: '19:00', end_time: '07:00' }, company).amount, 1000);
+  // sem tabela nem valor próprio: falta valor
+  assert.deepEqual(getShiftCostEstimate(semValor, { ...base, sector_id: 'outro', date: '2026-12-02', start_time: '07:00', end_time: '19:00' }, company), { amount: 0, missingRate: true });
+});
+
+test('meio expediente (até 6 h) usa o valor próprio; sem ele, segue a tabela normal', () => {
+  const company = { data: { sector_rates: { 'sec-1': { semana_dia: 800, meio: 450 }, 'sec-2': { semana_dia: 800 } } } };
+  const prof = { data: { remuneration_type: 'plantao' } };
+  assert.equal(getShiftCostEstimate(prof, { unit_id: 'u', sector_id: 'sec-1', date: '2026-12-02', start_time: '07:00', end_time: '13:00' }, company).amount, 450);
+  assert.equal(getShiftCostEstimate(prof, { unit_id: 'u', sector_id: 'sec-1', date: '2026-12-02', start_time: '07:00', end_time: '19:00' }, company).amount, 800);
+  assert.equal(getShiftCostEstimate(prof, { unit_id: 'u', sector_id: 'sec-2', date: '2026-12-02', start_time: '07:00', end_time: '13:00' }, company).amount, 800);
+});
+
+test('retenção: exceção do cadastro, valor antigo maior que zero ou padrão do estabelecimento', () => {
+  const company = { data: { default_retention_rate: 11 } };
+  assert.equal(getRetentionRate({ data: {} }, company), 11);
+  assert.equal(getRetentionRate({ data: { coop_tax_rate: 0 } }, company), 11);
+  assert.equal(getRetentionRate({ data: { coop_tax_rate: 5 } }, company), 5);
+  assert.equal(getRetentionRate({ data: { coop_tax_rate: 0, retention_override: true } }, company), 0);
+  assert.equal(getRetentionRate({ data: { coop_tax_rate: 5, retention_override: false } }, company), 11);
+  assert.equal(getRetentionRate({ data: {} }, null), 0);
+});
+
+test('withSectorRates guarda só números e remove a tabela vazia', () => {
+  const data = withSectorRates({ outra: 1 }, 'sec-1', { semana_dia: '800', meio: '', fds_dia: 'x' });
+  assert.deepEqual(data.sector_rates, { 'sec-1': { semana_dia: 800 } });
+  assert.equal(data.outra, 1);
+  assert.deepEqual(withSectorRates(data, 'sec-1', {}).sector_rates, {});
+  assert.deepEqual(getSectorRates({ data }, 'sec-1'), { semana_dia: 800 });
 });

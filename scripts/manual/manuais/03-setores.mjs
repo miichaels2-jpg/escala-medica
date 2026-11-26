@@ -23,7 +23,8 @@ export default {
           '`Montar mês`: abre a Escala com o gerador do mês já preenchido com os turnos do setor.',
           '`Editar`: muda o nome, a situação (ativo ou inativo) e os turnos padrão.'
         ] },
-        { p: 'Cada cartão mostra ainda quantos profissionais estão **autorizados** a trabalhar no setor e quantos plantões ele tem no mês, com as vagas em aberto. A lixeira, à direita, exclui o setor. A busca no topo filtra os setores pelo nome.' }
+        { p: 'Cada cartão mostra ainda quantos profissionais estão **autorizados** a trabalhar no setor e quantos plantões ele tem no mês, com as vagas em aberto. A lixeira, à direita, exclui o setor. A busca no topo filtra os setores pelo nome.' },
+        { p: 'Para a gestão, o cartão mostra também os **valores do plantão** do setor (ex.: Dia R$ 800 · Noite R$ 1.000). Sem tabela, aparece `Sem tabela de valores · cadastrar`.' }
       ]
     },
     {
@@ -36,6 +37,15 @@ export default {
           'Turno que vira o dia (ex.: 19:00 às 07:00) é normal: o sistema entende que termina na manhã seguinte.',
           'Clique em `Salvar setor`. O cartão passa a mostrar o resumo dos turnos.'
         ] },
+        { h: 'Valores do plantão' },
+        { p: 'No mesmo cadastro, em **Valores do plantão**, informe quanto se paga por plantão neste setor. A tabela vale para toda a equipe do setor, e o Faturamento usa esses valores para calcular quanto cada um recebe.' },
+        { tabela: { cab: ['Campo', 'Quando vale'], linhas: [
+          ['Dia de semana · diurno', 'Segunda a sexta, plantão que começa antes das 18h.'],
+          ['Dia de semana · noturno', 'Segunda a sexta, plantão que começa a partir das 18h (ou antes das 6h).'],
+          ['Fim de semana · diurno e noturno', 'Sábado e domingo, com a mesma regra de horário.'],
+          ['Meio expediente (até 6 h)', 'Plantão de até 6 horas (ex.: 15:00 às 21:00), em qualquer dia. Em branco, o plantão curto segue a tabela normal.']
+        ] } },
+        { dica: 'Quem tem um valor diferente do resto da equipe recebe pelo **valor próprio** do cadastro dele (Corpo Clínico, passo 3). O valor próprio vence só nos campos preenchidos; o que estiver em branco vem da tabela do setor.' },
         { atencao: 'Todo turno precisa de especialidade. Se esquecer, o sistema avisa “Escolha a especialidade de cada turno (ou remova o turno)”. A especialidade define quem pode assumir a vaga: o Mural só mostra a vaga para profissionais da mesma especialidade.' }
       ]
     },

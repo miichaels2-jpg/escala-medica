@@ -7,23 +7,25 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { monthLabel, percentChange, previousRange, professionalFinder, summarizePeriod } from '@/lib/monthSummary';
+import { useAppData } from '@/lib/useAppData';
 
 const brl = value => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value || 0);
 const fmtDay = date => `${date.slice(8, 10)}/${date.slice(5, 7)}`;
 
 // O que vai ser publicado: plantões, vagas e custo estimado, comparado com o período anterior.
 function PublishPreview({ shifts, professionals, sectorId, start, end }) {
+  const { company } = useAppData();
   const preview = useMemo(() => {
     if (!sectorId || !start || !end || end < start) return null;
     const sectorShifts = shifts.filter(s => String(s.sector_id) === String(sectorId));
     const getProf = professionalFinder(professionals);
-    const cur = summarizePeriod({ shifts: sectorShifts, start, end, getProf });
+    const cur = summarizePeriod({ shifts: sectorShifts, start, end, getProf, company });
     const [prevStart, prevEnd] = previousRange(start, end);
-    const prev = summarizePeriod({ shifts: sectorShifts, start: prevStart, end: prevEnd, getProf });
+    const prev = summarizePeriod({ shifts: sectorShifts, start: prevStart, end: prevEnd, getProf, company });
     const wholeMonth = prevStart.slice(8) === '01' && start.slice(8) === '01' && prevStart.slice(0, 7) !== start.slice(0, 7);
     const prevName = wholeMonth ? monthLabel(prevStart.slice(0, 7), { withYear: false }) : `${fmtDay(prevStart)} a ${fmtDay(prevEnd)}`;
     return { cur, prev, prevName };
-  }, [shifts, professionals, sectorId, start, end]);
+  }, [shifts, professionals, sectorId, start, end, company]);
 
   if (!preview) return null;
   const { cur, prev, prevName } = preview;

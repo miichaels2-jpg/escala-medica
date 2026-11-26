@@ -9,13 +9,14 @@ export const ROADMAP_UPDATED_AT = '2026-11-26';
 export const ROADMAP_GROUPS = [
   // Entregas de 26/11/2026, pedidas durante a implantação do primeiro cliente (piloto).
   {
-    title: 'Entregues · V0.8 · primeiro cliente',
+    title: 'Entregues · V0.8 e V0.9 · primeiro cliente',
     items: [
       { id: 69, title: 'Um login para vários estabelecimentos', detail: 'O mesmo usuário e senha abrem todas as empresas a que a pessoa tem acesso: escolhe o estabelecimento ao entrar e troca no topo da tela sem sair. Cada estabelecimento abre com todos os hospitais dele. O admin entra em todos.', status: 'entregue', version: 'V0.8.1' },
       { id: 70, title: 'Montar a escala arrastando', detail: 'Quadro com a equipe ao lado do calendário: arrastar o profissional para o dia, escolhendo o horário (manhã, tarde, noite), e marcar vários dias de uma vez. Calendário como visão padrão e lixeira para limpar um dia ou excluir uma vaga, com Desfazer.', status: 'entregue', version: 'V0.8.4' },
       { id: 71, title: 'Plataforma › Pessoas e acessos', detail: 'Ver os logins de cada estabelecimento, trocar o papel (gestor, coordenador, faturamento, assistencial) ou tirar o acesso, e transferir profissionais de um estabelecimento para outro com o login junto.', status: 'entregue', version: 'V0.8.4' },
       { id: 72, title: 'Erros em português', detail: 'Plataforma › Erros recentes e a tela de instabilidade explicam o erro em português; o texto técnico fica nos detalhes.', status: 'entregue', version: 'V0.8.5' },
-      { id: 73, title: 'Mural só com escala publicada', detail: 'Vaga de mês ainda em rascunho não aparece no Mural nem no sino e não pode ser assumida (o banco confere); o aviso de vaga urgente também espera a publicação. A gestão vê quantas vagas estão esperando.', status: 'entregue', version: 'V0.8.7' }
+      { id: 73, title: 'Mural só com escala publicada', detail: 'Vaga de mês ainda em rascunho não aparece no Mural nem no sino e não pode ser assumida (o banco confere); o aviso de vaga urgente também espera a publicação. A gestão vê quantas vagas estão esperando.', status: 'entregue', version: 'V0.8.7' },
+      { id: 75, title: 'Valores por setor e retenção padrão', detail: 'Cada setor tem a sua tabela de valores do plantão (dia de semana diurno e noturno, fim de semana diurno e noturno, meio expediente de até 6 h), que vale para toda a equipe; o valor próprio do profissional vira exceção. Retenção padrão do estabelecimento em Configurações, com percentual próprio por profissional quando for diferente. Pedido do Lima&Lima.', status: 'entregue', version: 'V0.9.1' }
     ]
   },
   // Ideias combinadas em 25/11/2026 para deixar o app mais acolhedor e mais fácil de vender.

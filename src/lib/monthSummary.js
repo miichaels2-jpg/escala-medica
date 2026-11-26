@@ -82,7 +82,7 @@ export function professionalFinder(professionals = []) {
  * @param {Function} [options.sectorName] plantão → nome do setor
  * @param {Date} [options.now]
  */
-export function summarizePeriod({ shifts = [], start, end, getProf = () => null, sectorName = s => s?.sector_name || 'Setor', now = new Date() }) {
+export function summarizePeriod({ shifts = [], start, end, getProf = () => null, sectorName = s => s?.sector_name || 'Setor', now = new Date(), company = null }) {
   const inPeriod = shifts.filter(s => {
     const d = dateOf(s);
     return s && d && d >= start && d <= end && normalizeFinancialText(s.status) !== 'cancelado';
@@ -129,7 +129,7 @@ export function summarizePeriod({ shifts = [], start, end, getProf = () => null,
         else cost = salary.value / (monthlyCount.get(`${prof.id}|${s.unit_id}|${date.slice(0, 7)}`) || 1);
       } else if (remunerationKind(prof) === 'produtividade') summary.pendingProduction += 1;
       else {
-        const estimate = getShiftCostEstimate(prof, { ...s, duration_hours: hours });
+        const estimate = getShiftCostEstimate(prof, { ...s, duration_hours: hours }, company);
         cost = estimate.amount;
         if (estimate.missingRate) summary.missingRate += 1;
       }
