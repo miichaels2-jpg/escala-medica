@@ -54,7 +54,7 @@ export default {
           '**Repasses** e **Trocas diretas:** quantas vezes passou plantão ou trocou com colega.',
           'Também mostra plantões realizados, horas, noites e fins de semana. Os cartões do alto destacam quem mais cumpriu plantões, quem mais cobriu vagas e quem mais repassou.'
         ] },
-        { atencao: 'Faltas e ponto não entram no índice (o ponto é opcional). Use a Confiabilidade como conversa com a equipe, não como punição automática.' }
+        { atencao: 'Faltas não entram no índice. Use a Confiabilidade como conversa com a equipe, não como punição automática.' }
       ]
     },
     {

@@ -9,6 +9,14 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.7.7 — 26/11/2026
+
+Sem ponto para PJ e cooperados.
+
+- **O registro de chegada e saída por GPS da Minha Escala fica desligado por padrão.** Os profissionais são PJ e cooperados, e cobrar ponto pode caracterizar vínculo de emprego. Some o bloco de check-in/check-out, o aviso "Check-out disponível" e os horários registrados na lista e no espelho do mês. Os registros antigos continuam guardados.
+- Para uma empresa que tenha funcionários, o registro volta ligando `gps_check_in: true` no cadastro da empresa (feito pelo suporte do ScaleMedic).
+- Manuais: a parte "Ponto pelo celular" saiu do manual da Minha Escala; PDFs regenerados.
+
 ## V0.7.6 — 26/11/2026
 
 Correção urgente: Relatórios e Faturamento no iPhone, iPad e Mac.
