@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
+import { isShiftPublished } from '@/lib/sharedState';
 import { getProfessionalUnitIds, isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { findUnavailability } from '@/lib/availability';
 import { URGENT_COVER_TAG, getShiftUrgency, withTag } from '@/lib/urgentVacancies';
@@ -16,7 +17,7 @@ import PageHero from '@/components/PageHero';
 import { 
   Flame, Calendar, Building2, 
   CheckCircle2, Check, Trash2, ArrowRightLeft, Stethoscope, Filter, XCircle,
-  Clock3, ShieldCheck, History, ArrowRight
+  Clock3, ShieldCheck, History, ArrowRight, EyeOff
 } from 'lucide-react';
 import { autoHealingSaveShift } from '@/lib/escalaUtils';
 import { formatDateBR, getLocalDateString } from '@/lib/format';
@@ -102,6 +103,7 @@ export default function Trocas() {
     company,
     user,
     isManager, 
+    getPublishedRanges,
     syncGlobalData 
   } = useAppData();
 
@@ -251,7 +253,8 @@ export default function Trocas() {
   // Data local (toISOString usa UTC e, após as 21h no Brasil, já "vira" o dia).
   const todayStr = useMemo(() => getLocalDateString(), []);
 
-  const muralShifts = useMemo(() => {
+  // Vagas abertas, publicadas ou não; o Mural mostra só as de escala publicada (V0.8.7).
+  const openVacancies = useMemo(() => {
     return unitShifts.filter(s => {
       if (!s) return false;
       const st = String(s.status || '').toLowerCase();
@@ -273,6 +276,12 @@ export default function Trocas() {
       return true;
     }).sort((a, b) => (a?.date || '').localeCompare(b?.date || '') || String(a?.start_time || '').localeCompare(String(b?.start_time || '')));
   }, [unitShifts, selectedSpecialtyFilter, todayStr, isManager]);
+
+  const muralShifts = useMemo(
+    () => openVacancies.filter(s => isShiftPublished(s, getPublishedRanges, selectedUnitId)),
+    [openVacancies, getPublishedRanges, selectedUnitId]
+  );
+  const draftVacancyCount = openVacancies.length - muralShifts.length;
 
   // Pode assumir: setor autorizado, especialidade compatível e sem choque com a própria escala.
   const canClaim = (shift) => Boolean(myProf?.id) && isVacancyRelevantFor(shift, myProf) &&
@@ -611,6 +620,13 @@ Plantão confirmado: ${sectorName}, ${formatDateBR(shift.date)} (${shift.start_t
             </div>
           )}
 
+          {isManager && draftVacancyCount > 0 && (
+            <div className="flex items-start gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 px-3 py-2.5 text-xs text-slate-600 dark:text-slate-400">
+              <EyeOff className="w-4 h-4 shrink-0 mt-px" />
+              <span><strong className="text-slate-800 dark:text-slate-200">{draftVacancyCount} {draftVacancyCount === 1 ? 'vaga de escala ainda não publicada fica' : 'vagas de escala ainda não publicada ficam'} fora do Mural.</strong> Elas aparecem para a equipe quando você publicar o período na Escala.</span>
+            </div>
+          )}
+
           {openShifts.length === 0 ? (
             <Card className="p-12 text-center border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-2 rounded-2xl">
               <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
@@ -621,7 +637,7 @@ Plantão confirmado: ${sectorName}, ${formatDateBR(shift.date)} (${shift.start_t
                 {!myProf?.id && (!isManager || managerView === 'minhas')
                   ? 'Peça à coordenação para vincular seu usuário ao cadastro no Corpo Clínico.'
                   : isManager && managerView === 'todas'
-                    ? 'Todas as escalas estão preenchidas e não há repasses pendentes.'
+                    ? (draftVacancyCount > 0 ? 'Nenhuma vaga de escala publicada está aberta.' : 'Todas as escalas estão preenchidas e não há repasses pendentes.')
                     : 'Quando abrir uma vaga no seu setor e especialidade, sem choque com a sua escala, ela aparece aqui.'}
               </p>
             </Card>

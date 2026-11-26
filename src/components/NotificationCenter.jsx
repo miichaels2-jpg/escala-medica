@@ -38,7 +38,7 @@ export function isVacancyRelevantFor(shift, professional) {
   return required === mine || required.includes(mine) || mine.includes(required);
 }
 
-export function useNotificationCenter({ user, currentProfessional, shifts, companyShifts, selectedUnitId, isManager }) {
+export function useNotificationCenter({ user, currentProfessional, shifts, companyShifts, selectedUnitId, isManager, isPublished }) {
   const [notices, setNotices] = useState([]);
   const [readVacancyIds, setReadVacancyIds] = useState(() => {
     try { return JSON.parse(window.localStorage.getItem(READ_VACANCIES_KEY) || '[]'); } catch { return []; }
@@ -89,11 +89,13 @@ export function useNotificationCenter({ user, currentProfessional, shifts, compa
         const range = getShiftDateTimeRange(s);
         if (!range || range.end <= now) return false;
         if (isManager) return range.start.getTime() - now.getTime() <= MANAGER_VACANCY_WINDOW_MS;
+        // Plantonista só fica sabendo da vaga quando a escala é publicada (V0.8.7).
+        if (isPublished && !isPublished(s)) return false;
         if (!isVacancyRelevantFor(s, currentProfessional)) return false;
         return !myRanges.some(mine => mine.start < range.end && range.start < mine.end);
       })
       .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start_time).localeCompare(String(b.start_time)));
-  }, [shifts, companyShifts, selectedUnitId, isManager, currentProfessional, myRanges, myUnitIds]);
+  }, [shifts, companyShifts, selectedUnitId, isManager, currentProfessional, myRanges, myUnitIds, isPublished]);
 
   const pendingApprovals = useMemo(() => {
     if (!isManager) return [];

@@ -19,3 +19,13 @@ export function sanitizeRanges(value) {
       ...(range.published_at ? { published_at: String(range.published_at) } : {})
     }));
 }
+
+// O dia do plantão está dentro de um período publicado do setor? Vaga de rascunho não vai para
+// o Mural nem gera aviso (V0.8.7; o banco confere de novo ao assumir).
+export function isShiftPublished(shift, getPublishedRanges, fallbackUnitId) {
+  const date = String(shift?.date || '').slice(0, 10);
+  const [year, month] = date.split('-').map(Number);
+  if (!year || !month || typeof getPublishedRanges !== 'function') return false;
+  return (getPublishedRanges(shift.unit_id || fallbackUnitId, shift.sector_id, year, month) || [])
+    .some(range => date >= range.start_date && date <= range.end_date);
+}

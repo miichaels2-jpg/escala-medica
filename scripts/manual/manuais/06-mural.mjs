@@ -15,7 +15,8 @@ export default {
           ['`Aprovações`', 'Coordenação', 'Autorizar ou recusar pedidos de liberação e trocas entre colegas.'],
           ['`Meus plantões`', 'Plantonista', 'Passar um plantão para o Mural ou propor troca a um colega; responder propostas recebidas.'],
           ['`Histórico`', 'Todos', 'Os repasses já efetivados: de quem para quem e quem autorizou.']
-        ] } }
+        ] } },
+        { atencao: 'Só vão para o Mural as vagas de escala **publicada**. Enquanto a coordenação monta o mês em rascunho, ninguém vê nem assume essas vagas, nem recebe aviso delas. Ao publicar o período na Escala, as vagas abertas aparecem no Mural na hora.' }
       ]
     },
     {
@@ -29,7 +30,8 @@ export default {
           '`Que eu posso assumir`: filtra só as vagas que você pode pegar. `Todas` mostra todas.',
           '**Especialidade:** filtra as vagas por especialidade.'
         ] },
-        { p: 'A coordenação vê a lixeira em cada vaga, para excluir uma vaga criada por engano. Excluiu a errada? Por 10 segundos aparece `Desfazer` no canto da tela.' }
+        { p: 'A coordenação vê a lixeira em cada vaga, para excluir uma vaga criada por engano. Excluiu a errada? Por 10 segundos aparece `Desfazer` no canto da tela.' },
+        { p: 'Se houver vagas em escala ainda não publicada, a coordenação vê no alto da aba `Vagas` o aviso **“N vagas de escala ainda não publicada ficam fora do Mural”**. Elas entram no Mural quando o período for publicado.' }
       ]
     },
     {
