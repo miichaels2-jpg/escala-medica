@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Check, Copy, Hospital, KeyRound, Loader2, LockOpen, Pencil, Plus, RefreshCw, UserPlus, Users } from 'lucide-react';
 import PlatformPeopleDialog from '@/components/PlatformPeopleDialog';
+import { errorInPortuguese } from '@/lib/errorText';
 import { supabase } from '@/lib/supabase';
 import { birthDatePassword, generateProvisionalPassword } from '@/lib/passwordPolicy';
 import { suggestUsername } from '@/lib/format';
@@ -362,14 +363,14 @@ export default function Plataforma() {
                 <button type="button" onClick={() => setOpenErrorId(openErrorId === err.id ? null : err.id)} className="w-full text-left cursor-pointer">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-sm">
                     <span className="tabular-nums text-slate-500 dark:text-slate-400">{new Date(err.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                    <span className="font-medium text-slate-900 dark:text-white">{err.message}</span>
+                    <span className="font-medium text-slate-900 dark:text-white">{errorInPortuguese(err.message)}</span>
                   </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400">
                     {[err.company_name || 'Sem login', err.user_name, err.path, err.app_version].filter(Boolean).join(' · ')}
                   </div>
                 </button>
                 {openErrorId === err.id && (
-                  <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-slate-50 dark:bg-slate-950 p-3 text-[11px] leading-snug text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{[err.kind, err.user_agent, err.stack].filter(Boolean).join('\n\n')}</pre>
+                  <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-slate-50 dark:bg-slate-950 p-3 text-[11px] leading-snug text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{[err.message, err.kind, err.user_agent, err.stack].filter(Boolean).join('\n\n')}</pre>
                 )}
               </li>
             ))}
