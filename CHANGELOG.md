@@ -9,6 +9,12 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.8.9 — 26/11/2026
+
+Planejamento atualizado.
+
+- **Planejamento:** grupo novo "Entregues · V0.8 · primeiro cliente" (um login para vários estabelecimentos, montar a escala arrastando, Pessoas e acessos, erros em português, Mural só com escala publicada); **Domínio e e-mails** entregue (V0.8.8); caixa de e-mail para pessoas vira item próprio; as novas ideias passam a **planejadas** (V0.9), sem o bônus para vaga difícil (item 57), que saiu; relatório mensal por e-mail passa a planejado.
+
 ## V0.8.8 — 26/11/2026
 
 Acesso por e-mail.
