@@ -66,6 +66,13 @@ test('linha da planilha do hospital entra com ajustes em vez de travar', () => {
   assert.equal(r.warnings.length, 3); // categoria, status, e-mail
 });
 
+test('sem data de nascimento vai como null (coluna date no banco)', () => {
+  const r = prepareProfessionalRow({ Nome: 'Joao Neto', Especialidade: 'Clínico Geral', Nascimento: '' }, ctx());
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.payload.birth_date, null);
+  assert.equal(r.payload.document_expiry, null);
+});
+
 test('sem nome, repetido e já cadastrado', () => {
   const seenKeys = new Set();
   assert.deepEqual(prepareProfessionalRow({ Nome: '' }, ctx({ seenKeys })).errors, ['linha sem nome']);

@@ -115,6 +115,17 @@ export default function Plataforma() {
       p_email: manager.email.trim(), p_password: password
     });
     if (rpcError) throw rpcError;
+    if (data?.exists) {
+      // Usuário de outra empresa: um login só, que passa a abrir também esta (V0.8.1).
+      const ok = window.confirm(`O usuário "${data.username}" já existe (${data.full_name}${data.company_name ? `, de ${data.company_name}` : ''}).\n\nDar acesso a esta empresa com o mesmo usuário e a mesma senha? Ao entrar, ele escolhe o estabelecimento.`);
+      if (!ok) throw new Error('Escolha outro usuário para o novo gestor.');
+      const { data: linked, error: linkError } = await supabase.rpc('platform_create_manager', {
+        p_company_id: companyId, p_full_name: manager.full_name.trim(), p_username: manager.username.trim(),
+        p_email: manager.email.trim(), p_password: password, p_link_existing: true
+      });
+      if (linkError) throw linkError;
+      return { ...linked, linked: true };
+    }
     return { ...data, password, isBirthDefault: password === birthDatePassword(manager.full_name, manager.birth_date) };
   };
 
@@ -168,9 +179,16 @@ export default function Plataforma() {
     load();
   };
 
+  const removeAccess = async (company, manager) => {
+    if (!window.confirm(`Tirar o acesso de ${manager.full_name} à empresa ${company.name}?\n\nO login dele continua valendo nas outras empresas.`)) return;
+    const { error: rpcError } = await supabase.rpc('platform_remove_company_access', { p_user_id: manager.id, p_company_id: company.id });
+    if (rpcError) return window.alert(rpcMessage(rpcError, '20261126180000_multi_company_login.sql'));
+    load();
+  };
+
   // Funções novas do banco (migração 20261126150000): avisa se ainda não foi aplicada.
-  const rpcMessage = err => (/could not find the function|PGRST202/i.test(`${err?.code} ${err?.message}`)
-    ? 'Falta aplicar a atualização do banco 20261126150000_platform_rename_unlock.sql no editor SQL do Supabase.'
+  const rpcMessage = (err, migration = '20261126150000_platform_rename_unlock.sql') => (/could not find the function|PGRST202/i.test(`${err?.code} ${err?.message}`)
+    ? `Falta aplicar a atualização do banco ${migration} no editor SQL do Supabase.`
     : err?.message || 'Não foi possível salvar.');
 
   const rename = async (kind, item) => {
@@ -200,7 +218,9 @@ export default function Plataforma() {
     `ScaleMedic — ${r.companyName}`,
     `Endereço: ${window.location.origin}`,
     r.manager && `Usuário: ${r.manager.username}`,
-    r.manager && `Senha do primeiro acesso: ${r.manager.password} (o sistema pede para trocar ao entrar)`,
+    r.manager && (r.manager.linked
+      ? 'Senha: a mesma que você já usa. Ao entrar, escolha o estabelecimento (dá para trocar no topo da tela).'
+      : `Senha do primeiro acesso: ${r.manager.password} (o sistema pede para trocar ao entrar)`),
     `Link de credenciamento dos profissionais: ${registrationLink(r.code)}`,
     `Código do hospital (para quem abrir o formulário pela tela de entrada): ${r.code}`
   ].filter(Boolean).join('\n');
@@ -283,9 +303,12 @@ export default function Plataforma() {
                   <div key={m.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold truncate">{m.full_name}</p>
-                      <p className="text-xs text-slate-500 truncate">{m.username}{m.must_change_password ? ' · ainda não trocou a senha' : ''}{m.is_active ? '' : ' · inativo'}</p>
+                      <p className="text-xs text-slate-500 truncate">{m.username}{m.shared_login ? ' · mesmo login de outra empresa' : ''}{m.must_change_password ? ' · ainda não trocou a senha' : ''}{m.is_active ? '' : ' · inativo'}</p>
                     </div>
-                    <Button type="button" variant="outline" size="sm" onClick={() => resetPassword(company, m)} className="h-8 gap-1.5 shrink-0"><KeyRound className="w-3.5 h-3.5" /> Redefinir senha</Button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {m.shared_login && <Button type="button" variant="ghost" size="sm" onClick={() => removeAccess(company, m)} className="h-8 text-rose-600 hover:text-rose-700">Tirar acesso</Button>}
+                      <Button type="button" variant="outline" size="sm" onClick={() => resetPassword(company, m)} className="h-8 gap-1.5"><KeyRound className="w-3.5 h-3.5" /> Redefinir senha</Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -409,10 +432,13 @@ export default function Plataforma() {
                 <dl className="rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-200 dark:divide-slate-800">
                   <div className="flex justify-between gap-3 px-3 py-2"><dt className="text-slate-500">Empresa</dt><dd className="font-semibold text-right">{result.companyName}</dd></div>
                   <div className="flex justify-between gap-3 px-3 py-2"><dt className="text-slate-500">Usuário</dt><dd className="font-semibold">{result.manager.username}</dd></div>
-                  <div className="flex justify-between gap-3 px-3 py-2"><dt className="text-slate-500">Senha do 1º acesso</dt><dd className="tabular-nums font-semibold">{result.manager.password}</dd></div>
+                  {result.manager.linked
+                    ? <div className="flex justify-between gap-3 px-3 py-2"><dt className="text-slate-500">Senha</dt><dd className="font-semibold text-right">a mesma que já usa</dd></div>
+                    : <div className="flex justify-between gap-3 px-3 py-2"><dt className="text-slate-500">Senha do 1º acesso</dt><dd className="tabular-nums font-semibold">{result.manager.password}</dd></div>}
                 </dl>
               )}
-              {result.manager && <p className="text-xs text-slate-500">{result.manager.isBirthDefault ? 'Senha padrão: data de nascimento + inicial do nome. ' : ''}O sistema obriga a troca no primeiro login. Esta senha não fica visível depois: copie agora.</p>}
+              {result.manager?.linked && <p className="text-xs text-slate-500">Este usuário já existia em outra empresa. Agora o mesmo login abre as duas: ao entrar, ele escolhe o estabelecimento, e pode trocar no topo da tela sem sair.</p>}
+              {result.manager && !result.manager.linked && <p className="text-xs text-slate-500">{result.manager.isBirthDefault ? 'Senha padrão: data de nascimento + inicial do nome. ' : ''}O sistema obriga a troca no primeiro login. Esta senha não fica visível depois: copie agora.</p>}
               <div className="flex justify-end"><CopyButton text={credentialsText(result)} label="Copiar dados para enviar" /></div>
             </div>
           )}

@@ -343,8 +343,9 @@ export function prepareProfessionalRow(rawRow, ctx) {
     status,
     remuneration_type: regime,
     monthly_salary: primaryMonthly,
-    document_expiry: expiry || '',
-    birth_date: birthDate || '',
+    // Colunas de data no banco: vazio vai como null ("" quebra o insert).
+    document_expiry: expiry || null,
+    birth_date: birthDate || null,
     data
   };
   return { lineNumber, name: name || `Linha ${lineNumber}`, errors, warnings, existingMatch, payload };

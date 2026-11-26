@@ -4,12 +4,13 @@ import { persistSelectedUnit, useAppData } from '@/lib/useAppData';
 import { reportAppError } from '@/lib/errorReporting';
 import { supabase } from '@/lib/supabase';
 import { clearStoredSession } from '@/lib/authSession';
+import { listMyCompanies, switchCompany } from '@/lib/companyAccess';
 import { 
   Activity, LayoutDashboard, CalendarDays, 
   DollarSign, Users, Building2, LogOut, Menu, X, 
   AlertTriangle, Sun, Moon, Settings, FileBarChart,
   Clock, Hospital, Bell, Flame, Smartphone,
-  ListChecks, History, Globe, PlayCircle, BookOpen, Gauge
+  ListChecks, History, Globe, PlayCircle, BookOpen, Gauge, Loader2
 } from 'lucide-react';
 import { InstallAppBanner, InstallAppDialog } from '@/components/InstallAppGuide';
 import { NotificationPanel, useNotificationCenter } from '@/components/NotificationCenter';
@@ -101,6 +102,28 @@ export default function AppLayout({ children }) {
     supabase.rpc('sm_auth_is_platform_owner').then(({ data }) => { if (!cancelled) setIsPlatformOwner(data === true); });
     return () => { cancelled = true; };
   }, [user?.id]);
+
+  // Estabelecimentos que o login abre (V0.8.1): com mais de um, aparece o seletor no topo.
+  const [myCompanies, setMyCompanies] = useState([]);
+  const [switchingCompany, setSwitchingCompany] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    listMyCompanies().then(list => { if (!cancelled) setMyCompanies(list); });
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  const handleCompanyChange = async (companyId) => {
+    if (String(companyId) === String(company?.id)) return;
+    setSwitchingCompany(true);
+    try {
+      await switchCompany(user, companyId);
+      // Recarrega do zero: todos os dados passam a ser do estabelecimento escolhido.
+      window.location.href = '/';
+    } catch (error) {
+      setSwitchingCompany(false);
+      alert(error.message);
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -324,6 +347,22 @@ export default function AppLayout({ children }) {
               </div>
             </div>
 
+            {myCompanies.length > 1 && <div className="hidden sm:flex items-center gap-2">
+              <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
+                {switchingCompany ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Building2 className="w-3.5 h-3.5 text-sky-600 dark:text-sky-500" />} Estabelecimento:
+              </span>
+              <Select value={String(company?.id || '')} onValueChange={handleCompanyChange} disabled={switchingCompany}>
+                <SelectTrigger aria-label="Estabelecimento" className="h-8 w-52 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 rounded-xl cursor-pointer">
+                  <SelectValue placeholder="Estabelecimento..." />
+                </SelectTrigger>
+                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
+                  {myCompanies.map(c => (
+                    <SelectItem key={c.id} value={String(c.id)} className="text-xs font-semibold cursor-pointer">{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>}
+
             {!showUnitSelector && (
               <span className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
                 <Hospital className="w-3.5 h-3.5 text-sky-600 dark:text-sky-500" /> {currentHospitalName}
@@ -449,6 +488,19 @@ export default function AppLayout({ children }) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
+            {myCompanies.length > 1 && <div className="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+              <Label className="text-xs font-medium text-slate-400 mb-1 block">Estabelecimento</Label>
+              <Select value={String(company?.id || '')} onValueChange={handleCompanyChange} disabled={switchingCompany}>
+                <SelectTrigger aria-label="Estabelecimento" className="h-10 w-full text-xs font-semibold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 rounded-xl cursor-pointer">
+                  <SelectValue placeholder="Estabelecimento..." />
+                </SelectTrigger>
+                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[99999]">
+                  {myCompanies.map(c => (
+                    <SelectItem key={c.id} value={String(c.id)} className="text-xs font-semibold cursor-pointer">{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>}
             {showUnitSelector && <div className="mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
               <Label className="text-xs font-medium text-slate-400 mb-1 block">Hospital Atual</Label>
               <Select value={headerUnitValue} onValueChange={handleUnitChange}>
