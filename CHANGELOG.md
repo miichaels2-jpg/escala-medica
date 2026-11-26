@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.8.1 — 26/11/2026
+
+Um login para vários estabelecimentos.
+
+- **Mesmo usuário e senha em mais de uma empresa:** quem tem acesso a mais de um estabelecimento escolhe em qual entrar logo depois do login (`Escolha o estabelecimento`) e troca sem sair pelo seletor **Estabelecimento** no topo da tela (no celular, dentro do menu). O estabelecimento abre com todos os hospitais dele. Cada empresa guarda o próprio perfil do usuário (papel, hospitais e telas liberados).
+- **Dono da plataforma** entra em qualquer estabelecimento pelo mesmo seletor, inclusive nos clientes novos.
+- **Plataforma › Adicionar gestor** com um usuário que já existe em outra empresa não dá mais erro: o sistema mostra de quem é e pergunta se pode dar acesso com a mesma senha. Na lista de gestores aparece "mesmo login de outra empresa", com o botão **Tirar acesso**.
+- O vínculo entre empresas só é mudado pelo banco (troca de estabelecimento) ou pelo dono da plataforma: gestor de uma empresa não consegue se incluir em outra.
+- Precisa da atualização do banco `20261126180000_multi_company_login.sql`, aplicada pelo editor SQL do Supabase; até lá o app segue como antes (um estabelecimento por login).
+- **Correção na importação do Corpo Clínico:** linha sem data de nascimento dava "invalid input syntax for type date" e não entrava. Agora entra sem a data (completar depois no cadastro); o mesmo valia ao salvar a edição de quem estava sem data.
+- Manual **01 · Entrada** atualizado; PDFs regenerados.
+
 ## V0.7.10 — 26/11/2026
 
 Importação do Corpo Clínico sem travar.

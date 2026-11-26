@@ -53,32 +53,11 @@ const PROFESSIONAL_IMPORT_COLUMNS = [
   'setores_autorizados', 'valores_por_unidade_json'
 ];
 
-function normalizeImportHeader(value) {
-  return String(value || '').trim().toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-}
-
 function normalizeWhatsAppPhone(value) {
   const digits = String(value || '').replace(/\D/g, '');
   if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) return digits;
   if (digits.length === 10 || digits.length === 11) return `55${digits}`;
   return '';
-}
-
-function parseImportDate(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  let normalized = '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) normalized = raw;
-  const br = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (br) normalized = `${br[3]}-${br[2].padStart(2, '0')}-${br[1].padStart(2, '0')}`;
-  if (!normalized) return null;
-  const [year, month, day] = normalized.split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-    ? normalized
-    : null;
 }
 
 const autoHealingSave = (id, payload) => saveRow('professionals', id, payload);
@@ -702,7 +681,7 @@ export default function CorpoClinico() {
         email: finalEmail, phone: formData.phone.trim(), status: formData.status, 
         remuneration_type: formData.remuneration_type,
         monthly_salary: monthlySalary,
-        document_expiry: formData.document_expiry, birth_date: formData.birth_date,
+        document_expiry: formData.document_expiry, birth_date: formData.birth_date || null,
         data: richMeta 
       };
 

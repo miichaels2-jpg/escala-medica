@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { InstallAppDialog } from '@/components/InstallAppGuide';
 import { usePwaInstall } from '@/lib/pwa';
 import { APP_VERSION } from '@/lib/version';
 import { formatLockWait, passwordProblem } from '@/lib/passwordPolicy';
 import { openOfficialSession } from '@/lib/authSession';
+import { listMyCompanies, switchCompany } from '@/lib/companyAccess';
 import { TERMS_VERSION, needsTermsAcceptance } from '@/lib/terms';
 import { isManagerUser } from '@/lib/accessControl';
 import { BrandAppIcon, BrandWordmark } from '@/components/BrandMark';
@@ -37,6 +38,11 @@ export default function Login() {
   const [pendingUser, setPendingUser] = useState(null);
   const [availableUnits, setAvailableUnits] = useState([]);
   const [selectedUnitForLogin, setSelectedUnitForLogin] = useState('');
+  // Um login para vários estabelecimentos: escolhe em qual entrar (V0.8.1).
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [availableCompanies, setAvailableCompanies] = useState([]);
+  const [selectedCompanyForLogin, setSelectedCompanyForLogin] = useState('');
+  const companyChosenRef = useRef(false);
   
   // Controle de formulários internos
   const [lgpdChecked, setLgpdChecked] = useState(false);
@@ -82,7 +88,10 @@ export default function Login() {
   };
 
   // 🚀 O MOTOR DE ROTEAMENTO (Ele avalia os 3 escudos de segurança em ordem)
-  const continueLoginFlow = (uRec, uList) => {
+  const continueLoginFlow = (uRec, uList) => continueLoginFlowWith(uRec, uList, availableCompanies);
+
+  // A lista de estabelecimentos vem por parâmetro: logo após o login o estado ainda não atualizou.
+  const continueLoginFlowWith = (uRec, uList, companies) => {
     if (uRec.data?.must_change_password) {
       setPendingUser(uRec);
       setAvailableUnits(uList);
@@ -93,6 +102,13 @@ export default function Login() {
       setPendingUser(uRec);
       setAvailableUnits(uList);
       setShowLgpdModal(true);
+      return;
+    }
+    if (companies.length > 1 && !companyChosenRef.current) {
+      setPendingUser(uRec);
+      setAvailableUnits(uList);
+      setSelectedCompanyForLogin(String(companies.find(c => c.current)?.id || companies[0].id));
+      setShowCompanyModal(true);
       return;
     }
     if (uList.length > 1 && isManagerUser(uRec)) {
@@ -153,6 +169,28 @@ export default function Login() {
         throw new Error('Não foi possível abrir sua sessão segura. Tente de novo; se continuar, procure a coordenação.');
       }
 
+      clearTimeout(timeoutId);
+      companyChosenRef.current = false;
+      const companies = await listMyCompanies();
+      setAvailableCompanies(companies);
+      if (companies.length > 1) {
+        // A escolha do estabelecimento vem depois de senha e termos; as unidades carregam depois dela.
+        continueLoginFlowWith(userRecord, [], companies);
+        return;
+      }
+
+      // Inicia a verificação dos Escudos (Senha -> LGPD -> Múltiplas Unidades)
+      continueLoginFlowWith(userRecord, await loadUnitsFor(userRecord), companies);
+
+    } catch (err) {
+      clearTimeout(timeoutId);
+      setError(err.message || 'Falha ao autenticar. Tente novamente.');
+      setLoading(false);
+    }
+  };
+
+  // Hospitais do estabelecimento do cadastro que o usuário pode abrir.
+  const loadUnitsFor = async (userRecord) => {
       const compId = userRecord.data?.company_id || userRecord.company_id || 'cmp_principal';
       const { data: compData, error: companyError } = await supabase
         .from('companies')
@@ -180,16 +218,30 @@ export default function Login() {
       if (userRecord.role !== 'admin') {
         myUnits = allUnits.filter(u => allowedIds.includes(String(u.id)));
       }
+      return myUnits;
+  };
 
-      clearTimeout(timeoutId);
-
-      // Inicia a verificação dos Escudos (Senha -> LGPD -> Múltiplas Unidades)
-      continueLoginFlow(userRecord, myUnits);
-
+  const handleSelectCompanyAndEnter = async () => {
+    if (!selectedCompanyForLogin || !pendingUser) return;
+    setLoadingAction(true);
+    try {
+      const current = availableCompanies.find(c => c.current);
+      const nextUser = String(current?.id) === String(selectedCompanyForLogin)
+        ? pendingUser
+        : await switchCompany(pendingUser, selectedCompanyForLogin);
+      const units = await loadUnitsFor(nextUser);
+      companyChosenRef.current = true;
+      setShowCompanyModal(false);
+      // O estabelecimento abre com todos os hospitais dele; a unidade troca no topo da tela.
+      const lastUnit = units.find(u => String(u.id) === String(nextUser.data?.selected_unit_id));
+      await proceedWithLogin(nextUser, lastUnit?.id || units[0]?.id || nextUser.data?.selected_unit_id);
     } catch (err) {
-      clearTimeout(timeoutId);
-      setError(err.message || 'Falha ao autenticar. Tente novamente.');
+      setShowCompanyModal(false);
+      setPendingUser(null);
+      setError(err.message || 'Não foi possível abrir o estabelecimento.');
       setLoading(false);
+    } finally {
+      setLoadingAction(false);
     }
   };
 
@@ -254,6 +306,7 @@ export default function Login() {
     setShowPasswordChangeModal(false);
     setShowLgpdModal(false);
     setShowUnitModal(false);
+    setShowCompanyModal(false);
     setPendingUser(null);
     setLoading(false);
   };
@@ -289,7 +342,7 @@ export default function Login() {
               value={loginId}
               onChange={(e) => setLoginId(e.target.value)}
               className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors"
-              disabled={loading || showLgpdModal || showUnitModal || showPasswordChangeModal}
+              disabled={loading || showLgpdModal || showUnitModal || showCompanyModal || showPasswordChangeModal}
               autoComplete="username"
             />
           </div>
@@ -307,7 +360,7 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="h-11 bg-slate-50/50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800 rounded-xl pr-10 text-xs font-semibold focus:bg-white dark:focus:bg-slate-900 transition-colors"
-                disabled={loading || showLgpdModal || showUnitModal || showPasswordChangeModal}
+                disabled={loading || showLgpdModal || showUnitModal || showCompanyModal || showPasswordChangeModal}
                 autoComplete="current-password"
               />
               <button 
@@ -335,7 +388,7 @@ export default function Login() {
 
           <Button 
             type="submit" 
-            disabled={loading || showLgpdModal || showUnitModal || showPasswordChangeModal} 
+            disabled={loading || showLgpdModal || showUnitModal || showCompanyModal || showPasswordChangeModal} 
             className="w-full h-12 sm:h-11 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-sm rounded-xl shadow-sm mt-2 transition-all cursor-pointer hover:scale-[1.02]"
           >
             {loading ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Conectando...</> : 'Entrar no Sistema'}
@@ -477,6 +530,61 @@ export default function Login() {
             </Button>
             <Button type="button" onClick={handleAcceptTerms} disabled={!lgpdChecked || loadingAction} className="h-11 w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-sm cursor-pointer transition-all">
               {loadingAction ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Registrando...</> : <><Check className="w-4 h-4 mr-1.5" /> Aceitar e Continuar</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* =========================================================================
+          ESCUDO 3A: ESTABELECIMENTO (UM LOGIN PARA VÁRIAS EMPRESAS)
+          ========================================================================= */}
+      <Dialog open={showCompanyModal} onOpenChange={(open) => !open && resetModals()}>
+        <DialogContent className="max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-3xl p-6 shadow-2xl z-[9999]">
+          <DialogHeader className="border-b border-slate-100 dark:border-slate-800 pb-4 mb-4">
+            <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-sky-600 dark:text-sky-400">
+              <Building2 className="w-6 h-6" /> Escolha o estabelecimento
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600 dark:text-slate-400 font-medium leading-relaxed">
+              Olá, <strong>{pendingUser?.full_name?.split(' ')[0] || 'Gestor'}</strong>. Seu login abre mais de um estabelecimento. Em qual quer entrar agora? Dá para trocar depois no topo da tela, sem sair.
+            </p>
+
+            <div className="grid gap-2.5 max-h-60 overflow-y-auto pr-1">
+              {availableCompanies.map(c => {
+                const chosen = String(selectedCompanyForLogin) === String(c.id);
+                return (
+                  <button
+                    type="button"
+                    key={c.id}
+                    onClick={() => setSelectedCompanyForLogin(String(c.id))}
+                    className={`p-3.5 rounded-2xl border flex items-center justify-between text-left cursor-pointer transition-all ${
+                      chosen
+                        ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/30 text-sky-900 dark:text-sky-100 ring-1 ring-sky-500 shadow-sm'
+                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-sky-300 dark:hover:border-sky-700 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <span className="flex items-center gap-3 min-w-0">
+                      <Building2 className={`w-5 h-5 shrink-0 ${chosen ? 'text-sky-600' : 'text-slate-400'}`} />
+                      <span className="min-w-0">
+                        <span className="text-sm font-semibold truncate block">{c.name}</span>
+                        {c.current && <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Último acessado</span>}
+                      </span>
+                    </span>
+                    {chosen && <CheckCircle2 className="w-5 h-5 text-sky-600 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <DialogFooter className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex gap-2">
+            <Button type="button" variant="outline" onClick={resetModals} className="h-11 w-full text-xs font-medium border-slate-200 dark:border-slate-700 text-slate-500 cursor-pointer">
+              Voltar
+            </Button>
+            <Button type="button" onClick={handleSelectCompanyAndEnter} disabled={!selectedCompanyForLogin || loadingAction} className="h-11 w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-sm cursor-pointer transition-all">
+              {loadingAction ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Abrindo...</> : <><Check className="w-4 h-4 mr-1.5" /> Entrar</>}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -43,9 +43,11 @@ export default {
           'Digite o **usuário** e a **senha provisória** e toque em `Entrar no Sistema`.',
           'Na janela `Crie sua senha`, escolha a sua senha pessoal e repita no segundo campo. Toque em `Salvar e Continuar`. A senha precisa ter **8 ou mais caracteres, com letras e números**, e não pode conter o seu usuário ou e-mail nem ser uma sequência comum (como 12345678).',
           'Na janela `Privacidade e LGPD`, leia os termos, marque a declaração de que concorda e confirme. Isso só aparece no primeiro acesso.',
-          'Quem é da gestão e trabalha em mais de um hospital vê a janela `Escolha o hospital`: escolha e toque em `Entrar`. Dá para trocar de hospital depois, no topo da tela.',
+          'Quem tem acesso a mais de um **estabelecimento** (empresa) vê a janela `Escolha o estabelecimento`: escolha e toque em `Entrar`. O estabelecimento abre com todos os hospitais dele.',
+          'Quem é da gestão, tem um estabelecimento só e trabalha em mais de um hospital vê a janela `Escolha o hospital`: escolha e toque em `Entrar`. Dá para trocar de hospital depois, no topo da tela.',
           'Pronto. O plantonista cai direto na tela **Minha Escala**; a gestão, no **Painel**.'
         ] },
+        { dica: 'Um login só para vários estabelecimentos: quem trabalha para mais de uma empresa usa o mesmo usuário e a mesma senha em todas. Para trocar sem sair, use o seletor `Estabelecimento` no topo da tela (no celular, dentro do menu). A tela recarrega já com os dados do estabelecimento escolhido.' },
         { atencao: 'A senha provisória só serve para o primeiro acesso. Depois de criar a senha pessoal, use sempre ela. Ninguém da coordenação consegue ver a sua senha.' }
       ]
     },
@@ -107,6 +109,7 @@ export default {
           ['A nova senha não é aceita', 'Use 8 ou mais caracteres, com letras e números, sem o seu usuário ou e-mail e sem sequências como 12345678.'],
           ['O sistema saiu sozinho', 'Passou 1 hora sem uso. Entre de novo.'],
           ['Não aparece o meu hospital ou uma tela', 'A coordenação libera hospitais, setores e telas no seu cadastro.'],
+          ['Não aparece o outro estabelecimento', 'O acesso a cada estabelecimento é liberado pelo ScaleMedic. Peça para incluírem o seu usuário; a senha continua a mesma.'],
           ['“Código não encontrado” no credenciamento', 'Cole o link inteiro enviado pela coordenação ou peça o código de novo.']
         ] } }
       ]
