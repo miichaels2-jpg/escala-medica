@@ -19,7 +19,7 @@ export const ROADMAP_GROUPS = [
       { id: 52, title: 'Desfazer', detail: 'Ao tirar alguém da escala, liberar a vaga em choque ou excluir um plantão (Escala e Mural): 10 segundos de "Desfazer" no lugar da pergunta de confirmação.', status: 'entregue', version: 'V0.7.3' },
       { id: 53, title: 'Informe de rendimentos do ano', detail: 'PDF com tudo o que o profissional recebeu de cada unidade (com CNPJ) no ano, mês a mês: bruto, retenção, líquido e se já foi pago. O profissional baixa na Minha Escala; a gestão, no Faturamento (Detalhar › Informe). Serve para conferir o Imposto de Renda; o comprovante oficial continua sendo o da fonte pagadora.', status: 'entregue', version: 'V0.7.4' },
       { id: 54, title: 'Envio da nota fiscal (PJ)', detail: 'O profissional PJ envia a nota de cada unidade pela Minha Escala (PDF ou foto); no Faturamento a gestão vê quem já mandou (selo NF na lista), abre, aceita ou devolve com o motivo (aviso no sino e no celular). Marcar como pago um PJ sem nota aceita pede confirmação. Arquivos em pasta privada: só o profissional e a gestão/faturamento da empresa veem.', status: 'entregue', version: 'V0.7.5' },
-      { id: 60, title: 'Ponto do plantão', detail: 'Entrada e saída pelo celular (localização ou QR code no setor): prova de presença e fechamento pelo que foi feito de verdade.', status: 'planejado' }
+      { id: 60, title: 'Ponto do plantão', detail: 'Não por enquanto: os profissionais são PJ e cooperados, e cobrar ponto pode caracterizar vínculo de emprego. O registro de chegada por GPS que já existe fica desligado e só é ativado para uma empresa que tenha funcionários.', status: 'ideia' }
     ]
   },
   {

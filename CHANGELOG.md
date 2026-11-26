@@ -9,6 +9,14 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.7.6 — 26/11/2026
+
+Correção urgente: Relatórios e Faturamento no iPhone, iPad e Mac.
+
+- **Relatórios e Faturamento mostravam "Instabilidade no Módulo" no Safari** (iPhone, iPad, Mac). A lista de relatórios usava o ícone "Apresentação" sem importá-lo; o Chrome tem uma função com esse mesmo nome e por isso funcionava nele, mas o Safari parava a tela. O defeito vinha da V0.6.2 e aparecia em Faturamento porque as duas telas usam o mesmo arquivo. Confirmado simulando o Safari antes e depois da correção.
+- O verificador de código agora recusa os 13 ícones que têm nome igual a algo do navegador (Presentation, Image, File, Lock, History…) quando usados sem import, para esse tipo de erro não voltar.
+- Planejamento: "Ponto do plantão" sai dos próximos passos (profissionais PJ e cooperados).
+
 ## V0.7.5 — 25/11/2026
 
 Nota fiscal do profissional PJ.

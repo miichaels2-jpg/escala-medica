@@ -1,5 +1,5 @@
 // Formatação, cálculos de período e catálogo dos relatórios (tela Relatórios).
-import { Activity, ArrowLeftRight, Building2, CalendarDays, Contact2, DollarSign, Gift, ShieldCheck, Stethoscope, Users } from 'lucide-react';
+import { Activity, ArrowLeftRight, Building2, CalendarDays, Contact2, DollarSign, Gift, Presentation, ShieldCheck, Stethoscope, Users } from 'lucide-react';
 import { DEFAULT_REMUNERATION_TYPE, getProfessionalFinancialMeta, getShiftDurationHours } from '@/lib/financialCalculations';
 import { getShiftName, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { formatCurrency, formatDateOrDash as formatDate, normalize, safeNumber } from '@/lib/format';
