@@ -748,7 +748,13 @@ export default function CorpoClinico() {
         }
       } catch (uErr) {
         console.warn('Aviso na sincronização de usuário:', uErr);
-        userSyncWarning = `\n\nAtenção: o acesso ao sistema (login) não foi atualizado: ${uErr?.message || 'erro desconhecido'}.`;
+        // Login com esse usuário ou e-mail já existe em outro estabelecimento (não aparece aqui).
+        if (uErr?.code === '23505' || /duplicate key|users_username_key|users_email_key/i.test(uErr?.message || '')) {
+          provisionalNotice = '';
+          userSyncWarning = `\n\nO login ${cleanUsername} já existe em outro estabelecimento, por isso não foi criado outro. Para essa pessoa entrar aqui com o mesmo usuário e senha, libere o acesso em Plataforma › Pessoas e acessos (ou peça ao suporte ScaleMedic).`;
+        } else {
+          userSyncWarning = `\n\nAtenção: o acesso ao sistema (login) não foi atualizado: ${uErr?.message || 'erro desconhecido'}.`;
+        }
       }
 
       setModalOpen(false); resetForm(); await syncGlobalData(); alert(`Profissional salvo com sucesso!${userSyncWarning}${provisionalNotice}`);
