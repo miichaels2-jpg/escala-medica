@@ -4,9 +4,20 @@
 //
 // status: 'entregue' | 'em_andamento' | 'planejado' | 'ideia'
 
-export const ROADMAP_UPDATED_AT = '2026-11-25';
+export const ROADMAP_UPDATED_AT = '2026-11-26';
 
 export const ROADMAP_GROUPS = [
+  // Entregas de 26/11/2026, pedidas durante a implantação do primeiro cliente (piloto).
+  {
+    title: 'Entregues · V0.8 · primeiro cliente',
+    items: [
+      { id: 69, title: 'Um login para vários estabelecimentos', detail: 'O mesmo usuário e senha abrem todas as empresas a que a pessoa tem acesso: escolhe o estabelecimento ao entrar e troca no topo da tela sem sair. Cada estabelecimento abre com todos os hospitais dele. O admin entra em todos.', status: 'entregue', version: 'V0.8.1' },
+      { id: 70, title: 'Montar a escala arrastando', detail: 'Quadro com a equipe ao lado do calendário: arrastar o profissional para o dia, escolhendo o horário (manhã, tarde, noite), e marcar vários dias de uma vez. Calendário como visão padrão e lixeira para limpar um dia ou excluir uma vaga, com Desfazer.', status: 'entregue', version: 'V0.8.4' },
+      { id: 71, title: 'Plataforma › Pessoas e acessos', detail: 'Ver os logins de cada estabelecimento, trocar o papel (gestor, coordenador, faturamento, assistencial) ou tirar o acesso, e transferir profissionais de um estabelecimento para outro com o login junto.', status: 'entregue', version: 'V0.8.4' },
+      { id: 72, title: 'Erros em português', detail: 'Plataforma › Erros recentes e a tela de instabilidade explicam o erro em português; o texto técnico fica nos detalhes.', status: 'entregue', version: 'V0.8.5' },
+      { id: 73, title: 'Mural só com escala publicada', detail: 'Vaga de mês ainda em rascunho não aparece no Mural nem no sino e não pode ser assumida (o banco confere); o aviso de vaga urgente também espera a publicação. A gestão vê quantas vagas estão esperando.', status: 'entregue', version: 'V0.8.7' }
+    ]
+  },
   // Ideias combinadas em 25/11/2026 para deixar o app mais acolhedor e mais fácil de vender.
   {
     title: 'Próximos · V0.7 · mostrar resultado e acolher quem usa',
@@ -24,20 +35,19 @@ export const ROADMAP_GROUPS = [
     ]
   },
   {
-    title: 'Ideias · para depois',
+    title: 'Próximos · V0.9 · novas ideias',
     items: [
-      { id: 55, title: 'Preferências do plantonista', detail: '"Prefiro noturno", "não faço domingo", "quero mais na UTI": o gerador respeita e quem tem interesse recebe primeiro o aviso da vaga.', status: 'ideia' },
-      { id: 56, title: 'Documento vencendo, aviso para o profissional', detail: 'CRM, cursos e vacinas com arquivo anexado e lembrete para o próprio profissional 30 dias antes.', status: 'ideia' },
-      { id: 57, title: 'Bônus para vaga difícil', detail: '"+R$ 300 se cobrir até amanhã", que entra sozinho no fechamento.', status: 'ideia' },
-      { id: 58, title: 'Sobreaviso', detail: 'Lista de quem fica de reserva em cada dia; se abrir um furo, eles são chamados primeiro.', status: 'ideia' },
-      { id: 59, title: 'Comunicados por setor com "li"', detail: 'Aviso oficial para a equipe de um setor, e o gestor vê quem já leu.', status: 'ideia' },
-      { id: 61, title: 'Bilhete de passagem de plantão', detail: 'Campo curto que quem entra lê ao abrir o plantão ("leito 4 aguardando tomografia").', status: 'ideia' },
-      { id: 62, title: 'Busca rápida (Ctrl+K)', detail: 'Achar profissional, setor ou plantão de qualquer tela.', status: 'ideia' },
-      { id: 63, title: 'Telas vazias que orientam', detail: 'Trocar "nenhum registro" por uma frase e o botão do próximo passo.', status: 'ideia' },
-      { id: 64, title: 'Demonstração que se monta sozinha', detail: 'Link que cria um hospital fictício para o cliente testar e apaga tudo em 7 dias.', status: 'ideia' },
-      { id: 65, title: 'Cobrança dentro da Plataforma', detail: 'Plano por número de profissionais, PIX ou boleto recorrente e aviso de atraso.', status: 'ideia' },
-      { id: 66, title: 'Saúde dos clientes', detail: 'Na Plataforma: acessos de cada empresa e quando publicou a última escala, para ligar antes de o cliente desistir.', status: 'ideia' },
-      { id: 67, title: 'Avisos pelo WhatsApp', detail: 'Canal que todo médico usa, mas a versão oficial cobra por mensagem e exige aprovação da Meta: depois dos primeiros clientes pagantes.', status: 'ideia' }
+      { id: 55, title: 'Preferências do plantonista', detail: '"Prefiro noturno", "não faço domingo", "quero mais na UTI": o gerador respeita e quem tem interesse recebe primeiro o aviso da vaga.', status: 'planejado' },
+      { id: 56, title: 'Documento vencendo, aviso para o profissional', detail: 'CRM, cursos e vacinas com arquivo anexado e lembrete para o próprio profissional 30 dias antes.', status: 'planejado' },
+      { id: 58, title: 'Sobreaviso', detail: 'Lista de quem fica de reserva em cada dia; se abrir um furo, eles são chamados primeiro.', status: 'planejado' },
+      { id: 59, title: 'Comunicados por setor com "li"', detail: 'Aviso oficial para a equipe de um setor, e o gestor vê quem já leu.', status: 'planejado' },
+      { id: 61, title: 'Bilhete de passagem de plantão', detail: 'Campo curto que quem entra lê ao abrir o plantão ("leito 4 aguardando tomografia").', status: 'planejado' },
+      { id: 62, title: 'Busca rápida (Ctrl+K)', detail: 'Achar profissional, setor ou plantão de qualquer tela.', status: 'planejado' },
+      { id: 63, title: 'Telas vazias que orientam', detail: 'Trocar "nenhum registro" por uma frase e o botão do próximo passo.', status: 'planejado' },
+      { id: 64, title: 'Demonstração que se monta sozinha', detail: 'Link que cria um hospital fictício para o cliente testar e apaga tudo em 7 dias.', status: 'planejado' },
+      { id: 65, title: 'Cobrança dentro da Plataforma', detail: 'Plano por número de profissionais, PIX ou boleto recorrente e aviso de atraso.', status: 'planejado' },
+      { id: 66, title: 'Saúde dos clientes', detail: 'Na Plataforma: acessos de cada empresa e quando publicou a última escala, para ligar antes de o cliente desistir.', status: 'planejado' },
+      { id: 67, title: 'Avisos pelo WhatsApp', detail: 'Canal que todo médico usa, mas a versão oficial cobra por mensagem e exige aprovação da Meta: depois dos primeiros clientes pagantes.', status: 'planejado' }
     ]
   },
   // Varredura completa do app em 23/11/2026 (todas as telas, computador e celular, dados reais da demo).
@@ -101,7 +111,7 @@ export const ROADMAP_GROUPS = [
       { id: 9, title: 'Ranking de confiabilidade (só gestor)', detail: 'Quem mais cobre vagas, falta ou troca.', status: 'entregue', version: 'V0.2.7' },
       { id: 10, title: 'Limite de carga horária', detail: 'Aviso ao passar de X horas na semana ou emendar plantões sem descanso.', status: 'entregue', version: 'V0.2.2' },
       { id: 11, title: 'Histórico de alterações', detail: 'Quem alocou, trocou, apagou ou publicou, e quando.', status: 'entregue', version: 'V0.2.1' },
-      { id: 12, title: 'Relatório mensal automático por e-mail', detail: 'A apresentação do mês (V0.7.2) em PDF para a diretoria todo dia 1º. Depende do domínio e do envio de e-mails (item 19).', status: 'ideia' },
+      { id: 12, title: 'Relatório mensal automático por e-mail', detail: 'A apresentação do mês (V0.7.2) em PDF para a diretoria todo dia 1º. O envio de e-mails pelo domínio já funciona (item 19).', status: 'planejado' },
       { id: 16, title: 'Liberação de telas por profissional', detail: 'Acesso tela a tela no Corpo Clínico, com opção de editar sem ser gestor (ex.: administrativo com acesso a tudo).', status: 'entregue', version: 'V0.2.2' }
     ]
   },
@@ -122,7 +132,8 @@ export const ROADMAP_GROUPS = [
       { id: 13, title: 'Ambiente de homologação', detail: 'Banco e site de teste separados da produção.', status: 'planejado' },
       { id: 14, title: 'Segurança do login e do banco', detail: 'Bloqueio após 5 senhas erradas, senha forte, fim da senha-mestre (V0.2.9); login oficial do Supabase (V0.2.10); banco trancado por empresa (V0.3.1); permissões por perfil no próprio banco (V0.3.9).', status: 'entregue', version: 'V0.3.9' },
       { id: 18, title: 'Confirmação em dois passos', detail: 'Código de 6 dígitos de um app no celular (Google/Microsoft Authenticator), sem e-mail nem custo. Obrigatório para admin e gestores, opcional para profissionais; o dono zera pela Plataforma se a pessoa perder o celular.', status: 'planejado' },
-      { id: 19, title: 'Domínio e e-mails', detail: 'scalemedic.com.br no ar desde a V0.8.6 (endereço antigo redireciona) e recuperação de senha por e-mail, enviada pelo domínio com Resend. Falta: caixa de e-mail para pessoas (Google Workspace, Microsoft 365 ou Zoho) e relatório mensal por e-mail.', status: 'planejado' },
+      { id: 19, title: 'Domínio e e-mails', detail: 'scalemedic.com.br no ar (o endereço antigo redireciona). E-mails pelo domínio (naoresponda@scalemedic.com.br, via Resend), com logo e em português: recuperação de senha pelo "Esqueceu a senha?" (V0.8.6) e usuário e senha provisória para quem é cadastrado ou ganha senha nova (V0.8.8).', status: 'entregue', version: 'V0.8.8' },
+      { id: 74, title: 'Caixa de e-mail para pessoas', detail: 'Endereços que recebem (contato@, suporte@scalemedic.com.br) com Google Workspace, Microsoft 365 ou Zoho. A contratação é com o Michael; os registros de DNS, com o Claude.', status: 'ideia' },
       { id: 17, title: 'Várias empresas no mesmo sistema', detail: 'Tela Plataforma (só o dono): criar empresa, primeiro gestor, redefinir senha; link de credenciamento por empresa. Falta: plano pago do Supabase com backup diário antes do primeiro cliente.', status: 'entregue', version: 'V0.3.2' },
       { id: 15, title: 'Notificação push real', detail: 'Aviso no celular mesmo com o app fechado.', status: 'entregue', version: 'V0.2.8' }
     ]
