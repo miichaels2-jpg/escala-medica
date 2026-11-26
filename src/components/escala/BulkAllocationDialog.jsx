@@ -1,18 +1,25 @@
 // Depois do gerador: escolher quem fica em cada vaga e salvar.
 import { Button } from '@/components/ui/button';
-import { Check, CheckCheck, ChevronLeft, ChevronRight, HeartPulse, Send } from 'lucide-react';
+import { CalendarDays, Check, CheckCheck, ChevronLeft, ChevronRight, HeartPulse, List, Send } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import React from 'react';
+import React, { useState } from 'react';
+import AllocationBoard from '@/components/escala/AllocationBoard';
 import { extractSpecialty, formatDateBR, formatFullName } from '@/lib/escalaUtils';
 
-export default function BulkAllocationDialog({ autoFillBulkAllocation, backToGenerator, bulkAllocationDraft, bulkAllocationOpen, discardGeneratedSchedule, generatedAllocationRows, generatorSkippedCount, generatorSourceInfo, getBulkCandidates, handleSaveGeneratedSchedule, professionalMap, sectorMap, setBulkAllocationDraft, submitting }) {
+const MODE_KEY = 'scale_bulk_mode';
+const initialMode = () => { try { return window.localStorage.getItem(MODE_KEY) === 'lista' ? 'lista' : 'quadro'; } catch { return 'quadro'; } };
+
+export default function BulkAllocationDialog({ autoFillBulkAllocation, backToGenerator, bulkAllocationDraft, bulkAllocationOpen, bulkPool = [], discardGeneratedSchedule, generatedAllocationRows, generatorSkippedCount, generatorSourceInfo, getBulkBlockReason, getBulkCandidates, handleSaveGeneratedSchedule, professionalMap, sectorMap, setBulkAllocationDraft, submitting, workloadWarningFor }) {
+  // Quadro (arrastar para os dias) ou lista (uma vaga por linha). Fica lembrado neste aparelho.
+  const [mode, setModeState] = useState(initialMode);
+  const setMode = next => { setModeState(next); try { window.localStorage.setItem(MODE_KEY, next); } catch { /* sem armazenamento */ } };
   return (
     <>
       {/* ========================================================================= */}
       {/* 6B. ALOCAÇÃO EM LOTE DAS VAGAS GERADAS                                  */}
       {/* ========================================================================= */}
       <Dialog open={bulkAllocationOpen} onOpenChange={open => { if (!open) discardGeneratedSchedule(); }}>
-        <DialogContent className="w-[96vw] sm:max-w-5xl max-h-[92vh] flex flex-col bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-sm rounded-3xl p-5 sm:p-6">
+        <DialogContent className={`w-[96vw] ${mode === 'quadro' ? 'sm:max-w-[min(96vw,1400px)] h-[92vh]' : 'sm:max-w-5xl'} max-h-[92vh] flex flex-col bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white shadow-sm rounded-3xl p-5 sm:p-6`}>
           <DialogHeader className="border-b border-slate-200 dark:border-slate-800 pb-4 shrink-0">
             <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-sky-700 dark:text-sky-400">
               <HeartPulse className="w-5 h-5" /> Montar escala · {new Set((generatedAllocationRows || []).map(r => String(r.sector_id))).size > 1 ? `${new Set((generatedAllocationRows || []).map(r => String(r.sector_id))).size} setores` : (sectorMap[String(generatedAllocationRows[0]?.sector_id)]?.name || 'Setor')}
@@ -48,6 +55,14 @@ export default function BulkAllocationDialog({ autoFillBulkAllocation, backToGen
                     {generatorSkippedCount > 0 && <span className="block text-[11px] text-slate-500">{generatorSkippedCount} plantão(ões) desse período já existiam e não serão duplicados.</span>}
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <div className="inline-flex rounded-xl border border-slate-200 dark:border-slate-800 p-0.5" role="group" aria-label="Como montar">
+                      {[['quadro', 'Quadro', CalendarDays], ['lista', 'Lista', List]].map(([value, label, Icon]) => (
+                        <button key={value} type="button" onClick={() => setMode(value)} aria-pressed={mode === value}
+                          className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold cursor-pointer ${mode === value ? 'bg-sky-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900'}`}>
+                          <Icon className="h-3.5 w-3.5" /> {label}
+                        </button>
+                      ))}
+                    </div>
                     {assignedCount > 0 && (
                       <Button type="button" variant="ghost" onClick={() => setBulkAllocationDraft(prev => Object.fromEntries(Object.keys(prev).map(k => [k, ''])))} className="h-9 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl">
                         Limpar escolhas
@@ -59,7 +74,7 @@ export default function BulkAllocationDialog({ autoFillBulkAllocation, backToGen
                   </div>
                 </div>
 
-                {loadList.length > 0 && (
+                {mode === 'lista' && loadList.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 pb-3 shrink-0" aria-label="Plantões por profissional">
                     {loadList.map(item => (
                       <span key={item.id} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-2.5 py-1 text-[11px] text-slate-700 dark:text-slate-300">
@@ -69,7 +84,11 @@ export default function BulkAllocationDialog({ autoFillBulkAllocation, backToGen
                   </div>
                 )}
 
-                <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+                {mode === 'quadro' && (
+                  <AllocationBoard rows={rows} draft={bulkAllocationDraft} setDraft={setBulkAllocationDraft} pool={bulkPool} professionalMap={professionalMap} sectorMap={sectorMap} getBlockReason={getBulkBlockReason} workloadWarningFor={workloadWarningFor} />
+                )}
+
+                {mode === 'lista' && <div className="flex-1 min-h-0 overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800">
                   {rows.map((row, index) => {
                     const assignedId = bulkAllocationDraft[String(row.id)] || '';
                     const candidates = getBulkCandidates(row, bulkAllocationDraft);
@@ -106,7 +125,7 @@ export default function BulkAllocationDialog({ autoFillBulkAllocation, backToGen
                       </React.Fragment>
                     );
                   })}
-                </div>
+                </div>}
               </>
             );
           })()}

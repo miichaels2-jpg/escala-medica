@@ -9,6 +9,19 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.8.2 — 26/11/2026
+
+Montar a escala arrastando, no horário escolhido.
+
+- **Quadro na montagem do mês** (Montar escala › etapa 2 · Profissionais): o mês em calendário, com as vagas de cada dia, e a equipe à esquerda, com quantos plantões cada um já tem. No lugar de escolher vaga por vaga:
+  - **arrastar** o nome até a vaga (ou mover uma vaga preenchida para outra; arrastar de volta para a lista tira);
+  - **pincel**: tocar no nome e depois nas vagas, uma atrás da outra; funciona no celular. Tem também **Borracha** e **Desfazer**;
+  - **Horário ao soltar no dia** (manhã, tarde, noite, dia de 12 h): com o horário escolhido, soltar no dia ou tocar em **Seg, Ter…** coloca a pessoa em todos aqueles dias da semana;
+  - a frase no alto diz o que entrou ou por que não entrou (especialidade, setor, folga, choque de horário). A **Lista** antiga continua disponível.
+- **Calendário da Escala:** soltar o profissional no dia **não escolhe mais o horário sozinho**. Com mais de um horário aberto, aparece **Em qual horário?**; ou fixe o turno em **Horário ao soltar no dia**.
+- **Marcar vários dias** com clique simples (antes só com Ctrl, e não funcionava no tablet): soltar o profissional em qualquer dia marcado preenche todos, no horário escolhido. Os dias em que não dá aparecem na confirmação e ficam de fora, sem cancelar os outros.
+- Manual **05 · Escala** atualizado com fotos novas; PDFs regenerados. Regras em `src/lib/allocationBoard.js`, com testes.
+
 ## V0.8.1 — 26/11/2026
 
 Um login para vários estabelecimentos.
