@@ -9,6 +9,16 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.8.8 — 26/11/2026
+
+Acesso por e-mail.
+
+- **Corpo Clínico:** ao cadastrar um profissional com e-mail, ele recebe na hora um e-mail do **naoresponda@scalemedic.com.br** com o endereço, o usuário e a senha provisória (com logo e em português). Definir uma senha nova no cadastro também manda a senha nova por e-mail. A mensagem de "salvo com sucesso" confirma o envio ou explica por que não foi. Sem e-mail no cadastro, nada muda.
+- **Plataforma:** gestor criado ou com senha redefinida também recebe o acesso por e-mail.
+- Função `send-access-email` (Edge Function, envio pelo Resend) e atualização do banco `20261126230000_access_email.sql`, que só deixa a coordenação do estabelecimento (ou o dono da plataforma) mandar o acesso.
+- Modelo do e-mail de recuperação de senha com o logo.
+- Manual **04 · Corpo Clínico** atualizado; PDFs regenerados.
+
 ## V0.8.7 — 26/11/2026
 
 Mural só com escala publicada.

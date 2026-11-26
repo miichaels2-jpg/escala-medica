@@ -21,6 +21,7 @@ import {
   Download, Upload, Check, ChevronRight
 } from 'lucide-react';
 import { saveRow } from '@/lib/saveRow';
+import { sendAccessEmail } from '@/lib/accessEmail';
 import { safeNumber } from '@/lib/format';
 import { parseCsv, prepareProfessionalRow } from '@/lib/professionalImport';
 
@@ -705,6 +706,7 @@ export default function CorpoClinico() {
 
       let userSyncWarning = '';
       let provisionalNotice = '';
+      let accessEmailNotice = '';
       try {
         const { data: existingUsers, error: lookupError } = await supabase.from('users').select(USER_PUBLIC_COLUMNS).eq('email', finalEmail);
         if (lookupError) throw lookupError;
@@ -727,6 +729,7 @@ export default function CorpoClinico() {
           const { error: updateError } = await supabase.from('users').update(updatePayload).eq('id', existingUsers[0].id);
           if (updateError) throw updateError;
           linkedUserId = existingUsers[0].id;
+          if (formData.password) accessEmailNotice = await sendAccessEmail({ userId: linkedUserId, password: formData.password, email: finalEmail, reason: 'nova_senha' });
         } else {
           // Senha do primeiro acesso: a informada pelo gestor ou a padrão (nascimento DDMMAAAA +
           // inicial do nome). Sem data de nascimento, uma aleatória. O profissional troca no 1º acesso.
@@ -742,6 +745,7 @@ export default function CorpoClinico() {
           }]).select('id').single();
           if (insertError) throw insertError;
           linkedUserId = createdUser?.id || null;
+          accessEmailNotice = await sendAccessEmail({ userId: linkedUserId, password: finalPass, email: finalEmail });
         }
         if (linkedUserId && savedProfId && String(savedProf?.user_id || editingProf?.user_id || '') !== String(linkedUserId)) {
           await supabase.from('professionals').update({ user_id: String(linkedUserId) }).eq('id', savedProfId);
@@ -757,7 +761,7 @@ export default function CorpoClinico() {
         }
       }
 
-      setModalOpen(false); resetForm(); await syncGlobalData(); alert(`Profissional salvo com sucesso!${userSyncWarning}${provisionalNotice}`);
+      setModalOpen(false); resetForm(); await syncGlobalData(); alert(`Profissional salvo com sucesso!${userSyncWarning}${provisionalNotice}${accessEmailNotice ? `\n\n${accessEmailNotice}` : ''}`);
     } catch (err) { alert('Erro ao salvar: ' + err.message); } finally { setSubmitting(false); }
   };
 

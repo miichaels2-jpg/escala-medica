@@ -4,6 +4,7 @@ import PlatformPeopleDialog from '@/components/PlatformPeopleDialog';
 import { errorInPortuguese } from '@/lib/errorText';
 import { supabase } from '@/lib/supabase';
 import { birthDatePassword, generateProvisionalPassword } from '@/lib/passwordPolicy';
+import { sendAccessEmail } from '@/lib/accessEmail';
 import { suggestUsername } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
@@ -129,7 +130,8 @@ export default function Plataforma() {
       if (linkError) throw linkError;
       return { ...linked, linked: true };
     }
-    return { ...data, password, isBirthDefault: password === birthDatePassword(manager.full_name, manager.birth_date) };
+    const emailNotice = await sendAccessEmail({ userId: data?.id, password, email: manager.email.trim() });
+    return { ...data, password, emailNotice, isBirthDefault: password === birthDatePassword(manager.full_name, manager.birth_date) };
   };
 
   const submit = async e => {
@@ -178,7 +180,8 @@ export default function Plataforma() {
     if (!window.confirm(`Redefinir a senha de ${manager.full_name}?\n\nA nova senha provisória será mostrada a seguir e a troca é obrigatória no próximo login.`)) return;
     const { error: rpcError } = await supabase.rpc('platform_reset_password', { p_user_id: manager.id, p_password: password });
     if (rpcError) return window.alert(`Não foi possível redefinir: ${rpcError.message}`);
-    setResult({ companyName: company.name, manager: { ...manager, password, isBirthDefault: false }, code: company.registration_code, isReset: true });
+    const emailNotice = await sendAccessEmail({ userId: manager.id, password, email: manager.email, reason: 'nova_senha' });
+    setResult({ companyName: company.name, manager: { ...manager, password, emailNotice, isBirthDefault: false }, code: company.registration_code, isReset: true });
     load();
   };
 
@@ -445,6 +448,7 @@ export default function Plataforma() {
               )}
               {result.manager?.linked && <p className="text-xs text-slate-500">Este usuário já existia em outra empresa. Agora o mesmo login abre as duas: ao entrar, ele escolhe o estabelecimento, e pode trocar no topo da tela sem sair.</p>}
               {result.manager && !result.manager.linked && <p className="text-xs text-slate-500">{result.manager.isBirthDefault ? 'Senha padrão: data de nascimento + inicial do nome. ' : ''}O sistema obriga a troca no primeiro login. Esta senha não fica visível depois: copie agora.</p>}
+              {result.manager?.emailNotice && <p className="text-xs text-slate-600 dark:text-slate-300">{result.manager.emailNotice}</p>}
               <div className="flex justify-end"><CopyButton text={credentialsText(result)} label="Copiar dados para enviar" /></div>
             </div>
           )}

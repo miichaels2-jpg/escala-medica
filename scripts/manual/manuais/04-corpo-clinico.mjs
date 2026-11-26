@@ -41,7 +41,7 @@ export default {
         { passos: [
           'Clique em `Novo profissional`.',
           'Escolha a **Categoria Profissional** (Médico, Enfermeiro, Fisioterapeuta…). Cada uma já sabe o conselho (CRM, COREN…). `Gerenciar Categorias` cria categorias novas.',
-          'Preencha **Nome completo oficial**, **Especialidade / Atuação**, CPF, **data de nascimento**, conselho (número e estado) e **Telefone / WhatsApp**. RQE, CBO, validade da credencial e e-mail são opcionais. A matrícula é gerada sozinha.',
+          'Preencha **Nome completo oficial**, **Especialidade / Atuação**, CPF, **data de nascimento**, conselho (número e estado) e **Telefone / WhatsApp**. RQE, CBO e validade da credencial são opcionais. O **e-mail** também, mas vale preencher: com ele, o profissional recebe o acesso por e-mail e pode recuperar a senha sozinho. A matrícula é gerada sozinha.',
           'Clique em `Próximo: Acesso`. Se faltar nome ou data de nascimento, o sistema avisa.'
         ] },
         { atencao: 'A **especialidade** decide quais vagas a pessoa vê no Mural e para quais vagas ela aparece ao escalar. Escreva igual à especialidade dos turnos do setor (ex.: “Clínica Médica”).' }
@@ -79,7 +79,7 @@ export default {
           'Escolha o **Regime Contratual** e preencha os valores de **cada hospital** liberado no passo 2.',
           'Se houver desconto de pessoa jurídica ou cooperativa, informe a **Retenção PJ/Coop (%)**.',
           'Em **Dados para Recebimento**, escolha pessoa física ou jurídica e informe a **chave PIX** (ou os dados bancários, se não usar PIX).',
-          'Clique em `Cadastrar profissional`. Aparece a mensagem com o **usuário e a senha do primeiro acesso**: anote ou envie ao profissional.'
+          'Clique em `Cadastrar profissional`. Aparece a mensagem com o **usuário e a senha do primeiro acesso**. Se o cadastro tem **e-mail**, o profissional recebe esses dados por e-mail na hora, de **naoresponda@scalemedic.com.br** (a mensagem confirma o envio). Sem e-mail, anote e passe à pessoa.'
         ] },
         { dica: 'Sem PIX nem conta, o Faturamento mostra “Falta PIX ou conta” para essa pessoa. Sem valor cadastrado, o custo dos plantões dela fica de fora dos relatórios.' }
       ]
@@ -92,7 +92,7 @@ export default {
           'Clique em `Convidar equipe` e `Copiar` o **link**. Mande pelo grupo de WhatsApp da equipe ou por e-mail. Quem abrir pela tela de entrada usa o **código do hospital**.',
           'Cada profissional preenche a própria ficha (Manual 1, seção 4). As fichas chegam na aba `Pendentes`.',
           'Em `Pendentes`, abra a ficha com `Editar`, confira os dados, complete o passo 2 (perfil, hospitais e setores) e o passo 3 (valores), mude o **Status Cadastral** para `Ativo` e salve.',
-          'Passe à pessoa o usuário e a senha do primeiro acesso (aparecem na mensagem ao salvar). O botão do WhatsApp manda o endereço do sistema, mas não leva usuário nem senha.',
+          'Com e-mail no cadastro, o usuário e a senha do primeiro acesso chegam por e-mail. Sem e-mail, passe à pessoa os dados que aparecem na mensagem ao salvar. O botão do WhatsApp manda o endereço do sistema, mas não leva usuário nem senha.',
           'Ficha que não deve ser aprovada: `Recusar`. Os dados enviados são apagados de vez (por causa da LGPD); se a pessoa quiser, preenche de novo.'
         ] }
       ]
@@ -123,7 +123,7 @@ export default {
         { lista: [
           '**Editar:** `Editar` na linha do profissional abre o mesmo cadastro em 3 passos, e dá para ir direto ao passo que precisa.',
           '**Desativar:** `Desativar` tira a pessoa das escalas novas e bloqueia o acesso, mas guarda o histórico. Ela vai para a aba `Inativos`, onde `Ativar` traz de volta.',
-          '**Nova senha:** quem esqueceu a senha precisa de uma nova provisória. Em `Editar`, passo 2, clique em `Senha (Data Nasc)` ou `Gerar Aleatória`, salve e envie ao profissional. No próximo acesso ele cria a senha pessoal.',
+          '**Nova senha:** quem esqueceu a senha precisa de uma nova provisória. Em `Editar`, passo 2, clique em `Senha (Data Nasc)` ou `Gerar Aleatória` e salve. Com e-mail no cadastro, a senha nova vai por e-mail; sem e-mail, envie ao profissional. No próximo acesso ele cria a senha pessoal. Quem tem e-mail também pode trocar sozinho, em `Esqueceu a senha?` na tela de entrada.',
           '**WhatsApp:** o botão verde da linha abre uma conversa com o profissional.'
         ] }
       ]
