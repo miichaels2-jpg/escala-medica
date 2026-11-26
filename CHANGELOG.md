@@ -9,6 +9,17 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.7.5 — 25/11/2026
+
+Nota fiscal do profissional PJ.
+
+- **Minha Escala › Nota fiscal de <mês>** (só para quem tem recibo PJ no cadastro): uma linha por unidade em que trabalhou no mês, com **Enviar nota** (PDF, JPG ou PNG até 10 MB), a situação (falta enviar, enviada, aceita, devolvida com o motivo), **Ver** e **Enviar outra** enquanto não foi aceita.
+- **Faturamento**: selo **NF** na lista (falta, enviada, aceita, devolvida) e, em Detalhar, o bloco da nota com **Ver nota**, **Aceitar** e **Devolver** (pede o motivo). O profissional recebe o aviso no sino e no celular.
+- **Marcar como pago** um PJ sem nota aceita (sozinho ou em lote) pede confirmação, com o nome de quem está sem nota.
+- Histórico: envio, aceite e devolução de nota entram no Histórico (filtro "Notas fiscais").
+- Banco (migração `20261126120000_invoices_storage.sql`, aplicada pelo editor SQL do Supabase): tabela `invoices` e pasta privada `notas-fiscais` no Storage; só o próprio profissional e a gestão/faturamento da empresa dele leem; o profissional não consegue aceitar a própria nota nem enviar em nome de outro (testado).
+- Regras em `src/lib/invoiceRules.js` (com testes) e acesso ao banco em `src/lib/invoices.js`.
+
 ## V0.7.4 — 25/11/2026
 
 Informe de rendimentos do ano.

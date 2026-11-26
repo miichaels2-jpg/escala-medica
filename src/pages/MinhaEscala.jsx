@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useAppData } from '@/lib/useAppData';
 import AvailabilityCard from '@/components/AvailabilityCard';
 import PrivacyCard from '@/components/PrivacyCard';
+import InvoiceCard from '@/components/InvoiceCard';
 import { buildIcs, googleCalendarUrl, shiftEventInfo } from '@/lib/calendarExport';
 import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, normalizeFinancialText } from '@/lib/financialCalculations';
 import { Card } from '@/components/ui/card';
@@ -790,6 +791,15 @@ export default function MinhaEscala() {
           <p className="text-[11px] text-slate-500 mt-1 font-medium">{upcomingShifts.length ? `${upcomingShifts.length} no total · o próximo em ${formatDateOrDash(upcomingShifts[0].date).slice(0, 5)}` : 'Nenhum plantão marcado'}</p>
         </Card>
       </div>
+
+      <InvoiceCard
+        professional={currentProfessional}
+        companyId={companyId}
+        month={monthPrefix}
+        monthName={MONTH_NAMES[currentMonth].toLowerCase()}
+        units={earnings.rows.filter(row => row.shiftsDone > 0 || (isMonthlyRemuneration && row.done > 0))}
+        uploadedBy={user?.full_name || ''}
+      />
 
       <AvailabilityCard professional={currentProfessional} onSaved={syncGlobalData} />
 

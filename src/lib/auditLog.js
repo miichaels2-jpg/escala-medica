@@ -89,5 +89,15 @@ export function describeAuditEntry(entry, ctx = {}) {
     return `${verbs[status] || 'Atualizou o pedido de troca'}: ${pair}`;
   }
 
+  if (entry?.table_name === 'invoices') {
+    const row = after || before;
+    const who = ctx.professionalName?.(row?.professional_id) || 'profissional';
+    const period = row?.month ? `${MONTHS[Number(row.month.slice(5, 7)) - 1]}/${row.month.slice(0, 4)}` : '';
+    if (entry.action === 'delete') return `Removeu a nota fiscal de ${who} (${period})`;
+    if (after?.status === 'aceita') return `Aceitou a nota fiscal de ${who} (${period})`;
+    if (after?.status === 'devolvida') return `Devolveu a nota fiscal de ${who} (${period})${after.review_note ? `: ${after.review_note}` : ''}`;
+    return `${who} enviou a nota fiscal de ${period}`;
+  }
+
   return `${entry?.action || 'alteração'} em ${entry?.table_name || 'registro'}`;
 }
