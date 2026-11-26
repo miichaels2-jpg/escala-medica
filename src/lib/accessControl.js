@@ -37,6 +37,7 @@ const ROLE_RULES = {
   '/dashboard': user => isBillingUser(user),
   '/corpo-clinico': user => isBillingUser(user),
   '/relatorios': user => isBillingUser(user),
+  '/indicadores': user => isManagerUser(user),
   '/faturamento': user => isBillingUser(user),
   '/setores': user => isManagerUser(user),
   '/configuracoes': user => isManagerUser(user),
@@ -52,6 +53,7 @@ const PERMISSION_KEYS = {
   '/dashboard': ['dashboard'],
   '/corpo-clinico': ['corpo_clinico'],
   '/relatorios': ['relatorios'],
+  '/indicadores': ['relatorios', 'dashboard'],
   '/faturamento': ['faturamento', 'meus_repasses'],
   '/setores': ['setores'],
   '/configuracoes': ['configuracoes'],
@@ -60,7 +62,7 @@ const PERMISSION_KEYS = {
 };
 
 // Ordem usada para escolher a tela de destino quando uma rota é negada.
-export const ROUTE_PRIORITY = ['/minha-escala', '/trocas', '/escalas', '/dashboard', '/relatorios', '/faturamento', '/corpo-clinico', '/setores', '/historico', '/configuracoes'];
+export const ROUTE_PRIORITY = ['/minha-escala', '/trocas', '/escalas', '/dashboard', '/indicadores', '/relatorios', '/faturamento', '/corpo-clinico', '/setores', '/historico', '/configuracoes'];
 
 // Telas que podem ser liberadas uma a uma (ordem do menu).
 export const SCREENS = [
@@ -70,6 +72,7 @@ export const SCREENS = [
   { path: '/minha-escala', label: 'Minha Escala', desc: 'Os próprios plantões, agenda e disponibilidade' },
   { path: '/corpo-clinico', label: 'Corpo Clínico', desc: 'Cadastro de profissionais e acessos' },
   { path: '/setores', label: 'Setores', desc: 'Setores de cada unidade' },
+  { path: '/indicadores', label: 'Indicadores', desc: 'Distribuição da equipe, trocas, segurança e pendências' },
   { path: '/relatorios', label: 'Relatórios', desc: 'BI, custos e exportações' },
   { path: '/faturamento', label: 'Faturamento', desc: 'Fechamento, produtividade e pagamentos' },
   { path: '/historico', label: 'Histórico', desc: 'Quem mudou o quê, e quando' },
@@ -99,7 +102,8 @@ export function canAccessRoute(user, pathname) {
   if (!rule) return true;
   if (user?.role === 'admin') return true;
   const screens = getScreenAccess(user);
-  if (screens && SCREEN_PATHS.includes(pathname)) return screens.includes(pathname);
+  // Indicadores chegou depois (V0.7.9): quem já tinha Relatórios liberado vê também.
+  if (screens && SCREEN_PATHS.includes(pathname)) return screens.includes(pathname) || (pathname === '/indicadores' && screens.includes('/relatorios'));
   if (!rule(user)) return false;
   if (user?.role === 'admin' || isManagerUser(user)) return true;
   const permissions = Array.isArray(user?.data?.permissions) ? user.data.permissions.map(String) : [];

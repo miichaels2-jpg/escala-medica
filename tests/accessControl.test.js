@@ -57,3 +57,10 @@ test('perfis dão o ponto de partida das telas', () => {
   assert.ok(!defaultScreensForRole('faturamento').includes('/configuracoes'));
   assert.equal(defaultScreensForRole('gestor').length, SCREENS.length);
 });
+
+test('Indicadores: gestão vê; quem já tinha Relatórios liberado também', () => {
+  assert.equal(canAccessRoute({ role: 'user', data: { app_role: 'gestor' } }, '/indicadores'), true);
+  assert.equal(canAccessRoute({ role: 'user', data: { app_role: 'assistencial' } }, '/indicadores'), false);
+  assert.equal(canAccessRoute({ role: 'user', data: { app_role: 'coordenador', screen_access: ['/escalas', '/relatorios'] } }, '/indicadores'), true);
+  assert.equal(canAccessRoute({ role: 'user', data: { app_role: 'coordenador', screen_access: ['/escalas'] } }, '/indicadores'), false);
+});

@@ -23,6 +23,7 @@ const Escalas = lazyPage(() => import('@/pages/Escalas'));
 const CorpoClinico = lazyPage(() => import('@/pages/CorpoClinico'));
 const Setores = lazyPage(() => import('@/pages/Setores'));
 const Relatorios = lazyPage(() => import('@/pages/Relatorios'));
+const Indicadores = lazyPage(() => import('@/pages/Indicadores'));
 const Faturamento = lazyPage(() => import('@/pages/Faturamento'));
 const Configuracoes = lazyPage(() => import('@/pages/Configuracoes'));
 const MinhaEscala = lazyPage(() => import('@/pages/MinhaEscala'));
@@ -79,6 +80,7 @@ const AuthenticatedApp = () => {
             <Route path="/corpo-clinico" element={<CorpoClinico />} />
             <Route path="/setores" element={<Setores />} />
             <Route path="/relatorios" element={<Relatorios />} />
+            <Route path="/indicadores" element={<Indicadores />} />
             <Route path="/faturamento" element={<Faturamento />} />
             <Route path="/minha-escala" element={<MinhaEscala />} />
             <Route path="/trocas" element={<Trocas />} />

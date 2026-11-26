@@ -41,6 +41,10 @@ const STEP = {
     if (!ok) throw new Error('clickIn falhou: ' + text);
     await sleep(900);
   },
+  async selectValue(tab, selector, value) {
+    await tab.ev(`(() => { const s = document.querySelector(${JSON.stringify(selector)}); if (!s) return false; Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, ${JSON.stringify(value)}); s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+    await sleep(1500);
+  },
   async scrollTo(tab, target) {
     await tab.ev(`(() => { const el = window.__find(${JSON.stringify(target)}); el?.scrollIntoView({ block: 'start' }); const m = document.querySelector('main'); if (m) m.scrollTop -= 90; return !!el; })()`);
     await sleep(900);

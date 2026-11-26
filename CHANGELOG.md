@@ -9,6 +9,21 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.7.9 — 26/11/2026
+
+Indicadores da escala e ajustes da Plataforma.
+
+- **Tela nova: Indicadores** (menu da gestão; quem já tinha Relatórios liberado vê também). Filtros de período (este mês, mês passado ou datas), setor e especialidade, sempre comparando com o período anterior:
+  - **Retrato da escala:** profissionais ativos, plantões do período, quantos publicados e quantos em rascunho, vagas abertas e a divisão por turno.
+  - **Trocas e repasses:** trocas diretas, repasses pelo Mural e vagas assumidas — feitas e em aberto — e os dias da semana em que mais acontecem.
+  - **Segurança do plantão:** plantões emendados e semanas acima dos limites de Configurações › Regras da escala.
+  - **Distribuição da equipe:** horas de cada profissional com a mediana do grupo, para dividir as vagas de forma justa (não é controle de jornada).
+  - **Movimentações por dia**, **Quem mais movimentou** e **Pendências** (com atalho para o Mural).
+  - Cada bloco abre a lista completa com **Exportar Excel** e **Imprimir**, e traz uma frase com o que fazer.
+- **Plataforma** (dono): renomear empresa e hospital (lápis ao lado do nome) e **Desbloquear acesso** de quem errou a senha 5 vezes, de qualquer empresa. Precisa da atualização do banco `20261126150000_platform_rename_unlock.sql`, aplicada pelo editor SQL do Supabase; até lá os botões avisam o que falta.
+- Manual novo **12 · Indicadores** (com 3 fotos) e manual do Painel ajustado; PDFs regenerados.
+- Cálculo em `src/lib/indicators.js`, com testes.
+
 ## V0.7.8 — 26/11/2026
 
 Material de treinamento em dia com as novidades da V0.7.2 à V0.7.7.

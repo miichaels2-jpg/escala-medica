@@ -1,5 +1,5 @@
 {
- "versao": "0.7.8",
+ "versao": "0.7.9",
  "atualizado": "26/11/2026",
  "manuais": [
   {
@@ -78,6 +78,13 @@
    "titulo": "Ajuda dentro do sistema",
    "resumo": "O botão “Como fazer” de cada tela, o guia que mostra onde clicar e os vídeos da tela Como usar.",
    "publico": "Todos"
+  },
+  {
+   "id": "12-indicadores",
+   "numero": 12,
+   "titulo": "Indicadores",
+   "resumo": "Como a escala está distribuída no período: equipe, trocas e repasses, segurança do plantão, rankings e pendências.",
+   "publico": "Gestão (coordenação)"
   }
  ]
 }

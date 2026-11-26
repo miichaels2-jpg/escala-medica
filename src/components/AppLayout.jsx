@@ -9,7 +9,7 @@ import {
   DollarSign, Users, Building2, LogOut, Menu, X, 
   AlertTriangle, Sun, Moon, Settings, FileBarChart,
   Clock, Hospital, Bell, Flame, Smartphone,
-  ListChecks, History, Globe, PlayCircle, BookOpen
+  ListChecks, History, Globe, PlayCircle, BookOpen, Gauge
 } from 'lucide-react';
 import { InstallAppBanner, InstallAppDialog } from '@/components/InstallAppGuide';
 import { NotificationPanel, useNotificationCenter } from '@/components/NotificationCenter';
@@ -179,6 +179,7 @@ export default function AppLayout({ children }) {
     { label: 'Minha Escala', path: '/minha-escala', icon: Activity, visible: true },
     { label: 'Corpo Clínico', path: '/corpo-clinico', icon: Users, visible: isManager || isBilling },
     { label: 'Setores', path: '/setores', icon: Building2, visible: isManager },
+    { label: 'Indicadores', path: '/indicadores', icon: Gauge, visible: isManager },
     { label: 'Relatórios', path: '/relatorios', icon: FileBarChart, visible: isManager || isBilling },
     { label: 'Faturamento', path: '/faturamento', icon: DollarSign, visible: isManager || isBilling },
     { label: 'Histórico', path: '/historico', icon: History, visible: isManager },
