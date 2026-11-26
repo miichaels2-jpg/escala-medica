@@ -10,7 +10,7 @@ export default {
       titulo: 'O que é o ScaleMedic',
       blocos: [
         { p: 'O ScaleMedic organiza as escalas de plantão do hospital: a coordenação monta e publica a escala, os profissionais recebem os plantões no celular, as vagas abertas vão para o Mural e o faturamento calcula quanto pagar a cada um no fim do mês.' },
-        { p: 'Ele funciona pelo navegador, no computador ou no celular, sem instalar nada. O endereço é **scalemedic-app.vercel.app**. No celular, dá para instalar como aplicativo (veja a seção 6).' },
+        { p: 'Ele funciona pelo navegador, no computador ou no celular, sem instalar nada. O endereço é **scalemedic.com.br**. No celular, dá para instalar como aplicativo (veja a seção 6).' },
         { tabela: { cab: ['Perfil', 'O que faz no sistema'], linhas: [
           ['Gestão (coordenação)', 'Cadastra setores e profissionais, monta e publica a escala, aprova trocas, acompanha relatórios.'],
           ['Faturamento', 'Confere quanto pagar a cada profissional, marca pagamentos, imprime recibos e relatórios.'],
@@ -30,7 +30,7 @@ export default {
           '**Instalar o app no celular:** mostra como colocar o ScaleMedic na tela inicial do celular.',
           '**Solicite seu credenciamento:** para quem ainda não tem cadastro (veja a seção 4).'
         ] },
-        { p: 'O link `Esqueceu a senha?`, acima do campo de senha, explica a quem pedir uma senha nova (veja a seção 5).' }
+        { p: 'O link `Esqueceu a senha?`, acima do campo de senha, manda para o seu e-mail um link para criar uma senha nova (veja a seção 5).' }
       ]
     },
     {
@@ -39,7 +39,7 @@ export default {
         { p: 'Quando a coordenação cadastra você, ela passa o seu **usuário** e uma **senha provisória**. O endereço do sistema costuma chegar por WhatsApp; por segurança, o usuário e a senha vêm à parte. A senha provisória é a sua data de nascimento completa (dia, mês e ano, só números) seguida da inicial do seu nome, em letra minúscula.' },
         { tabela: { cab: ['Exemplo', 'Senha provisória'], linhas: [['Ana, nascida em 12/04/1990', '`12041990a`'], ['Carlos, nascido em 03/11/1985', '`03111985c`']] } },
         { passos: [
-          'Abra **scalemedic-app.vercel.app** no navegador do celular ou do computador.',
+          'Abra **scalemedic.com.br** no navegador do celular ou do computador.',
           'Digite o **usuário** e a **senha provisória** e toque em `Entrar no Sistema`.',
           'Na janela `Crie sua senha`, escolha a sua senha pessoal e repita no segundo campo. Toque em `Salvar e Continuar`. A senha precisa ter **8 ou mais caracteres, com letras e números**, e não pode conter o seu usuário ou e-mail nem ser uma sequência comum (como 12345678).',
           'Na janela `Privacidade e LGPD`, leia os termos, marque a declaração de que concorda e confirme. Isso só aparece no primeiro acesso.',
@@ -78,7 +78,20 @@ export default {
           '**Tema claro ou escuro:** o ScaleMedic segue o tema do aparelho. O botão de lua/sol, no topo, troca e guarda a sua escolha.'
         ] },
         { h: 'Esqueci a senha' },
-        { p: 'Por segurança, a senha é trocada pela coordenação. Procure a coordenação ou o RH da sua unidade: eles geram uma nova senha provisória no seu cadastro (Corpo Clínico) e você cria a senha pessoal de novo no próximo acesso.' }
+        { p: 'Quem tem **e-mail no cadastro** troca a senha sozinho, pelo link que chega no e-mail:' },
+        { figura: 'recuperar-senha', largura: '46%', legenda: 'Janela aberta pelo link `Esqueceu a senha?`.', pontos: [
+          '**E-mail:** o e-mail do seu cadastro. Se você digitou o e-mail no campo de entrada, ele já vem preenchido.',
+          '**Enviar link:** manda o e-mail com o link para criar a senha nova.'
+        ] },
+        { passos: [
+          'Na tela de entrada, toque em `Esqueceu a senha?`.',
+          'Digite o e-mail do seu cadastro e toque em `Enviar link`.',
+          'Abra o e-mail **Redefinir sua senha do ScaleMedic**, enviado por **naoresponda@scalemedic.com.br**, e toque em `Criar nova senha`. Se não chegar em alguns minutos, confira a caixa de spam.',
+          'Na tela `Redefinir senha`, digite a senha nova duas vezes e toque em `Salvar nova senha`. Ela segue as mesmas regras do primeiro acesso.',
+          'Aparece **Senha alterada**. Toque em `Entrar` e use o seu usuário com a senha nova.'
+        ] },
+        { atencao: 'O link vale por **1 hora** e funciona uma vez só. Passou do prazo, peça outro. Nunca repasse esse e-mail: quem abre o link consegue trocar a sua senha.' },
+        { p: 'Sem e-mail no cadastro, procure a coordenação ou o RH da sua unidade: eles geram uma nova senha provisória no seu cadastro (Corpo Clínico) e você cria a senha pessoal de novo no próximo acesso. Vale aproveitar para pedir que incluam o seu e-mail.' }
       ]
     },
     {
@@ -108,6 +121,8 @@ export default {
           ['Usuário ou senha inválidos', 'Confira se o usuário está sem acentos e sem espaços. No primeiro acesso, a senha provisória é a data de nascimento (DDMMAAAA) + a inicial do nome em minúscula.'],
           ['A nova senha não é aceita', 'Use 8 ou mais caracteres, com letras e números, sem o seu usuário ou e-mail e sem sequências como 12345678.'],
           ['O sistema saiu sozinho', 'Passou 1 hora sem uso. Entre de novo.'],
+          ['O e-mail de recuperação não chegou', 'Confira o spam e se digitou o e-mail do cadastro. Aguarde 1 minuto para pedir de novo. Sem e-mail no cadastro, procure a coordenação.'],
+          ['“Este link expirou ou já foi usado”', 'Peça um link novo em `Esqueceu a senha?`. Use sempre o e-mail mais recente.'],
           ['Não aparece o meu hospital ou uma tela', 'A coordenação libera hospitais, setores e telas no seu cadastro.'],
           ['Não aparece o outro estabelecimento', 'O acesso a cada estabelecimento é liberado pelo ScaleMedic. Peça para incluírem o seu usuário; a senha continua a mesma.'],
           ['“Código não encontrado” no credenciamento', 'Cole o link inteiro enviado pela coordenação ou peça o código de novo.']

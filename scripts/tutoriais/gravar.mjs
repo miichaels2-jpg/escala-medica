@@ -14,7 +14,7 @@ import { VIDEOS } from './videos.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const which = process.argv[2] || 'todos';
-const base = process.argv[3] || 'https://scalemedic-app.vercel.app';
+const base = process.argv[3] || 'https://scalemedic.com.br';
 const ids = which === 'todos' ? Object.keys(VIDEOS) : which.split(',');
 const creds = {
   gestor: [process.env.TUTORIAL_GESTOR_USER, process.env.TUTORIAL_GESTOR_PASS],

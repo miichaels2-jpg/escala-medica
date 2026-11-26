@@ -16,7 +16,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(here, 'out', 'fotos');
 fs.mkdirSync(OUT, { recursive: true });
 const which = process.argv[2] || 'todos';
-const base = process.argv[3] || 'https://scalemedic-app.vercel.app';
+const base = process.argv[3] || 'https://scalemedic.com.br';
 const shots = which === 'todos' ? SHOTS : SHOTS.filter(s => which.split(',').includes(s.id));
 const VIEWS = {
   pc: { width: 1366, height: 768, deviceScaleFactor: 1.5, mobile: false },

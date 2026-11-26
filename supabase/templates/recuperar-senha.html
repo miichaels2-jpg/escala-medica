@@ -1,0 +1,27 @@
+<!-- Supabase › Authentication › Emails › Templates › Reset password (V0.8.6).
+     Assunto: Redefinir sua senha do ScaleMedic
+     Colar só o que está abaixo deste comentário. -->
+<div style="margin:0;padding:24px 12px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
+  <div style="max-width:480px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden">
+    <div style="background:#0284c7;padding:20px 24px;color:#ffffff;font-size:20px;font-weight:bold;letter-spacing:.2px">ScaleMedic</div>
+    <div style="padding:24px">
+      <p style="margin:0 0 12px;font-size:16px;font-weight:bold">Redefinir a sua senha</p>
+      <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#334155">
+        Recebemos um pedido para criar uma senha nova para o seu acesso ao ScaleMedic.
+        Toque no botão abaixo para escolher a senha nova.
+      </p>
+      <p style="margin:0 0 24px;text-align:center">
+        <a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#0284c7;color:#ffffff;text-decoration:none;font-size:14px;font-weight:bold;padding:12px 28px;border-radius:10px">Criar nova senha</a>
+      </p>
+      <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#475569">
+        O link vale por 1 hora e funciona uma vez só. Não repasse este e-mail: quem abre o link consegue trocar a sua senha.
+      </p>
+      <p style="margin:0;font-size:13px;line-height:1.6;color:#475569">
+        Não pediu? Pode ignorar este e-mail. A sua senha atual continua valendo.
+      </p>
+    </div>
+    <div style="padding:14px 24px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8">
+      Mensagem automática do ScaleMedic (scalemedic.com.br). Não responda este e-mail.
+    </div>
+  </div>
+</div>

@@ -18,6 +18,7 @@ import { getHomePath } from '@/lib/accessControl';
 // Cada tela vira um arquivo separado, baixado só quando é aberta.
 const Register = lazyPage(() => import('@/pages/Register'));
 const TermosDeUso = lazyPage(() => import('./pages/TermosDeUso'));
+const RedefinirSenha = lazyPage(() => import('@/pages/RedefinirSenha'));
 const Dashboard = lazyPage(() => import('@/pages/Dashboard'));
 const Escalas = lazyPage(() => import('@/pages/Escalas'));
 const CorpoClinico = lazyPage(() => import('@/pages/CorpoClinico'));
@@ -72,6 +73,7 @@ const AuthenticatedApp = () => {
         <Route path="/login" element={isAuthenticated ? <Navigate to={homePath} replace /> : <Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/termos-de-uso" element={<TermosDeUso />} />
+        <Route path="/redefinir-senha" element={<RedefinirSenha />} />
 
         <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/" replace />} />}>
           <Route element={<ContractGuard><AppLayout /></ContractGuard>}>
