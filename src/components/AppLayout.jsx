@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { clearStoredSession } from '@/lib/authSession';
 import { listMyCompanies, switchCompany } from '@/lib/companyAccess';
 import { errorInPortuguese } from '@/lib/errorText';
+import { isShiftPublished } from '@/lib/sharedState';
 import { 
   Activity, LayoutDashboard, CalendarDays, 
   DollarSign, Users, Building2, LogOut, Menu, X, 
@@ -174,7 +175,8 @@ export default function AppLayout({ children }) {
     refreshPushOwner({ userId: user.id, professionalId: currentProfessional?.id && currentProfessional.id !== 'temp_user_id' ? currentProfessional.id : '' });
   }, [user?.id, currentProfessional?.id]);
 
-  const notificationCenter = useNotificationCenter({ user, currentProfessional, shifts, companyShifts: allCompanyShifts, selectedUnitId, isManager });
+  const isPublished = shift => isShiftPublished(shift, getPublishedRanges, selectedUnitId);
+  const notificationCenter = useNotificationCenter({ user, currentProfessional, shifts, companyShifts: allCompanyShifts, selectedUnitId, isManager, isPublished });
   const muralBadge = notificationCenter.unreadVacancies.length;
 
   // Alerta de furo iminente (vaga sem ninguém a menos de 24 h) para os profissionais compatíveis.
@@ -185,11 +187,7 @@ export default function AppLayout({ children }) {
     professionals: allCompanyProfessionals,
     sectors: allCompanySectors,
     units,
-    isPublished: shift => {
-      const [y, m] = String(shift.date || '').split('-').map(Number);
-      return getPublishedRanges(shift.unit_id, shift.sector_id, y, m)
-        .some(range => shift.date >= range.start_date && shift.date <= range.end_date);
-    }
+    isPublished
   });
 
   const dayName = WEEKDAYS_LONG[currentTime.getDay()];

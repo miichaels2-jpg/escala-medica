@@ -9,6 +9,16 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.8.7 — 26/11/2026
+
+Mural só com escala publicada.
+
+- **Vagas de escala em rascunho não aparecem mais no Mural** nem no sino dos plantonistas. Elas entram no Mural quando a coordenação publica o período na Escala, como o manual já dizia. Antes, a equipe via (e podia pegar) vagas de um mês que ainda estava sendo montado.
+- A coordenação vê no alto da aba **Vagas** quantas vagas de escala não publicada estão fora do Mural.
+- **No banco:** o plantonista não consegue assumir vaga de período não publicado, mesmo por fora do app, e o aviso automático de **vaga urgente** só sai para escala publicada. Precisa da atualização do banco `20261126220000_mural_only_published.sql`.
+- Regra em `isShiftPublished` (`src/lib/sharedState.js`), com teste; o alerta de vaga urgente do app passou a usar a mesma regra.
+- Manual **06 · Mural** atualizado; PDFs regenerados.
+
 ## V0.8.6 — 26/11/2026
 
 Domínio próprio e recuperação de senha por e-mail.
