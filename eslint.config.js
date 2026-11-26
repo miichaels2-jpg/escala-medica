@@ -67,6 +67,10 @@ export default [
       "react/prop-types": "off",
       // catch vazio é de propósito: armazenamento do navegador bloqueado ou falha que não deve parar a tela.
       "no-empty": ["error", { allowEmptyCatch: true }],
+      // Ícones do lucide com o mesmo nome de algo do navegador: esquecer o import passa no Chrome
+      // (que tem o nome) e quebra no Safari (V0.7.6: Relatórios e Faturamento com "Presentation").
+      "no-restricted-globals": ["error", ...["Bluetooth", "Clipboard", "Fence", "File", "Gamepad", "History", "Image", "Keyboard", "Lock", "Navigation", "Option", "Presentation", "Text"]
+        .map(name => ({ name, message: `Importe ${name} (ícone do lucide-react) ou use window.${name}: sem import funciona no Chrome e quebra no Safari.` }))],
       "unused-imports/no-unused-imports": "error",
       "unused-imports/no-unused-vars": [
         "warn",

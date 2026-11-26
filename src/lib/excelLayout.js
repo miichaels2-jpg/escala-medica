@@ -70,7 +70,7 @@ async function loadLogo(url, height = 44) {
     const objectUrl = URL.createObjectURL(await response.blob());
     try {
       const img = await new Promise((resolve, reject) => {
-        const image = new Image();
+        const image = new window.Image();
         image.onload = () => resolve(image);
         image.onerror = reject;
         image.src = objectUrl;

@@ -47,7 +47,7 @@ function readLogoAsDataUrl(file) {
     reader.onerror = () => reject(new Error('Não foi possível ler o arquivo selecionado.'));
     reader.onload = () => {
       const original = String(reader.result || '');
-      const img = new Image();
+      const img = new window.Image();
       img.onerror = () => reject(new Error('Este formato de imagem não pode ser exibido pelo navegador. Use PNG ou JPG.'));
       img.onload = () => {
         const largestSide = Math.max(img.naturalWidth, img.naturalHeight);
