@@ -38,7 +38,7 @@ export default {
           'Tracejado amarelo é **vaga em aberto**; tracejado vermelho é **furo** (já passou sem ninguém).',
           '`Adicionar turnos ao setor` abre o gerador para criar mais vagas no setor.'
         ] },
-        { figura: 'escala-calendario', legenda: 'Visão Calendário: barra verde = dia completo, laranja = com vaga, vermelha = furo. À esquerda, a lista de profissionais para arrastar até um dia.', pontos: [] }
+        { figura: 'escala-calendario', legenda: 'Visão Calendário: barra verde = dia completo, laranja = com vaga, vermelha = furo. À esquerda, a lista de profissionais para arrastar até um dia, o horário ao soltar e Marcar vários dias.', pontos: [] }
       ]
     },
     {
@@ -61,12 +61,16 @@ export default {
           ] },
           'Ajuste horários e vagas só para este mês, se precisar. Para que a mudança valha nos próximos meses, marque **Atualizar os turnos padrão do setor**.',
           'O quadro azul confirma quantos dias e quantas vagas serão criados. **Nada é gravado ainda.** Clique em `Próximo: escolher profissionais`.',
-          { texto: 'Na etapa 2 · Profissionais, cada vaga do mês aparece com um seletor. Escolha quem fica em cada uma ou deixe **Deixar como vaga aberta**. `Preencher automaticamente` distribui a equipe disponível, respeitando especialidade, setores autorizados, folgas e choque de horário.', figura: 'escala-alocar', legenda: 'Etapa 2: escolher quem fica em cada vaga.', pontos: [
+          { texto: 'Na etapa 2 · Profissionais, o **Quadro** mostra o mês em calendário, com as vagas de cada dia, e a equipe à esquerda. `Preencher automaticamente` distribui a equipe disponível, respeitando especialidade, setores autorizados, folgas e choque de horário; depois é só ajustar.', figura: 'escala-alocar', legenda: 'Etapa 2: o Quadro do mês, com a equipe à esquerda.', pontos: [
+            '**Arrastar:** pegue o nome na lista e solte sobre a **vaga** (o horário exato). Soltar sobre uma vaga preenchida troca a pessoa de lugar; arrastar de volta para a lista tira da vaga.',
+            '**Pincel (celular e computador):** toque no nome e depois nas vagas, uma atrás da outra. Tocar de novo numa vaga dele tira; a `Borracha` limpa vagas.',
+            '**Horário ao soltar no dia:** com mais de um horário no dia (manhã, tarde, noite), escolha o horário nos botões acima do quadro. Aí dá para soltar no dia inteiro ou tocar em **Seg, Ter…** no topo, que coloca a pessoa em todos aqueles dias da semana. Sem horário escolhido, o sistema não encaixa sozinho: pede para soltar sobre a vaga.',
+            'A frase no alto diz o que aconteceu ou por que a pessoa não entrou (outra especialidade, setor não liberado, folga, choque de horário). `Desfazer` volta o último passo. `Lista` mostra o modo antigo, uma vaga por linha.',
             '`Salvar como rascunho`: grava a escala sem avisar ninguém. Dá para revisar e publicar depois.',
             '`Salvar e publicar`: grava e já publica. Cada profissional escalado recebe o aviso no celular.'
           ] }
         ] },
-        { atencao: 'No seletor de cada vaga só aparecem profissionais que podem assumir: mesma especialidade, autorizados no setor, sem folga ou férias informadas e sem outro plantão no mesmo horário. O sistema também alerta quando alguém passa do limite de carga configurado em Configurações › Regras da escala.' }
+        { atencao: 'No Quadro e na Lista só entram profissionais que podem assumir: mesma especialidade, autorizados no setor, sem folga ou férias informadas e sem outro plantão no mesmo horário. O sistema também alerta quando alguém passa do limite de carga configurado em Configurações › Regras da escala.' }
       ]
     },
     {
@@ -82,7 +86,13 @@ export default {
           '`Liberar vaga` tira a pessoa do plantão e ele volta a ser vaga (aparece no Mural). Em **Trocar por**, clique em outro nome para substituir direto.',
           'Tirou por engano? Por **10 segundos** aparece, no canto da tela, o aviso com `Desfazer`: a pessoa volta para o plantão. O mesmo vale para **excluir um plantão**.'
         ] },
-        { p: '`Editar` abre o plantão completo: data, setor, especialidade, horários e quem está escalado. Na visão `Calendário`, também dá para **arrastar** um profissional da lista da esquerda até o dia.' },
+        { p: '`Editar` abre o plantão completo: data, setor, especialidade, horários e quem está escalado.' },
+        { h: 'Arrastar no calendário' },
+        { passos: [
+          'Na visão `Calendário`, a lista da esquerda traz a equipe. Arraste o nome até o dia.',
+          'Se o dia tem vagas em mais de um horário, aparece **Em qual horário?**: escolha manhã, tarde ou noite. O sistema nunca escolhe sozinho. Para não perguntar toda vez, fixe o turno em **Horário ao soltar no dia**.',
+          'Para vários dias de uma vez: clique em `Marcar vários dias`, clique nos dias do calendário e arraste o profissional para qualquer um deles. Ele entra em todos os dias marcados, no horário escolhido. Os dias em que não dá (sem vaga nesse horário, choque de horário, folga) aparecem na confirmação e ficam de fora.'
+        ] },
         { dica: 'Vaga aberta em escala publicada aparece no Mural para a especialidade certa. Quem pegar a vaga entra na escala sozinho, e a coordenação é avisada.' }
       ]
     },

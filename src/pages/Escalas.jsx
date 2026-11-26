@@ -15,6 +15,8 @@ import ScheduleGrid from '@/components/escala/ScheduleGrid';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { listHorarios } from '@/lib/allocationBoard';
 import { CalendarDays, Plus, Search, ChevronLeft, ChevronRight, Clock, X, CheckCheck, Send, HeartPulse, SlidersHorizontal, MonitorPlay, GripVertical, Printer, Sun, Moon, AlertTriangle, PanelLeftClose, PanelLeftOpen, ShieldAlert, History, Copy, MoreHorizontal, LayoutGrid, List as ListIcon } from 'lucide-react';
 import { MONTH_NAMES, WEEKDAYS, getLocalDateString, formatDateBR, getShiftRangeFor, shiftRangesOverlap, isShiftPast, stripPublicationTags, normalize, getShiftName, isVacant, buildShortLabels, shiftHours, computeShiftHospitalLifecycle, getInitials, formatFullName, extractSpecialty, extractRetroactiveJustification, splitRangeByMonth, autoHealingSaveShift } from '@/lib/escalaUtils';
 import { printDayShifts, printMonthSchedule } from '@/lib/escalaPrints';
@@ -363,6 +365,10 @@ const closeTvMode = async () => {
   const [scheduleProfessionalSearch, setScheduleProfessionalSearch] = useState('');
   const [scheduleSpecialtyFilter] = useState('todas');
   const [draggingProfId, setDraggingProfId] = useState(null);
+  // Arrastar para o calendário (V0.8.2): dias marcados com clique simples, turno escolhido pelo gestor.
+  const [selectDaysMode, setSelectDaysMode] = useState(false);
+  const [trayHorario, setTrayHorario] = useState('');
+  const [dayDropChoice, setDayDropChoice] = useState(null);
 
   const [liveNow, setLiveNow] = useState(() => new Date());
   useEffect(() => { 
@@ -836,19 +842,40 @@ const conflict = checkProfessionalConflict(
     });
   };
 
+  // Por que o profissional não pode ficar na vaga ('' = pode). Mesmas regras da lista de candidatos.
+  const getBulkBlockReason = (shift, profId, draft = bulkAllocationDraft) => {
+    const prof = (professionals || []).find(p => String(p.id) === String(profId));
+    if (!shift || !prof) return 'profissional não encontrado';
+    const first = String(prof.name || 'O profissional').trim().split(/\s+/)[0];
+    if (prof.status !== 'ativo') return `${first} está inativo`;
+    if (!isProfessionalAuthorizedForSector(prof, shift.sector_id)) return `${first} não está liberado para o setor ${sectorMap[String(shift.sector_id)]?.name || ''}`.trim();
+    if (findUnavailability(prof, shift.date)) return `${first} marcou indisponibilidade em ${formatDateBR(shift.date)}`;
+    const requiredSpecialty = normalize(extractSpecialty(shift));
+    if (requiredSpecialty && prof.specialty && normalize(prof.specialty) !== requiredSpecialty && requiredSpecialty !== 'geral') {
+      return `a vaga é de ${extractSpecialty(shift)} e ${first} é de ${prof.specialty}`;
+    }
+    if (getBulkDraftConflict(shift, prof.id, draft)) return `${first} já tem plantão nesse horário em ${formatDateBR(shift.date)}`;
+    return '';
+  };
+
+  // Quem aparece no quadro: ativos, liberados para algum setor do lote e da especialidade de alguma vaga.
+  const bulkPool = useMemo(() => {
+    const rows = generatedAllocationRows || [];
+    if (rows.length === 0) return [];
+    const sectorIds = [...new Set(rows.map(r => String(r.sector_id)))];
+    const specialties = new Set(rows.map(r => normalize(extractSpecialty(r))));
+    return (professionals || [])
+      .filter(prof => prof?.status === 'ativo')
+      .filter(prof => sectorIds.some(id => isProfessionalAuthorizedForSector(prof, id)))
+      .filter(prof => !prof.specialty || specialties.has('') || specialties.has('geral') || specialties.has(normalize(prof.specialty)))
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
+  }, [generatedAllocationRows, professionals]);
+
   const getBulkCandidates = (shift, draft = bulkAllocationDraft) => {
     if (!shift) return [];
 
-    const requiredSpecialty = normalize(extractSpecialty(shift));
     return (professionals || [])
-      .filter(prof => prof?.status === 'ativo')
-      .filter(prof => isProfessionalAuthorizedForSector(prof, shift.sector_id))
-      .filter(prof => !findUnavailability(prof, shift.date))
-      .filter(prof => {
-        if (!requiredSpecialty) return true;
-        return !prof.specialty || normalize(prof.specialty) === requiredSpecialty || requiredSpecialty === 'geral';
-      })
-      .filter(prof => !getBulkDraftConflict(shift, prof.id, draft))
+      .filter(prof => !getBulkBlockReason(shift, prof.id, draft))
       .map(prof => {
         const draftShifts = Object.entries(draft || {})
           .filter(([rowId, profId]) => profId && String(profId) === String(prof.id) && String(rowId) !== String(shift.id))
@@ -1079,7 +1106,7 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
 }, [professionals, traySearch, traySpecialtyFilter, selectedSectorId]);
 
   const handleDayClick = (dateStr, e) => {
-    if (e.ctrlKey || e.metaKey) {
+    if (selectDaysMode || e.ctrlKey || e.metaKey) {
       e.preventDefault();
       setSelectedDays(prev => prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]);
     } else {
@@ -1089,22 +1116,29 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
 
   const handleDragStart = (e, profId) => { setDraggingProfId(profId); e.dataTransfer.setData('text/plain', profId); };
 
+  // Com dias marcados, soltar em qualquer dia vale para todos os marcados (e para o dia em que soltou).
+  const dropTargetDates = dateStr => (selectedDays.length ? [...new Set([...selectedDays, dateStr])].sort() : [dateStr]);
+
   const handleDropOnSlot = async (e, dateStr, startTime, endTime, specialty, sectorId) => {
     e.preventDefault();
     e.stopPropagation();
 
     const profId = e.dataTransfer.getData('text/plain') || draggingProfId;
     if (!profId) return;
+    await allocateToSlot(profId, dropTargetDates(dateStr), startTime, endTime, specialty, sectorId);
+  };
 
+  const allocateToSlot = async (profId, targetDates, startTime, endTime, specialty, sectorId) => {
     const prof = professionalMap[String(profId)];
     if (!prof) return;
 
-    const targetDates = selectedDays.includes(dateStr) && selectedDays.length > 1 ? selectedDays : [dateStr];
     const normalizedSpec = normalize(specialty || prof.specialty || 'Clínica Médica');
 
     // Localiza uma vaga física já criada pelo gerador. Não cria um novo plantão
-    // por fora da grade; preenche exatamente o slot configurado.
+    // por fora da grade; preenche exatamente o slot configurado. Dia sem vaga nesse horário,
+    // ou em que a pessoa já trabalha, fica de fora e aparece na confirmação.
     const targets = [];
+    const skipped = [];
     for (const d of targetDates) {
       const candidate = (shifts || []).find(shift => {
         if (!shift || shift.status === 'cancelado') return false;
@@ -1117,9 +1151,8 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
       });
 
       if (!candidate) {
-        alert(`Não existe vaga aberta para ${formatDateBR(d)} • ${startTime} às ${endTime} • ${specialty || 'Geral'} neste setor.`);
-        setDraggingProfId(null);
-        return;
+        skipped.push(`${formatDateBR(d)} (sem vaga aberta ${startTime}–${endTime})`);
+        continue;
       }
 
       if (!isProfessionalAuthorizedForSector(prof, candidate.sector_id)) {
@@ -1130,25 +1163,35 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
       }
 
       const loadWarnings = workloadWarningsFor(prof.id, { id: candidate.id, date: d, start_time: startTime, end_time: endTime });
+      const conflict = checkProfessionalConflict(profId, d, startTime, endTime, candidate.id);
+      if (conflict.hasConflict) {
+        if (targetDates.length === 1) {
+          alert(`⛔ BLOQUEIO DE ESCALA:\n\n${conflict.message}\n\nO profissional não pode assumir dois plantões no mesmo horário.`);
+          setDraggingProfId(null);
+          return;
+        }
+        skipped.push(`${formatDateBR(d)} (já tem plantão nesse horário)`);
+        continue;
+      }
+
       if (loadWarnings.length && !confirm(`Atenção à carga de ${prof.name || 'profissional'}: ${loadWarnings.map(w => w.message).join('; ')}.\n\nEscalar mesmo assim em ${formatDateBR(d)}?`)) {
-        setDraggingProfId(null);
-        return;
+        skipped.push(`${formatDateBR(d)} (carga de trabalho)`);
+        continue;
       }
 
       const away = findUnavailability(prof, d);
       if (away && !confirm(`${prof.name || 'O profissional'} informou indisponibilidade: ${describeUnavailability(away)}.\n\nEscalar mesmo assim em ${formatDateBR(d)}?`)) {
-        setDraggingProfId(null);
-        return;
-      }
-
-      const conflict = checkProfessionalConflict(profId, d, startTime, endTime, candidate.id);
-      if (conflict.hasConflict) {
-        alert(`⛔ BLOQUEIO DE ESCALA:\n\n${conflict.message}\n\nO profissional não pode assumir dois plantões no mesmo horário.`);
-        setDraggingProfId(null);
-        return;
+        skipped.push(`${formatDateBR(d)} (indisponível)`);
+        continue;
       }
 
       targets.push(candidate);
+    }
+
+    if (targets.length === 0) {
+      alert(`Nenhuma vaga preenchida para ${prof.name || 'o profissional'} em ${startTime}–${endTime}:\n\n${skipped.join('\n')}`);
+      setDraggingProfId(null);
+      return;
     }
 
     const targetSummary = targets.map(target => {
@@ -1158,7 +1201,8 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
     }).join('\n');
 
     const vacancyCountText = targets.length === 1 ? '1 vaga' : `${targets.length} vagas`;
-    if (!confirm(`Confirme a alocação de ${prof.name}:\n\n${targetSummary}\n\nIsso preencherá ${vacancyCountText}. Deseja continuar?`)) {
+    const skippedText = skipped.length ? `\n\nFicam de fora:\n${skipped.join('\n')}` : '';
+    if (!confirm(`Confirme a alocação de ${prof.name}:\n\n${targetSummary}${skippedText}\n\nIsso preencherá ${vacancyCountText}. Deseja continuar?`)) {
       setDraggingProfId(null);
       return;
     }
@@ -1177,6 +1221,7 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
 
       await notifyAllocations(targets.map(target => ({ shift: target, prof })));
       setSelectedDays([]);
+      setSelectDaysMode(false);
       await syncGlobalData();
     } catch (err) {
       alert('Erro ao alocar: ' + err.message);
@@ -1185,32 +1230,54 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
     }
   };
 
-  // Compatibilidade com o drop no corpo do dia: se o usuário soltar fora de um
-  // horário específico, usamos a primeira vaga aberta daquele dia.
+  // Soltar no corpo do dia: nunca escolhe o horário sozinho. Com um turno escolhido na lista de
+  // profissionais, usa esse; com um só horário aberto, usa ele; senão pergunta (manhã, tarde, noite…).
   const handleDropOnDay = async (e, dateStr) => {
     e.preventDefault();
     e.stopPropagation();
 
-    const dayVacancies = (shifts || [])
-      .filter(s => s?.date === dateStr && s.status !== 'cancelado' && isVacant(s))
+    const profId = e.dataTransfer.getData('text/plain') || draggingProfId;
+    if (!profId) return;
+    const targetDates = dropTargetDates(dateStr);
+    const vacancies = (shifts || [])
+      .filter(s => s && targetDates.includes(s.date) && s.status !== 'cancelado' && isVacant(s))
       .filter(s => selectedSectorId === 'todos' || String(s.sector_id) === String(selectedSectorId))
-      .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start_time).localeCompare(String(b.start_time)));
 
-    const first = dayVacancies[0];
-    if (!first) {
-      alert('Este dia não possui vaga aberta. Solte o profissional diretamente sobre o horário desejado.');
+    if (vacancies.length === 0) {
+      alert(targetDates.length > 1 ? 'Os dias marcados não têm vaga aberta.' : 'Este dia não possui vaga aberta.');
+      setDraggingProfId(null);
       return;
     }
-
-    await handleDropOnSlot(
-      e,
-      dateStr,
-      first.start_time,
-      first.end_time,
-      extractSpecialty(first),
-      first.sector_id
-    );
+    // Cada opção leva um plantão de exemplo (especialidade e setor) do horário.
+    const options = listHorarios(vacancies).map(h => ({ ...h, sample: vacancies.find(v => `${String(v.start_time).slice(0, 5)}-${String(v.end_time).slice(0, 5)}` === h.key) }));
+    if (trayHorario) {
+      const chosen = options.find(o => o.key === trayHorario);
+      if (!chosen) {
+        alert(`Nenhuma vaga aberta de ${trayHorario.replace('-', '–')} ${targetDates.length > 1 ? 'nos dias marcados' : 'neste dia'}. Troque o turno na lista de profissionais ou solte sobre o horário certo.`);
+        setDraggingProfId(null);
+        return;
+      }
+      await allocateToSlot(profId, targetDates, chosen.sample.start_time, chosen.sample.end_time, extractSpecialty(chosen.sample), chosen.sample.sector_id);
+      return;
+    }
+    if (options.length === 1) {
+      const only = options[0].sample;
+      await allocateToSlot(profId, targetDates, only.start_time, only.end_time, extractSpecialty(only), only.sector_id);
+      return;
+    }
+    setDayDropChoice({ profId, targetDates, options });
   };
+
+  const chooseDayDropHorario = async option => {
+    const choice = dayDropChoice;
+    setDayDropChoice(null);
+    if (!choice) return;
+    await allocateToSlot(choice.profId, choice.targetDates, option.sample.start_time, option.sample.end_time, extractSpecialty(option.sample), option.sample.sector_id);
+  };
+
+  // Horários com vaga aberta no mês, para o gestor fixar o turno antes de arrastar.
+  const trayHorarios = useMemo(() => listHorarios(Object.values(shiftsByDate).flat().filter(s => s && s.status !== 'cancelado' && isVacant(s))), [shiftsByDate]);
 
   // ---------- Grade: quem pode assumir, escalar, liberar, criar ----------
   const monthHoursByProfessional = useMemo(() => {
@@ -1925,6 +1992,26 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                     <Input placeholder="Buscar profissional..." value={traySearch} onChange={e => setTraySearch(e.target.value)} className="pl-8 h-8 text-xs bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl" />
                   </div>
 
+                  <div className="space-y-2 rounded-2xl border border-slate-200 dark:border-slate-800 p-2.5">
+                    <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-300">Horário ao soltar no dia</label>
+                    <Select value={trayHorario || 'perguntar'} onValueChange={v => setTrayHorario(v === 'perguntar' ? '' : v)}>
+                      <SelectTrigger className="h-8 text-xs font-semibold bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800"><SelectValue /></SelectTrigger>
+                      <SelectContent className="bg-white dark:bg-slate-900 z-[99999]">
+                        <SelectItem value="perguntar">Perguntar a cada vez</SelectItem>
+                        {trayHorarios.map(h => <SelectItem key={h.key} value={h.key}>{h.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <Button type="button" variant={selectDaysMode ? 'default' : 'outline'} onClick={() => { setSelectDaysMode(v => !v); if (selectDaysMode) setSelectedDays([]); }}
+                      className={`h-8 w-full text-xs font-semibold rounded-xl cursor-pointer ${selectDaysMode ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : ''}`}>
+                      <CalendarDays className="w-3.5 h-3.5 mr-1.5" /> {selectDaysMode ? `Marcando dias (${selectedDays.length}) · concluir` : 'Marcar vários dias'}
+                    </Button>
+                    <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                      {selectDaysMode
+                        ? 'Clique nos dias do calendário e depois arraste o profissional para qualquer um deles: entra em todos, no horário escolhido.'
+                        : 'Solte sobre o horário no painel do dia, ou no dia: com mais de um horário aberto, o sistema pergunta qual.'}
+                    </p>
+                  </div>
+
                   <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
                     {filteredTrayProfs.map(prof => (
                       <div key={prof.id} draggable onDragStart={(e) => handleDragStart(e, prof.id)} className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:border-sky-500 transition-all cursor-grab active:cursor-grabbing select-none shadow-sm flex items-center gap-2.5">
@@ -2006,7 +2093,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                         type="button"
                         key={dateStr}
                         onClick={(e) => {
-                          if (e.ctrlKey || e.metaKey) { handleDayClick(dateStr, e); return; }
+                          if (selectDaysMode || e.ctrlKey || e.metaKey) { handleDayClick(dateStr, e); return; }
                           if (selectedDays.length) setSelectedDays([]);
                           setCalendarDay(dateStr);
                           setDayPanelOpen(true);
@@ -2135,9 +2222,30 @@ const handleAssignLegacyShiftUnit = async (shift) => {
 
       <LegacyUnitDialog handleAssignLegacyShiftUnit={handleAssignLegacyShiftUnit} legacyAssignmentOpen={legacyAssignmentOpen} legacyAssignmentSaving={legacyAssignmentSaving} legacyUnitDrafts={legacyUnitDrafts} professionalMap={professionalMap} sectorMap={sectorMap} setLegacyAssignmentOpen={setLegacyAssignmentOpen} setLegacyUnitDrafts={setLegacyUnitDrafts} unassignedShifts={unassignedShifts} units={units} />
 
-      <BulkAllocationDialog autoFillBulkAllocation={autoFillBulkAllocation} backToGenerator={backToGenerator} bulkAllocationDraft={bulkAllocationDraft} bulkAllocationOpen={bulkAllocationOpen} discardGeneratedSchedule={discardGeneratedSchedule} generatedAllocationRows={generatedAllocationRows} generatorSkippedCount={generatorSkippedCount} generatorSourceInfo={generatorSourceInfo} getBulkCandidates={getBulkCandidates} handleSaveGeneratedSchedule={handleSaveGeneratedSchedule} professionalMap={professionalMap} sectorMap={sectorMap} setBulkAllocationDraft={setBulkAllocationDraft} submitting={submitting} />
+      <BulkAllocationDialog autoFillBulkAllocation={autoFillBulkAllocation} backToGenerator={backToGenerator} bulkAllocationDraft={bulkAllocationDraft} bulkAllocationOpen={bulkAllocationOpen} discardGeneratedSchedule={discardGeneratedSchedule} generatedAllocationRows={generatedAllocationRows} generatorSkippedCount={generatorSkippedCount} generatorSourceInfo={generatorSourceInfo} getBulkCandidates={getBulkCandidates} getBulkBlockReason={getBulkBlockReason} bulkPool={bulkPool} workloadWarningFor={(profId, row, draft) => { const others = Object.entries(draft || {}).filter(([rowId, id]) => id && String(id) === String(profId) && String(rowId) !== String(row.id)).map(([rowId]) => generatedRowsById[String(rowId)]).filter(Boolean); return workloadWarningsFor(profId, row, others).map(w => w.message).join('; '); }} handleSaveGeneratedSchedule={handleSaveGeneratedSchedule} professionalMap={professionalMap} sectorMap={sectorMap} setBulkAllocationDraft={setBulkAllocationDraft} submitting={submitting} />
 
       <PublishDialog existingPublishedOverlaps={existingPublishedOverlaps} handleApplyQuickRange={handleApplyQuickRange} handleExecutePublishSector={handleExecutePublishSector} professionals={professionals} shifts={shifts} publishConfig={publishConfig} publishModalOpen={publishModalOpen} sectors={sectors} setPublishConfig={setPublishConfig} setPublishModalOpen={setPublishModalOpen} submitting={submitting} />
+
+      <Dialog open={Boolean(dayDropChoice)} onOpenChange={open => { if (!open) { setDayDropChoice(null); setDraggingProfId(null); } }}>
+        <DialogContent className="sm:max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-3xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Em qual horário?</DialogTitle>
+          </DialogHeader>
+          {dayDropChoice && (
+            <div className="space-y-2">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                <b>{formatFullName(professionalMap[String(dayDropChoice.profId)]?.name) || 'Profissional'}</b> em {dayDropChoice.targetDates.length > 1 ? `${dayDropChoice.targetDates.length} dias marcados` : formatDateBR(dayDropChoice.targetDates[0])}.
+              </p>
+              {dayDropChoice.options.map(option => (
+                <Button key={option.key} type="button" variant="outline" onClick={() => chooseDayDropHorario(option)} className="h-11 w-full justify-between rounded-xl text-sm cursor-pointer">
+                  <span className="font-semibold">{option.label}</span>
+                  <span className="text-xs text-slate-500">{option.count} vaga{option.count > 1 ? 's' : ''} aberta{option.count > 1 ? 's' : ''}</span>
+                </Button>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <CopyMonthDialog duplicateConfig={duplicateConfig} duplicateModalOpen={duplicateModalOpen} handleExecuteDuplicate={handleExecuteDuplicate} sectors={sectors} setDuplicateConfig={setDuplicateConfig} setDuplicateModalOpen={setDuplicateModalOpen} submitting={submitting} />
 
