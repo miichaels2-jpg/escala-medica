@@ -28,6 +28,10 @@ export default function PlatformPeopleDialog({ company, companies, onClose, onCh
   // A Plataforma recria rpcMessage a cada render: a referência evita recarregar em laço.
   const messageRef = useRef(rpcMessage);
   messageRef.current = rpcMessage;
+  // Ao fechar, a janela ainda aparece na animação de saída: segue mostrando o último estabelecimento.
+  const lastCompany = useRef(company);
+  if (company) lastCompany.current = company;
+  const view = company || lastCompany.current;
 
   const load = useCallback(async () => {
     if (!company) return;
@@ -52,12 +56,12 @@ export default function PlatformPeopleDialog({ company, companies, onClose, onCh
   }, [people, search]);
 
   const setRole = async (person, role) => {
-    if (role === 'remover' && !window.confirm(`Tirar o acesso de ${person.full_name} a ${company.name}?\n\nO login continua valendo nos outros estabelecimentos dele.`)) return;
+    if (role === 'remover' && !window.confirm(`Tirar o acesso de ${person.full_name} a ${view?.name}?\n\nO login continua valendo nos outros estabelecimentos dele.`)) return;
     setBusy(`role:${person.id}`); setNotice(null);
     const { error: rpcError } = await supabase.rpc('platform_set_company_role', { p_user_id: person.id, p_company_id: company.id, p_role: role });
     setBusy('');
     if (rpcError) { setNotice({ tone: 'error', text: rpcMessage(rpcError, '20261126200000_platform_people.sql') }); return; }
-    setNotice({ tone: 'ok', text: role === 'remover' ? `${person.full_name} não entra mais em ${company.name}.` : `${person.full_name} agora é ${ROLES.find(([id]) => id === role)?.[1]} em ${company.name}.` });
+    setNotice({ tone: 'ok', text: role === 'remover' ? `${person.full_name} não entra mais em ${view?.name}.` : `${person.full_name} agora é ${ROLES.find(([id]) => id === role)?.[1]} em ${view?.name}.` });
     await load(); onChanged?.();
   };
 
@@ -67,7 +71,7 @@ export default function PlatformPeopleDialog({ company, companies, onClose, onCh
   const transfer = async () => {
     if (!targetCompany || chosen.size === 0 || targetUnits.length === 0) return;
     const verb = keepOrigin ? 'Copiar' : 'Mover';
-    if (!window.confirm(`${verb} ${chosen.size} profissional(is) para ${targetCompany.name}?\n\n${keepOrigin ? `Continuam também em ${company.name}.` : `Saem de ${company.name} (ficam inativos lá, com o histórico guardado).`}\nQuem tem login usa a mesma senha e passa a escolher o estabelecimento ao entrar.`)) return;
+    if (!window.confirm(`${verb} ${chosen.size} profissional(is) para ${targetCompany.name}?\n\n${keepOrigin ? `Continuam também em ${view?.name}.` : `Saem de ${view?.name} (ficam inativos lá, com o histórico guardado).`}\nQuem tem login usa a mesma senha e passa a escolher o estabelecimento ao entrar.`)) return;
     setBusy('transfer'); setNotice(null);
     const { data, error: rpcError } = await supabase.rpc('platform_transfer_professionals', {
       p_professional_ids: [...chosen], p_target_company: targetCompany.id, p_unit_ids: targetUnits, p_keep_origin: keepOrigin
@@ -77,7 +81,7 @@ export default function PlatformPeopleDialog({ company, companies, onClose, onCh
     const skipped = Array.isArray(data?.skipped) ? data.skipped : [];
     setNotice({
       tone: skipped.length ? 'warn' : 'ok',
-      text: `${data?.copied || 0} profissional(is) ${keepOrigin ? 'copiado(s)' : 'movido(s)'} para ${targetCompany.name}. Setores e valores por hospital ficam para ajustar no Corpo Clínico de lá.${skipped.length ? ` Ficaram de fora: ${skipped.map(s => `${s.name} (${s.reason})`).join('; ')}.` : ''}`
+      text: `${data?.copied || 0} profissional(is) ${keepOrigin ? 'copiado(s)' : 'movido(s)'} para ${targetCompany.name}. Setores e valores por hospital ficam para ajustar no Corpo Clínico de lá.${data?.linked ? ` ${data.linked} já tinha(m) ficha lá: o login foi liberado com o mesmo papel da origem.` : ''}${skipped.length ? ` Ficaram de fora: ${skipped.map(s => `${s.name} (${s.reason})`).join('; ')}.` : ''}`
     });
     setChosen(new Set());
     await load(); onChanged?.();
@@ -89,7 +93,7 @@ export default function PlatformPeopleDialog({ company, companies, onClose, onCh
     <Dialog open={Boolean(company)} onOpenChange={open => { if (!open) onClose(); }}>
       <DialogContent className="w-[96vw] sm:max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Users className="w-5 h-5 text-sky-600" /> Pessoas e acessos · {company?.name}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Users className="w-5 h-5 text-sky-600" /> Pessoas e acessos · {view?.name}</DialogTitle>
         </DialogHeader>
 
         {error && <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">{error}</p>}
@@ -100,7 +104,7 @@ export default function PlatformPeopleDialog({ company, companies, onClose, onCh
         ) : error ? null : (
           <div className="space-y-6">
             <section className="space-y-2">
-              <h3 className="flex items-center gap-1.5 text-sm font-semibold"><KeyRound className="w-4 h-4 text-slate-400" /> Quem entra em {company.name}</h3>
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold"><KeyRound className="w-4 h-4 text-slate-400" /> Quem entra em {view?.name}</h3>
               <p className="text-xs text-slate-500">O papel vale só neste estabelecimento. Trocar o papel devolve as telas ao padrão dele.</p>
               {people.users.length === 0 && <p className="text-sm text-slate-500">Nenhum login ainda.</p>}
               <div className="divide-y divide-slate-200 dark:divide-slate-800 rounded-xl border border-slate-200 dark:border-slate-800">
@@ -175,7 +179,7 @@ export default function PlatformPeopleDialog({ company, companies, onClose, onCh
                   </div>
                   <label className="flex items-start gap-2 text-sm cursor-pointer">
                     <input type="checkbox" checked={keepOrigin} onChange={e => setKeepOrigin(e.target.checked)} className="mt-0.5 h-4 w-4 accent-sky-600" />
-                    <span>Manter também em <b>{company.name}</b> <span className="text-xs text-slate-500">(desmarcado: saem daqui e ficam inativos, com o histórico guardado)</span></span>
+                    <span>Manter também em <b>{view?.name}</b> <span className="text-xs text-slate-500">(desmarcado: saem daqui e ficam inativos, com o histórico guardado)</span></span>
                   </label>
                   <div className="flex justify-end">
                     <Button type="button" onClick={transfer} disabled={!targetCompany || chosen.size === 0 || targetUnits.length === 0 || busy === 'transfer'} className="gap-1.5">

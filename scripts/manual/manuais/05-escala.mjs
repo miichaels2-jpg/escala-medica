@@ -26,7 +26,7 @@ export default {
           '**Mês:** as setas trocam o mês; clicar no nome do mês volta para o mês atual.',
           '`Publicar`: publica a escala do setor para a equipe (seção 5). Ao lado, `Copiar mês anterior` (seção 6).',
           '**Setores:** escolha um setor ou `Todos`. A bolinha laranja indica setor com a escala do mês em rascunho.',
-          '**Visões:** `Grade` (o mês inteiro, linha por turno), `Calendário` (um quadro por dia) e `Lista`. À esquerda, o filtro de turno: `Todos`, `Dia` ou `Noite`.',
+          '**Visões:** `Calendário` (um quadro por dia; é a que abre primeiro, porque é nela que se arrasta a equipe), `Grade` (o mês inteiro, linha por turno) e `Lista`. A última escolhida fica lembrada. À esquerda, o filtro de turno: `Todos`, `Dia` ou `Noite`.',
           '`Mais`: plantão avulso, montar turnos do mês, plantão do dia, Modo TV e imprimir.',
           '**Vaga em aberto:** quadrado tracejado com **+**. Clique para escalar alguém.'
         ] },
@@ -90,6 +90,7 @@ export default {
         { h: 'Arrastar no calendário' },
         { passos: [
           'Na visão `Calendário`, a lista da esquerda traz a equipe. Arraste o nome até o dia.',
+          'Clique no dia para ver os plantões dele à direita. A **lixeira** ao lado de `Alocar` exclui aquela vaga; a lixeira no alto do painel tira o dia inteiro da escala. Nos dois casos aparece `Desfazer` por 10 segundos.',
           'Se o dia tem vagas em mais de um horário, aparece **Em qual horário?**: escolha manhã, tarde ou noite. O sistema nunca escolhe sozinho. Para não perguntar toda vez, fixe o turno em **Horário ao soltar no dia**.',
           'Para vários dias de uma vez: clique em `Marcar vários dias`, clique nos dias do calendário e arraste o profissional para qualquer um deles. Ele entra em todos os dias marcados, no horário escolhido. Os dias em que não dá (sem vaga nesse horário, choque de horário, folga) aparecem na confirmação e ficam de fora.'
         ] },

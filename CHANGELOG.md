@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.8.4 — 26/11/2026
+
+Correções da transferência e lixeira na Escala.
+
+- **Transferência de profissionais com login:** o login de quem foi transferido não era reconhecido quando a ficha guardava o vínculo de outro jeito (caso do José Wangledson e do João Cândido). Agora o login é achado também pelo nome de usuário da ficha. **Transferir de novo quem já está no destino libera o login lá**, com o mesmo papel da origem (gestor continua gestor). Precisa da atualização do banco `20261126210000_platform_people_login_link.sql`.
+- **Plataforma:** fechar a janela Pessoas e acessos dava "Instabilidade no Módulo" (Cannot read properties of null). Corrigido.
+- **Corpo Clínico:** salvar alguém cujo login já existe em outro estabelecimento mostrava "duplicate key… users_username_key" e uma senha de primeiro acesso que não valia. Agora explica que o login já existe e como liberar o acesso.
+- **Escala:**
+  - **Calendário é a visão padrão** (é nele que se arrasta a equipe); a última visão escolhida fica lembrada;
+  - **lixeira** ao lado de `Alocar` exclui a vaga, e a lixeira no alto do painel do dia **tira o dia inteiro da escala**. As duas pedem confirmação e oferecem `Desfazer` por 10 segundos.
+- Manual **05 · Escala** atualizado; PDFs regenerados.
+
 ## V0.8.3 — 26/11/2026
 
 Plataforma › Pessoas e acessos.

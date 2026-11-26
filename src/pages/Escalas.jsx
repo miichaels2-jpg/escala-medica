@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { listHorarios } from '@/lib/allocationBoard';
-import { CalendarDays, Plus, Search, ChevronLeft, ChevronRight, Clock, X, CheckCheck, Send, HeartPulse, SlidersHorizontal, MonitorPlay, GripVertical, Printer, Sun, Moon, AlertTriangle, PanelLeftClose, PanelLeftOpen, ShieldAlert, History, Copy, MoreHorizontal, LayoutGrid, List as ListIcon } from 'lucide-react';
+import { CalendarDays, Plus, Search, ChevronLeft, ChevronRight, Clock, X, CheckCheck, Send, HeartPulse, SlidersHorizontal, MonitorPlay, GripVertical, Printer, Sun, Moon, AlertTriangle, PanelLeftClose, PanelLeftOpen, ShieldAlert, History, Copy, MoreHorizontal, LayoutGrid, List as ListIcon, Trash2 } from 'lucide-react';
 import { MONTH_NAMES, WEEKDAYS, getLocalDateString, formatDateBR, getShiftRangeFor, shiftRangesOverlap, isShiftPast, stripPublicationTags, normalize, getShiftName, isVacant, buildShortLabels, shiftHours, computeShiftHospitalLifecycle, getInitials, formatFullName, extractSpecialty, extractRetroactiveJustification, splitRangeByMonth, autoHealingSaveShift } from '@/lib/escalaUtils';
 import { printDayShifts, printMonthSchedule } from '@/lib/escalaPrints';
 import TvMode from '@/components/escala/TvMode';
@@ -34,7 +34,12 @@ export default function Escalas() {
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState('mensal'); 
-  const [monthlyView, setMonthlyView] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 768 ? 'lista' : 'grade'));
+  const [monthlyView, setMonthlyViewState] = useState(() => {
+    // Calendário é a visão padrão: é nele que se arrasta a equipe para os dias. A escolha fica lembrada.
+    try { const saved = window.localStorage.getItem('scale_escala_view'); if (['grade', 'calendario', 'lista'].includes(saved)) return saved; } catch { /* sem armazenamento */ }
+    return 'calendario';
+  });
+  const setMonthlyView = view => { setMonthlyViewState(view); try { window.localStorage.setItem('scale_escala_view', view); } catch { /* sem armazenamento */ } };
   // Calendário: dia aberto no painel de detalhes (abre como gaveta em telas menores).
   const [calendarDay, setCalendarDay] = useState(null);
   const [dayPanelOpen, setDayPanelOpen] = useState(false);
@@ -1580,6 +1585,30 @@ const handleAssignLegacyShiftUnit = async (shift) => {
     { id: 'noite', label: 'Noite', icon: Moon, match: h => h >= 18 || h < 5 }
   ];
 
+  // Lixeira do dia: tira todos os plantões do dia (no setor filtrado), com "Desfazer" por 10 segundos.
+  const handleClearDay = async (dateStr, dayShifts) => {
+    if (!dayShifts.length) return;
+    const withProf = dayShifts.filter(s => !isVacant(s)).length;
+    if (!confirm(`Tirar ${formatDateBR(dateStr)} da escala?\n\nSerão excluídos ${dayShifts.length} plantão(ões)${withProf ? `, ${withProf} com profissional` : ''}${selectedSectorObj ? ` do setor ${selectedSectorObj.name}` : ' de todos os setores mostrados'}. Dá para desfazer logo em seguida.`)) return;
+    try {
+      const ids = dayShifts.map(s => s.id);
+      const { data: rows, error: readError } = await supabase.from('shifts').select('*').in('id', ids);
+      if (readError) throw readError;
+      const { error } = await supabase.from('shifts').delete().in('id', ids);
+      if (error) throw error;
+      await syncGlobalData();
+      offerUndo({
+        title: `${formatDateBR(dateStr)} tirado da escala`,
+        description: `${ids.length} plantão(ões) excluído(s). Você tem 10 segundos para desfazer.`,
+        onUndo: async () => {
+          const { error: insertError } = await supabase.from('shifts').insert(rows || []);
+          if (insertError) throw insertError;
+          await syncGlobalData();
+        }
+      });
+    } catch (err) { alert('Não foi possível limpar o dia: ' + (err?.message || 'tente de novo.')); }
+  };
+
   const renderDayPanel = (dateStr) => {
     const dayShifts = (shiftsByDate[dateStr] || []).slice()
       .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)) || Number(isVacant(b)) - Number(isVacant(a)));
@@ -1598,6 +1627,12 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             </p>
           </div>
           <span className="flex shrink-0 items-center gap-1">
+            {isManager && dayShifts.length > 0 && (
+              <button type="button" onClick={() => handleClearDay(dateStr, dayShifts)} title="Tirar este dia da escala" aria-label="Tirar este dia da escala"
+                className="rounded-lg border border-slate-200 dark:border-slate-700 p-1.5 text-slate-500 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 cursor-pointer">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
             {isManager && (
               <button
                 type="button"
@@ -1667,9 +1702,16 @@ const handleAssignLegacyShiftUnit = async (shift) => {
                         </span>
                         {open ? (
                           isManager && (
-                            <button type="button" onClick={() => openShiftEditor(shift)} className="shrink-0 rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-sky-500 cursor-pointer">
-                              Alocar
-                            </button>
+                            <span className="flex shrink-0 items-center gap-1">
+                              <button type="button" onClick={() => openShiftEditor(shift)} className="rounded-lg bg-sky-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-sky-500 cursor-pointer">
+                                Alocar
+                              </button>
+                              <button type="button" onClick={() => { if (confirm(`Excluir a vaga de ${formatDateBR(dateStr)} ${shift.start_time}–${shift.end_time}?`)) handleDeleteShift(shift.id); }}
+                                aria-label={`Excluir a vaga das ${shift.start_time}`} title="Excluir esta vaga"
+                                className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30 cursor-pointer">
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </span>
                           )
                         ) : (
                           <span className="flex shrink-0 items-center gap-2">
