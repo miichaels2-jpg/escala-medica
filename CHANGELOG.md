@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.7.4 — 25/11/2026
+
+Informe de rendimentos do ano.
+
+- **Informe de rendimentos** em PDF: tudo o que o profissional recebeu de cada unidade no ano, mês a mês — plantões, horas, bruto, retenção, líquido e se o mês já foi marcado como pago —, com o CNPJ de cada unidade e os totais do ano. Mesma regra do fechamento: entra o plantão realizado; mensalista recebe o fixo em cada mês trabalhado na unidade; produtividade aparece com a quantidade de plantões e o aviso de que o valor está no demonstrativo mensal.
+- O profissional baixa na **Minha Escala** (cartão Meus ganhos › Informe de rendimentos, ano anterior ou atual); a gestão, no **Faturamento** (Detalhar › Informe), com as unidades que administra. Até maio o padrão é o ano anterior, que é o da declaração.
+- O documento avisa que é para conferência: o comprovante oficial para o Imposto de Renda é o de cada fonte pagadora.
+- Cálculo em `src/lib/incomeStatement.js` e impresso em `src/lib/incomePrint.js`, com testes.
+
 ## V0.7.3 — 25/11/2026
 
 Acolher quem usa.

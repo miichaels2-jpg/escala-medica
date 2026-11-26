@@ -17,6 +17,8 @@ import { buildPrintDocument, openPrintWindow, printHeader, printLogos } from '@/
 import { autoHealingSaveShift } from '@/lib/escalaUtils';
 import { formatCurrency, formatDateOrDash } from '@/lib/format';
 import { birthDateOf, buildWelcome, isBirthday } from '@/lib/welcome';
+import { buildIncomeStatement } from '@/lib/incomeStatement';
+import { buildIncomeStatementHtml } from '@/lib/incomePrint';
 
 function getShiftDateTime(date, time) {
   const [year, month, day] = String(date || '').split('T')[0].split('-').map(Number);
@@ -499,6 +501,21 @@ export default function MinhaEscala() {
     }
   };
 
+  // Informe de rendimentos do ano (todas as unidades), para conferir o Imposto de Renda.
+  const handlePrintIncomeStatement = (year) => {
+    const professional = currentProfessional || { id: myProfId, name: user?.full_name || 'Profissional' };
+    const statement = buildIncomeStatement({
+      professional,
+      shifts,
+      units,
+      year,
+      isPaid: (unitId, profId, month) => Boolean(isPaymentMarkedPaid?.(unitId, profId, month)),
+      now: new Date()
+    });
+    const html = buildIncomeStatementHtml({ statement, professional, company, issuedBy: user?.full_name || '' });
+    if (!openPrintWindow(html, 'width=1000,height=800')) alert('Permita pop-ups para abrir o informe.');
+  };
+
   const handlePrintMyStatement = () => {
     const profNome = currentProfessional?.name || user?.full_name || 'Profissional';
     const registration = profMeta.registration_id || currentProfessional?.registration_id || '';
@@ -751,6 +768,15 @@ export default function MinhaEscala() {
           <button type="button" onClick={handlePrintMyStatement} className="mt-2 text-[11px] font-semibold text-sky-700 dark:text-sky-300 hover:underline cursor-pointer">
             Ver espelho do mês (PDF)
           </button>
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+            Informe de rendimentos (IR):{' '}
+            {[now.getFullYear() - 1, now.getFullYear()].map((year, index) => (
+              <span key={year}>
+                {index > 0 && ' · '}
+                <button type="button" onClick={() => handlePrintIncomeStatement(year)} className="font-semibold text-sky-700 dark:text-sky-300 hover:underline cursor-pointer">{year}</button>
+              </span>
+            ))}
+          </p>
         </Card>
 
         <Card className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">

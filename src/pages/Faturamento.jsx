@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatDateOrDash, getLocalDateString, safeNumber } from '@/lib/format';
 import { getProfessionalMeta, getStoredProductivityAttendance } from '@/lib/reportUtils';
+import { buildIncomeStatement, defaultIncomeYear } from '@/lib/incomeStatement';
+import { buildIncomeStatementHtml } from '@/lib/incomePrint';
 
 function roundCurrency(val) {
   return Math.round((safeNumber(val) + Number.EPSILON) * 100) / 100;
@@ -96,7 +98,7 @@ function getSpreadsheetCellValue(cell) {
 }
 
 export default function Faturamento() {
-  const { shifts = [], professionals = [], sectors = [], company, user, selectedUnitId, units = [], isManager, syncGlobalData, paymentStatuses, isPaymentMarkedPaid, savePaymentStatus } = useAppData();
+  const { shifts = [], professionals = [], sectors = [], company, user, selectedUnitId, units = [], isManager, syncGlobalData, paymentStatuses, isPaymentMarkedPaid, savePaymentStatus, allCompanyShifts = [] } = useAppData();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [now, setNow] = useState(() => new Date());
@@ -941,6 +943,21 @@ export default function Faturamento() {
     if (!openPrintWindow(html)) alert('Permita os pop-ups para abrir o relatório.');
   };
 
+  // Informe de rendimentos do ano: todas as unidades que este gestor administra.
+  const handlePrintIncomeStatement = (professional, year = defaultIncomeYear()) => {
+    const allowed = Array.isArray(user?.data?.allowed_unit_ids) ? user.data.allowed_unit_ids.map(String) : [];
+    const canSee = unitId => user?.role === 'admin' || allowed.length === 0 || allowed.includes(String(unitId));
+    const statement = buildIncomeStatement({
+      professional,
+      shifts: (allCompanyShifts.length ? allCompanyShifts : shifts).filter(s => canSee(s.unit_id)),
+      units: units.filter(u => canSee(u.id)),
+      year,
+      isPaid: (unitId, profId, month) => isPaymentMarkedPaid(unitId, profId, month)
+    });
+    const html = buildIncomeStatementHtml({ statement, professional, company, issuedBy: user?.full_name || '' });
+    if (!openPrintWindow(html, 'width=1000,height=800')) alert('Permita os pop-ups para abrir o informe.');
+  };
+
   const handlePrintIndividualReceipt = (item) => {
     const hospitalName = currentUnitName;
     const competencia = `${MONTH_NAMES[currentMonth]} / ${currentYear}`;
@@ -1581,13 +1598,22 @@ export default function Faturamento() {
                 </div>
               </div>
 
-              <div className="pt-2 flex justify-end gap-2">
+              <div className="pt-2 flex flex-wrap justify-end gap-2">
                 <Button 
                   variant="outline" 
                   onClick={() => handlePrintIndividualReceipt(selectedProfModal)}
                   className="h-9 text-xs font-semibold gap-1.5 cursor-pointer"
                 >
                   <Receipt className="w-3.5 h-3.5 text-emerald-600" /> {selectedProfModal.isPago ? 'Imprimir recibo' : 'Imprimir demonstrativo'}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={() => handlePrintIncomeStatement(selectedProfModal.prof)}
+                  title="Tudo o que o profissional recebeu no ano, por unidade e mês, para conferir o Imposto de Renda"
+                  className="h-9 text-xs font-semibold gap-1.5 cursor-pointer"
+                >
+                  <Receipt className="w-3.5 h-3.5 text-slate-500" /> Informe {defaultIncomeYear()}
                 </Button>
                 
                 <Button onClick={() => handleSendStatementWhatsApp(selectedProfModal)} className="h-9 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-5 gap-2 cursor-pointer">
