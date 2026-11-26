@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.8.3 — 26/11/2026
+
+Plataforma › Pessoas e acessos.
+
+- Botão **Pessoas e acessos** em cada estabelecimento da Plataforma (só o dono):
+  - **Quem entra no estabelecimento** e com qual papel: Gestor, Coordenador, Faturamento ou Plantonista. O papel vale só ali e pode ser trocado na hora (as telas voltam ao padrão do papel). **Tirar acesso** remove a pessoa daquele estabelecimento sem mexer nos outros; se era o estabelecimento em uso, ela passa a entrar em outro que tenha.
+  - **Transferir profissionais** para outro estabelecimento: marcar um, vários ou todos, escolher o destino e os hospitais liberados lá. **Copiar** (continua também na origem) ou **mover** (sai da origem e fica inativo lá, com o histórico guardado). Quem tem login usa a mesma senha e passa a escolher o estabelecimento ao entrar. Quem já está no destino (mesmo login, CPF ou e-mail) fica de fora, com o motivo. Setores e valores por hospital ficam para ajustar no Corpo Clínico do destino.
+- Precisa da atualização do banco `20261126200000_platform_people.sql`, aplicada pelo editor SQL do Supabase; até lá a janela avisa o que falta.
+
 ## V0.8.2 — 26/11/2026
 
 Montar a escala arrastando, no horário escolhido.
