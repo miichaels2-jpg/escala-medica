@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.7.10 — 26/11/2026
+
+Importação do Corpo Clínico sem travar.
+
+- **Planilha do próprio hospital:** a importação reconhece cabeçalhos comuns (Nome, CPF, E-mail, Celular, CRM, Profissão, Especialidade, Data de nascimento, Hospital, Setor, Valor do plantão, Chave PIX, CNPJ…), em qualquer ordem, e aceita **.xlsx ou .csv**.
+- **Ajusta em vez de travar:** categoria, status, perfil, regime, tipo de PIX, data, e-mail, hospital ou setor que não forem reconhecidos entram com o padrão e um aviso em amarelo para ajustar depois no cadastro. A categoria é deduzida do texto (médica, enfermeira, técnico de enfermagem…); o tipo de PIX, da própria chave.
+- **Especialidade entra direto** e já aparece nas listas; escrita de outro jeito ("clinica medica") usa a grafia já cadastrada. Nomes em MAIÚSCULAS viram "Nome Próprio".
+- Datas em 05/03/1990, 05-03-90, 05.03.1990 ou no formato de data do Excel; fórmula vale pelo resultado.
+- **Valor do plantão** (único ou diurno, noturno e fim de semana) já entra na tabela de valores do hospital; com CNPJ, o recibo fica como PJ.
+- Prévia em quatro grupos: **vão entrar**, **com ajustes**, **já cadastrados** (mesmo CPF, e-mail ou matrícula; ficam de fora para não duplicar) e **não entram** (sem nome ou repetidos na planilha).
+- Manual do Corpo Clínico atualizado; regras em `src/lib/professionalImport.js`, com testes.
+
 ## V0.7.9 — 26/11/2026
 
 Indicadores da escala e ajustes da Plataforma.

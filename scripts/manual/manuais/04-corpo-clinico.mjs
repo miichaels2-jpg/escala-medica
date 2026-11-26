@@ -13,7 +13,7 @@ export default {
         { tabela: { cab: ['Jeito de cadastrar', 'Quando usar'], linhas: [
           ['`Novo profissional`', 'A coordenação preenche tudo. Bom para poucas pessoas ou quem não tem facilidade com celular.'],
           ['`Convidar equipe`', 'Manda um link; cada profissional preenche a própria ficha e ela chega para aprovação. Bom para a equipe toda.'],
-          ['`Importar planilha`', 'Traz muitos profissionais de uma vez, a partir do modelo em Excel.']
+          ['`Importar planilha`', 'Traz muitos profissionais de uma vez, da planilha do próprio hospital (.xlsx ou .csv) ou do modelo.']
         ] } }
       ]
     },
@@ -25,7 +25,7 @@ export default {
           '**Busca:** por nome, CPF, número do conselho ou e-mail. Ao lado, o filtro por categoria e a troca entre lista e cartões.',
           '`Novo profissional`: cadastro feito pela coordenação, em 3 passos.',
           '`Convidar equipe`: link de credenciamento para mandar à equipe.',
-          '`Importar planilha`: cadastro em massa. O botão `Baixar modelo Excel` traz a planilha pronta para preencher.',
+          '`Importar planilha`: cadastro em massa, com a planilha que o hospital já tem. Se preferir, `Baixar modelo Excel` traz uma planilha pronta para preencher.',
           '`Editar`: abre o cadastro do profissional. Ao lado, `Desativar` e o botão do WhatsApp, que abre uma conversa com ele.'
         ] },
         { p: 'Cada linha mostra a categoria, a situação, a matrícula, especialidade, conselho, validade da credencial, hospitais, regime de pagamento, telefone e quantos setores ele pode cobrir.' }
@@ -100,12 +100,20 @@ export default {
     {
       titulo: 'Importar planilha',
       blocos: [
+        { p: 'Não precisa refazer a planilha do hospital. A importação reconhece colunas com nomes comuns, como **Nome, CPF, E-mail, Celular, CRM, Profissão, Especialidade, Data de nascimento, Hospital, Setor, Valor do plantão, Chave PIX e CNPJ**, em qualquer ordem. Uma linha por profissional; a primeira linha é o cabeçalho.' },
         { passos: [
-          'Clique em `Baixar modelo Excel` e preencha uma linha por profissional, seguindo as colunas do modelo.',
-          'Clique em `Importar planilha` e escolha o arquivo.',
-          'Confira a **prévia**: linhas com erro não são importadas, e profissionais que já existem precisam ser revisados à mão.',
-          'Clique em `Importar profissionais válidos`. O sistema informa quantos entraram e quantos falharam.'
+          'Clique em `Importar planilha` e escolha o arquivo (.xlsx ou .csv).',
+          'Confira a **prévia**, que separa as linhas em quatro grupos (tabela abaixo).',
+          'Clique em `Importar N profissional(is)`. Entram os prontos e os com ajustes.',
+          'Depois, abra quem ficou com aviso em `Editar` e complete o que faltou (valor do plantão, categoria, setor…).'
         ] },
+        { tabela: { cab: ['Grupo', 'O que significa'], linhas: [
+          ['Pronto', 'Tudo reconhecido. Entra como está.'],
+          ['Entra com ajustes', 'Algum valor não foi reconhecido (ex.: categoria "Motorista", data "ontem", e-mail sem domínio, hospital com outro nome). Entra com o padrão e o aviso diz o que ajustar depois.'],
+          ['Já cadastrado', 'Já existe alguém com o mesmo CPF, e-mail ou matrícula. Fica de fora para não duplicar.'],
+          ['Não entra', 'Linha sem nome ou repetida dentro da própria planilha.']
+        ] } },
+        { dica: 'A especialidade entra do jeito que está na planilha e já aparece nas listas do sistema. Se ela já existir escrita de outro jeito ("clinica medica"), o sistema usa a grafia cadastrada ("Clínica Médica"). Nomes em MAIÚSCULAS viram "Nome Próprio". Datas podem vir como 05/03/1990, 05-03-90 ou no formato de data do Excel.' },
         { atencao: 'A planilha não leva senhas e não cria o acesso ao sistema. Depois de importar, abra cada profissional em `Editar` para gerar a senha e liberar o acesso.' }
       ]
     },
