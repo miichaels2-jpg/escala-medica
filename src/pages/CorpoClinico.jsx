@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { saveRow } from '@/lib/saveRow';
 import { safeNumber } from '@/lib/format';
+import { parseCsv, prepareProfessionalRow } from '@/lib/professionalImport';
 
 const FORM_STEPS = ['Dados', 'Acesso', 'Valores'];
 
@@ -444,6 +445,8 @@ export default function CorpoClinico() {
         ['tipo_pix', 'CPF, CNPJ, Email, Telefone ou Aleatoria.'],
         ['data_nascimento / validade_credencial', 'Formato recomendado: AAAA-MM-DD; também aceita DD/MM/AAAA.'],
         ['valores_por_unidade_json', 'Opcional. JSON por ID de unidade. Para plantão: diurno/noturno/fds. Para mensal: mensal. Exemplo: {"ID_UNIDADE":{"diurno":1200,"noturno":1400,"fds":1800,"mensal":5000}}.'],
+        ['valor_plantao / valor_diurno / valor_noturno / valor_fds', 'Opcional. Valor do plantão em R$ (ex.: 1200 ou R$ 1.200,00). valor_plantao vale para os três quando os outros não forem informados.'],
+        ['Planilha do hospital', 'Não precisa ser este modelo: a importação reconhece cabeçalhos comuns como Nome, CPF, E-mail, Celular, CRM, Especialidade, Data de nascimento, Hospital, Setor, Valor do plantão, Chave PIX e CNPJ. O que não for reconhecido entra com o padrão e aparece como aviso na prévia.'],
         ['Importante', 'Não inclua senhas. A importação cadastra os perfis, mas não cria contas de acesso. Revise a prévia antes de importar.']
       ];
       const guide = workbook.addWorksheet('Orientações');
@@ -468,214 +471,20 @@ export default function CorpoClinico() {
     }
   };
 
-  const prepareImportPayload = (rawRow, lineNumber, seenKeys) => {
-    const row = {};
-    Object.entries(rawRow).forEach(([key, value]) => { row[normalizeImportHeader(key)] = String(value ?? '').trim(); });
-    const errors = [];
-    if (rawRow._formula_error || row.formula_error) errors.push('fórmulas não são aceitas; substitua pelo valor final');
-    const name = row.nome_completo || row.nome || '';
-    if (!name) errors.push('nome_completo é obrigatório');
-
-    const categoryInput = row.categoria || 'medico';
-    const category = allCategories.find(item =>
-      item.id.toLowerCase() === categoryInput.toLowerCase() ||
-      item.label.toLowerCase() === categoryInput.toLowerCase()
-    );
-    if (!category) errors.push(`categoria desconhecida: ${categoryInput}`);
-
-    const statusAliases = { ativo: 'ativo', inativo: 'inativo', pendente: 'pendente', em_analise: 'em_analise', recusado: 'recusado' };
-    const statusInput = normalizeImportHeader(row.status || 'ativo');
-    if (!statusAliases[statusInput]) errors.push(`status inválido: ${row.status}`);
-    const roleInput = row.perfil_acesso || 'assistencial';
-    const role = ACCESS_ROLES.find(item =>
-      item.id.toLowerCase() === roleInput.toLowerCase() ||
-      item.label.toLowerCase() === roleInput.toLowerCase()
-    );
-    if (!role) errors.push(`perfil_acesso desconhecido: ${roleInput}`);
-
-    const remunerationAliases = {
-      plantao: 'plantao', 'por_plantao': 'plantao', mensal: 'mensal',
-      produtividade: 'produtividade', 'produtividade_comissao': 'produtividade'
-    };
-    const remunerationInput = normalizeImportHeader(row.regime_remuneracao || 'plantao');
-    if (!remunerationAliases[remunerationInput]) errors.push(`regime_remuneracao inválido: ${row.regime_remuneracao}`);
-
-    const resolveByNameOrId = (input, list, label) => {
-      if (!input) return [];
-      const requested = input.split('|').map(value => value.trim()).filter(Boolean);
-      const ids = [];
-      requested.forEach(value => {
-        const matches = list.filter(item =>
-          String(item.id) === value || String(item.name || '').toLowerCase() === value.toLowerCase()
-        );
-        if (matches.length !== 1) errors.push(`${label} não encontrado ou ambíguo: ${value}`);
-        else if (!ids.includes(String(matches[0].id))) ids.push(String(matches[0].id));
-      });
-      return ids;
-    };
-
-    const fallbackUnits = [String(selectedUnitId || units?.[0]?.id || '')].filter(Boolean);
-    const allowedUnitIds = row.unidades_permitidas
-      ? resolveByNameOrId(row.unidades_permitidas, units || [], 'unidades_permitidas')
-      : fallbackUnits;
-    if (allowedUnitIds.length === 0) errors.push('selecione ao menos uma unidade válida');
-    const authorizedSectors = row.setores_autorizados
-      ? resolveByNameOrId(row.setores_autorizados, sectors || [], 'setores_autorizados')
-      : (sectors || []).map(sector => String(sector.id));
-    const pixTypes = ['CPF', 'CNPJ', 'Email', 'Telefone', 'Aleatoria'];
-    const pixType = pixTypes.find(value => normalizeImportHeader(value) === normalizeImportHeader(row.tipo_pix || 'CPF'));
-    if (!pixType) errors.push(`tipo_pix inválido: ${row.tipo_pix}`);
-
-    const birthDate = parseImportDate(row.data_nascimento);
-    const expiryDate = parseImportDate(row.validade_credencial);
-    if (row.data_nascimento && birthDate === null) errors.push('data_nascimento deve ser AAAA-MM-DD ou DD/MM/AAAA');
-    if (row.validade_credencial && expiryDate === null) errors.push('validade_credencial deve ser AAAA-MM-DD ou DD/MM/AAAA');
-    if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) errors.push('email inválido');
-
-    const parseNonNegative = (value, label) => {
-      if (!value) return 0;
-      const parsed = safeNumber(value, NaN);
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        errors.push(`${label} deve ser um número igual ou maior que zero`);
-        return 0;
-      }
-      return parsed;
-    };
-    const monthlySalary = parseNonNegative(row.salario_mensal, 'salario_mensal');
-    const coopTaxRate = parseNonNegative(row.retencao_percentual, 'retencao_percentual');
-
-    let unitRates = {};
-    let unitMonthlySalaries = {};
-    if (row.salario_mensal !== '' && allowedUnitIds[0]) {
-      unitMonthlySalaries[allowedUnitIds[0]] = monthlySalary;
-    }
-    if (row.valores_por_unidade_json) {
-      try {
-        const parsed = JSON.parse(row.valores_por_unidade_json);
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('JSON precisa ser um objeto');
-        Object.entries(parsed).forEach(([unitId, values]) => {
-          if (!(units || []).some(unit => String(unit.id) === String(unitId))) {
-            errors.push(`valores_por_unidade_json usa ID de unidade desconhecido: ${unitId}`);
-            return;
-          }
-          if (!allowedUnitIds.includes(String(unitId))) {
-            errors.push(`valores_por_unidade_json inclui unidade não autorizada: ${unitId}`);
-            return;
-          }
-          if (!values || typeof values !== 'object' || Array.isArray(values)) {
-            errors.push(`tabela de valores inválida para a unidade ${unitId}`);
-            return;
-          }
-          unitRates[unitId] = {};
-          ['diurno', 'noturno', 'fds'].forEach(field => {
-            const value = values[field];
-            if (value === '' || value === null || value === undefined) return;
-            const amount = Number(value);
-            if (!Number.isFinite(amount) || amount < 0) errors.push(`${field} inválido na unidade ${unitId}`);
-            else unitRates[unitId][field] = amount;
-          });
-          if (values.mensal !== '' && values.mensal !== null && values.mensal !== undefined) {
-            const amount = Number(values.mensal);
-            if (!Number.isFinite(amount) || amount < 0) errors.push(`mensal inválido na unidade ${unitId}`);
-            else unitMonthlySalaries[unitId] = amount;
-          }
-        });
-      } catch (error) {
-        errors.push(`valores_por_unidade_json inválido: ${error.message}`);
-      }
-    }
-    if (remunerationAliases[remunerationInput] === 'mensal') {
-      allowedUnitIds.forEach(unitId => {
-        if (!Object.prototype.hasOwnProperty.call(unitMonthlySalaries, unitId)) {
-          errors.push(`informe o valor mensal da unidade ${unitId} em salario_mensal ou valores_por_unidade_json`);
-        }
-      });
-    }
-    const primaryMonthlySalary = unitMonthlySalaries[allowedUnitIds[0]] !== undefined
-      ? safeNumber(unitMonthlySalaries[allowedUnitIds[0]], monthlySalary)
-      : monthlySalary;
-
-    const cpf = row.cpf || '';
-    const email = row.email.toLowerCase();
-    const cleanUsername = (email ? email.split('@')[0] : name || `profissional${lineNumber}`)
-      .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]/g, '.').replace(/\.+/g, '.').replace(/^\.|\.$/g, '');
-    const finalEmail = email || `${cleanUsername || 'profissional'}.${Date.now()}${lineNumber}@scalemedic.local`;
-    const registrationId = row.matricula || `MAT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const keys = [
-      cpf.replace(/\D/g, '') ? `cpf:${cpf.replace(/\D/g, '')}` : '',
-      email ? `email:${email}` : '',
-      row.matricula ? `matricula:${row.matricula.toLowerCase()}` : ''
-    ].filter(Boolean);
-    const normalizedName = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
-    const normalizedPhone = String(row.telefone || '').replace(/\D/g, '');
-    if (keys.length === 0 && normalizedName && normalizedPhone) {
-      keys.push(`nome_telefone:${normalizedName}:${normalizedPhone}`);
-    }
-    if (keys.some(key => seenKeys.has(key))) errors.push('profissional duplicado nesta planilha');
-    keys.forEach(key => seenKeys.add(key));
-    const existing = (professionals || []).find(prof => {
-      const meta = getProfMeta(prof);
-      const existingCpf = String(prof.cpf || meta.cpf || '').replace(/\D/g, '');
-      const existingEmail = String(prof.email || '').toLowerCase();
-      const existingRegistration = String(meta.registration_id || prof.registration_id || '').toLowerCase();
-      const existingName = String(prof.name || prof.full_name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
-      const existingPhone = String(prof.phone || '').replace(/\D/g, '');
-      return (cpf.replace(/\D/g, '') && existingCpf === cpf.replace(/\D/g, '')) ||
-        (email && existingEmail === email) ||
-        (row.matricula && existingRegistration === row.matricula.toLowerCase()) ||
-        (normalizedName && normalizedPhone && existingName === normalizedName && existingPhone === normalizedPhone);
-    });
-    if (existing) errors.push(`já existe cadastro compatível: ${existing.name || existing.email}; revise ou edite manualmente`);
-
-    const mainSector = row.setor_principal || sectors?.[0]?.name || '';
-    const specialty = row.especialidade || mainSector;
-    const richMeta = {
-      username: cleanUsername,
-      category: category?.id || 'medico',
-      app_role: role?.id || 'assistencial',
-      main_sector: mainSector,
-      specialty,
-      rqe: row.rqe || '',
-      cbo: row.cbo || '',
-      registration_id: registrationId,
-      coop_tax_rate: coopTaxRate,
-      remuneration_type: remunerationAliases[remunerationInput] || 'plantao',
-      monthly_salary: primaryMonthlySalary,
-      unit_monthly_salaries: unitMonthlySalaries,
-      unit_rates: unitRates,
-      pix_type: pixType || 'CPF',
-      bank_info: row.dados_bancarios || '',
-      pix_key: row.chave_pix || '',
-      document_expiry: expiryDate || '',
-      status: statusAliases[statusInput] || 'ativo',
-      authorized_sectors: authorizedSectors,
-      allowed_unit_ids: allowedUnitIds,
-      blocked_sectors: row.setores_autorizados ? blockedSectorsFrom(authorizedSectors, sectors || [], allowedUnitIds) : [],
-      birth_date: birthDate || '',
-      cpf
-    };
-    const payload = {
-      company_id: company?.id || 'cmp_principal',
-      unit_id: allowedUnitIds[0] || '',
-      unit_ids: allowedUnitIds,
-      name: name.trim(),
-      document: row.conselho || '',
-      specialty,
-      rqe: row.rqe || '',
-      cbo: row.cbo || '',
-      cpf,
-      email: finalEmail,
-      phone: row.telefone || '',
-      status: statusAliases[statusInput] || 'ativo',
-      remuneration_type: remunerationAliases[remunerationInput] || 'plantao',
-      monthly_salary: primaryMonthlySalary,
-      document_expiry: expiryDate || '',
-      birth_date: birthDate || '',
-      data: richMeta
-    };
-    return { lineNumber, name: name || `Linha ${lineNumber}`, errors, payload, richMeta };
-  };
+  // Cada linha: campos reconhecidos pelo nome do cabeçalho, ajustes automáticos com aviso
+  // e só fica de fora quem não tem nome, está repetido ou já está cadastrado.
+  const prepareImportPayload = (rawRow, lineNumber, seenKeys) => prepareProfessionalRow(rawRow, {
+    lineNumber,
+    seenKeys,
+    categories: allCategories,
+    roles: ACCESS_ROLES,
+    units: units || [],
+    sectors: allCompanySectors?.length ? allCompanySectors : (sectors || []),
+    selectedUnitId,
+    companyId: company?.id || 'cmp_principal',
+    existing: allCompanyProfessionals?.length ? allCompanyProfessionals : (professionals || []),
+    existingSpecialties: [...new Set((allCompanyProfessionals || []).map(prof => prof.specialty || prof.data?.specialty).filter(Boolean))]
+  });
 
   const handleImportFile = async (event) => {
     const file = event.target.files?.[0];
@@ -686,8 +495,20 @@ export default function CorpoClinico() {
     setImportFileName(file.name);
     try {
       if (file.size > 10 * 1024 * 1024) throw new Error('O arquivo ultrapassa o limite de 10 MB.');
-      if (!file.name.toLowerCase().endsWith('.xlsx')) {
-        throw new Error('Envie um arquivo Excel no formato .xlsx. Baixe o modelo disponibilizado nesta tela.');
+      const lowerName = file.name.toLowerCase();
+      if (!lowerName.endsWith('.xlsx') && !lowerName.endsWith('.csv')) {
+        throw new Error('Envie a planilha em .xlsx (Excel) ou .csv. No Excel: Arquivo › Salvar como › Pasta de Trabalho do Excel (.xlsx).');
+      }
+      if (lowerName.endsWith('.csv')) {
+        const table = parseCsv(await file.text());
+        if (table.length < 2) throw new Error('A planilha está vazia ou contém apenas o cabeçalho.');
+        const [head, ...body] = table;
+        const seenKeysCsv = new Set();
+        setImportRows(body.map((cells, index) => prepareImportPayload(
+          Object.fromEntries(head.map((header, i) => [header, cells[i] ?? ''])), index + 2, seenKeysCsv
+        )));
+        setImportOpen(true);
+        return;
       }
       const { default: ExcelJS } = await import('exceljs');
       const workbook = new ExcelJS.Workbook();
@@ -700,20 +521,24 @@ export default function CorpoClinico() {
         if (rowNumber === 1) return;
         const row = { _line_number: rowNumber };
         let hasValue = false;
-        let hasFormula = false;
+        let formulaWithoutValue = false;
+        const isoDate = date => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
         headers.forEach((header, index) => {
           if (!header) return;
           const cell = sheetRow.getCell(index + 1);
-          if (cell.value && typeof cell.value === 'object' &&
-              ('formula' in cell.value || 'sharedFormula' in cell.value)) hasFormula = true;
-          const value = cell.value instanceof Date
-            ? `${cell.value.getUTCFullYear()}-${String(cell.value.getUTCMonth() + 1).padStart(2, '0')}-${String(cell.value.getUTCDate()).padStart(2, '0')}`
-            : cell.text;
+          // Fórmula vale pelo resultado que o Excel guardou.
+          const isFormula = cell.value && typeof cell.value === 'object' && ('formula' in cell.value || 'sharedFormula' in cell.value);
+          const raw = isFormula ? cell.value.result : cell.value;
+          if (isFormula && (raw === undefined || raw === null)) formulaWithoutValue = true;
+          const value = raw instanceof Date ? isoDate(raw)
+            : raw && typeof raw === 'object' && raw.text ? String(raw.text)
+            : raw && typeof raw === 'object' && Array.isArray(raw.richText) ? raw.richText.map(part => part.text).join('')
+            : isFormula ? String(raw ?? '') : cell.text;
           row[header] = value;
           if (String(value || '').trim()) hasValue = true;
         });
         if (hasValue) {
-          if (hasFormula) row._formula_error = 'true';
+          if (formulaWithoutValue) row._formula_without_value = 'true';
           sourceRows.push(row);
         }
       });
@@ -735,7 +560,7 @@ export default function CorpoClinico() {
       alert('Somente gestores podem importar profissionais.');
       return;
     }
-    const readyRows = importRows.filter(row => row.errors.length === 0 && !row.imported);
+    const readyRows = importRows.filter(row => row.errors.length === 0 && !row.existingMatch && !row.imported);
     if (readyRows.length === 0) return;
     setImporting(true);
     try {
@@ -1015,7 +840,7 @@ export default function CorpoClinico() {
       {isManager && <PrivacyRequestsBanner />}
       <InviteTeamDialog open={inviteOpen} onOpenChange={setInviteOpen} code={company?.registration_code} />
 
-      <input ref={importInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleImportFile} />
+      <input ref={importInputRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={handleImportFile} />
 
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 sm:p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
@@ -1682,42 +1507,52 @@ export default function CorpoClinico() {
               <>
                 <div className="p-3 rounded-xl border border-sky-200 dark:border-sky-900 bg-sky-50/70 dark:bg-sky-950/30 text-xs text-sky-900 dark:text-sky-100 space-y-1">
                   <p className="font-semibold">{importFileName || 'Planilha pronta para revisão'}</p>
-                  <p>Confira a prévia. Linhas com erro não serão importadas; duplicidades existentes precisam ser revisadas manualmente.</p>
+                  <p>Pode ser a planilha do próprio hospital: o sistema reconhece colunas como Nome, CPF, E-mail, Celular, CRM, Especialidade, Data de nascimento, Hospital, Setor e Valor do plantão. O que não reconhecer entra com o padrão e um aviso em amarelo, para ajustar depois no cadastro.</p>
                   <p className="font-semibold">A planilha não cria contas de acesso nem importa senhas. Configure o acesso de cada profissional depois, no cadastro.</p>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 p-3 text-center">
-                    <span className="block text-lg font-semibold text-emerald-700 dark:text-emerald-300">{importRows.filter(row => !row.errors.length && !row.imported).length}</span>
-                    <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Prontos</span>
-                  </div>
-                  <div className="rounded-xl bg-rose-50 dark:bg-rose-950/30 p-3 text-center">
-                    <span className="block text-lg font-semibold text-rose-700 dark:text-rose-300">{importRows.filter(row => row.errors.length || row.importError).length}</span>
-                    <span className="text-xs font-semibold text-rose-700 dark:text-rose-300">Com erro</span>
-                  </div>
-                  <div className="rounded-xl bg-sky-50 dark:bg-sky-950/30 p-3 text-center">
-                    <span className="block text-lg font-semibold text-sky-700 dark:text-sky-300">{importRows.filter(row => row.imported).length}</span>
-                    <span className="text-xs font-semibold text-sky-700 dark:text-sky-300">Importados</span>
-                  </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    ['Vão entrar', importRows.filter(row => !row.errors.length && !row.existingMatch && !row.imported).length, 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'],
+                    ['Com ajustes', importRows.filter(row => !row.errors.length && !row.existingMatch && !row.imported && row.warnings?.length).length, 'bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300'],
+                    ['Já cadastrados', importRows.filter(row => row.existingMatch && !row.errors.length).length, 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'],
+                    ['Não entram', importRows.filter(row => row.errors.length || row.importError).length, 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300']
+                  ].map(([label, count, tone]) => (
+                    <div key={label} className={`rounded-xl p-3 text-center ${tone}`}>
+                      <span className="block text-lg font-semibold tabular-nums">{count}</span>
+                      <span className="text-xs font-semibold">{label}</span>
+                    </div>
+                  ))}
                 </div>
+                {importRows.some(row => row.imported) && <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{importRows.filter(row => row.imported).length} importado(s) agora.</p>}
 
                 <div className="max-h-72 overflow-y-auto space-y-2 pr-1" aria-label="Prévia de linhas da planilha">
                   {importRows.map(row => (
                     <div key={row.lineNumber} className={`p-3 rounded-xl border ${
                       row.imported ? 'border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20' :
                       row.errors.length || row.importError ? 'border-rose-200 bg-rose-50/60 dark:bg-rose-950/20' :
+                      row.existingMatch ? 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60' :
+                      row.warnings?.length ? 'border-amber-200 bg-amber-50/50 dark:border-amber-500/30 dark:bg-amber-950/20' :
                       'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'
                     }`}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-slate-900 dark:text-white">Linha {row.lineNumber}: {row.name}</span>
+                        <span className="text-xs font-semibold text-slate-900 dark:text-white">Linha {row.lineNumber}: {row.name}{row.payload?.specialty ? <span className="font-normal text-slate-500 dark:text-slate-400"> · {row.payload.specialty}</span> : null}</span>
                         <span className={`text-xs font-semibold ${
                           row.imported ? 'text-emerald-700 dark:text-emerald-300' :
                           row.errors.length || row.importError ? 'text-rose-700 dark:text-rose-300' :
-                          'text-sky-700 dark:text-sky-300'
-                        }`}>{row.imported ? 'Importado' : row.errors.length || row.importError ? 'Revisar' : 'Pronto'}</span>
+                          row.existingMatch ? 'text-slate-500 dark:text-slate-400' :
+                          row.warnings?.length ? 'text-amber-700 dark:text-amber-300' :
+                          'text-emerald-700 dark:text-emerald-300'
+                        }`}>{row.imported ? 'Importado' : row.errors.length || row.importError ? 'Não entra' : row.existingMatch ? 'Já cadastrado' : row.warnings?.length ? 'Entra com ajustes' : 'Pronto'}</span>
                       </div>
                       {(row.errors.length > 0 || row.importError) && (
                         <p className="mt-1 text-[11px] text-rose-700 dark:text-rose-300">{[...row.errors, row.importError].filter(Boolean).join(' · ')}</p>
+                      )}
+                      {!row.errors.length && row.existingMatch && !row.imported && (
+                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Já existe {row.existingMatch.name || 'um cadastro'} com o mesmo CPF, e-mail ou matrícula: fica de fora para não duplicar. Edite pelo Corpo Clínico, se precisar.</p>
+                      )}
+                      {!row.errors.length && !row.existingMatch && row.warnings?.length > 0 && !row.imported && (
+                        <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-300">{row.warnings.join(' · ')}</p>
                       )}
                     </div>
                   ))}
@@ -1728,9 +1563,9 @@ export default function CorpoClinico() {
 
           <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={() => setImportOpen(false)} disabled={importing} className="text-xs h-10 cursor-pointer">Fechar</Button>
-            <Button type="button" onClick={handleImportProfessionals} disabled={importing || !importRows.some(row => !row.errors.length && !row.imported)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs h-10 px-5 rounded-xl gap-2 cursor-pointer">
+            <Button type="button" onClick={handleImportProfessionals} disabled={importing || !importRows.some(row => !row.errors.length && !row.existingMatch && !row.imported)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs h-10 px-5 rounded-xl gap-2 cursor-pointer">
               {importing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              Importar profissionais válidos
+              Importar {importRows.filter(row => !row.errors.length && !row.existingMatch && !row.imported).length} profissional(is)
             </Button>
           </DialogFooter>
         </DialogContent>
