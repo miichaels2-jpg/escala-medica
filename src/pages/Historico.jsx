@@ -17,7 +17,8 @@ const TYPES = [
   { id: 'shifts', label: 'Plantões' },
   { id: 'published_schedules', label: 'Publicações' },
   { id: 'payment_statuses', label: 'Pagamentos' },
-  { id: 'shift_swaps', label: 'Trocas' }
+  { id: 'shift_swaps', label: 'Trocas' },
+  { id: 'invoices', label: 'Notas fiscais' }
 ];
 
 function startOfPeriod(days) {

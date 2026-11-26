@@ -17,6 +17,9 @@ import { formatCurrency, formatDateOrDash, getLocalDateString, safeNumber } from
 import { getProfessionalMeta, getStoredProductivityAttendance } from '@/lib/reportUtils';
 import { buildIncomeStatement, defaultIncomeYear } from '@/lib/incomeStatement';
 import { buildIncomeStatementHtml } from '@/lib/incomePrint';
+import { INVOICE_STATUS, invoiceKey, invoiceState, isPjProfessional, paymentNeedsInvoice } from '@/lib/invoiceRules';
+import { fetchInvoices, openInvoiceFile, reviewInvoice } from '@/lib/invoices';
+import { recipientFor, sendNotifications } from '@/lib/notifications';
 
 function roundCurrency(val) {
   return Math.round((safeNumber(val) + Number.EPSILON) * 100) / 100;
@@ -249,6 +252,57 @@ export default function Faturamento() {
   });
   const [showProductivitySettings, setShowProductivitySettings] = useState(false);
 
+  // Notas fiscais dos profissionais PJ neste mês (todas as unidades da empresa).
+  const [invoices, setInvoices] = useState(() => new Map());
+  const [invoiceBusy, setInvoiceBusy] = useState('');
+  useEffect(() => {
+    let active = true;
+    if (!company?.id) return undefined;
+    fetchInvoices({ companyId: company.id, month: monthPrefix })
+      .then(map => { if (active) setInvoices(map); })
+      .catch(error => console.warn('Não foi possível carregar as notas fiscais:', error?.message || error));
+    return () => { active = false; };
+  }, [company?.id, monthPrefix]);
+  const invoiceFor = item => invoices.get(invoiceKey(selectedUnitId, item.prof.id, monthPrefix));
+  const invoiceWarning = item => `${item.prof.name}: nota fiscal ${invoiceState(invoiceFor(item)) === 'falta' ? 'ainda não enviada' : 'ainda não aceita'}`;
+
+  const handleOpenInvoice = async invoice => {
+    try { await openInvoiceFile(invoice); } catch (error) { alert(error?.message || 'Não foi possível abrir a nota.'); }
+  };
+
+  // Aceitar ou devolver a nota; o profissional recebe o aviso no sino e no celular.
+  const handleReviewInvoice = async (item, status) => {
+    const invoice = invoiceFor(item);
+    if (!invoice) return;
+    let note = '';
+    if (status === 'devolvida') {
+      note = (prompt(`Por que a nota de ${item.prof.name} vai ser devolvida? O profissional vai ler este motivo.`, '') || '').trim();
+      if (!note) return;
+    }
+    setInvoiceBusy(String(item.prof.id));
+    try {
+      const saved = await reviewInvoice(invoice, { status, note, reviewedBy: user?.full_name || user?.email || '' });
+      setInvoices(prev => new Map(prev).set(invoiceKey(saved.unit_id, saved.professional_id, saved.month), saved));
+      const competencia = `${MONTH_NAMES[currentMonth].toLowerCase()} (${currentUnitName})`;
+      await sendNotifications([{
+        ...recipientFor(item.prof),
+        company_id: company?.id,
+        unit_id: selectedUnitId,
+        type: 'nota_fiscal',
+        category: 'pagamento',
+        title: status === 'aceita' ? 'Nota fiscal aceita' : 'Nota fiscal devolvida',
+        message: status === 'aceita'
+          ? `Sua nota de ${competencia} foi aceita. O pagamento segue o fechamento do mês.`
+          : `Sua nota de ${competencia} foi devolvida: ${note}. Envie outra pela Minha Escala.`,
+        data: { month: monthPrefix, unit_id: selectedUnitId }
+      }]);
+    } catch (error) {
+      alert(`Não foi possível salvar. ${error?.message || 'Tente de novo.'}`);
+    } finally {
+      setInvoiceBusy('');
+    }
+  };
+
   // O status "PAGO" fica no banco (payment_statuses): todos os gestores veem o mesmo.
   const handleTogglePago = async (profId) => {
     const item = reportData.find(summary => String(summary.prof.id) === String(profId));
@@ -256,6 +310,7 @@ export default function Faturamento() {
       alert('Não é possível marcar como pago enquanto houver plantões por produtividade sem apuração registrada.');
       return;
     }
+    if (item && !item.isPago && paymentNeedsInvoice(item.prof, invoiceFor(item)) && !confirm(`${invoiceWarning(item)}.\n\nMarcar como pago mesmo assim?`)) return;
     setPaymentSavingId(String(profId));
     try {
       await savePaymentStatus({
@@ -276,7 +331,8 @@ export default function Faturamento() {
     const items = reportData.filter(item => selectedForPay.has(String(item.prof.id)) && canMarkPaid(item));
     if (!items.length) return;
     const total = items.reduce((sum, item) => sum + item.valorLiquido, 0);
-    if (!confirm(`Marcar ${items.length} profissional(is) como pago(s) em ${MONTH_NAMES[currentMonth]}? Total: ${formatCurrency(total)}.`)) return;
+    const withoutInvoice = items.filter(item => paymentNeedsInvoice(item.prof, invoiceFor(item)));
+    if (!confirm(`Marcar ${items.length} profissional(is) como pago(s) em ${MONTH_NAMES[currentMonth]}? Total: ${formatCurrency(total)}.${withoutInvoice.length ? `\n\nAtenção, PJ sem nota aceita:\n${withoutInvoice.map(invoiceWarning).join('\n')}` : ''}`)) return;
     setBulkPaying(true);
     const failed = [];
     for (const item of items) {
@@ -1321,6 +1377,11 @@ export default function Faturamento() {
                         <div className="flex flex-wrap items-center gap-1.5 text-[10px] tabular-nums font-semibold">
                           <span className="font-normal text-slate-500 dark:text-slate-400">{item.matricula} · {item.prof.document || 'CRM'}</span>
                           {item.profStatus && item.profStatus !== 'ativo' && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-sans text-xs text-slate-500 dark:bg-slate-800">{item.profStatus} · com registro</span>}
+                          {isPjProfessional(item.prof) && (() => {
+                            const state = invoiceState(invoiceFor(item));
+                            const tone = { falta: 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300', enviada: 'bg-sky-50 text-sky-800 dark:bg-sky-500/10 dark:text-sky-300', aceita: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300', devolvida: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300' }[state];
+                            return <span className={`rounded px-1.5 py-0.5 font-sans text-[11px] ${tone}`}>NF: {state === 'falta' ? 'falta' : INVOICE_STATUS[state].short.toLowerCase()}</span>;
+                          })()}
                         </div>
                       </td>
 
@@ -1597,6 +1658,31 @@ export default function Faturamento() {
                   )}
                 </div>
               </div>
+
+              {isPjProfessional(selectedProfModal.prof) && (() => {
+                const invoice = invoiceFor(selectedProfModal);
+                const state = invoiceState(invoice);
+                const busy = invoiceBusy === String(selectedProfModal.prof.id);
+                return (
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span className="text-xs text-slate-400 block font-medium">Nota fiscal (PJ{selectedProfModal.prof.data?.cnpj ? ` · CNPJ ${selectedProfModal.prof.data.cnpj}` : ''})</span>
+                        <strong className="text-sm">{INVOICE_STATUS[state].label}</strong>
+                        {state === 'devolvida' && invoice?.review_note && <span className="block text-xs text-rose-700 dark:text-rose-300">Motivo: {invoice.review_note}</span>}
+                        {state === 'falta' && <span className="block text-xs text-slate-500">O profissional envia pela Minha Escala.</span>}
+                      </div>
+                      {invoice && (
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" onClick={() => handleOpenInvoice(invoice)} className="h-8 text-xs cursor-pointer">Ver nota</Button>
+                          {state !== 'aceita' && <Button size="sm" disabled={busy} onClick={() => handleReviewInvoice(selectedProfModal, 'aceita')} className="h-8 text-xs bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer">Aceitar</Button>}
+                          {state !== 'devolvida' && <Button size="sm" variant="outline" disabled={busy} onClick={() => handleReviewInvoice(selectedProfModal, 'devolvida')} className="h-8 text-xs text-rose-700 dark:text-rose-300 cursor-pointer">Devolver</Button>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="pt-2 flex flex-wrap justify-end gap-2">
                 <Button 
