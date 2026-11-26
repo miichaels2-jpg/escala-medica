@@ -41,7 +41,21 @@ export default {
           ['Financeiro', 'Apuração diária', 'Produtividade: atendimentos e rateio de cada dia.'],
           ['Financeiro', 'Extrato individual', 'Produtividade de um profissional: atendimentos e saldo.']
         ] } },
-        { dica: 'Na Visão geral, `Modo apresentação` abre os gráficos em tela cheia, para reuniões com a direção.' }
+        { dica: 'Na Visão geral, `Apresentação do mês` abre a apresentação para a diretoria (seção a seguir).' }
+      ]
+    },
+    {
+      titulo: 'Apresentação do mês para a diretoria',
+      blocos: [
+        { figura: 'relatorios-apresentacao', legenda: 'Primeiro slide da apresentação do mês.', pontos: [] },
+        { p: 'São 6 slides em tela cheia, sempre comparando com o mês anterior: **capa** com os números principais, **cobertura** dia a dia, **vagas e furos** por setor, **custo** por setor, **equipe** (horas, diurno × noturno e quem mais esteve de plantão) e **resumo** com frases prontas e a situação do próximo mês.' },
+        { lista: [
+          'Passe os slides com as **setas do teclado**, a barra de espaço ou um passador de slides.',
+          'Escolha o mês no alto. Quando o mês atual ainda está no começo, ela abre no mês que acabou de fechar.',
+          '`PDF` gera um slide por página, para mandar por e-mail ou imprimir.',
+          '`Esc` ou o **X** fecha a apresentação.'
+        ] },
+        { atencao: 'O custo é estimado pela tabela de valores de cada profissional. Plantões pagos por produtividade entram só no fechamento, e a apresentação avisa quantos ficaram de fora.' }
       ]
     },
     {

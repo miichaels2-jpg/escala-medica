@@ -30,7 +30,32 @@ export default {
           ['Cobertura do mês', 'Percentual de plantões do mês que já têm profissional, e quantas vagas faltam preencher.'],
           ['Custo de hoje', 'Quanto os plantões do dia custam, pelo valor cadastrado de cada profissional.']
         ] } },
-        { p: 'Por último, **Hoje por setor** lista cada setor com quem está de plantão, quem entra mais tarde e as vagas do dia.' }
+        { p: '**Hoje por setor** lista cada setor com quem está de plantão, quem entra mais tarde e as vagas do dia.' }
+      ]
+    },
+    {
+      titulo: 'Como estamos indo (o mês)',
+      blocos: [
+        { figura: 'painel-tendencias', legenda: 'O mês atual comparado com o mês anterior inteiro.', pontos: [] },
+        { tabela: { cab: ['Número', 'O que mostra'], linhas: [
+          ['Cobertura do mês', 'Quanto da escala do mês já tem profissional, e quantos pontos subiu ou caiu em relação ao mês anterior.'],
+          ['Vagas sem profissional', 'Plantões do mês ainda sem ninguém, comparado com o mês anterior.'],
+          ['Custo previsto do mês', 'Estimativa pela tabela de valores de cada profissional (produtividade só entra no fechamento).'],
+          ['Horas de plantão', 'Total de horas dos plantões preenchidos no mês.']
+        ] } },
+        { p: 'Ao lado, o **calendário do mês** mostra de relance como está cada dia: vermelho é **furo** (passou sem ninguém), amarelo é **vaga aberta** e cinza é **preenchido**. O número no dia é a quantidade de vagas. Clique num dia com vaga para abrir a vaga na escala.' },
+        { dica: 'Seta verde é melhora e vermelha é piora. Custo e horas aparecem em cinza: gastar menos pode ser só escala incompleta, então olhe junto com a cobertura.' }
+      ]
+    },
+    {
+      titulo: 'Equipe: agradecer e dar parabéns',
+      blocos: [
+        { p: 'Quando há algo para mostrar, aparece o quadro **Equipe** no fim do Painel:' },
+        { lista: [
+          '**Cobriram vaga de última hora:** quem pegou pelo Mural, nos últimos 14 dias, uma vaga que começava em menos de 24 horas. `Agradecer` manda um "obrigado" que chega no sino e no celular do profissional.',
+          '**Aniversários da semana:** quem faz aniversário nos próximos 7 dias. No dia, `Dar parabéns` manda a mensagem.'
+        ] },
+        { dica: 'Um obrigado na hora certa faz diferença: é quem salvou o plantão que está sendo reconhecido.' }
       ]
     },
     {

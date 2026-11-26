@@ -13,7 +13,7 @@ export default {
         { figura: 'historico', legenda: 'Histórico dos últimos 7 dias.', pontos: [] },
         { passos: [
           'Escolha o período: `Hoje`, `7 dias` ou `30 dias`.',
-          'Filtre o tipo: `Tudo`, `Plantões`, `Publicações`, `Pagamentos` ou `Trocas`.',
+          'Filtre o tipo: `Tudo`, `Plantões`, `Publicações`, `Pagamentos`, `Trocas` ou `Notas fiscais` (envio, aceite e devolução).',
           'Use a busca para achar um profissional, setor ou quem fez a ação.',
           'Cada linha mostra a hora, o que foi feito e, embaixo, quem fez e em qual hospital. `Atualizar` traz as ações mais recentes.'
         ] },

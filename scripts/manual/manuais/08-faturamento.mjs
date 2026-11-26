@@ -37,7 +37,7 @@ export default {
       blocos: [
         { figura: 'faturamento-tabela', legenda: 'Uma linha por profissional.', pontos: [] },
         { tabela: { cab: ['Coluna', 'O que significa'], linhas: [
-          ['Profissional', 'Nome, matrícula e conselho.'],
+          ['Profissional', 'Nome, matrícula e conselho. Para quem é PJ, o selo **NF** mostra a nota do mês: falta, enviada, aceita ou devolvida.'],
           ['Regime', 'Por plantão, fixo mensal ou produtividade.'],
           ['Trabalhado', 'Plantões e horas concluídos no mês.'],
           ['Pagar em', 'A chave PIX ou a conta. **Falta PIX ou conta**: complete no Corpo Clínico antes de pagar.'],
@@ -45,6 +45,19 @@ export default {
           ['Status', '**A pagar**, **✓ Pago** ou **Esperando produção** (produtividade com dias ainda sem lançamento).'],
           ['Ações', '`Demonstrativo`/`Recibo`, `Detalhar` (extrato de plantões realizados e programados) e envio do extrato pelo WhatsApp.']
         ] } }
+      ]
+    },
+    {
+      titulo: 'Detalhar: extrato, nota fiscal e informe',
+      blocos: [
+        { figura: 'faturamento-detalhar', legenda: 'Detalhar de um profissional PJ com a nota enviada.', pontos: [
+          '`Ver nota`: abre o arquivo que o profissional enviou.',
+          '`Aceitar`: confirma a nota. O profissional recebe o aviso.',
+          '`Devolver`: pede o motivo (ex.: "CNPJ do tomador errado") e devolve para correção. O profissional lê o motivo na Minha Escala.',
+          '`Informe`: o informe de rendimentos do ano desse profissional, com todos os hospitais que você coordena.'
+        ] },
+        { p: 'O profissional PJ envia a nota pela Minha Escala (Manual 7). Enquanto a nota não estiver **aceita**, marcar o pagamento dele pede uma confirmação, com o nome de quem está sem nota.' },
+        { dica: 'O informe de rendimentos é para conferência do Imposto de Renda. Até maio, o botão já traz o ano anterior, que é o da declaração.' }
       ]
     },
     {
@@ -70,6 +83,7 @@ export default {
           'Confira **Pagar em**: resolva todo “Falta PIX ou conta” no Corpo Clínico.',
           'Se o hospital usa produtividade, lance todos os dias pendentes (seção 4).',
           'Confira os valores. Em caso de dúvida, `Detalhar` mostra o extrato de plantões de cada profissional.',
+          'Para os PJ, confira o selo **NF** e aceite ou devolva as notas enviadas (seção 4).',
           'Fez os pagamentos? Clique no status **A pagar** de cada um para virar **✓ Pago**, ou marque vários na caixa da esquerda (ou **Selecionar todos a pagar**) e clique em `Marcar como pago`. O sistema confirma quantos e o total.',
           'Imprima ou salve: `Recibo` de cada profissional e `Imprimir fechamento` para a direção. `Exportar planilha` leva tudo para o Excel.'
         ] },

@@ -20,6 +20,7 @@ export const SHOTS = [
   // ---------- Painel ----------
   { id: 'painel', as: 'gestor', view: 'pc', path: '/dashboard', altura: 1400, marks: [SEL('h2, h3, p', 'Primeiros passos'), SEL('p, h2, h3, span', 'Mostrar no painel'), SEL('h2, h3', 'Precisa de você'), S('Modo TV'), ARIA('Notificações')] },
   { id: 'avisos', as: 'gestor', view: 'pc', path: '/dashboard', steps: [['click', ARIA('Notificações')], ['wait', 1200]], marks: [] },
+  { id: 'painel-tendencias', as: 'gestor', view: 'pc', path: '/dashboard', altura: 1700, clip: { alvos: [SEL('section', 'Como estamos indo', { last: true })], margem: [14, 14, 14, 14] }, marks: [] },
 
   // ---------- Setores ----------
   { id: 'setores', as: 'gestor', view: 'pc', path: '/setores', marks: [S('Novo setor'), SEL('.rounded-3xl dd', null, { index: 0 }), S('Montar mês'), B('Editar')] },
@@ -56,6 +57,7 @@ export const SHOTS = [
   // ---------- Plantonista (celular) ----------
   { id: 'cel-minha-escala', as: 'plantonista', view: 'cel', path: '/minha-escala', marks: [S('Adicionar à agenda'), S('Ver o Mural'), ARIA('Notificações')] },
   { id: 'cel-resumo', as: 'plantonista', view: 'cel', path: '/minha-escala', steps: [['scrollTo', SEL('h2', 'Resumo do mês')]], marks: [] },
+  { id: 'cel-nota', as: 'plantonista', view: 'cel', path: '/minha-escala', steps: [['scrollTo', SEL('h2', 'Nota fiscal de')]], marks: [] },
   { id: 'cel-disponibilidade', as: 'plantonista', view: 'cel', path: '/minha-escala', steps: [['scrollTo', SEL('h2', 'Minha disponibilidade')]], marks: [] },
   { id: 'cel-proximos', as: 'plantonista', view: 'cel', path: '/minha-escala', steps: [['scrollTo', SEL('h2, h3, button', 'Próximos plantões')]], marks: [S('Passar no Mural')] },
   { id: 'cel-mural', as: 'plantonista', view: 'cel', path: '/trocas', marks: [S('Vagas'), S('Meus plantões')] },
@@ -66,9 +68,11 @@ export const SHOTS = [
   { id: 'faturamento', as: 'gestor', view: 'pc', path: '/faturamento', altura: 1500, steps: [['click', ARIA('Mês anterior')], ['wait', 2500]], marks: [ARIA('Mês anterior'), S('Lançar atendimentos'), SEL('input[aria-label="Selecionar todos a pagar"]'), SEL('tbody button', 'Demonstrativo'), S('Imprimir fechamento')] },
   { id: 'faturamento-atendimentos', ...DIALOG, as: 'gestor', view: 'pc', path: '/faturamento', steps: [['click', S('Lançar atendimentos')], ['wait', 1800]], marks: [] },
   { id: 'faturamento-tabela', as: 'gestor', view: 'pc', path: '/faturamento', steps: [['click', ARIA('Mês anterior')], ['wait', 2500], ['scrollTo', SEL('table')]], marks: [] },
+  { id: 'faturamento-detalhar', ...DIALOG, as: 'gestor', view: 'pc', path: '/faturamento', steps: [['clickIn', SEL('tr', 'Plantonista Teste'), 'Detalhar'], ['wait', 1500]], marks: [B('Ver nota'), B('Aceitar'), B('Devolver'), S('Informe')] },
 
   // ---------- Relatórios ----------
   { id: 'relatorios', as: 'gestor', view: 'pc', path: '/relatorios', marks: [B('Visão geral'), SEL('main button[role=combobox]', null, { index: 0 }), S('Exportar para Excel'), S('Imprimir')] },
+  { id: 'relatorios-apresentacao', as: 'gestor', view: 'pc', path: '/relatorios', steps: [['click', S('Apresentação do mês')], ['wait', 3500]], marks: [] },
   { id: 'relatorios-plantoes', as: 'gestor', view: 'pc', path: '/relatorios', steps: [['click', B('Escalas')], ['wait', 900], ['click', B('Plantões')], ['wait', 1500]], marks: [] },
   { id: 'relatorios-confiabilidade', as: 'gestor', view: 'pc', path: '/relatorios', steps: [['click', B('Equipe')], ['wait', 900], ['click', B('Confiabilidade')], ['wait', 1500]], marks: [] },
 

@@ -9,6 +9,19 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.7.8 — 26/11/2026
+
+Material de treinamento em dia com as novidades da V0.7.2 à V0.7.7.
+
+- **Painel** (manual 2): seções novas "Como estamos indo" (com foto) e "Equipe: agradecer e dar parabéns".
+- **Escala** (manual 5): custo e vagas no resumo antes de publicar (foto nova) e o `Desfazer` de 10 segundos ao liberar a vaga ou excluir o plantão.
+- **Mural** (manual 6): o "obrigado" ao assumir vaga urgente e o `Desfazer` ao excluir vaga.
+- **Minha Escala** (manual 7): a frase de boas-vindas (foto nova), o informe de rendimentos e a seção nova "Nota fiscal (para quem é PJ)", com foto e passo a passo.
+- **Faturamento** (manual 8): selo NF na tabela e a seção nova "Detalhar: extrato, nota fiscal e informe", com foto; passo de conferir as notas no fechamento do mês.
+- **Relatórios** (manual 9): seção nova "Apresentação do mês para a diretoria", com foto do primeiro slide.
+- **Histórico** (manual 10): filtro "Notas fiscais".
+- Fotos tiradas da demo com nomes trocados por fictícios e logos substituídos; a conta de teste foi marcada como PJ só durante as fotos e voltou ao normal. PDFs regenerados (11 módulos e o manual completo).
+
 ## V0.7.7 — 26/11/2026
 
 Sem ponto para PJ e cooperados.
