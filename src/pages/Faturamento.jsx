@@ -816,6 +816,7 @@ export default function Faturamento() {
         String(shift.unit_id) === String(selectedUnitId) &&
         shiftDate.startsWith(monthPrefix) &&
         isBillableShift(shift) &&
+        !String(shift.notes || '').includes('[VAGA_EXTRA]') &&
         !professionalIds.has(String(shift.professional_id));
     }).length;
   }, [professionals, shifts, monthPrefix, selectedUnitId]);

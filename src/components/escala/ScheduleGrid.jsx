@@ -158,7 +158,7 @@ export default function ScheduleGrid({
                           return (
                             <button key={key} type="button" disabled={!isManager}
                               onClick={(e) => isManager && openAt(e, { shift })}
-                              title={extra ? 'Vaga extra: use se precisar encaixar alguém; vazia, sai ao publicar' : past ? 'Furo: plantão passou sem profissional' : 'Vaga em aberto: clique para escalar'}
+                              title={extra ? 'Vaga extra: use quando precisar encaixar alguém (vazia, não conta como vaga em aberto)' : past ? 'Furo: plantão passou sem profissional' : 'Vaga em aberto: clique para escalar'}
                               className={`${cellPad} h-9 rounded-lg flex items-center justify-center text-base cursor-pointer disabled:cursor-default ${active ? 'border-2 border-sky-600 bg-sky-50 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200' : extra ? 'border border-dashed border-slate-300 bg-white text-slate-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-500' : past ? 'border border-dashed border-rose-400 bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' : 'border border-dashed border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'}`}>
                               {past && !extra ? '!' : <Plus className="w-4 h-4" />}
                             </button>

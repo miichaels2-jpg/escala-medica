@@ -4,7 +4,7 @@ import { Bell, CheckCheck, CheckCircle2, ChevronRight, Flame, Megaphone, ShieldC
 import { Button } from '@/components/ui/button';
 import PushToggle from '@/components/PushToggle';
 import { fetchMyNotifications, markNotificationsRead } from '@/lib/notifications';
-import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
+import { getShiftDateTimeRange, isIdleExtraSlot, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { getProfessionalUnitIds, isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { formatDateBR, normalize } from '@/lib/format';
 
@@ -85,7 +85,7 @@ export function useNotificationCenter({ user, currentProfessional, shifts, compa
         if (isManager) {
           if (String(s.unit_id) !== String(selectedUnitId)) return false;
         } else if (myUnitIds.length && !myUnitIds.includes(String(s.unit_id))) return false;
-        if (normalize(s.status).includes('cancel') || !isShiftVacant(s)) return false;
+        if (normalize(s.status).includes('cancel') || !isShiftVacant(s) || isIdleExtraSlot(s)) return false;
         const range = getShiftDateTimeRange(s);
         if (!range || range.end <= now) return false;
         if (isManager) return range.start.getTime() - now.getTime() <= MANAGER_VACANCY_WINDOW_MS;

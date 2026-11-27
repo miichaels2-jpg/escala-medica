@@ -30,6 +30,12 @@ export function isShiftActiveAt(shift, now) {
   return Boolean(range && now >= range.start && now < range.end);
 }
 
+// Vaga extra vazia (V0.9.3): folga da coordenação. Aparece na Escala para encaixar alguém, mas não é
+// furo, vaga em aberto, custo nem aviso.
+export function isIdleExtraSlot(shift) {
+  return String(shift?.notes || '').includes('[VAGA_EXTRA]') && isShiftVacant(shift);
+}
+
 export function isShiftVacant(shift) {
   const normalize = value => String(value || '')
     .normalize('NFD')

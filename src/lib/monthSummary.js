@@ -4,7 +4,7 @@
 // mensalista = salário da unidade dividido pelos plantões dele no mês;
 // produtividade só tem valor no fechamento (fica contada à parte).
 import { getMonthlySalaryForUnit, getProfessionalFinancialMeta, getShiftCostEstimate, getShiftDurationHours, normalizeFinancialText } from './financialCalculations.js';
-import { getShiftDateTimeRange, getShiftName, isShiftVacant } from './shiftLiveStatus.js';
+import { getShiftDateTimeRange, getShiftName, isIdleExtraSlot, isShiftVacant } from './shiftLiveStatus.js';
 
 const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
@@ -85,7 +85,7 @@ export function professionalFinder(professionals = []) {
 export function summarizePeriod({ shifts = [], start, end, getProf = () => null, sectorName = s => s?.sector_name || 'Setor', now = new Date(), company = null }) {
   const inPeriod = shifts.filter(s => {
     const d = dateOf(s);
-    return s && d && d >= start && d <= end && normalizeFinancialText(s.status) !== 'cancelado';
+    return s && d && d >= start && d <= end && normalizeFinancialText(s.status) !== 'cancelado' && !isIdleExtraSlot(s);
   });
 
   // Mensalista: quantos plantões ele tem em cada unidade/mês, para dividir o salário.

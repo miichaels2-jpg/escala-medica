@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Building2, Layers } from 'lucide-react';
-import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
+import { getShiftDateTimeRange, isIdleExtraSlot, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { getShiftUrgency } from '@/lib/urgentVacancies';
 
 export const ALL_UNITS = 'todas';
@@ -20,7 +20,7 @@ function summarize(shifts, now) {
   const today = localDate(now);
   const monthPrefix = today.slice(0, 7);
   const weekAhead = now.getTime() + 7 * 86400000;
-  const active = (shifts || []).filter(s => s && !String(s.status || '').toLowerCase().includes('cancel'));
+  const active = (shifts || []).filter(s => s && !String(s.status || '').toLowerCase().includes('cancel') && !isIdleExtraSlot(s));
   const todayShifts = active.filter(s => String(s.date).slice(0, 10) === today);
   let openWeek = 0, urgent = 0, missedMonth = 0;
   active.forEach(s => {

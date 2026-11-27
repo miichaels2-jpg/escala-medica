@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.9.3 — 27/11/2026
+
+Vaga extra fica na escala.
+
+- **Vaga extra vazia continua na escala depois de publicar** (antes saía), para a coordenação encaixar alguém durante o mês. Vazia, ela é folga: **não vai para o Mural, não conta como vaga em aberto, furo ou custo** (Escala, Painel, Setores, Relatórios, Indicadores, Faturamento, apresentação do mês, janela de publicar), não sai no impresso do mês e **não dispara aviso de vaga urgente**. Ocupada, conta como qualquer plantão e mostra a marca "Extra".
+- **Plantão avulso** (`Mais` › `Plantão avulso` ou editar um plantão): opção **Vaga extra**.
+- **No banco:** o aviso automático de vaga urgente ignora vaga extra e o plantonista não assume vaga extra por fora do app. Precisa da atualização do banco `20261127120000_extra_vacancies.sql`.
+- Manuais **03 · Setores** e **05 · Escala** atualizados; PDFs regenerados.
+
 ## V0.9.2 — 27/11/2026
 
 Vagas extras, meio expediente completo e escala apagada que some de verdade (pedidos do Lima&Lima).

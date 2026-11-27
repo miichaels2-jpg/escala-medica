@@ -108,6 +108,8 @@ export default function Relatorios() {
 
     const filtered = shifts.filter(shift => {
       if (!shift || normalize(shift.status) === 'cancelado') return false;
+      // Vaga extra vazia não entra nos relatórios (não é vaga em aberto nem custo).
+      if (String(shift.notes || '').includes('[VAGA_EXTRA]') && isVacant(shift)) return false;
       const rawSecName = getSectorName(shift, sectors);
       const secName = normalize(rawSecName);
       if (!secName || secName === 'setor' || secName.includes('setor geral')) return false;

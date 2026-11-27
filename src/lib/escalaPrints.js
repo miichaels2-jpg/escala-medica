@@ -70,7 +70,8 @@ export function printMonthSchedule({ company, currentMonth, currentYear, daysInM
   const hh = time => String(time || '').replace(/:00$/, '');
 
   const bySector = new Map();
-  scheduleVisibleShifts.forEach(shift => {
+  // Vaga extra vazia não sai no impresso: é folga da coordenação.
+  scheduleVisibleShifts.filter(shift => !(String(shift.notes || '').includes('[VAGA_EXTRA]') && isVacant(shift))).forEach(shift => {
     const key = String(shift.sector_id);
     if (!bySector.has(key)) bySector.set(key, []);
     bySector.get(key).push(shift);

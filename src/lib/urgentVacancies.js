@@ -1,13 +1,13 @@
 // Alerta de furo iminente: vaga sem profissional que começa em menos de 24 h
 // (ou que já começou e ainda não terminou).
-import { getShiftDateTimeRange, isShiftVacant } from './shiftLiveStatus.js';
+import { getShiftDateTimeRange, isIdleExtraSlot, isShiftVacant } from './shiftLiveStatus.js';
 import { getProfessionalUnitIds } from './sectorAccess.js';
 import { findUnavailability } from './availability.js';
 
 export const URGENT_WINDOW_HOURS = 24;
 
 export function getShiftUrgency(shift, now = new Date()) {
-  if (!shift || String(shift.status || '').toLowerCase().includes('cancel') || !isShiftVacant(shift)) return null;
+  if (!shift || String(shift.status || '').toLowerCase().includes('cancel') || !isShiftVacant(shift) || isIdleExtraSlot(shift)) return null;
   const range = getShiftDateTimeRange(shift);
   if (!range || range.end <= now) return null;
   const minutesLeft = Math.round((range.start.getTime() - now.getTime()) / 60000);
