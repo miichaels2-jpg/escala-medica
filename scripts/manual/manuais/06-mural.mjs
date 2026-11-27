@@ -16,7 +16,7 @@ export default {
           ['`Meus plantões`', 'Plantonista', 'Passar um plantão para o Mural ou propor troca a um colega; responder propostas recebidas.'],
           ['`Histórico`', 'Todos', 'Os repasses já efetivados: de quem para quem e quem autorizou.']
         ] } },
-        { atencao: 'Só vão para o Mural as vagas de escala **publicada**. Enquanto a coordenação monta o mês em rascunho, ninguém vê nem assume essas vagas, nem recebe aviso delas. Ao publicar o período na Escala, as vagas abertas aparecem no Mural na hora. **Vagas extras** (folga que a coordenação cria para encaixar alguém) nunca vão para o Mural.' }
+        { atencao: 'Só vão para o Mural as vagas de escala **publicada**. Enquanto a coordenação monta o mês em rascunho, ninguém vê nem assume essas vagas, nem recebe aviso delas. Ao publicar o período na Escala, as vagas abertas aparecem no Mural na hora. **Vagas extras** (folga que a coordenação cria para encaixar alguém) nunca vão para o Mural. Se você está **de sobreaviso** no dia, a vaga aparece no topo, com a marca **Você está de sobreaviso**.' }
       ]
     },
     {
@@ -67,11 +67,12 @@ export default {
         ] },
         { h: 'Propor troca com um colega' },
         { passos: [
-          'No seu plantão, toque em `Propor troca`.',
+          'No seu plantão, toque em `Propor troca` (em `Meus plantões` do Mural ou direto na Minha Escala).',
           'Aparecem os plantões de colegas que dá para trocar pelo seu: mesma especialidade e setor compatível, sem folga marcada e sem choque de horário. Escolha um e envie.',
           'O colega recebe a proposta em `Meus plantões` (**Proposta para você**) e toca em `Aceitar` ou `Recusar`.',
           'Aceita pelo colega, a troca vai para a coordenação aprovar. Aprovada, os dois plantões trocam de dono e cada um recebe o aviso.'
         ] },
+        { dica: 'Não apareceu nenhum colega? A janela explica o motivo de cada um (ex.: "Ana: os plantões dela são em Enfermaria, onde você não está liberado"). A troca só aparece quando cada um pode fazer o plantão do outro. Se for o caso, peça à coordenação para liberar o setor, ou use `Passar p/ Mural`.' },
         { atencao: 'Até a coordenação aprovar, nada muda: cada um continua com o seu plantão. Não falte contando com uma troca ainda não aprovada.' }
       ]
     },

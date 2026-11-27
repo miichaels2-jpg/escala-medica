@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { isShiftPublished } from '@/lib/sharedState';
 import { isExtraVacancy } from '@/lib/sectorTemplates';
 import { isOfInterest, preferenceScore } from '@/lib/preferences';
+import { isOnStandby } from '@/lib/standby';
 import { getProfessionalUnitIds, isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { findUnavailability } from '@/lib/availability';
 import { URGENT_COVER_TAG, getShiftUrgency, withTag } from '@/lib/urgentVacancies';
@@ -182,6 +183,17 @@ export default function Trocas() {
   }, [isManager, managerAllUnits, managerUnitIds, shifts, allCompanyShifts, selectedUnitId, myUnitIds]);
 
   const [swapShift, setSwapShift] = useState(null);
+  // "Propor troca" da Minha Escala (V0.10.3): abre a troca já com o plantão escolhido.
+  useEffect(() => {
+    let pendingId = null;
+    try { pendingId = window.localStorage.getItem('scale_swap_shift_id'); } catch { return; }
+    if (!pendingId) return;
+    const target = (allCompanyShifts.length ? allCompanyShifts : shifts || []).find(s => String(s.id) === String(pendingId));
+    if (!target) return;
+    try { window.localStorage.removeItem('scale_swap_shift_id'); } catch { /* sem armazenamento */ }
+    setActiveTab('trocas');
+    setSwapShift(target);
+  }, [allCompanyShifts, shifts]);
   const swapsApi = useDirectSwaps({
     swaps: allCompanySwaps,
     myProf,
@@ -294,7 +306,7 @@ export default function Trocas() {
 
   // Vagas do interesse do plantonista (setor ou turno preferido) aparecem primeiro em cada dia (V0.10.2).
   const claimableShifts = useMemo(
-    () => muralShifts.filter(canClaim).sort((a, b) => (a?.date || '').localeCompare(b?.date || '') || preferenceScore(myProf, b) - preferenceScore(myProf, a)),
+    () => muralShifts.filter(canClaim).sort((a, b) => (a?.date || '').localeCompare(b?.date || '') || Number(isOnStandby(company, myProf?.id, b)) - Number(isOnStandby(company, myProf?.id, a)) || preferenceScore(myProf, b) - preferenceScore(myProf, a)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [muralShifts, myProf, myCompanyShifts]
   );
@@ -690,6 +702,9 @@ Plantão confirmado: ${sectorName}, ${formatDateBR(shift.date)} (${shift.start_t
                                 <span className="inline-flex h-6 items-center gap-1 rounded-full bg-rose-50 dark:bg-rose-500/10 px-2.5 text-xs font-semibold text-rose-700 dark:text-rose-300">
                                   <Clock3 className="w-3.5 h-3.5" /> Urgente · {getShiftUrgency(shift).label}
                                 </span>
+                              )}
+                              {!isManager && claimable && isOnStandby(company, myProf?.id, shift) && (
+                                <span className="inline-flex h-6 items-center gap-1 rounded-full bg-amber-50 dark:bg-amber-500/10 px-2.5 text-xs font-semibold text-amber-800 dark:text-amber-300">Você está de sobreaviso</span>
                               )}
                               {!isManager && claimable && isOfInterest(myProf, shift) && (
                                 <span className="inline-flex h-6 items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 px-2.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">Do seu interesse</span>

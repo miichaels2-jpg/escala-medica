@@ -85,12 +85,18 @@ export default {
     {
       titulo: 'Comunicados da coordenação',
       blocos: [
-        { p: 'Quando a coordenação publica um comunicado para a sua unidade ou para a equipe de um setor seu, você recebe o aviso no sino (e no celular, se os avisos estiverem ativos), e ele aparece no alto da Minha Escala, em **Comunicados da coordenação**.' },
+        { p: 'Ao abrir o app, o comunicado novo aparece numa **janela**, com o texto inteiro: toque em `Li` (ou `Depois`, para ler mais tarde). Todos ficam guardados na tela **Avisos**, no menu, e tocar no aviso do sino abre essa tela. Quando a coordenação publica um comunicado para a sua unidade ou para a equipe de um setor seu, você recebe o aviso no sino (e no celular, se os avisos estiverem ativos), e ele aparece no alto da Minha Escala, em **Comunicados da coordenação**.' },
         { passos: [
           'Leia o comunicado.',
           'Toque em `Li`. A coordenação passa a ver que você leu.',
           'Os comunicados já lidos ficam guardados em `Ver lidos`.'
         ] }
+      ]
+    },
+    {
+      titulo: 'Sobreaviso',
+      blocos: [
+        { p: 'Quando a coordenação te coloca **de sobreaviso** (reserva) num dia, aparece o cartão **Meus sobreavisos** com a data e o setor. Se abrir uma vaga nesse dia, a coordenação pode te chamar (aviso no sino e no celular) e a vaga aparece no topo do seu Mural.' }
       ]
     },
     {

@@ -35,6 +35,7 @@ const Planejamento = lazyPage(() => import('@/pages/Planejamento')); // TEMPORÁ
 const Plataforma = lazyPage(() => import('@/pages/Plataforma'));
 const Treinamento = lazyPage(() => import('@/pages/Treinamento'));
 const Historico = lazyPage(() => import('@/pages/Historico'));
+const Avisos = lazyPage(() => import('@/pages/Avisos'));
 
 const PageLoading = () => (
   <div className="flex items-center justify-center py-24">
@@ -87,6 +88,7 @@ const AuthenticatedApp = () => {
             <Route path="/faturamento" element={<Faturamento />} />
             <Route path="/minha-escala" element={<MinhaEscala />} />
             <Route path="/trocas" element={<Trocas />} />
+            <Route path="/avisos" element={<Avisos />} />
             <Route path="/historico" element={<Historico />} />
             <Route path="/como-usar" element={<ComoUsar />} />
             <Route path="/planejamento" element={<Planejamento />} /> {/* TEMPORÁRIO */}

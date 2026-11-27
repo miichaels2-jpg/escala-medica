@@ -4,6 +4,7 @@ import { useAppData } from '@/lib/useAppData';
 import AvailabilityCard from '@/components/AvailabilityCard';
 import PreferencesCard from '@/components/PreferencesCard';
 import AnnouncementsInbox from '@/components/AnnouncementsInbox';
+import StandbyMine from '@/components/StandbyMine';
 import PrivacyCard from '@/components/PrivacyCard';
 import InvoiceCard from '@/components/InvoiceCard';
 import { buildIcs, googleCalendarUrl, shiftEventInfo } from '@/lib/calendarExport';
@@ -12,7 +13,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
 import { CheckCircle2, Loader2, DollarSign, 
-  Radio, ChevronLeft, ChevronRight, Timer, Flame, CalendarCheck, ChevronDown, ChevronUp, Clock3, ShieldAlert, LogIn, LogOut, MapPin, CalendarPlus
+  Radio, ChevronLeft, ChevronRight, Timer, Flame, CalendarCheck, ChevronDown, ChevronUp, Clock3, ShieldAlert, LogIn, LogOut, MapPin, CalendarPlus, ArrowRightLeft
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { escapeHtml } from '@/lib/printBranding';
@@ -800,6 +801,8 @@ export default function MinhaEscala() {
 
       <AnnouncementsInbox professional={currentProfessional} sectors={allCompanySectors} />
 
+      <StandbyMine professional={currentProfessional} company={company} sectors={allCompanySectors} units={units || []} />
+
       <InvoiceCard
         professional={currentProfessional}
         companyId={companyId}
@@ -917,7 +920,7 @@ export default function MinhaEscala() {
                   </div>
 
                   {!isAtivo && (
-                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:justify-end gap-2">
                       {isPending ? (
                         <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
                           <Clock3 className="w-3.5 h-3.5 animate-pulse" /> Aguardando Gestão
@@ -931,6 +934,16 @@ export default function MinhaEscala() {
                           className="h-10 sm:h-8 w-full sm:w-auto text-[11px] font-semibold rounded-xl gap-1.5 cursor-pointer"
                         >
                           <Flame className="w-3.5 h-3.5" /> Passar no Mural
+                        </Button>
+                      )}
+                      {!isPending && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => { try { window.localStorage.setItem('scale_swap_shift_id', String(shift.id)); } catch { /* sem armazenamento */ } navigate('/trocas'); }}
+                          className="h-10 sm:h-8 w-full sm:w-auto text-[11px] font-semibold rounded-xl gap-1.5 cursor-pointer"
+                        >
+                          <ArrowRightLeft className="w-3.5 h-3.5" /> Propor troca
                         </Button>
                       )}
                     </div>

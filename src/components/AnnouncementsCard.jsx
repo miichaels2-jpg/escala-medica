@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 // Comunicados por setor com "li" (V0.10.2), no Painel da coordenação.
-export default function AnnouncementsCard() {
+export default function AnnouncementsCard({ limit = 8 }) {
   const { company, user, selectedUnitId, allCompanySectors = [], allCompanyProfessionals = [], professionals = [] } = useAppData();
   const { managedUnits, scopeUnitIds, unitName } = useUnitScope();
   const team = allCompanyProfessionals.length ? allCompanyProfessionals : professionals;
@@ -72,7 +72,7 @@ export default function AnnouncementsCard() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2"><Megaphone className="w-5 h-5 text-sky-600" /> Comunicados</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Aviso oficial para a equipe de um setor ou de toda a unidade. Você vê quem já leu.</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Aviso oficial para a equipe de um setor ou de toda a unidade. Aparece em janela para cada um e fica guardado em Avisos. Você vê quem já leu.</p>
         </div>
         <Button type="button" size="sm" onClick={openNew} disabled={missing} className="shrink-0 gap-1.5 bg-sky-600 hover:bg-sky-500 text-white"><Plus className="w-4 h-4" /> Novo comunicado</Button>
       </div>
@@ -81,7 +81,7 @@ export default function AnnouncementsCard() {
       {!missing && list.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum comunicado ainda. Use para avisos como mudança de rotina, protocolo novo ou reunião da equipe.</p>}
 
       <ul className="space-y-2">
-        {list.slice(0, 8).map(a => {
+        {list.slice(0, limit).map(a => {
           const audience = announcementAudience(a, team);
           const readIds = new Set(reads.filter(r => r.announcement_id === a.id).map(r => String(r.professional_id)));
           const readers = audience.filter(p => readIds.has(String(p.id)));

@@ -61,7 +61,7 @@ export default {
     {
       titulo: 'Comunicados para a equipe',
       blocos: [
-        { p: 'O quadro **Comunicados** serve para avisos oficiais: mudança de rotina, protocolo novo, reunião da equipe.' },
+        { p: 'O quadro **Comunicados**, no alto do Painel (e também na tela **Avisos** do menu), serve para avisos oficiais: mudança de rotina, protocolo novo, reunião da equipe. Cada profissional vê o comunicado numa janela ao abrir o app e encontra todos guardados em **Avisos**.' },
         { passos: [
           'Clique em `Novo comunicado`.',
           'Em **Para quem**, escolha `Toda a equipe da unidade` ou a equipe de um setor (com várias unidades, escolha antes a **Unidade**). O sistema mostra quantos profissionais vão receber.',

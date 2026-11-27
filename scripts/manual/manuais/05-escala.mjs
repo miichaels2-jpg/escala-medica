@@ -92,6 +92,7 @@ export default {
         { h: 'Arrastar no calendário' },
         { passos: [
           'Na visão `Calendário`, a lista da esquerda traz a equipe. Arraste o nome até o dia.',
+          'No fim do painel do dia fica o **Sobreaviso**: com um setor escolhido nas abas, `+ Adicionar` coloca alguém de reserva naquele dia (o x tira). Se o dia tiver vaga aberta, `Chamar sobreaviso` avisa essas pessoas no celular; na janela do plantão, quem está de sobreaviso aparece primeiro.',
           'Clique no dia para ver os plantões dele à direita. A **lixeira** ao lado de `Alocar` exclui aquela vaga; a lixeira no alto do painel tira o dia inteiro da escala. Nos dois casos aparece `Desfazer` por 10 segundos.',
           'Se o dia tem vagas em mais de um horário, aparece **Em qual horário?**: escolha manhã, tarde ou noite. O sistema nunca escolhe sozinho. Para não perguntar toda vez, fixe o turno em **Horário ao soltar no dia**.',
           'Para vários dias de uma vez: clique em `Marcar vários dias`, clique nos dias do calendário e arraste o profissional para qualquer um deles. Ele entra em todos os dias marcados, no horário escolhido. Os dias em que não dá (sem vaga nesse horário, choque de horário, folga) aparecem na confirmação e ficam de fora.'
