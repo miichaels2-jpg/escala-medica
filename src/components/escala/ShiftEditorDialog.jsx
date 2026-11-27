@@ -130,10 +130,23 @@ export default function ShiftEditorDialog({ categorizedProfessionalsForModal, ed
                   </div>
                 </div>
               ) : (
-                <p className="text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 p-3 rounded-xl border border-rose-200 dark:border-rose-900/60 leading-tight">
-                  O plantão será disponibilizado no <b>Mural</b> para que os profissionais assumam.
-                </p>
+                formData.is_extra ? (
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-900 p-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 leading-tight">
+                    Fica como <b>vaga extra</b> na escala, para você encaixar alguém depois. Não vai para o Mural.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 p-3 rounded-xl border border-rose-200 dark:border-rose-900/60 leading-tight">
+                    O plantão será disponibilizado no <b>Mural</b> para que os profissionais assumam.
+                  </p>
+                )
               )}
+
+              <label className="flex items-start gap-2.5 pt-2 border-t border-slate-200 dark:border-slate-800 cursor-pointer">
+                <input type="checkbox" checked={Boolean(formData.is_extra)} onChange={e => setFormData({ ...formData, is_extra: e.target.checked })} className="mt-0.5 h-4 w-4 accent-sky-600 cursor-pointer" />
+                <span className="text-xs text-slate-600 dark:text-slate-300 leading-snug">
+                  <b className="text-slate-900 dark:text-white">Vaga extra</b> · folga para encaixar alguém além da equipe fixa. Não vai para o Mural e, vazia, não conta como vaga em aberto nem furo.
+                </span>
+              </label>
 
               {/* CAMPO DE JUSTIFICATIVA RETROATIVA */}
               {isEditingPastShift && formData.action_type === 'alocar' && (

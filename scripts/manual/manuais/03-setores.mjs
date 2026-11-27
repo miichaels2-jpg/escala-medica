@@ -35,7 +35,7 @@ export default {
           'Em **Nome do setor**, escreva o nome como a equipe conhece (ex.: UTI Adulto). Deixe a **Situação** como `Ativo`.',
           { texto: 'Em **Turnos padrão**, clique em `Adicionar turno` e preencha: **Especialidade** de quem cobre o turno, horário de **Entrada** e **Saída** e o número de **Vagas** por dia. Repita para cada turno do dia (dia e noite, por exemplo).', figura: 'setor-editar', legenda: 'Setor UTI Adulto com dois turnos padrão: 2 vagas de dia e 1 de noite.' },
           'Turno que vira o dia (ex.: 19:00 às 07:00) é normal: o sistema entende que termina na manhã seguinte.',
-          '**Vagas extras** (opcional): logo abaixo de cada turno, informe quantas vagas a mais você quer e toque nos **dias da semana** em que elas entram (ex.: 1 extra só na segunda e na terça). Servem para encaixar alguém além da equipe fixa. Na Escala elas aparecem como **Vaga extra**, não vão para o Mural, e as que ficarem vazias saem sozinhas quando a escala é publicada.',
+          '**Vagas extras** (opcional): logo abaixo de cada turno, informe quantas vagas a mais você quer e toque nos **dias da semana** em que elas entram (ex.: 1 extra só na segunda e na terça). Servem para encaixar alguém além da equipe fixa. Na Escala elas aparecem como **Vaga extra** e continuam lá depois de publicar, para você encaixar alguém quando precisar. Vazias, não vão para o Mural e não contam como vaga em aberto, furo ou aviso de vaga urgente.',
           'Clique em `Salvar setor`. O cartão passa a mostrar o resumo dos turnos.'
         ] },
         { h: 'Valores do plantão' },

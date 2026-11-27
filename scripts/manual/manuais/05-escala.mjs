@@ -113,7 +113,7 @@ export default {
         { lista: [
           '**Mudou algo depois de publicar?** Quem foi afetado é avisado na hora (entrou, saiu ou mudou de horário).',
           '**Despublicar:** `Mais` › `Voltar para rascunho` tira a publicação do setor no mês. Use só em caso de erro: a equipe deixa de ver os plantões.',
-          '**Vagas extras vazias:** ao publicar, as vagas extras que ninguém ocupou saem da escala sozinhas. A janela de publicar avisa quantas.',
+          '**Vagas extras:** publicam junto e continuam na escala, mesmo vazias, para você encaixar alguém durante o mês (clique na vaga extra e escolha o profissional). Vazias, não vão para o Mural e não contam nos números. Para criar uma vaga extra fora dos turnos padrão, use `Mais` › `Plantão avulso` e marque **Vaga extra**.',
           '**Começar o mês de novo:** `Mais` › `Excluir escala do mês (rascunho)` apaga todos os plantões do mês que ainda não foram publicados (do setor escolhido ou, em `Todos`, de todos os setores). Eles somem de todas as telas, e dá para montar outra escala do zero. Períodos já publicados ficam. Aparece `Desfazer` por 10 segundos.'
         ] },
         { atencao: 'Enquanto a escala está em rascunho, os profissionais não veem os plantões e as vagas não vão para o Mural.' }

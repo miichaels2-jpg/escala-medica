@@ -19,7 +19,7 @@ function PublishPreview({ shifts, professionals, sectorId, start, end }) {
   const { company } = useAppData();
   const preview = useMemo(() => {
     if (!sectorId || !start || !end || end < start) return null;
-    // Vagas extras vazias saem ao publicar: não entram na conta.
+    // Vaga extra vazia é folga da coordenação: publica junto, mas não entra na conta de vagas e custo.
     const allSector = shifts.filter(s => String(s.sector_id) === String(sectorId));
     const isEmptyExtra = s => isExtraVacancy(s) && isShiftVacant(s);
     const emptyExtras = allSector.filter(s => isEmptyExtra(s) && s.date >= start && s.date <= end).length;
@@ -57,7 +57,7 @@ function PublishPreview({ shifts, professionals, sectorId, start, end }) {
         )}
       </p>
       {emptyExtras > 0 && (
-        <p className="text-[11px] text-slate-500 dark:text-slate-400">{emptyExtras} vaga(s) extra(s) vazia(s) saem da escala ao publicar.</p>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">{emptyExtras} vaga(s) extra(s) vazia(s) também ficam na escala, para encaixar alguém depois (não vão para o Mural).</p>
       )}
       {(cur.pendingProduction > 0 || cur.missingRate > 0) && (
         <p className="text-[11px] text-slate-500 dark:text-slate-400">

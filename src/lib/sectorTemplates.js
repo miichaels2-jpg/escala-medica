@@ -2,7 +2,8 @@
 // Ficam em company.data.sector_shift_templates = { [sectorId]: [{ specialty, start_time, end_time, quantity,
 // extra_quantity, extra_weekdays }] } e preenchem o "Montar turnos do mês" da Escala.
 // Vagas extras (V0.9.2): folga para encaixar alguém, só nos dias da semana escolhidos (0 = domingo).
-// Ficam marcadas com EXTRA_VACANCY_TAG; as que ficarem vazias saem ao publicar.
+// Ficam marcadas com EXTRA_VACANCY_TAG e continuam na escala depois de publicar (V0.9.3); vazias,
+// não vão para o Mural nem contam como vaga em aberto, furo ou aviso.
 
 export const EXTRA_VACANCY_TAG = '[VAGA_EXTRA]';
 export const isExtraVacancy = shift => String(shift?.notes || '').includes(EXTRA_VACANCY_TAG);

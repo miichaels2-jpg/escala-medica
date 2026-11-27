@@ -1,7 +1,7 @@
 // Indicadores da escala (tela Indicadores): retrato do período, distribuição da equipe,
 // trocas e repasses, segurança do plantão (regras de Configurações), rankings e pendências.
 // Só lê o que o sistema já registra: plantões (com as marcas do Mural) e trocas diretas.
-import { getShiftDateTimeRange, getShiftName, isShiftVacant } from './shiftLiveStatus.js';
+import { getShiftDateTimeRange, getShiftName, isIdleExtraSlot, isShiftVacant } from './shiftLiveStatus.js';
 import { isProfessionalAuthorizedForSector } from './sectorAccess.js';
 import { DEFAULT_WORKLOAD_RULES } from './workload.js';
 
@@ -166,7 +166,7 @@ export function computeIndicators({ shifts = [], professionals = [], swaps = [],
   const profById = new Map(professionals.filter(p => p?.id).map(p => [String(p.id), p]));
   const nameOf = id => profById.get(String(id))?.name || '';
   const matchesShift = s => (!sectorId || String(s.sector_id) === String(sectorId)) && (!specialty || norm(shiftSpecialty(s)) === norm(specialty));
-  const scoped = shifts.filter(s => s && !norm(s.status).includes('cancel') && matchesShift(s));
+  const scoped = shifts.filter(s => s && !norm(s.status).includes('cancel') && !isIdleExtraSlot(s) && matchesShift(s));
   const period = scoped.filter(s => { const d = dateOf(s); return d >= start && d <= end; });
   const filled = period.filter(s => !isShiftVacant(s));
 

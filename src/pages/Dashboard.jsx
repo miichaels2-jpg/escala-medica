@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { DEFAULT_REMUNERATION_TYPE, getShiftCostEstimate } from '@/lib/financialCalculations';
-import { getShiftDateTimeRange, isShiftVacant } from '@/lib/shiftLiveStatus';
+import { getShiftDateTimeRange, isIdleExtraSlot, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
 import EmptyState from '@/components/EmptyState';
@@ -211,7 +211,7 @@ export default function Painel() {
 
   // Em "Todas as unidades", os plantões de todas; senão, os da unidade escolhida.
   const unitShifts = useMemo(() => {
-    return (shifts || []).filter(s => (isAllUnits ? scopeUnitIds.includes(String(s.unit_id)) : String(s.unit_id) === String(unitId)) && s.status !== 'cancelado');
+    return (shifts || []).filter(s => (isAllUnits ? scopeUnitIds.includes(String(s.unit_id)) : String(s.unit_id) === String(unitId)) && s.status !== 'cancelado' && !isIdleExtraSlot(s));
   }, [shifts, unitId, isAllUnits, scopeUnitIds]);
 
   const todayShifts = useMemo(() => {

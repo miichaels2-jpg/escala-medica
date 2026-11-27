@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppData } from '@/lib/useAppData';
 import { supabase } from '@/lib/supabase';
 import { isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
-import { isShiftVacant } from '@/lib/shiftLiveStatus';
+import { isIdleExtraSlot, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { WEEKDAY_INITIALS, getSectorTemplates, templateSummary, vacanciesPerDay, withSectorTemplates } from '@/lib/sectorTemplates';
 import { RATE_COLUMNS, getSectorRates, withSectorRates } from '@/lib/financialCalculations';
 import { formatCurrency, getLocalDateString } from '@/lib/format';
@@ -71,7 +71,7 @@ export default function Setores() {
       stats[sector.id] = {
         team: activeTeam.filter(p => isProfessionalAuthorizedForSector(p, sector.id)).length,
         shifts: monthShifts.length,
-        vacancies: monthShifts.filter(isShiftVacant).length
+        vacancies: monthShifts.filter(s => isShiftVacant(s) && !isIdleExtraSlot(s)).length
       };
     });
     return stats;
@@ -353,7 +353,7 @@ Não dá para desfazer.`)) return;
             <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
               <div>
                 <p className="text-sm font-semibold text-slate-900 dark:text-white">Turnos padrão</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Os horários fixos de todo dia. Na Escala, “Montar turnos do mês” já abre com eles. <b>Vagas extras</b> entram só nos dias da semana escolhidos, para encaixar alguém a mais; as que ficarem vazias saem quando a escala é publicada.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Os horários fixos de todo dia. Na Escala, “Montar turnos do mês” já abre com eles. <b>Vagas extras</b> entram só nos dias da semana escolhidos, para encaixar alguém a mais; elas continuam na escala depois de publicar, para você encaixar alguém quando precisar, e vazias não contam como vaga em aberto nem vão para o Mural.</p>
               </div>
 
               {turns.map(turn => (

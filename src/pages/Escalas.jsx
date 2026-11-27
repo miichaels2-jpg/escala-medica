@@ -205,16 +205,8 @@ const closeTvMode = async () => {
         });
       }
 
-      // Vagas extras que ninguém ocupou saem ao publicar: eram só folga para a montagem.
-      const emptyExtras = publishTargetShifts.filter(s => isExtraVacancy(s) && isVacant(s));
-      if (emptyExtras.length) {
-        const { error: extraError } = await supabase.from('shifts').delete().in('id', emptyExtras.map(s => s.id));
-        if (extraError) throw extraError;
-      }
-      const removedExtraIds = new Set(emptyExtras.map(s => String(s.id)));
-
       const newlyPublishedByProfessional = new Map();
-      for (const shift of publishTargetShifts.filter(s => !removedExtraIds.has(String(s.id)))) {
+      for (const shift of publishTargetShifts) {
         const currNotes = String(shift.notes || '');
         const wasAlreadyPublished = currNotes.includes('[ESCALA_PUBLICADA]');
         // Republicar substitui os marcadores anteriores em vez de acumulá-los.
@@ -250,7 +242,7 @@ const closeTvMode = async () => {
       setPublishModalOpen(false);
       await syncGlobalData();
 
-      alert(`✓ Escala de "${secName}" oficializada!\n\nVigência: ${formatDateBR(publishConfig.start_date)} até ${formatDateBR(publishConfig.end_date)}\n${newlyPublishedByProfessional.size} profissional(is) ${notificationsSent ? 'notificado(s)' : 'a notificar (falha no envio do aviso)'}.${emptyExtras.length ? `\n${emptyExtras.length} vaga(s) extra(s) vazia(s) removida(s).` : ''}`);
+      alert(`✓ Escala de "${secName}" oficializada!\n\nVigência: ${formatDateBR(publishConfig.start_date)} até ${formatDateBR(publishConfig.end_date)}\n${newlyPublishedByProfessional.size} profissional(is) ${notificationsSent ? 'notificado(s)' : 'a notificar (falha no envio do aviso)'}.`);
       } catch (err) { alert('Erro ao publicar escala: ' + err.message); } finally { setSubmitting(false); }
   };
 
@@ -1112,11 +1104,13 @@ const conflict = checkProfessionalConflict(
 
   const monthStats = useMemo(() => {
     let filled = 0, open = 0, furos = 0, hours = 0;
-    scheduleVisibleShifts.forEach(sh => {
+    // Vaga extra vazia não é furo nem vaga em aberto.
+    const counted = scheduleVisibleShifts.filter(sh => !(isExtraVacancy(sh) && isVacant(sh)));
+    counted.forEach(sh => {
       if (isVacant(sh)) { if (isShiftPast(sh, liveNow)) furos++; else open++; }
       else { filled++; hours += shiftHours(sh); }
     });
-    const total = scheduleVisibleShifts.length;
+    const total = counted.length;
     return { total, filled, open, furos, hours: Math.round(hours), coverage: total ? Math.round((filled / total) * 100) : null };
   }, [scheduleVisibleShifts, liveNow]);
   // Abas de setor: as 5 primeiras (mais a escolhida, se estiver depois) e o resto no "+N".
@@ -1414,7 +1408,7 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
       start_time: preset.start_time || '07:00',
       end_time: preset.end_time || '19:00',
       shift_type: (preset.start_time || '07:00') >= '18:00' ? 'noturno' : 'diurno',
-      action_type: 'alocar', professional_id: '', notes: '', retroactive_justification: ''
+      action_type: 'alocar', professional_id: '', notes: '', retroactive_justification: '', is_extra: Boolean(preset.is_extra)
     });
     setModalOpen(true);
   };
@@ -1506,7 +1500,8 @@ if (!isMural && formData.professional_id) {
       const sType = formData.start_time >= '18:00' || formData.start_time < '06:00' ? 'noturno' : 'diurno';
 
       let baseNotes = (formData.notes || '').replace(/\[ESP:[^\]]+\]/gi, '').replace(/\[AJUSTE_RETROATIVO:[^\]]+\]/gi, '').trim();
-      let newNotes = `[ESP:${finalSpecialty}] ${baseNotes}`;
+      baseNotes = baseNotes.split(EXTRA_VACANCY_TAG).join('').trim();
+      let newNotes = `[ESP:${finalSpecialty}] ${baseNotes}${formData.is_extra ? ` ${EXTRA_VACANCY_TAG}` : ''}`;
       
       if (isPast && formData.action_type === 'alocar' && formData.retroactive_justification) {
         newNotes += ` [AJUSTE_RETROATIVO:${formData.retroactive_justification.replace(/\[|\]/g, '')}]`;
@@ -1607,6 +1602,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
       action_type: 'alocar',
       professional_id: shift.professional_id || '',
       notes: shift.notes || '',
+      is_extra: isExtraVacancy(shift),
       retroactive_justification: extractRetroactiveJustification(shift.notes)
     });
     setModalOpen(true);
