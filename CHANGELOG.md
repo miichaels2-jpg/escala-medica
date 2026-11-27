@@ -9,6 +9,12 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.10.7 — 27/11/2026
+
+Mural: o plantonista não fica sabendo de vagas de outra especialidade.
+
+- A nota no fim do Mural dizia "1 vaga do hospital não está disponível: 1 de outra especialidade (Ginecologia)". Agora vagas de outra especialidade ou de setor em que a pessoa não atua nem entram na conta; a nota só fala das vagas da especialidade dela que não aparecem por choque de horário ou indisponibilidade.
+
 ## V0.10.6 — 27/11/2026
 
 Vaga aberta só para quem é da especialidade, em todo o sistema.

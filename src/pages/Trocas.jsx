@@ -312,7 +312,8 @@ export default function Trocas() {
   );
 
   const openShifts = isManager && managerView === 'todas' ? muralShifts : claimableShifts;
-  const hiddenForMeCount = muralShifts.length - claimableShifts.length;
+  // Vagas de outra especialidade ou de setor em que a pessoa não atua nem entram na conta (V0.10.6):
+  // o plantonista não fica sabendo que existem. A nota fala só das que seriam dele (choque ou folga).
 
   const hiddenReasons = useMemo(() => {
     const reasons = { sector: 0, conflict: 0, away: 0, specialties: new Map() };
@@ -751,14 +752,10 @@ Plantão confirmado: ${sectorName}, ${formatDateBR(shift.date)} (${shift.start_t
             </div>
           )}
 
-          {!isManager && hiddenForMeCount > 0 && myProf?.id && (
+          {!isManager && (hiddenReasons.conflict + hiddenReasons.away) > 0 && myProf?.id && (
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 text-sm text-slate-600 dark:text-slate-300">
-              <p className="font-medium text-slate-800 dark:text-slate-100">{hiddenForMeCount} vaga(s) do hospital não estão disponíveis para você:</p>
+              <p className="font-medium text-slate-800 dark:text-slate-100">{hiddenReasons.conflict + hiddenReasons.away} vaga(s) da sua especialidade não aparecem para você:</p>
               <ul className="mt-1.5 space-y-0.5 text-xs">
-                {[...hiddenReasons.specialties.entries()].map(([spec, count]) => (
-                  <li key={spec}>· {count} de outra especialidade (<b>{spec}</b>) — a sua é {myProf.specialty || 'não informada'}</li>
-                ))}
-                {hiddenReasons.sector > 0 && <li>· {hiddenReasons.sector} de setor em que você não está autorizado(a)</li>}
                 {hiddenReasons.conflict > 0 && <li>· {hiddenReasons.conflict} em horário em que você já está escalado(a)</li>}
                 {hiddenReasons.away > 0 && <li>· {hiddenReasons.away} em dias que você marcou como indisponível</li>}
               </ul>
