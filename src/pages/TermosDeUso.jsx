@@ -78,9 +78,25 @@ export default function TermosDeUso() {
             </p>
           </section>
 
+          <section>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-3">6. Cookies e Armazenamento no Aparelho</h2>
+            <p>
+              O ScaleMedic não usa cookies de publicidade, de rastreamento nem de estatística de terceiros. O sistema guarda no navegador ou no aplicativo apenas o necessário para funcionar:
+            </p>
+            <ul className="list-disc pl-5 mt-2 space-y-1">
+              <li><strong>Sessão de acesso:</strong> mantém o usuário conectado com segurança até sair ou até o fim da sessão (saída automática após 1 hora sem uso).</li>
+              <li><strong>Preferências:</strong> tema claro ou escuro, hospital e setor escolhidos, forma de ver a escala e avisos de ajuda já vistos.</li>
+              <li><strong>“Lembrar-me neste dispositivo”:</strong> guarda somente o nome de usuário, nunca a senha.</li>
+              <li><strong>Modo aplicativo:</strong> cópia dos arquivos do sistema para abrir mais rápido e funcionar como app no celular. Escalas, valores e dados pessoais não ficam guardados nessa cópia; são sempre lidos ao vivo.</li>
+            </ul>
+            <p className="mt-2">
+              Esse armazenamento é estritamente necessário para a prestação do serviço e por isso não depende de consentimento separado. Ao sair do sistema, a sessão é apagada; as preferências podem ser removidas limpando os dados do site no navegador.
+            </p>
+          </section>
+
           <div className="pt-6 border-t border-slate-200 dark:border-slate-800 text-center">
             <p className="text-xs font-medium text-slate-400">
-              Última atualização: Setembro de 2026<br/>
+              Última atualização: Novembro de 2026<br/>
               ScaleMedic Enterprise Ltda.
             </p>
           </div>

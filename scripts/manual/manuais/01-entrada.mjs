@@ -111,6 +111,7 @@ export default {
           'Toque no menu **⋮**, no canto superior direito.',
           'Toque em **Instalar app** (ou **Adicionar à tela inicial**) e confirme. Em alguns celulares, o próprio ScaleMedic mostra o botão `Instalar agora`.'
         ] },
+        { p: 'O ScaleMedic **se atualiza sozinho**, instalado ou no navegador: quando sai uma versão nova, ele recarrega na próxima troca de tela. Se você voltar para o app depois de um tempo, aparece embaixo a faixa **Saiu uma versão nova do ScaleMedic**: toque em `Atualizar` quando terminar o que estiver fazendo. A versão em uso aparece na tela de entrada e no pé do menu.' },
         { dica: 'Depois de instalar, ative os avisos no sino do topo da tela. Assim você recebe no celular a escala publicada, vagas da sua especialidade e respostas das suas trocas.' }
       ]
     },
