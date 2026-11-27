@@ -4,9 +4,10 @@ import pkg from '../../package.json';
 export const APP_VERSION = `V${pkg.version}`;
 
 // Regra de numeração do ScaleMedic:
-// cada entrega sobe o último número (0.1.2 → 0.1.3 … → 0.1.10);
-// depois do 10, sobe o número do meio e o último recomeça em 1 (0.1.10 → 0.2.1).
-export const PATCH_LIMIT = 10;
+// cada entrega sobe o último número (0.10.4 → 0.10.5 … → 0.10.20);
+// depois do 20, sobe o número do meio e o último recomeça em 1 (0.10.20 → 0.11.1).
+// Até a V0.10.3 o limite era 10 (por isso 0.9.10 → 0.10.1).
+export const PATCH_LIMIT = 20;
 
 export function nextVersion(current) {
   const match = /^V?(\d+)\.(\d+)\.(\d+)$/i.exec(String(current || '').trim());
