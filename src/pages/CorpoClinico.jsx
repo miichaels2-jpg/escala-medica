@@ -24,6 +24,7 @@ import { saveRow } from '@/lib/saveRow';
 import { sendAccessEmail, sendAccessToProfessional } from '@/lib/accessEmail';
 import { isRealEmail } from '@/lib/passwordRecovery';
 import AccessEmailDialog from '@/components/AccessEmailDialog';
+import { addProfessionalToUnit, isInUnit } from '@/lib/professionalUnits';
 import EmptyState from '@/components/EmptyState';
 import { safeNumber } from '@/lib/format';
 import { parseCsv, prepareProfessionalRow } from '@/lib/professionalImport';
@@ -463,6 +464,24 @@ Se ainda não entrou no sistema, recebe uma senha provisória nova; se já criou
 
   // Cada linha: campos reconhecidos pelo nome do cabeçalho, ajustes automáticos com aviso
   // e só fica de fora quem não tem nome, está repetido ou já está cadastrado.
+  // Importação (V0.9.7): quem já existe em outra unidade pode entrar nesta com o mesmo cadastro e login.
+  const importUnitName = (units || []).find(u => String(u.id) === String(selectedUnitId))?.name || 'esta unidade';
+  const linkableRows = importRows.filter(row => !row.errors.length && row.existingMatch && !row.imported && !row.linked && !isInUnit(row.existingMatch, selectedUnitId));
+  const [linkingRows, setLinkingRows] = useState(false);
+  const handleLinkRows = async (rows) => {
+    setLinkingRows(true);
+    const done = new Set();
+    const failed = [];
+    for (const row of rows) {
+      try { await addProfessionalToUnit(row.existingMatch, selectedUnitId); done.add(row.lineNumber); }
+      catch (err) { failed.push(`${row.existingMatch.name}: ${err?.message || 'erro'}`); }
+    }
+    setImportRows(prev => prev.map(row => (done.has(row.lineNumber) ? { ...row, linked: true } : row)));
+    setLinkingRows(false);
+    await syncGlobalData();
+    if (failed.length) alert(`Não foi possível incluir: ${failed.join('; ')}`);
+  };
+
   const prepareImportPayload = (rawRow, lineNumber, seenKeys) => prepareProfessionalRow(rawRow, {
     lineNumber,
     seenKeys,
@@ -1585,7 +1604,16 @@ Se ainda não entrou no sistema, recebe uma senha provisória nova; se já criou
                         <p className="mt-1 text-[11px] text-rose-700 dark:text-rose-300">{[...row.errors, row.importError].filter(Boolean).join(' · ')}</p>
                       )}
                       {!row.errors.length && row.existingMatch && !row.imported && (
-                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Já existe {row.existingMatch.name || 'um cadastro'} com o mesmo CPF, e-mail ou matrícula: fica de fora para não duplicar. Edite pelo Corpo Clínico, se precisar.</p>
+                        row.linked ? (
+                          <p className="mt-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Incluído em {importUnitName}, com o mesmo cadastro e login.</p>
+                        ) : !isInUnit(row.existingMatch, selectedUnitId) ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">{row.existingMatch.name || 'Este profissional'} já está cadastrado em outra unidade. Não precisa duplicar: inclua em {importUnitName} com o mesmo cadastro e login.</p>
+                            <Button type="button" size="sm" variant="outline" disabled={linkingRows} onClick={() => handleLinkRows([row])} className="h-7 text-[11px] rounded-lg cursor-pointer">Incluir nesta unidade</Button>
+                          </div>
+                        ) : (
+                          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Já existe {row.existingMatch.name || 'um cadastro'} com o mesmo CPF, e-mail ou matrícula nesta unidade: fica de fora para não duplicar. Edite pelo Corpo Clínico, se precisar.</p>
+                        )
                       )}
                       {!row.errors.length && !row.existingMatch && row.warnings?.length > 0 && !row.imported && (
                         <p className="mt-1 text-[11px] text-amber-800 dark:text-amber-300">{row.warnings.join(' · ')}</p>
@@ -1599,6 +1627,12 @@ Se ainda não entrou no sistema, recebe uma senha provisória nova; se já criou
 
           <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={() => setImportOpen(false)} disabled={importing} className="text-xs h-10 cursor-pointer">Fechar</Button>
+            {linkableRows.length > 0 && (
+              <Button type="button" variant="outline" onClick={() => handleLinkRows(linkableRows)} disabled={importing || linkingRows} className="text-xs h-10 font-semibold rounded-xl gap-2 cursor-pointer">
+                {linkingRows ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                Incluir {linkableRows.length} de outra unidade em {importUnitName}
+              </Button>
+            )}
             <Button type="button" onClick={handleImportProfessionals} disabled={importing || !importRows.some(row => !row.errors.length && !row.existingMatch && !row.imported)} className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs h-10 px-5 rounded-xl gap-2 cursor-pointer">
               {importing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
               Importar {importRows.filter(row => !row.errors.length && !row.existingMatch && !row.imported).length} profissional(is)

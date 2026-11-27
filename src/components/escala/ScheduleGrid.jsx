@@ -100,7 +100,7 @@ export default function ScheduleGrid({
       {visibleSections.map(({ sector, rows, legend }) => (
         <section key={sector.id} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
           {sectors.length > 1 && (
-            <h3 className="px-4 pt-4 text-base font-semibold text-slate-900 dark:text-white">{sector.name}</h3>
+            <h3 className="px-4 pt-4 text-base font-semibold text-slate-900 dark:text-white">{sector.name}{helpers.unitLabel?.(sector.unit_id) && <span className="ml-2 rounded-md bg-sky-50 dark:bg-sky-500/10 px-1.5 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300 align-middle">{helpers.unitLabel(sector.unit_id)}</span>}</h3>
           )}
           {rows.length === 0 ? (
             <div className="p-8 text-center">

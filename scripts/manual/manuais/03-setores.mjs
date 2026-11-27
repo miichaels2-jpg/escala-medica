@@ -24,6 +24,7 @@ export default {
           '`Editar`: muda o nome, a situação (ativo ou inativo) e os turnos padrão.'
         ] },
         { p: 'Cada cartão mostra ainda quantos profissionais estão **autorizados** a trabalhar no setor e quantos plantões ele tem no mês, com as vagas em aberto. A lixeira, à direita, exclui o setor. A busca no topo filtra os setores pelo nome.' },
+        { dica: 'Estabelecimento com várias unidades: escolha `Todas as unidades` no seletor **Unidade**, no topo da tela, para ver os setores de todas juntas, cada cartão com o nome da sua unidade.' },
         { p: 'Para a gestão, o cartão mostra também os **valores do plantão** do setor (ex.: Dia R$ 800 · Noite R$ 1.000). Sem tabela, aparece `Sem tabela de valores · cadastrar`.' }
       ]
     },
@@ -32,6 +33,7 @@ export default {
       blocos: [
         { passos: [
           'Clique em `Novo setor`.',
+          'Se o estabelecimento tem mais de uma unidade (hospital), escolha a **Unidade** do setor. Depois de criado, o setor fica sempre nessa unidade.',
           'Em **Nome do setor**, escreva o nome como a equipe conhece (ex.: UTI Adulto). Deixe a **Situação** como `Ativo`.',
           { texto: 'Em **Turnos padrão**, clique em `Adicionar turno` e preencha: **Especialidade** de quem cobre o turno, horário de **Entrada** e **Saída** e o número de **Vagas** por dia. Repita para cada turno do dia (dia e noite, por exemplo).', figura: 'setor-editar', legenda: 'Setor UTI Adulto com dois turnos padrão: 2 vagas de dia e 1 de noite.' },
           'Turno que vira o dia (ex.: 19:00 às 07:00) é normal: o sistema entende que termina na manhã seguinte.',

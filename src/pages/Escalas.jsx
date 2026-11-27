@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useAppData } from '@/lib/useAppData';
-import { isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
+import { getProfessionalUnitIds, isProfessionalAuthorizedForSector as isAuthorizedInSectorList } from '@/lib/sectorAccess';
+import { useUnitScope } from '@/lib/unitScope';
 import { describeUnavailability, findUnavailability } from '@/lib/availability';
 import { mapDateToMonth } from '@/lib/scheduleCopy';
 import { checkWorkload, getWorkloadRules } from '@/lib/workload';
@@ -31,7 +32,23 @@ import PublishDialog from '@/components/escala/PublishDialog';
 import CopyMonthDialog from '@/components/escala/CopyMonthDialog';
 
 export default function Escalas() {
-  const { shifts = [], allCompanyShifts = [], allCompanySectors = [], sectors = [], professionals = [], selectedUnitId, units = [], company, user, isManager, syncGlobalData, unassignedShifts = [], publishedRanges, getPublishedRanges, savePublishedRanges } = useAppData();
+  const { shifts: unitShiftsRaw = [], allCompanyShifts = [], allCompanySectors = [], allCompanyProfessionals = [], sectors: unitSectorsRaw = [], professionals: unitProfessionalsRaw = [], selectedUnitId, units = [], company, user, isManager, syncGlobalData, unassignedShifts = [], publishedRanges, getPublishedRanges, savePublishedRanges } = useAppData();
+  // "Todas as unidades" (V0.9.7): monta e publica a escala de todas as unidades administradas sem trocar
+  // de unidade. Cada setor e plantão leva a sua unidade; quem pode ir é quem atende na unidade do setor.
+  const { isAllUnits, inScope, unitName } = useUnitScope();
+  const sectors = useMemo(() => (isAllUnits ? allCompanySectors.filter(s => !s.unit_id || inScope(s.unit_id)) : unitSectorsRaw), [isAllUnits, allCompanySectors, unitSectorsRaw, inScope]);
+  const shifts = useMemo(() => (isAllUnits ? allCompanyShifts.filter(s => inScope(s.unit_id)) : unitShiftsRaw), [isAllUnits, allCompanyShifts, unitShiftsRaw, inScope]);
+  const professionals = useMemo(() => (isAllUnits ? allCompanyProfessionals.filter(p => getProfessionalUnitIds(p).some(inScope)) : unitProfessionalsRaw), [isAllUnits, allCompanyProfessionals, unitProfessionalsRaw, inScope]);
+  // Unidade do setor (em "Todas" cada setor é de uma unidade; numa unidade só, é a escolhida).
+  function unitOfSector(sectorId) {
+    const sector = (allCompanySectors || []).find(s => String(s.id) === String(sectorId)) || (sectors || []).find(s => String(s.id) === String(sectorId));
+    return String(sector?.unit_id || selectedUnitId || '');
+  }
+  function isProfessionalAuthorizedForSector(prof, sectorId) {
+    if (!isAuthorizedInSectorList(prof, sectorId)) return false;
+    if (!isAllUnits || !sectorId) return true;
+    return getProfessionalUnitIds(prof).includes(unitOfSector(sectorId));
+  }
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState('mensal'); 
@@ -111,7 +128,7 @@ const closeTvMode = async () => {
 
   // Publicações ficam no banco (published_schedules): todos os gestores veem o mesmo estado.
   const getSectorPublishedRanges = (secId, year = currentYear, month = currentMonth + 1) =>
-    getPublishedRanges(selectedUnitId, secId, year, month);
+    getPublishedRanges(unitOfSector(secId), secId, year, month);
 
   const isCurrentSectorPublished = useMemo(() => {
     if (selectedSectorId === 'todos') {
@@ -193,7 +210,7 @@ const closeTvMode = async () => {
         const newRange = { start_date: part.start_date, end_date: part.end_date, published_at: publishedAt };
         const currentRanges = getSectorPublishedRanges(publishConfig.sector_id, part.year, part.month);
         await savePublishedRanges({
-          unitId: selectedUnitId,
+          unitId: unitOfSector(publishConfig.sector_id),
           sectorId: publishConfig.sector_id,
           year: part.year,
           month: part.month,
@@ -230,7 +247,7 @@ const closeTvMode = async () => {
         return {
           ...recipientFor(professionalMap[professionalId] || { id: professionalId }),
           company_id: company?.id,
-          unit_id: selectedUnitId,
+          unit_id: unitOfSector(publishConfig.sector_id),
           type: 'escala_publicada',
           category: 'escala',
           title: `Escala publicada: ${secName}`,
@@ -253,7 +270,7 @@ const closeTvMode = async () => {
     if (!confirm(`Reverter escala de "${secName}" em ${MONTH_NAMES[currentMonth]} para Modo Rascunho?`)) return;
 
     try {
-      await savePublishedRanges({ unitId: selectedUnitId, sectorId: secId, year: currentYear, month: currentMonth + 1, ranges: [] });
+      await savePublishedRanges({ unitId: unitOfSector(secId), sectorId: secId, year: currentYear, month: currentMonth + 1, ranges: [] });
       alert(`A escala de "${secName}" voltou para Modo Rascunho.`);
     } catch (err) {
       alert('Erro ao reverter a publicação: ' + err.message);
@@ -458,7 +475,7 @@ const closeTvMode = async () => {
   // "Setor" ou "Setor — Outro Hospital" quando o plantão é de outra unidade.
   const describeShiftPlace = (shift) => {
     const sectorName = (sectorMap[String(shift?.sector_id)] || allSectorsMap[String(shift?.sector_id)])?.name || shift?.sector_name || 'outro setor';
-    if (!shift || String(shift.unit_id) === String(selectedUnitId)) return sectorName;
+    if (!shift || (!isAllUnits && String(shift.unit_id) === String(selectedUnitId))) return sectorName;
     const unitName = (units || []).find(u => String(u.id) === String(shift.unit_id))?.name || 'outra unidade';
     return `${sectorName} — ${unitName}`;
   };
@@ -523,7 +540,7 @@ const closeTvMode = async () => {
     const date = String(shift?.date || '').slice(0, 10);
     const [year, month] = date.split('-').map(Number);
     if (!year || !month) return false;
-    return getPublishedRanges(selectedUnitId, shift.sector_id, year, month)
+    return getPublishedRanges(shift.unit_id || selectedUnitId, shift.sector_id, year, month)
       .some(range => date >= range.start_date && date <= range.end_date);
   };
 
@@ -533,7 +550,7 @@ const closeTvMode = async () => {
       .map(({ shift, prof }) => ({
         ...recipientFor(prof),
         company_id: company?.id,
-        unit_id: selectedUnitId,
+        unit_id: shift.unit_id || selectedUnitId,
         type: 'plantao_alocado',
         category: 'escala',
         title: 'Novo plantão na sua escala',
@@ -650,15 +667,15 @@ const conflict = checkProfessionalConflict(
           const b = list[j].shift;
           // O alerta desta tela mostra só choques que envolvem a unidade aberta;
           // a vaga liberada pelo botão de resolver é sempre a desta unidade.
-          const aHere = String(a.unit_id) === String(selectedUnitId);
-          const bHere = String(b.unit_id) === String(selectedUnitId);
+          const aHere = isAllUnits ? inScope(a.unit_id) : String(a.unit_id) === String(selectedUnitId);
+          const bHere = isAllUnits ? inScope(b.unit_id) : String(b.unit_id) === String(selectedUnitId);
           if (!aHere && !bHere) continue;
           conflicts.push(bHere ? { a, b } : { a: b, b: a });
         }
       }
     });
     return conflicts;
-  }, [companyShifts, selectedUnitId]);
+  }, [companyShifts, selectedUnitId, isAllUnits, inScope]);
 
   const [generatorConfig, setGeneratorConfig] = useState({
     sector_id: '', start_date: getLocalDateString(), duration_days: 30, interval_days: 1,
@@ -776,7 +793,7 @@ const conflict = checkProfessionalConflict(
             id: `draft_${dateStr}_${slot.id}_${q}`,
             isDraft: true,
             company_id: company?.id || 'cmp_principal',
-            unit_id: selectedUnitId || 'unit_h1',
+            unit_id: unitOfSector(generatorConfig.sector_id) || 'unit_h1',
             sector_id: generatorConfig.sector_id,
             target_specialty: spec,
             notes: `[ESP:${spec}] [GERADO_ESCALA_MASSA]`,
@@ -798,7 +815,7 @@ const conflict = checkProfessionalConflict(
             isDraft: true,
             isExtra: true,
             company_id: company?.id || 'cmp_principal',
-            unit_id: selectedUnitId || 'unit_h1',
+            unit_id: unitOfSector(generatorConfig.sector_id) || 'unit_h1',
             sector_id: generatorConfig.sector_id,
             target_specialty: spec,
             notes: `[ESP:${spec}] [GERADO_ESCALA_MASSA] ${EXTRA_VACANCY_TAG}`,
@@ -1068,7 +1085,7 @@ const conflict = checkProfessionalConflict(
       if (selectedSectorId !== 'todos' && String(s.sector_id) !== String(selectedSectorId)) return false;
       if (!isShiftMatchingTurno(s, filterTurno)) return false;
       // Plantonista vê só a escala publicada; rascunho fica com a gestão.
-      if (!isManager && !getPublishedRanges(selectedUnitId, s.sector_id, currentYear, currentMonth + 1).some(r => s.date >= r.start_date && s.date <= r.end_date)) return false;
+      if (!isManager && !getPublishedRanges(s.unit_id || selectedUnitId, s.sector_id, currentYear, currentMonth + 1).some(r => s.date >= r.start_date && s.date <= r.end_date)) return false;
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1435,7 +1452,10 @@ return (p.name || '').toLowerCase().includes(term) || (p.specialty || '').toLowe
 
   const shortLabels = useMemo(() => buildShortLabels(professionals || []), [professionals]);
 
+  // Nas janelas (montar mês, publicar, plantão, copiar), em 'Todas as unidades' o setor leva o nome da unidade.
+  const labeledSectors = useMemo(() => (isAllUnits ? (sectors || []).map(s => ({ ...s, name: `${s.name} · ${unitName(s.unit_id)}` })) : sectors), [isAllUnits, sectors, unitName]);
   const gridHelpers = {
+    unitLabel: (unitId) => (isAllUnits ? unitName(unitId) : ''),
     shortLabel: (s) => shortLabels[String(s.professional_id)] || getInitials(professionalMap[String(s.professional_id)]?.name || getShiftName(s)),
     isVacant,
     isShiftPast: (s) => isShiftPast(s, liveNow),
@@ -1509,7 +1529,7 @@ if (!isMural && formData.professional_id) {
 
       const payload = {
         company_id: company?.id || 'cmp_principal',
-        unit_id: selectedUnitId || 'unit_h1',
+        unit_id: unitOfSector(formData.sector_id) || 'unit_h1',
         sector_id: formData.sector_id,
         target_specialty: finalSpecialty,
         professional_id: isMural ? null : formData.professional_id,
@@ -1866,7 +1886,7 @@ Dá para desfazer logo em seguida.`)) return;
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium leading-snug text-slate-900 dark:text-white truncate">{isOpen ? (isExtraVacancy(shift) ? 'Vaga extra' : 'Sem profissional') : formatFullName(validName)}</div>
             <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
-              {realSpec}{!selectedSectorObj && sectorMap[String(shift.sector_id)]?.name ? ` · ${sectorMap[String(shift.sector_id)].name}` : ''}
+              {realSpec}{!selectedSectorObj && sectorMap[String(shift.sector_id)]?.name ? ` · ${sectorMap[String(shift.sector_id)].name}` : ''}{isAllUnits ? ` · ${unitName(shift.unit_id)}` : ''}
             </div>
           </div>
         </div>
@@ -1889,7 +1909,7 @@ Dá para desfazer logo em seguida.`)) return;
       <PageHero
         title="Escala"
         subtitle={isManager
-          ? `${selectedSectorObj ? selectedSectorObj.name : 'Todos os setores'} · ${isCurrentSectorPublished ? 'publicada' : 'rascunho, ainda não publicada'}`
+          ? `${selectedSectorObj ? `${selectedSectorObj.name}${isAllUnits ? ` (${unitName(selectedSectorObj.unit_id)})` : ''}` : isAllUnits ? 'Todos os setores de todas as unidades' : 'Todos os setores'} · ${isCurrentSectorPublished ? 'publicada' : 'rascunho, ainda não publicada'}`
           : `${selectedSectorObj ? selectedSectorObj.name : 'Todos os setores'} · o que a coordenação já publicou`}
         actions={t => (
           <div className="flex flex-wrap items-center gap-2">
@@ -1975,6 +1995,7 @@ Dá para desfazer logo em seguida.`)) return;
                 title={draft ? `${sec.name}: rascunho em ${MONTH_NAMES[currentMonth].toLowerCase()}` : sec.name}
                 className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm cursor-pointer transition-colors ${active ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 font-medium' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
                 <span className="max-w-[170px] truncate">{sec.name}</span>
+                {isAllUnits && sec.id !== 'todos' && <span className="max-w-[110px] truncate text-[11px] opacity-70">· {unitName(sec.unit_id)}</span>}
                 {draft && <span className="w-1.5 h-1.5 shrink-0 rounded-full bg-amber-500" aria-label="rascunho" />}
               </button>
             );
@@ -1987,7 +2008,7 @@ Dá para desfazer logo em seguida.`)) return;
               <DropdownMenuContent align="start" className="z-[99999] max-h-72 overflow-y-auto">
                 {hiddenSectorTabs.map(sec => (
                   <DropdownMenuItem key={sec.id} onClick={() => handleSelectSector(String(sec.id))} className="cursor-pointer flex items-center gap-2">
-                    {sec.name}
+                    {sec.name}{isAllUnits ? ` · ${unitName(sec.unit_id)}` : ''}
                     {draftSectorIds.has(String(sec.id)) && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-label="rascunho" />}
                   </DropdownMenuItem>
                 ))}
@@ -2331,15 +2352,15 @@ Dá para desfazer logo em seguida.`)) return;
 
       <DayShiftsTab PILL_TONES={PILL_TONES} activeTab={activeTab} handlePrintA4Landscape={handlePrintA4Landscape} liveNow={liveNow} professionalMap={professionalMap} sectorMap={sectorMap} shiftPill={shiftPill} tvData={tvData} />
 
-      <ShiftEditorDialog categorizedProfessionalsForModal={categorizedProfessionalsForModal} editingShiftId={editingShiftId} formData={formData} handleDeleteShift={handleDeleteShift} handleSaveShift={handleSaveShift} isEditingPastShift={isEditingPastShift} modalOpen={modalOpen} professionalMap={professionalMap} registeredSpecialties={registeredSpecialties} sectors={sectors} setFormData={setFormData} setModalOpen={setModalOpen} submitting={submitting} />
+      <ShiftEditorDialog categorizedProfessionalsForModal={categorizedProfessionalsForModal} editingShiftId={editingShiftId} formData={formData} handleDeleteShift={handleDeleteShift} handleSaveShift={handleSaveShift} isEditingPastShift={isEditingPastShift} modalOpen={modalOpen} professionalMap={professionalMap} registeredSpecialties={registeredSpecialties} sectors={labeledSectors} setFormData={setFormData} setModalOpen={setModalOpen} submitting={submitting} />
 
-      <GeneratorDialog generatorConfig={generatorConfig} generatorFromTemplate={generatorFromTemplate} generatorModalOpen={generatorModalOpen} handleAddSlot={handleAddSlot} handleExecuteGenerator={handleExecuteGenerator} handleRemoveSlot={handleRemoveSlot} handleUpdateSlot={handleUpdateSlot} isManager={isManager} loadSectorIntoGenerator={loadSectorIntoGenerator} registeredSpecialties={registeredSpecialties} saveAsTemplate={saveAsTemplate} sectors={sectors} setGeneratorConfig={setGeneratorConfig} setGeneratorModalOpen={setGeneratorModalOpen} setSaveAsTemplate={setSaveAsTemplate} submitting={submitting} />
+      <GeneratorDialog generatorConfig={generatorConfig} generatorFromTemplate={generatorFromTemplate} generatorModalOpen={generatorModalOpen} handleAddSlot={handleAddSlot} handleExecuteGenerator={handleExecuteGenerator} handleRemoveSlot={handleRemoveSlot} handleUpdateSlot={handleUpdateSlot} isManager={isManager} loadSectorIntoGenerator={loadSectorIntoGenerator} registeredSpecialties={registeredSpecialties} saveAsTemplate={saveAsTemplate} sectors={labeledSectors} setGeneratorConfig={setGeneratorConfig} setGeneratorModalOpen={setGeneratorModalOpen} setSaveAsTemplate={setSaveAsTemplate} submitting={submitting} />
 
       <LegacyUnitDialog handleAssignLegacyShiftUnit={handleAssignLegacyShiftUnit} legacyAssignmentOpen={legacyAssignmentOpen} legacyAssignmentSaving={legacyAssignmentSaving} legacyUnitDrafts={legacyUnitDrafts} professionalMap={professionalMap} sectorMap={sectorMap} setLegacyAssignmentOpen={setLegacyAssignmentOpen} setLegacyUnitDrafts={setLegacyUnitDrafts} unassignedShifts={unassignedShifts} units={units} />
 
       <BulkAllocationDialog autoFillBulkAllocation={autoFillBulkAllocation} backToGenerator={backToGenerator} bulkAllocationDraft={bulkAllocationDraft} bulkAllocationOpen={bulkAllocationOpen} discardGeneratedSchedule={discardGeneratedSchedule} generatedAllocationRows={generatedAllocationRows} generatorSkippedCount={generatorSkippedCount} generatorSourceInfo={generatorSourceInfo} getBulkCandidates={getBulkCandidates} getBulkBlockReason={getBulkBlockReason} bulkPool={bulkPool} workloadWarningFor={(profId, row, draft) => { const others = Object.entries(draft || {}).filter(([rowId, id]) => id && String(id) === String(profId) && String(rowId) !== String(row.id)).map(([rowId]) => generatedRowsById[String(rowId)]).filter(Boolean); return workloadWarningsFor(profId, row, others).map(w => w.message).join('; '); }} handleSaveGeneratedSchedule={handleSaveGeneratedSchedule} professionalMap={professionalMap} sectorMap={sectorMap} setBulkAllocationDraft={setBulkAllocationDraft} submitting={submitting} />
 
-      <PublishDialog existingPublishedOverlaps={existingPublishedOverlaps} handleApplyQuickRange={handleApplyQuickRange} handleExecutePublishSector={handleExecutePublishSector} professionals={professionals} shifts={shifts} publishConfig={publishConfig} publishModalOpen={publishModalOpen} sectors={sectors} setPublishConfig={setPublishConfig} setPublishModalOpen={setPublishModalOpen} submitting={submitting} />
+      <PublishDialog existingPublishedOverlaps={existingPublishedOverlaps} handleApplyQuickRange={handleApplyQuickRange} handleExecutePublishSector={handleExecutePublishSector} professionals={professionals} shifts={shifts} publishConfig={publishConfig} publishModalOpen={publishModalOpen} sectors={labeledSectors} setPublishConfig={setPublishConfig} setPublishModalOpen={setPublishModalOpen} submitting={submitting} />
 
       <Dialog open={Boolean(dayDropChoice)} onOpenChange={open => { if (!open) { setDayDropChoice(null); setDraggingProfId(null); } }}>
         <DialogContent className="sm:max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-3xl">
@@ -2362,7 +2383,7 @@ Dá para desfazer logo em seguida.`)) return;
         </DialogContent>
       </Dialog>
 
-      <CopyMonthDialog duplicateConfig={duplicateConfig} duplicateModalOpen={duplicateModalOpen} handleExecuteDuplicate={handleExecuteDuplicate} sectors={sectors} setDuplicateConfig={setDuplicateConfig} setDuplicateModalOpen={setDuplicateModalOpen} submitting={submitting} />
+      <CopyMonthDialog duplicateConfig={duplicateConfig} duplicateModalOpen={duplicateModalOpen} handleExecuteDuplicate={handleExecuteDuplicate} sectors={labeledSectors} setDuplicateConfig={setDuplicateConfig} setDuplicateModalOpen={setDuplicateModalOpen} submitting={submitting} />
 
     </div>
   );

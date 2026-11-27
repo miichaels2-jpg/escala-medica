@@ -110,7 +110,7 @@ export default {
         { tabela: { cab: ['Grupo', 'O que significa'], linhas: [
           ['Pronto', 'Tudo reconhecido. Entra como está.'],
           ['Entra com ajustes', 'Algum valor não foi reconhecido (ex.: categoria "Motorista", data "ontem", e-mail sem domínio, hospital com outro nome). Entra com o padrão e o aviso diz o que ajustar depois.'],
-          ['Já cadastrado', 'Já existe alguém com o mesmo CPF, e-mail ou matrícula. Fica de fora para não duplicar.'],
+          ['Já cadastrado', 'Já existe alguém com o mesmo CPF, e-mail ou matrícula. Fica de fora para não duplicar. Se a pessoa está cadastrada em **outra unidade**, aparece `Incluir nesta unidade` (ou, embaixo, `Incluir N de outra unidade`): o mesmo cadastro e o mesmo login passam a valer também nesta unidade.'],
           ['Não entra', 'Linha sem nome ou repetida dentro da própria planilha.']
         ] } },
         { dica: 'A especialidade entra do jeito que está na planilha e já aparece nas listas do sistema. Se ela já existir escrita de outro jeito ("clinica medica"), o sistema usa a grafia cadastrada ("Clínica Médica"). Nomes em MAIÚSCULAS viram "Nome Próprio". Datas podem vir como 05/03/1990, 05-03-90 ou no formato de data do Excel.' },
