@@ -9,6 +9,12 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.9.10 — 27/11/2026
+
+E-mails para todos os profissionais.
+
+- O cabeçalho dos e-mails (recuperação de senha e acesso) passa de "Gestão de escalas médicas" para **"Gestão de escalas"**, porque o ScaleMedic serve para todas as categorias, não só médicos. Precisa colar de novo o modelo no Supabase (Emails › Reset password) e publicar de novo a função `send-access-email`.
+
 ## V0.9.9 — 27/11/2026
 
 Sem WhatsApp no cadastro.
