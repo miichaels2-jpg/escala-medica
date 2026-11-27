@@ -9,6 +9,16 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.9.7 — 27/11/2026
+
+Escala e Setores de todas as unidades, sem trocar de unidade.
+
+- **Setores e Escala aceitam "Todas as unidades"** no seletor Unidade do topo (como Painel, Corpo Clínico, Mural e Relatórios). Os setores de todas as unidades administradas aparecem juntos, cada um com o nome da sua unidade (cartões, abas da Escala, grade, cartões de plantão e janelas de montar mês, publicar, plantão avulso e copiar mês).
+- Na Escala em "Todas as unidades", cada plantão fica na **unidade do seu setor** (montar o mês, plantão avulso, publicar, despublicar e avisos), e para cada vaga só aparecem os profissionais liberados naquela unidade. Choques de horário entre unidades continuam sendo avisados.
+- **Setor novo pergunta a unidade** quando o estabelecimento tem mais de uma; depois de criado, o setor fica nela. "Montar mês" a partir de um setor abre a Escala já na unidade dele.
+- **Importação no Corpo Clínico:** quem já está cadastrado em outra unidade aparece com **Incluir nesta unidade** (e "Incluir N de outra unidade" para todos): o mesmo cadastro e o mesmo login passam a valer também nesta unidade, sem duplicar.
+- Manuais **03 · Setores**, **04 · Corpo Clínico** e **05 · Escala** atualizados; PDFs regenerados.
+
 ## V0.9.6 — 27/11/2026
 
 Atualização automática e cookies nos termos.

@@ -10,6 +10,7 @@ export default {
       titulo: 'Para que serve',
       blocos: [
         { p: 'A Escala é onde a coordenação monta os plantões de cada setor: cria as vagas do mês, escolhe quem cobre cada uma e publica para a equipe. Os profissionais só veem a escala depois de **publicada**; enquanto isso, ela é **rascunho**.' },
+        { dica: '**Várias unidades sem trocar:** com `Todas as unidades` no seletor **Unidade**, no topo da tela, a Escala mostra os setores de todas as unidades do estabelecimento. Cada aba, plantão e quadro leva o nome da unidade; montar o mês, escalar e publicar funcionam do mesmo jeito, e cada plantão fica na unidade do seu setor. Para cada vaga, só aparecem os profissionais liberados naquela unidade.' },
         { tabela: { cab: ['Etapa', 'O que acontece', 'Seção'], linhas: [
           ['1. Montar o mês', 'O sistema cria todas as vagas do mês a partir dos turnos do setor.', '3'],
           ['2. Escalar', 'Cada vaga recebe um profissional, ou fica aberta para o Mural.', '3 e 4'],

@@ -26,7 +26,7 @@ async function requestAccessEmail({ userId, password, email, reason }) {
 }
 
 // Login do profissional: pelo vínculo da ficha, pelo usuário guardado nela ou pelo e-mail.
-async function findLogin(professional) {
+export async function findProfessionalLogin(professional) {
   const columns = 'id, username, email, full_name, data';
   const tries = [
     professional?.user_id && ['id', String(professional.user_id)],
@@ -46,7 +46,7 @@ async function findLogin(professional) {
 // Retorna { status: 'enviado' | 'sem_email' | 'sem_login' | 'falha', email?, reason?, firstAccess? }.
 export async function sendAccessToProfessional(professional) {
   if (!isRealEmail(professional?.email)) return { status: 'sem_email' };
-  const login = await findLogin(professional);
+  const login = await findProfessionalLogin(professional);
   if (!login) return { status: 'sem_login' };
   const firstAccess = Boolean(login.data?.must_change_password);
   let password = '';

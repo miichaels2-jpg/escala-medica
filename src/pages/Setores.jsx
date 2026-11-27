@@ -8,6 +8,8 @@ import { WEEKDAY_INITIALS, getSectorTemplates, templateSummary, vacanciesPerDay,
 import { RATE_COLUMNS, getSectorRates, withSectorRates } from '@/lib/financialCalculations';
 import { formatCurrency, getLocalDateString } from '@/lib/format';
 import { isShiftPublished } from '@/lib/sharedState';
+import { useUnitScope } from '@/lib/unitScope';
+import { setUnitScope } from '@/lib/useAppData';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
@@ -26,7 +28,12 @@ const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'jul
 const newTurn = (specialty = '') => ({ key: `t_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, specialty, start_time: '07:00', end_time: '19:00', quantity: 1, extra_quantity: 0, extra_weekdays: [] });
 
 export default function Setores() {
-  const { sectors = [], shifts = [], professionals = [], company, selectedUnitId, syncGlobalData, user, isManager, getPublishedRanges } = useAppData();
+  const { sectors: unitSectors = [], shifts: unitShifts = [], professionals: unitProfessionals = [], allCompanySectors = [], allCompanyShifts = [], allCompanyProfessionals = [], company, selectedUnitId, syncGlobalData, user, isManager, getPublishedRanges } = useAppData();
+  // "Todas as unidades" (V0.9.7): setores de todas as unidades administradas, cada um com a sua unidade.
+  const { isAllUnits, managedUnits, inScope, unitName } = useUnitScope();
+  const sectors = useMemo(() => (isAllUnits ? allCompanySectors.filter(s => !s.unit_id || inScope(s.unit_id)) : unitSectors), [isAllUnits, allCompanySectors, unitSectors, inScope]);
+  const shifts = isAllUnits ? allCompanyShifts : unitShifts;
+  const professionals = isAllUnits && allCompanyProfessionals.length ? allCompanyProfessionals : unitProfessionals;
   const navigate = useNavigate();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,7 +41,7 @@ export default function Setores() {
   const [editingSector, setEditingSector] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [formData, setFormData] = useState({ name: '', status: 'ativo' });
+  const [formData, setFormData] = useState({ name: '', status: 'ativo', unit_id: '' });
   // Turnos padrão do setor (company.data.sector_shift_templates)
   const [turns, setTurns] = useState([]);
   // Valores do plantão do setor (company.data.sector_rates), V0.9.1
@@ -59,8 +66,9 @@ export default function Setores() {
       if (!term) return true;
       const name = (s.name || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
       return name.includes(term);
-    }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  }, [sectors, searchQuery]);
+    }).sort((a, b) => (isAllUnits ? unitName(a.unit_id).localeCompare(unitName(b.unit_id)) : 0) || (a.name || '').localeCompare(b.name || ''));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sectors, searchQuery, isAllUnits]);
 
   // Por setor: equipe autorizada, plantões e vagas abertas do mês atual.
   const sectorStats = useMemo(() => {
@@ -81,7 +89,7 @@ export default function Setores() {
 
   const handleOpenModal = (sector = null) => {
     setEditingSector(sector);
-    setFormData({ name: sector?.name || '', status: sector?.active === false ? 'inativo' : 'ativo' });
+    setFormData({ name: sector?.name || '', status: sector?.active === false ? 'inativo' : 'ativo', unit_id: String(sector?.unit_id || (isAllUnits ? '' : unitId)) });
     const saved = sector ? getSectorTemplates(company, sector.id) : [];
     setTurns(saved.map(t => ({ ...newTurn(), ...t })));
     const savedRates = sector ? getSectorRates(company, sector.id) : {};
@@ -109,6 +117,10 @@ export default function Setores() {
       alert('O nome do setor é obrigatório.');
       return;
     }
+    if (!formData.unit_id) {
+      alert('Escolha a unidade (hospital) do setor.');
+      return;
+    }
     if (turns.some(t => (parseInt(t.extra_quantity, 10) || 0) > 0 && !(t.extra_weekdays || []).length)) {
       alert('Escolha em quais dias da semana entram as vagas extras (ou deixe as extras em 0).');
       return;
@@ -122,7 +134,7 @@ export default function Setores() {
     try {
       const payload = {
         company_id: companyId,
-        unit_id: unitId,
+        unit_id: formData.unit_id,
         name: formData.name.trim(),
         // O banco guarda a situação em "active" (sim/não); não existe coluna "status" em sectors.
         active: formData.status !== 'inativo'
@@ -201,6 +213,8 @@ Não dá para desfazer.`)) return;
   };
 
   const buildMonth = (sector) => {
+    // Visão de uma unidade só: abre a Escala já na unidade do setor.
+    if (!isAllUnits && sector.unit_id && String(sector.unit_id) !== String(selectedUnitId)) setUnitScope(String(sector.unit_id));
     try { window.sessionStorage.setItem('scale_open_generator_sector', String(sector.id)); } catch { /* sem sessionStorage: abre a Escala normal */ }
     navigate('/escalas');
   };
@@ -253,7 +267,10 @@ Não dá para desfazer.`)) return;
             return (
               <Card key={sector.id} className={`p-5 rounded-3xl border flex flex-col h-full bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 ${isInactive ? 'opacity-60' : ''}`}>
                 <div className="flex items-start justify-between gap-3">
-                  <h3 className="font-semibold text-lg text-slate-900 dark:text-white leading-tight">{sector.name}</h3>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-lg text-slate-900 dark:text-white leading-tight">{sector.name}</h3>
+                    {isAllUnits && <span className="mt-1 inline-block rounded-md bg-sky-50 dark:bg-sky-500/10 px-1.5 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">{unitName(sector.unit_id)}</span>}
+                  </div>
                   {isInactive && <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 shrink-0">Inativo</span>}
                 </div>
 
@@ -336,6 +353,21 @@ Não dá para desfazer.`)) return;
                   required
                 />
               </div>
+              {managedUnits.length > 1 && (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Unidade (hospital) *</Label>
+                  {editingSector ? (
+                    <p className="h-11 flex items-center px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm">{unitName(formData.unit_id)}</p>
+                  ) : (
+                    <Select value={formData.unit_id} onValueChange={v => setFormData({ ...formData, unit_id: v })}>
+                      <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 rounded-xl"><SelectValue placeholder="Escolha a unidade" /></SelectTrigger>
+                      <SelectContent className="z-[99999]">
+                        {managedUnits.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Situação</Label>
                 <Select value={formData.status} onValueChange={v => setFormData({ ...formData, status: v })}>
