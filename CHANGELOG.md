@@ -9,6 +9,14 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.9.6 — 27/11/2026
+
+Atualização automática e cookies nos termos.
+
+- **O app se atualiza sozinho**, instalado no celular ou no navegador: ao trocar de tela, ele confere se saiu versão nova e, se saiu, recarrega já na tela escolhida. Ao voltar para o app (ou a cada 15 minutos), aparece a faixa **"Saiu uma versão nova do ScaleMedic · Atualizar"**, sem recarregar sozinho para não perder o que estiver sendo digitado. Regra em `src/lib/appUpdate.js`.
+- **Termos de Uso e LGPD › 6. Cookies e armazenamento no aparelho:** o ScaleMedic não usa cookies de publicidade, rastreamento ou estatística; explica o que fica no aparelho (sessão, preferências, "lembrar-me" só com o usuário, cópia dos arquivos do modo aplicativo) e por que não precisa de consentimento separado.
+- Manual **01 · Primeiro acesso e entrada** com a atualização automática; PDFs regenerados.
+
 ## V0.9.5 — 27/11/2026
 
 Nova empresa com a equipe de gestão que já existe.
