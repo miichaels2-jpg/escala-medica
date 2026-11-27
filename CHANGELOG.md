@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.9.8 — 27/11/2026
+
+Especialidade: só a coordenação escala fora dela.
+
+- **Janela do plantão (Escala):** escalar alguém de outra especialidade agora **pede confirmação** ao gestor ("A vaga é de X e Fulano é de Y… Escalar mesmo assim?"), e a lista de profissionais mostra o aviso "outra especialidade". Antes passava sem perguntar. Arrastar, Quadro e Grade continuam só com quem é da especialidade.
+- **Profissional nunca vê nem pega vaga de outra especialidade:** quem está sem especialidade no cadastro passa a ver só vagas gerais (antes via todas) no Mural, no sino, nas trocas e nos avisos de vaga urgente.
+- **No banco:** o plantonista não consegue assumir vaga de outra especialidade nem por fora do app, e o aviso automático de vaga urgente segue a mesma regra. Precisa da atualização do banco `20261127130000_specialty_guard.sql`.
+- Manual **05 · Escala** atualizado; PDFs regenerados.
+
 ## V0.9.7 — 27/11/2026
 
 Escala e Setores de todas as unidades, sem trocar de unidade.
