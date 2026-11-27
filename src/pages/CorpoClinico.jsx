@@ -58,13 +58,6 @@ const PROFESSIONAL_IMPORT_COLUMNS = [
   'setores_autorizados', 'valores_por_unidade_json'
 ];
 
-function normalizeWhatsAppPhone(value) {
-  const digits = String(value || '').replace(/\D/g, '');
-  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) return digits;
-  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
-  return '';
-}
-
 const autoHealingSave = (id, payload) => saveRow('professionals', id, payload);
 
 
@@ -387,17 +380,6 @@ export default function CorpoClinico() {
       return;
     }
     setFormData(p => ({ ...p, password: birthDatePassword(formData.name, formData.birth_date) }));
-  };
-
-  const handleSendWhatsApp = () => {
-    const phoneWithDDI = normalizeWhatsAppPhone(formData.phone);
-    if (!phoneWithDDI) {
-      alert('Informe um telefone brasileiro válido com DDD para abrir o WhatsApp.');
-      return;
-    }
-    const siteUrl = window.location.origin;
-    const message = `*ScaleMedic - Gestão Hospitalar* 🏥\n\nOlá, *${formData.name || 'profissional'}*!\nSeu cadastro profissional está sendo atualizado.\n\nAcesse o sistema pelo link: ${siteUrl}/login\n\nPor segurança, suas credenciais não são enviadas por esta mensagem. Caso precise de acesso, fale com a coordenação.`;
-    window.open(`https://wa.me/${phoneWithDDI}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
   };
 
   // Envelope da linha (V0.9.4, no lugar do WhatsApp): manda o acesso por e-mail a um profissional.
@@ -1366,11 +1348,8 @@ Se ainda não entrou no sistema, recebe uma senha provisória nova; se já criou
                   </div>
                 </div>
               </div>
-              <Button type="button" onClick={handleSendWhatsApp} className="w-full h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-sm gap-2 rounded-xl mt-2 cursor-pointer">
-                <Send className="w-4 h-4" /> Enviar link de acesso via WhatsApp
-              </Button>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                Por segurança, a mensagem não inclui usuário ou senha.
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">
+                {isRealEmail(formData.email) ? 'Ao salvar, o profissional recebe o acesso por e-mail (usuário e, se a senha for nova, a senha provisória).' : 'Sem e-mail no cadastro, o acesso não vai por e-mail: passe usuário e senha à pessoa. Com e-mail, ele recebe sozinho ao salvar.'}
               </p>
             </div>
 
