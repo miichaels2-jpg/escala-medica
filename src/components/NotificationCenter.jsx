@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import PushToggle from '@/components/PushToggle';
 import { fetchMyNotifications, markNotificationsRead } from '@/lib/notifications';
 import { getShiftDateTimeRange, isIdleExtraSlot, isShiftVacant } from '@/lib/shiftLiveStatus';
+import { preferenceScore } from '@/lib/preferences';
 import { getProfessionalUnitIds, isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { formatDateBR, normalize } from '@/lib/format';
 
@@ -96,7 +97,8 @@ export function useNotificationCenter({ user, currentProfessional, shifts, compa
         if (!isVacancyRelevantFor(s, currentProfessional)) return false;
         return !myRanges.some(mine => mine.start < range.end && range.start < mine.end);
       })
-      .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start_time).localeCompare(String(b.start_time)));
+      // Plantonista: as vagas do interesse dele (setor ou turno preferido) vêm primeiro (V0.10.2).
+      .sort((a, b) => (isManager ? 0 : preferenceScore(currentProfessional, b) - preferenceScore(currentProfessional, a)) || String(a.date).localeCompare(String(b.date)) || String(a.start_time).localeCompare(String(b.start_time)));
   }, [shifts, companyShifts, selectedUnitId, isManager, currentProfessional, myRanges, myUnitIds, isPublished]);
 
   const pendingApprovals = useMemo(() => {

@@ -4,7 +4,7 @@
 //
 // status: 'entregue' | 'em_andamento' | 'planejado' | 'ideia'
 
-export const ROADMAP_UPDATED_AT = '2026-11-26';
+export const ROADMAP_UPDATED_AT = '2026-11-27';
 
 export const ROADMAP_GROUPS = [
   // Entregas de 26/11/2026, pedidas durante a implantação do primeiro cliente (piloto).
@@ -42,10 +42,10 @@ export const ROADMAP_GROUPS = [
   {
     title: 'Próximos · V0.9 · novas ideias',
     items: [
-      { id: 55, title: 'Preferências do plantonista', detail: '"Prefiro noturno", "não faço domingo", "quero mais na UTI": o gerador respeita e quem tem interesse recebe primeiro o aviso da vaga.', status: 'planejado' },
+      { id: 55, title: 'Preferências do plantonista', detail: 'Na Minha Escala o plantonista informa turno preferido, dias da semana que não faz e setores de interesse. O preenchimento automático não escala no dia que ele não faz e dá prioridade a quem prefere o turno ou o setor; no Mural e no sino as vagas do interesse dele vêm primeiro, com a marca Do seu interesse.', status: 'entregue', version: 'V0.10.2' },
       { id: 56, title: 'Documento vencendo, aviso para o profissional', detail: 'CRM, cursos e vacinas com arquivo anexado e lembrete para o próprio profissional 30 dias antes.', status: 'planejado' },
       { id: 58, title: 'Sobreaviso', detail: 'Lista de quem fica de reserva em cada dia; se abrir um furo, eles são chamados primeiro.', status: 'planejado' },
-      { id: 59, title: 'Comunicados por setor com "li"', detail: 'Aviso oficial para a equipe de um setor, e o gestor vê quem já leu.', status: 'planejado' },
+      { id: 59, title: 'Comunicados por setor com "li"', detail: 'Quadro Comunicados no Painel: aviso oficial para a equipe de um setor ou de toda a unidade, com aviso no sino e no celular; o plantonista toca em Li na Minha Escala e a coordenação vê lido por X de Y, com quem leu e quem falta.', status: 'entregue', version: 'V0.10.2' },
       { id: 61, title: 'Bilhete de passagem de plantão', detail: 'Campo curto que quem entra lê ao abrir o plantão ("leito 4 aguardando tomografia").', status: 'planejado' },
       { id: 62, title: 'Busca rápida (Ctrl+K)', detail: 'Achar profissional, setor ou plantão de qualquer tela.', status: 'planejado' },
       { id: 63, title: 'Telas vazias que orientam', detail: 'Trocar "nenhum registro" por uma frase e o botão do próximo passo: Corpo Clínico (cadastrar, importar, convidar; limpar busca), Setores, Escala (mês sem plantões: montar turnos ou copiar mês anterior), Painel, Mural, Faturamento, Relatórios e indisponibilidade.', status: 'entregue', version: 'V0.8.10' },
