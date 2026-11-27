@@ -9,6 +9,14 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.10.6 — 27/11/2026
+
+Vaga aberta só para quem é da especialidade, em todo o sistema.
+
+- **Escala vista pelo plantonista:** depois de publicada, ele via o calendário inteiro, inclusive vagas abertas de outras especialidades e de setores em que não atua. Agora vê os plantões preenchidos da escala, mas vaga aberta só se for da especialidade dele e de setor liberado para ele.
+- **Sobreaviso:** a lista de quem pode ficar de reserva considera também a especialidade dos turnos do dia, e o **Chamar sobreaviso** só avisa quem é da especialidade das vagas abertas.
+- Mural, sino e avisos de vaga urgente (do app e do servidor) já seguiam a regra; agora todas as telas usam a mesma regra (`src/lib/vacancyRelevance.js`), com testes. Só a coordenação escala alguém fora da especialidade, com confirmação, e o banco recusa o plantonista que tentar pegar vaga de outra especialidade.
+
 ## V0.10.5 — 27/11/2026
 
 Correção: editar o cadastro não troca mais a senha nem manda e-mail.

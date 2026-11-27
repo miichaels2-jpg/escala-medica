@@ -4,6 +4,7 @@ import { getProfessionalUnitIds, isProfessionalAuthorizedForSector as isAuthoriz
 import { useUnitScope } from '@/lib/unitScope';
 import { avoidedDayMessage, preferenceScore } from '@/lib/preferences';
 import { getStandby } from '@/lib/standby';
+import { isVisibleToProfessional } from '@/lib/vacancyRelevance';
 import StandbyPanel from '@/components/escala/StandbyPanel';
 import { describeUnavailability, findUnavailability } from '@/lib/availability';
 import { mapDateToMonth } from '@/lib/scheduleCopy';
@@ -35,12 +36,16 @@ import PublishDialog from '@/components/escala/PublishDialog';
 import CopyMonthDialog from '@/components/escala/CopyMonthDialog';
 
 export default function Escalas() {
-  const { shifts: unitShiftsRaw = [], allCompanyShifts = [], allCompanySectors = [], allCompanyProfessionals = [], sectors: unitSectorsRaw = [], professionals: unitProfessionalsRaw = [], selectedUnitId, units = [], company, user, isManager, syncGlobalData, unassignedShifts = [], publishedRanges, getPublishedRanges, savePublishedRanges } = useAppData();
+  const { shifts: unitShiftsRaw = [], allCompanyShifts = [], allCompanySectors = [], allCompanyProfessionals = [], sectors: unitSectorsRaw = [], professionals: unitProfessionalsRaw = [], selectedUnitId, units = [], company, user, isManager, currentProfessional, syncGlobalData, unassignedShifts = [], publishedRanges, getPublishedRanges, savePublishedRanges } = useAppData();
   // "Todas as unidades" (V0.9.7): monta e publica a escala de todas as unidades administradas sem trocar
   // de unidade. Cada setor e plantão leva a sua unidade; quem pode ir é quem atende na unidade do setor.
   const { isAllUnits, inScope, unitName } = useUnitScope();
   const sectors = useMemo(() => (isAllUnits ? allCompanySectors.filter(s => !s.unit_id || inScope(s.unit_id)) : unitSectorsRaw), [isAllUnits, allCompanySectors, unitSectorsRaw, inScope]);
-  const shifts = useMemo(() => (isAllUnits ? allCompanyShifts.filter(s => inScope(s.unit_id)) : unitShiftsRaw), [isAllUnits, allCompanyShifts, unitShiftsRaw, inScope]);
+  // Plantonista (V0.10.6): vaga aberta de outra especialidade ou de setor em que ele não atua nunca aparece.
+  const shifts = useMemo(() => {
+    const list = isAllUnits ? allCompanyShifts.filter(s => inScope(s.unit_id)) : unitShiftsRaw;
+    return isManager ? list : list.filter(s => isVisibleToProfessional(s, currentProfessional));
+  }, [isAllUnits, allCompanyShifts, unitShiftsRaw, inScope, isManager, currentProfessional]);
   const professionals = useMemo(() => (isAllUnits ? allCompanyProfessionals.filter(p => getProfessionalUnitIds(p).some(inScope)) : unitProfessionalsRaw), [isAllUnits, allCompanyProfessionals, unitProfessionalsRaw, inScope]);
   // Unidade do setor (em "Todas" cada setor é de uma unidade; numa unidade só, é a escolhida).
   function unitOfSector(sectorId) {
