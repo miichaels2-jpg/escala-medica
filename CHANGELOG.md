@@ -9,6 +9,12 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.10.5 — 27/11/2026
+
+Correção: editar o cadastro não troca mais a senha nem manda e-mail.
+
+- **Corpo Clínico:** ao editar um profissional, o navegador preenchia sozinho o campo "Nova Senha" com uma senha salva; o sistema entendia como senha nova, trocava a senha do profissional, obrigava a troca no próximo acesso e mandava o e-mail. Agora o campo não aceita o preenchimento automático e a senha só muda quando alguém digita, cola ou usa `Senha (Data Nasc)` / `Gerar Aleatória`. Alterar outros dados do cadastro não avisa o profissional; só a senha nova vai por e-mail.
+
 ## V0.10.4 — 27/11/2026
 
 Versões sobem mais devagar.

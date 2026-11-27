@@ -96,6 +96,9 @@ export default function CorpoClinico() {
   const [activeTab, setActiveTab] = useState('ativos');
   const [inviteOpen, setInviteOpen] = useState(false); 
   const [accessEmailOpen, setAccessEmailOpen] = useState(false);
+  // Só conta como senha nova o que alguém digitou, colou ou gerou (V0.10.5): o preenchimento automático
+  // do navegador colocava a senha salva no campo, trocava a senha do profissional e mandava e-mail.
+  const passwordTouchedRef = useRef(false);
   const [sendingAccessId, setSendingAccessId] = useState(null);
   // A busca rápida (Ctrl+K) abre esta tela já filtrada: /corpo-clinico?busca=nome.
   const [searchQuery, setSearchQuery] = useState(() => { try { return new URLSearchParams(window.location.search).get('busca') || ''; } catch { return ''; } });
@@ -182,9 +185,10 @@ export default function CorpoClinico() {
     setShowPassword(false);
   };
 
-  const handleOpenNew = () => { resetForm(); setFormStep(1); setShowScreenDetails(false); setModalOpen(true); };
+  const handleOpenNew = () => { passwordTouchedRef.current = false; resetForm(); setFormStep(1); setShowScreenDetails(false); setModalOpen(true); };
 
   const handleOpenEdit = (prof) => {
+    passwordTouchedRef.current = false;
     setEditingProf(prof);
     const meta = getProfMeta(prof);
     const generatedMatricula = meta.registration_id || prof.registration_id || `MAT-2026-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -381,6 +385,7 @@ export default function CorpoClinico() {
       return;
     }
     setFormData(p => ({ ...p, password: birthDatePassword(formData.name, formData.birth_date) }));
+    passwordTouchedRef.current = true;
   };
 
   // Envelope da linha (V0.9.4, no lugar do WhatsApp): manda o acesso por e-mail a um profissional.
@@ -716,6 +721,8 @@ Se ainda não entrou no sistema, recebe uma senha provisória nova; se já criou
         ...(savedProfId ? { professional_id: String(savedProfId) } : {})
       };
 
+      // Senha que alguém digitou, colou ou gerou; o que o navegador preencheu sozinho não conta.
+      const typedPassword = passwordTouchedRef.current ? formData.password : '';
       let userSyncWarning = '';
       let provisionalNotice = '';
       let accessEmailNotice = '';
@@ -734,19 +741,19 @@ Se ainda não entrou no sistema, recebe uma senha provisória nova; se já criou
               is_active: formData.status === 'ativo',
               // Só uma nova senha definida pelo gestor obriga a troca; editar o
               // cadastro sem mexer na senha mantém a situação atual.
-              must_change_password: formData.password ? true : Boolean(existingData.must_change_password)
+              must_change_password: typedPassword ? true : Boolean(existingData.must_change_password)
             }
           };
-          if (formData.password) updatePayload.password = formData.password;
+          if (typedPassword) updatePayload.password = typedPassword;
           const { error: updateError } = await supabase.from('users').update(updatePayload).eq('id', existingUsers[0].id);
           if (updateError) throw updateError;
           linkedUserId = existingUsers[0].id;
-          if (formData.password) accessEmailNotice = await sendAccessEmail({ userId: linkedUserId, password: formData.password, email: finalEmail, reason: 'nova_senha' });
+          if (typedPassword) accessEmailNotice = await sendAccessEmail({ userId: linkedUserId, password: typedPassword, email: finalEmail, reason: 'nova_senha' });
         } else {
           // Senha do primeiro acesso: a informada pelo gestor ou a padrão (nascimento DDMMAAAA +
           // inicial do nome). Sem data de nascimento, uma aleatória. O profissional troca no 1º acesso.
-          const finalPass = formData.password || birthDatePassword(formData.name, formData.birth_date) || generateProvisionalPassword();
-          if (!formData.password) {
+          const finalPass = typedPassword || birthDatePassword(formData.name, formData.birth_date) || generateProvisionalPassword();
+          if (!typedPassword) {
             const isBirthDefault = birthDatePassword(formData.name, formData.birth_date) === finalPass;
             provisionalNotice = `\n\nSenha do primeiro acesso de ${cleanUsername}: ${finalPass}${isBirthDefault ? ' (padrão: data de nascimento + inicial do nome)' : ''}\nO sistema obriga a troca no primeiro acesso.`;
           }
@@ -1330,7 +1337,7 @@ Se ainda não entrou no sistema, recebe uma senha provisória nova; se já criou
                   <Button type="button" size="sm" variant="outline" onClick={handleGenerateDefaultPassword} className="h-7 text-[10px] font-semibold border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950 cursor-pointer shadow-sm">
                     <RefreshCw className="w-3 h-3 mr-1" /> Senha (Data Nasc)
                   </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setFormData(p => ({...p, password: 'S@ude'+Math.floor(1000+Math.random()*9000)}))} className="h-7 text-[10px] font-semibold border-sky-300 text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950 cursor-pointer">
+                  <Button type="button" size="sm" variant="outline" onClick={() => { passwordTouchedRef.current = true; setFormData(p => ({...p, password: 'S@ude'+Math.floor(1000+Math.random()*9000)})); }} className="h-7 text-[10px] font-semibold border-sky-300 text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950 cursor-pointer">
                     <RefreshCw className="w-3 h-3 mr-1" /> Gerar Aleatória
                   </Button>
                 </div>
@@ -1339,12 +1346,12 @@ Se ainda não entrou no sistema, recebe uma senha provisória nova; se já criou
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
                 <div className="space-y-1">
                   <Label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">Usuário (Login por Nome) *</Label>
-                  <Input type="text" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} placeholder="Ex: dr.carlos" className="h-10 bg-white dark:bg-slate-900 tabular-nums font-semibold text-sky-600 border-slate-200 dark:border-slate-800" />
+                  <Input type="text" name="sm-usuario-profissional" autoComplete="off" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} placeholder="Ex: dr.carlos" className="h-10 bg-white dark:bg-slate-900 tabular-nums font-semibold text-sky-600 border-slate-200 dark:border-slate-800" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">{editingProf ? 'Nova Senha (deixe vazio para manter)' : 'Senha de Acesso *'}</Label>
                   <div className="relative">
-                    <Input type={showPassword ? "text" : "password"} value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder={editingProf ? '••••••••' : 'Senha'} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums pr-8" />
+                    <Input type={showPassword ? "text" : "password"} name="sm-nova-senha-profissional" autoComplete="new-password" data-lpignore="true" data-1p-ignore="true" value={formData.password} onKeyDown={() => { passwordTouchedRef.current = true; }} onPaste={() => { passwordTouchedRef.current = true; }} onChange={e => setFormData({...formData, password: e.target.value})} placeholder={editingProf ? 'Deixe vazio para manter a senha' : 'Senha'} className="h-10 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 tabular-nums pr-8" />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 cursor-pointer">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
                   </div>
                 </div>
