@@ -7,11 +7,13 @@ import { clearStoredSession } from '@/lib/authSession';
 import { listMyCompanies, switchCompany } from '@/lib/companyAccess';
 import { errorInPortuguese } from '@/lib/errorText';
 import { isShiftPublished } from '@/lib/sharedState';
+import QuickSearch from '@/components/QuickSearch';
+import AnnouncementPopup from '@/components/AnnouncementPopup';
 import { 
   Activity, LayoutDashboard, CalendarDays, 
   DollarSign, Users, Building2, LogOut, Menu, X, 
   AlertTriangle, Sun, Moon, Settings, FileBarChart,
-  Clock, Hospital, Bell, Flame, Smartphone,
+  Clock, Hospital, Bell, Flame, Smartphone, Search, Megaphone,
   ListChecks, History, Globe, PlayCircle, BookOpen, Gauge, Loader2
 } from 'lucide-react';
 import { InstallAppBanner, InstallAppDialog } from '@/components/InstallAppGuide';
@@ -86,6 +88,13 @@ export default function AppLayout({ children }) {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  // Busca rápida (V0.10.3): Ctrl+K ou Cmd+K de qualquer tela.
+  const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(() => {
+    const onKey = e => { if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 'k') { e.preventDefault(); setSearchOpen(true); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const [installGuideOpen, setInstallGuideOpen] = useState(false);
   const { isInstalled } = usePwaInstall();
 
@@ -198,6 +207,7 @@ export default function AppLayout({ children }) {
     { label: 'Painel', path: '/dashboard', icon: LayoutDashboard, visible: true },
     { label: 'Escala', path: '/escalas', icon: CalendarDays, visible: true },
     { label: 'Mural', path: '/trocas', icon: Flame, visible: true, badge: muralBadge },
+    { label: 'Avisos', path: '/avisos', icon: Megaphone, visible: true },
     { label: 'Minha Escala', path: '/minha-escala', icon: Activity, visible: true },
     { label: 'Corpo Clínico', path: '/corpo-clinico', icon: Users, visible: isManager || isBilling },
     { label: 'Setores', path: '/setores', icon: Building2, visible: isManager },
@@ -402,6 +412,12 @@ export default function AppLayout({ children }) {
               </span>
             </div>
 
+            <button type="button" onClick={() => setSearchOpen(true)} title="Buscar (Ctrl+K)" aria-label="Buscar"
+              className="p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-300 transition-all shadow-sm cursor-pointer">
+              <Search className="w-4 h-4" />
+            </button>
+            <QuickSearch navItems={navItems} open={searchOpen} onOpenChange={setSearchOpen} />
+            <AnnouncementPopup />
             <div className="relative">
               <button
                 type="button"

@@ -9,6 +9,16 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.10.3 — 27/11/2026
+
+Sobreaviso (item 58), busca rápida (item 62), avisos em janela e troca mais clara.
+
+- **Sobreaviso:** no painel do dia da Escala, com um setor escolhido, `+ Adicionar` coloca quem fica de reserva naquele dia. Na janela do plantão, quem está de sobreaviso aparece primeiro; se o dia tem vaga aberta, **Chamar sobreaviso** avisa essas pessoas no sino e no celular. O plantonista vê **Meus sobreavisos** na Minha Escala e a vaga aparece no topo do Mural com a marca "Você está de sobreaviso".
+- **Busca rápida (Ctrl+K ou a lupa do topo):** profissionais (com o próximo plantão, que abre direto na Escala), setores (abre a Escala no setor), telas e os plantões de uma data ("12/12", "hoje"). O plantonista acha telas e os próprios plantões.
+- **Avisos:** comunicado novo aparece em **janela** ao abrir o app, com o texto inteiro e os botões `Li` e `Depois`. Tela nova **Avisos** no menu guarda todos (a coordenação publica e acompanha quem leu por lá também). Tocar no aviso do sino abre essa tela (antes levava ao Mural). O quadro Comunicados subiu para o alto do Painel.
+- **Troca de plantão:** botão **Propor troca** também na Minha Escala, ao lado de "Passar no Mural". Quando nenhum colega pode trocar, a janela explica o motivo de cada um (setor não liberado, outra especialidade, outra unidade, choque de horário).
+- Manuais **02 · Painel**, **05 · Escala**, **06 · Mural**, **07 · Minha Escala** e **11 · Ajuda** atualizados; PDFs regenerados.
+
 ## V0.10.2 — 27/11/2026
 
 Preferências do plantonista (item 55) e comunicados por setor com "li" (item 59).

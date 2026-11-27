@@ -475,6 +475,8 @@ export default function Painel() {
 
       {multiUnit && <UnitsOverview units={managedUnits} shifts={allCompanyShifts} scope={effectiveScope} onScopeChange={changeScope} now={currentTime} />}
 
+      {isManager && <AnnouncementsCard />}
+
       {isManager && (() => {
         const attention = upcomingVacancies.length + overdueVacancies.length + unsubmittedSectors.length + todayFinancials.shiftsMissingRate + todayFinancials.shiftsAwaitingProduction;
         if (!attention) {
@@ -635,8 +637,6 @@ export default function Painel() {
           }}
         />
       )}
-
-      {isManager && <AnnouncementsCard />}
 
       {isManager && (
         <TeamCare

@@ -36,3 +36,16 @@ test('respeita férias, plantões já passados e pedidos em aberto', () => {
   assert.deepEqual(findSwapOptions({ myShift, me, professionals: [me, ana], shifts, isRelevant, now }).map(o => o.shift.id), ['a1']);
   assert.equal(findSwapOptions({ myShift, me, professionals: [me, ana], shifts, isRelevant, now, blockedShiftIds: ['a1'] }).length, 0);
 });
+
+test('explainNoSwapOptions diz por que cada colega não serve', async () => {
+  const { explainNoSwapOptions } = await import('../src/lib/directSwap.js');
+  const now = new Date('2026-11-27T12:00:00');
+  const me = { id: 'm', name: 'Michael Silva', status: 'ativo', data: { allowed_unit_ids: ['u'], authorized_sectors: ['emerg'] } };
+  const ana = { id: 'a', name: 'Ana Souza', status: 'ativo', data: { allowed_unit_ids: ['u'], authorized_sectors: ['emerg', 'enf'] } };
+  const myShift = { id: 's1', unit_id: 'u', sector_id: 'emerg', date: '2026-12-02', start_time: '07:00', end_time: '19:00', professional_id: 'm', status: 'confirmado' };
+  const hers = { id: 's2', unit_id: 'u', sector_id: 'enf', date: '2026-12-03', start_time: '07:00', end_time: '19:00', professional_id: 'a', status: 'confirmado' };
+  const auth = (p, sector) => (p.data.authorized_sectors || []).includes(sector);
+  const lines = explainNoSwapOptions({ myShift, me, professionals: [me, ana], shifts: [myShift, hers], isAuthorized: auth, isRelevant: (s, p) => auth(p, s.sector_id), sectorName: id => ({ enf: 'Enfermaria', emerg: 'Emergência' }[id]), now });
+  assert.deepEqual(lines, ['Ana: os plantões dele são em Enfermaria, onde você não está liberado.']);
+  assert.match(explainNoSwapOptions({ myShift, me, professionals: [me], shifts: [myShift], now })[0], /Nenhum colega/);
+});

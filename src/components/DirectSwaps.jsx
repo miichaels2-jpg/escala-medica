@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { ArrowRightLeft, Check, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
-import { findSwapOptions, OPEN_SWAP_STATUSES, SWAP_STATUS, SWAP_TYPE } from '@/lib/directSwap';
+import { explainNoSwapOptions, findSwapOptions, OPEN_SWAP_STATUSES, SWAP_STATUS, SWAP_TYPE } from '@/lib/directSwap';
+import { isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { isVacancyRelevantFor } from '@/components/NotificationCenter';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -144,8 +145,11 @@ export function useDirectSwaps({ swaps, myProf, user, company, isManager, manage
   const optionsFor = (myShift) => findSwapOptions({
     myShift, me: myProf, professionals, shifts, isRelevant: isVacancyRelevantFor, blockedShiftIds: openShiftIds
   });
+  const whyNoOptions = (myShift) => explainNoSwapOptions({
+    myShift, me: myProf, professionals, shifts, isRelevant: isVacancyRelevantFor, isAuthorized: isProfessionalAuthorizedForSector, sectorName
+  });
 
-  return { direct, incoming, mine, awaitingManager, openShiftIds, busyId, propose, respond, cancel, decide, optionsFor };
+  return { direct, incoming, mine, awaitingManager, openShiftIds, busyId, propose, respond, cancel, decide, optionsFor, whyNoOptions };
 }
 
 function SwapLine({ swap }) {
@@ -263,7 +267,12 @@ export function SwapProposalDialog({ shift, onClose, swapsApi, sectorName, unitN
         </p>
         <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
           {options.length === 0 ? (
-            <p className="p-6 text-center text-sm text-slate-500">Nenhum plantão de colega pode ser trocado por este agora.</p>
+            <div className="p-5 space-y-2 text-sm text-slate-600 dark:text-slate-300">
+              <p className="font-semibold text-slate-800 dark:text-slate-100">Nenhum plantão de colega pode ser trocado por este agora.</p>
+              <p className="text-xs text-slate-500">A troca só aparece quando cada um pode fazer o plantão do outro (mesma unidade, setor liberado, especialidade e sem choque de horário).</p>
+              <ul className="list-disc pl-5 space-y-1 text-xs">{(swapsApi.whyNoOptions?.(shift) || []).map(line => <li key={line}>{line}</li>)}</ul>
+              <p className="text-xs text-slate-500">Se for o caso, peça à coordenação para liberar o setor no Corpo Clínico, ou use “Passar no Mural”.</p>
+            </div>
           ) : options.map(({ shift: theirs, colleague }) => {
             const selected = choice === String(theirs.id);
             return (

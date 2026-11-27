@@ -43,7 +43,7 @@ export async function publishAnnouncement({ companyId, unitId, sectorId, title, 
     type: 'comunicado', category: 'comunicado',
     title: `Comunicado${sectorName ? ` · ${sectorName}` : ''}: ${row.title}`,
     message: row.body.slice(0, 180),
-    data: { announcement_id: data.id, url: '/minha-escala' }
+    data: { announcement_id: data.id, url: '/avisos' }
   })));
   return { announcement: data, audience: audience.length };
 }

@@ -6,11 +6,11 @@ import { Button } from '@/components/ui/button';
 
 // Comunicados para o plantonista (V0.10.2), no topo da Minha Escala: os novos com o botão "Li";
 // os já lidos ficam guardados embaixo.
-export default function AnnouncementsInbox({ professional, sectors = [] }) {
+export default function AnnouncementsInbox({ professional, sectors = [], page = false }) {
   const linked = professional?.id && professional.id !== 'temp_user_id';
   const [list, setList] = useState([]);
   const [readIds, setReadIds] = useState(new Set());
-  const [showRead, setShowRead] = useState(false);
+  const [showRead, setShowRead] = useState(page);
   const [busy, setBusy] = useState(null);
 
   const load = useCallback(async () => {
@@ -40,7 +40,8 @@ export default function AnnouncementsInbox({ professional, sectors = [] }) {
     }
   };
 
-  if (!linked || !list.length) return null;
+  if (!linked) return null;
+  if (!list.length) return page ? <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum comunicado para você ainda.</p> : null;
 
   const item = (a, isRead) => (
     <li key={a.id} className={`rounded-2xl border p-3 ${isRead ? 'border-slate-200 dark:border-slate-800' : 'border-sky-200 dark:border-sky-900 bg-sky-50/60 dark:bg-sky-950/20'}`}>

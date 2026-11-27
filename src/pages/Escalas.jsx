@@ -3,6 +3,8 @@ import { useAppData } from '@/lib/useAppData';
 import { getProfessionalUnitIds, isProfessionalAuthorizedForSector as isAuthorizedInSectorList } from '@/lib/sectorAccess';
 import { useUnitScope } from '@/lib/unitScope';
 import { avoidedDayMessage, preferenceScore } from '@/lib/preferences';
+import { getStandby } from '@/lib/standby';
+import StandbyPanel from '@/components/escala/StandbyPanel';
 import { describeUnavailability, findUnavailability } from '@/lib/availability';
 import { mapDateToMonth } from '@/lib/scheduleCopy';
 import { checkWorkload, getWorkloadRules } from '@/lib/workload';
@@ -654,9 +656,13 @@ const conflict = checkProfessionalConflict(
       }
     });
 
+    // Sobreaviso do dia no setor (V0.10.3): primeiro da lista.
+    const standbyIds = formData.sector_id ? getStandby(company, unitOfSector(formData.sector_id), formData.sector_id, formData.date) : [];
+    available.sort((a, b) => Number(standbyIds.includes(String(b.id))) - Number(standbyIds.includes(String(a.id))));
+    available.forEach((prof, i) => { if (standbyIds.includes(String(prof.id))) available[i] = { ...prof, workloadWarning: ['de sobreaviso neste dia', prof.workloadWarning].filter(Boolean).join('; ') }; });
     return { available, unavailable };
 // eslint-disable-next-line react-hooks/exhaustive-deps -- as funções de conflito e carga leem os mesmos dados (plantões, setores, profissionais) já listados
-}, [professionals, formData.date, formData.sector_id, formData.start_time, formData.end_time, editingShiftId, companyShifts, sectorMap]);
+}, [professionals, formData.date, formData.sector_id, formData.start_time, formData.end_time, editingShiftId, companyShifts, sectorMap, company]);
 
   const allScaleConflicts = useMemo(() => {
     const byProfessional = new Map();
@@ -1831,6 +1837,8 @@ Dá para desfazer logo em seguida.`)) return;
               </section>
             );
           })}
+          <StandbyPanel dateStr={dateStr} sectors={selectedSectorObj ? [selectedSectorObj] : (sectors || []).filter(sec => sec.active !== false)} professionals={professionals}
+            company={company} unitOfSector={unitOfSector} dayShifts={dayShifts} isVacant={isVacant} isManager={isManager} onChanged={syncGlobalData} />
         </div>
       </div>
     );

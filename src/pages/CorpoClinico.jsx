@@ -97,7 +97,8 @@ export default function CorpoClinico() {
   const [inviteOpen, setInviteOpen] = useState(false); 
   const [accessEmailOpen, setAccessEmailOpen] = useState(false);
   const [sendingAccessId, setSendingAccessId] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  // A busca rápida (Ctrl+K) abre esta tela já filtrada: /corpo-clinico?busca=nome.
+  const [searchQuery, setSearchQuery] = useState(() => { try { return new URLSearchParams(window.location.search).get('busca') || ''; } catch { return ''; } });
   const [categoryFilter, setCategoryFilter] = useState('todas');
   const [viewMode, setViewMode] = useState('list');
   const importInputRef = useRef(null);
