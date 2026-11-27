@@ -2,12 +2,18 @@
 
 ## Regra de numeração
 
-- Cada entrega publicada em produção sobe o último número: V0.1.2 → V0.1.3 → … → V0.1.10.
-- Depois de V0.1.10, a próxima é **V0.2.1** (o número do meio sobe e o último recomeça em 1),
-  e assim por diante: V0.2.10 → V0.3.1.
+- Cada entrega publicada em produção sobe o último número: V0.10.4 → V0.10.5 → … → V0.10.20.
+- Depois de V0.10.20, a próxima é **V0.11.1** (o número do meio sobe e o último recomeça em 1).
+- Até a V0.10.3 o limite era 10 (V0.9.10 → V0.10.1); desde a V0.10.4 é 20.
 - A versão fica no campo `version` do `package.json` (sem o "V") e aparece no app
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
+
+## V0.10.4 — 27/11/2026
+
+Versões sobem mais devagar.
+
+- O último número da versão agora vai até **20** antes de o número do meio subir (V0.10.4 … V0.10.20 → V0.11.1). Antes o limite era 10. Regra em `src/lib/version.js`, com teste.
 
 ## V0.10.3 — 27/11/2026
 

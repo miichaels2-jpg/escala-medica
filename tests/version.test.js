@@ -12,12 +12,13 @@ test('sobe o último número a cada entrega', () => {
   assert.equal(nextVersion('V0.1.9'), '0.1.10');
 });
 
-test('depois do 10, sobe o número do meio e recomeça em 1', () => {
-  assert.equal(nextVersion('0.1.10'), '0.2.1');
-  assert.equal(nextVersion('V0.2.10'), '0.3.1');
+test('depois do 20, sobe o número do meio e recomeça em 1', () => {
+  assert.equal(nextVersion('0.10.10'), '0.10.11');
+  assert.equal(nextVersion('0.10.20'), '0.11.1');
+  assert.equal(nextVersion('V0.11.20'), '0.12.1');
 });
 
 test('a versão do package.json segue o formato esperado', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-  assert.match(pkg.version, /^\d+\.\d+\.([1-9]|10)$/);
+  assert.match(pkg.version, /^\d+\.\d+\.([1-9]|1\d|20)$/);
 });
