@@ -5,6 +5,7 @@ import { getStandby, withStandby } from '@/lib/standby';
 import { isProfessionalAuthorizedForSector, getProfessionalUnitIds } from '@/lib/sectorAccess';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
 import { formatDateBR } from '@/lib/format';
+import { getShiftSpecialty, specialtyMatches } from '@/lib/vacancyRelevance';
 
 // Sobreaviso no painel do dia (V0.10.3): por setor, quem fica de reserva. "Chamar sobreaviso" avisa
 // essas pessoas quando o dia tem vaga aberta.
@@ -45,7 +46,9 @@ export default function StandbyPanel({ dateStr, sectors = [], professionals = []
     const ids = getStandby(company, unitOfSector(sector.id), sector.id, dateStr);
     const people = ids.map(id => professionals.find(p => String(p.id) === id)).filter(Boolean);
     const vacancies = dayShifts.filter(s => String(s.sector_id) === String(sector.id) && isVacant(s) && !String(s.notes || '').includes('[VAGA_EXTRA]'));
-    return { sector, ids, people, vacancies };
+    // Só chama quem é da especialidade de alguma das vagas (V0.10.6).
+    const callable = people.filter(p => vacancies.some(v => specialtyMatches(v, p)));
+    return { sector, ids, people, vacancies, callable };
   });
   // Com vários setores (aba "Todos"), mostra só quem tem reserva ou vaga no dia; adicionar é com o setor escolhido.
   const multi = sectors.length > 1;
@@ -57,9 +60,12 @@ export default function StandbyPanel({ dateStr, sectors = [], professionals = []
     <section className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-2.5 space-y-2">
       <h4 className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400"><ShieldPlus className="h-3.5 w-3.5" /> Sobreaviso</h4>
       {multi && isManager && <p className="text-[11px] text-slate-500 dark:text-slate-400">Para colocar alguém de reserva, escolha o setor nas abas acima.</p>}
-      {visible.map(({ sector, ids, people, vacancies }) => {
+      {visible.map(({ sector, ids, people, vacancies, callable }) => {
+        // Reserva: liberado no setor e da especialidade de algum turno do setor no dia (se o dia tem plantão).
+        const daySpecs = dayShifts.filter(s => String(s.sector_id) === String(sector.id));
         const candidates = professionals.filter(p => String(p.status || 'ativo') === 'ativo' && !ids.includes(String(p.id)) &&
-          getProfessionalUnitIds(p).includes(String(unitOfSector(sector.id))) && isProfessionalAuthorizedForSector(p, sector.id))
+          getProfessionalUnitIds(p).includes(String(unitOfSector(sector.id))) && isProfessionalAuthorizedForSector(p, sector.id) &&
+          (!daySpecs.length || daySpecs.some(s => specialtyMatches(s, p))))
           .sort((a, b) => String(a.name).localeCompare(String(b.name), 'pt-BR'));
         return (
           <div key={sector.id} className="space-y-1.5">
@@ -81,8 +87,11 @@ export default function StandbyPanel({ dateStr, sectors = [], professionals = []
                 <button type="button" disabled={busy === sector.id || !candidates.length} onClick={() => setAdding(sector.id)} className="rounded-full border border-slate-200 dark:border-slate-700 px-2.5 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/30 cursor-pointer disabled:opacity-40">+ Adicionar</button>
               ))}
             </div>
-            {isManager && people.length > 0 && vacancies.length > 0 && (
-              <button type="button" onClick={() => callStandby(sector, people, vacancies)} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 px-2.5 py-1 text-xs font-semibold text-white cursor-pointer">
+            {isManager && people.length > 0 && vacancies.length > 0 && callable.length === 0 && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Ninguém de reserva é da especialidade das vagas abertas ({[...new Set(vacancies.map(getShiftSpecialty))].join(', ')}).</p>
+            )}
+            {isManager && callable.length > 0 && vacancies.length > 0 && (
+              <button type="button" onClick={() => callStandby(sector, callable, vacancies.filter(v => callable.some(p => specialtyMatches(v, p))))} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 px-2.5 py-1 text-xs font-semibold text-white cursor-pointer">
                 <BellRing className="h-3.5 w-3.5" /> Chamar sobreaviso ({vacancies.length} vaga{vacancies.length > 1 ? 's' : ''})
               </button>
             )}

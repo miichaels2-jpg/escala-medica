@@ -6,7 +6,8 @@ import PushToggle from '@/components/PushToggle';
 import { fetchMyNotifications, markNotificationsRead } from '@/lib/notifications';
 import { getShiftDateTimeRange, isIdleExtraSlot, isShiftVacant } from '@/lib/shiftLiveStatus';
 import { preferenceScore } from '@/lib/preferences';
-import { getProfessionalUnitIds, isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
+import { getShiftSpecialty, isVacancyRelevantFor } from '@/lib/vacancyRelevance';
+import { getProfessionalUnitIds } from '@/lib/sectorAccess';
 import { formatDateBR, normalize } from '@/lib/format';
 
 const READ_VACANCIES_KEY = 'scale_read_notifs';
@@ -24,22 +25,9 @@ function timeAgo(value) {
   return `há ${days} dia${days > 1 ? 's' : ''}`;
 }
 
-function getShiftSpecialty(shift) {
-  if (shift?.target_specialty) return shift.target_specialty;
-  return String(shift?.notes || '').match(/\[ESP:(.*?)\]/i)?.[1]?.trim() || '';
-}
-
 // Vaga relevante para o profissional: setor autorizado e especialidade compatível.
-export function isVacancyRelevantFor(shift, professional) {
-  if (!professional) return true;
-  if (!isProfessionalAuthorizedForSector(professional, shift.sector_id)) return false;
-  const required = normalize(getShiftSpecialty(shift));
-  const mine = normalize(professional.specialty);
-  if (!required || required === 'geral') return true;
-  // Sem especialidade no cadastro, só vê vaga geral (V0.9.8): vaga de outra competência nunca aparece.
-  if (!mine) return false;
-  return required === mine || required.includes(mine) || mine.includes(required);
-}
+// Regra única em src/lib/vacancyRelevance.js (V0.10.6); exportada aqui para as telas que já a usam.
+export { isVacancyRelevantFor };
 
 export function useNotificationCenter({ user, currentProfessional, shifts, companyShifts, selectedUnitId, isManager, isPublished }) {
   const [notices, setNotices] = useState([]);
