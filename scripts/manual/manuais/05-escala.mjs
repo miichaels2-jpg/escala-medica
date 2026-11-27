@@ -72,7 +72,7 @@ export default {
             '`Salvar e publicar`: grava e já publica. Cada profissional escalado recebe o aviso no celular.'
           ] }
         ] },
-        { atencao: 'No Quadro e na Lista só entram profissionais que podem assumir: mesma especialidade, autorizados no setor, sem folga ou férias informadas e sem outro plantão no mesmo horário. O sistema também alerta quando alguém passa do limite de carga configurado em Configurações › Regras da escala.' }
+        { atencao: 'No Quadro e na Lista só entram profissionais que podem assumir: mesma especialidade, autorizados no setor, sem folga ou férias informadas e sem outro plantão no mesmo horário. O sistema também alerta quando alguém passa do limite de carga configurado em Configurações › Regras da escala. Para escalar alguém **de outra especialidade**, só pela janela do plantão (clique na vaga): a pessoa aparece com o aviso "outra especialidade" e o sistema pede confirmação ao salvar. O profissional nunca vê nem pega, pelo Mural, vaga de outra especialidade.' }
       ]
     },
     {

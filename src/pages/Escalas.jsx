@@ -44,6 +44,13 @@ export default function Escalas() {
     const sector = (allCompanySectors || []).find(s => String(s.id) === String(sectorId)) || (sectors || []).find(s => String(s.id) === String(sectorId));
     return String(sector?.unit_id || selectedUnitId || '');
   }
+  // Especialidade diferente da vaga (vaga geral ou sem especialidade aceita qualquer um).
+  function isOtherSpecialty(prof, required) {
+    const need = normalize(required || '');
+    if (!prof || !need || need === 'geral') return false;
+    const mine = normalize(prof.specialty || '');
+    return !mine || !(mine === need || mine.includes(need) || need.includes(mine));
+  }
   function isProfessionalAuthorizedForSector(prof, sectorId) {
     if (!isAuthorizedInSectorList(prof, sectorId)) return false;
     if (!isAllUnits || !sectorId) return true;
@@ -637,8 +644,10 @@ const conflict = checkProfessionalConflict(
           conflictReason: `Alocado em ${conflictSec} (${conflict.conflictShift?.start_time} - ${conflict.conflictShift?.end_time})`
         });
       } else {
-        const warnings = workloadWarningsFor(prof.id, { id: editingShiftId || 'novo', date: formData.date, start_time: formData.start_time, end_time: formData.end_time });
-        available.push(warnings.length ? { ...prof, workloadWarning: warnings.map(w => w.message).join('; ') } : prof);
+        const warnings = workloadWarningsFor(prof.id, { id: editingShiftId || 'novo', date: formData.date, start_time: formData.start_time, end_time: formData.end_time }).map(w => w.message);
+        // Outra especialidade: o gestor pode escalar, mas confirma ao salvar (V0.9.8).
+        if (isOtherSpecialty(prof, formData.target_specialty)) warnings.unshift(`outra especialidade (${prof.specialty || 'sem especialidade'}): pede confirmação`);
+        available.push(warnings.length ? { ...prof, workloadWarning: warnings.join('; ') } : prof);
       }
     });
 
@@ -1491,6 +1500,9 @@ if (!isMural && formData.professional_id &&
   alert(`⛔ ${selectedProfessional?.name || 'O profissional selecionado'} não está autorizado(a) para o setor ${sectorName}.`);
   return;
 }
+
+if (!isMural && formData.professional_id && isOtherSpecialty(selectedProfessional, formData.target_specialty) &&
+    !confirm(`A vaga é de ${formData.target_specialty} e ${selectedProfessional?.name || 'o profissional'} é de ${selectedProfessional?.specialty || 'nenhuma especialidade cadastrada'}.\n\nSó a coordenação pode escalar alguém fora da especialidade. Escalar mesmo assim?`)) return;
 
 if (!isMural && formData.professional_id) {
       const loadWarnings = workloadWarningsFor(formData.professional_id, { id: editingShiftId || 'novo', date: formData.date, start_time: formData.start_time, end_time: formData.end_time });

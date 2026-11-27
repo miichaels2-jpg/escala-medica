@@ -34,7 +34,9 @@ export function isVacancyRelevantFor(shift, professional) {
   if (!isProfessionalAuthorizedForSector(professional, shift.sector_id)) return false;
   const required = normalize(getShiftSpecialty(shift));
   const mine = normalize(professional.specialty);
-  if (!required || required === 'geral' || !mine) return true;
+  if (!required || required === 'geral') return true;
+  // Sem especialidade no cadastro, só vê vaga geral (V0.9.8): vaga de outra competência nunca aparece.
+  if (!mine) return false;
   return required === mine || required.includes(mine) || mine.includes(required);
 }
 
