@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { isShiftPublished } from '@/lib/sharedState';
+import { isExtraVacancy } from '@/lib/sectorTemplates';
 import { getProfessionalUnitIds, isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { findUnavailability } from '@/lib/availability';
 import { URGENT_COVER_TAG, getShiftUrgency, withTag } from '@/lib/urgentVacancies';
@@ -263,6 +264,8 @@ export default function Trocas() {
 
       if (st.includes('cancel') || st.includes('inativ')) return false;
       if (audit.isAguardandoGestor) return false;
+      // Vaga extra é folga da coordenação: não vai para o Mural.
+      if (isExtraVacancy(s)) return false;
 
       const isMuralApproved = st === 'vago' || st === 'disponivel_mural' || audit.transferFrom !== '';
       if (!isMuralApproved) return false;

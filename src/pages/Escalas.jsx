@@ -4,7 +4,7 @@ import { isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { describeUnavailability, findUnavailability } from '@/lib/availability';
 import { mapDateToMonth } from '@/lib/scheduleCopy';
 import { checkWorkload, getWorkloadRules } from '@/lib/workload';
-import { getSectorTemplates, templatesToSlots, withSectorTemplates } from '@/lib/sectorTemplates';
+import { EXTRA_VACANCY_TAG, getSectorTemplates, isExtraVacancy, templatesToSlots, withSectorTemplates } from '@/lib/sectorTemplates';
 import { getShiftDateTimeRange } from '@/lib/shiftLiveStatus';
 import { recipientFor, sendNotifications } from '@/lib/notifications';
 import { offerUndo } from '@/lib/undo';
@@ -205,8 +205,16 @@ const closeTvMode = async () => {
         });
       }
 
+      // Vagas extras que ninguém ocupou saem ao publicar: eram só folga para a montagem.
+      const emptyExtras = publishTargetShifts.filter(s => isExtraVacancy(s) && isVacant(s));
+      if (emptyExtras.length) {
+        const { error: extraError } = await supabase.from('shifts').delete().in('id', emptyExtras.map(s => s.id));
+        if (extraError) throw extraError;
+      }
+      const removedExtraIds = new Set(emptyExtras.map(s => String(s.id)));
+
       const newlyPublishedByProfessional = new Map();
-      for (const shift of publishTargetShifts) {
+      for (const shift of publishTargetShifts.filter(s => !removedExtraIds.has(String(s.id)))) {
         const currNotes = String(shift.notes || '');
         const wasAlreadyPublished = currNotes.includes('[ESCALA_PUBLICADA]');
         // Republicar substitui os marcadores anteriores em vez de acumulá-los.
@@ -242,7 +250,7 @@ const closeTvMode = async () => {
       setPublishModalOpen(false);
       await syncGlobalData();
 
-      alert(`✓ Escala de "${secName}" oficializada!\n\nVigência: ${formatDateBR(publishConfig.start_date)} até ${formatDateBR(publishConfig.end_date)}\n${newlyPublishedByProfessional.size} profissional(is) ${notificationsSent ? 'notificado(s)' : 'a notificar (falha no envio do aviso)'}.`);
+      alert(`✓ Escala de "${secName}" oficializada!\n\nVigência: ${formatDateBR(publishConfig.start_date)} até ${formatDateBR(publishConfig.end_date)}\n${newlyPublishedByProfessional.size} profissional(is) ${notificationsSent ? 'notificado(s)' : 'a notificar (falha no envio do aviso)'}.${emptyExtras.length ? `\n${emptyExtras.length} vaga(s) extra(s) vazia(s) removida(s).` : ''}`);
       } catch (err) { alert('Erro ao publicar escala: ' + err.message); } finally { setSubmitting(false); }
   };
 
@@ -748,8 +756,10 @@ const conflict = checkProfessionalConflict(
     const rows = [];
     let skippedExisting = 0;
     // Rodar o gerador de novo não duplica: cada horário é completado só até a quantidade configurada.
-    const existingSlotCount = (dateStr, slot, spec) => (shifts || []).filter(s =>
+    // Vagas extras contam à parte: completar as normais não mexe nas extras, e vice-versa.
+    const existingSlotCount = (dateStr, slot, spec, extra = false) => (shifts || []).filter(s =>
       s && s.status !== 'cancelado' &&
+      isExtraVacancy(s) === extra &&
       String(s.date).slice(0, 10) === dateStr &&
       String(s.sector_id) === String(generatorConfig.sector_id) &&
       String(s.start_time) === String(slot.start_time) &&
@@ -778,6 +788,28 @@ const conflict = checkProfessionalConflict(
             sector_id: generatorConfig.sector_id,
             target_specialty: spec,
             notes: `[ESP:${spec}] [GERADO_ESCALA_MASSA]`,
+            professional_id: null,
+            professional_name: null,
+            date: dateStr,
+            shift_type: sType,
+            start_time: slot.start_time,
+            end_time: slot.end_time,
+            status: 'vago'
+          });
+        }
+        const extraQty = (slot.extra_weekdays || []).map(Number).includes(curDate.getDay()) ? (parseInt(slot.extra_quantity) || 0) : 0;
+        const extrasThere = extraQty ? existingSlotCount(dateStr, slot, spec, true) : 0;
+        skippedExisting += Math.min(extraQty, extrasThere);
+        for (let q = extrasThere; q < extraQty; q++) {
+          rows.push({
+            id: `draft_${dateStr}_${slot.id}_x${q}`,
+            isDraft: true,
+            isExtra: true,
+            company_id: company?.id || 'cmp_principal',
+            unit_id: selectedUnitId || 'unit_h1',
+            sector_id: generatorConfig.sector_id,
+            target_specialty: spec,
+            notes: `[ESP:${spec}] [GERADO_ESCALA_MASSA] ${EXTRA_VACANCY_TAG}`,
             professional_id: null,
             professional_name: null,
             date: dateStr,
@@ -961,7 +993,7 @@ const conflict = checkProfessionalConflict(
         const profId = bulkAllocationDraft[String(row.id)];
         const prof = profId ? professionalMap[String(profId)] : null;
          
-        const { id: _draftId, isDraft: _isDraft, ...payload } = row;
+        const { id: _draftId, isDraft: _isDraft, isExtra: _isExtra, ...payload } = row;
         const result = await autoHealingSaveShift(null, {
           ...payload,
           professional_id: prof?.id || null,
@@ -1610,6 +1642,40 @@ const handleAssignLegacyShiftUnit = async (shift) => {
     } catch (err) { alert('Não foi possível limpar o dia: ' + (err?.message || 'tente de novo.')); }
   };
 
+  // Excluir a escala do mês que ainda não foi publicada (V0.9.2): some de todas as telas; períodos já
+  // publicados ficam. Vale para o setor escolhido ou, em "Todos", para todos os setores mostrados.
+  const handleClearDraftMonth = async () => {
+    const prefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+    const targets = (shifts || []).filter(s => s?.date && String(s.date).startsWith(prefix) &&
+      (selectedSectorId === 'todos' || String(s.sector_id) === String(selectedSectorId)) &&
+      !getSectorPublishedRanges(s.sector_id).some(r => s.date >= r.start_date && s.date <= r.end_date));
+    const where = selectedSectorObj ? `do setor ${selectedSectorObj.name}` : 'de todos os setores mostrados';
+    if (!targets.length) { alert(`Não há escala em rascunho em ${MONTH_NAMES[currentMonth]} ${where}.`); return; }
+    const withProf = targets.filter(s => !isVacant(s)).length;
+    if (!confirm(`Excluir a escala de ${MONTH_NAMES[currentMonth]} ${where}?
+
+Saem ${targets.length} plantão(ões) que ainda não foram publicados${withProf ? `, ${withProf} com profissional` : ''}. Eles somem de todas as telas. Períodos já publicados ficam como estão.
+
+Dá para desfazer logo em seguida.`)) return;
+    try {
+      const ids = targets.map(s => s.id);
+      const { data: rows, error: readError } = await supabase.from('shifts').select('*').in('id', ids);
+      if (readError) throw readError;
+      const { error } = await supabase.from('shifts').delete().in('id', ids);
+      if (error) throw error;
+      await syncGlobalData();
+      offerUndo({
+        title: `Escala de ${MONTH_NAMES[currentMonth]} excluída`,
+        description: `${ids.length} plantão(ões) excluído(s). Você tem 10 segundos para desfazer.`,
+        onUndo: async () => {
+          const { error: insertError } = await supabase.from('shifts').insert(rows || []);
+          if (insertError) throw insertError;
+          await syncGlobalData();
+        }
+      });
+    } catch (err) { alert('Não foi possível excluir a escala: ' + (err?.message || 'tente de novo.')); }
+  };
+
   const renderDayPanel = (dateStr) => {
     const dayShifts = (shiftsByDate[dateStr] || []).slice()
       .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)) || Number(isVacant(b)) - Number(isVacant(a)));
@@ -1794,7 +1860,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
         title={isOpen ? 'Vaga aberta: clique para escalar ou arraste um profissional' : 'Clique para editar'}
       >
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">{shift.start_time}–{shift.end_time}</span>
+          <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">{shift.start_time}–{shift.end_time}{isExtraVacancy(shift) && <span className="ml-1.5 rounded-md border border-dashed border-slate-300 dark:border-slate-600 px-1.5 py-px text-[10px] font-semibold text-slate-600 dark:text-slate-300">Extra</span>}</span>
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${PILL_TONES[pill.tone]}`}>{pill.label}</span>
         </div>
         <div className="mt-2 flex items-center gap-2.5 min-w-0">
@@ -1802,7 +1868,7 @@ const handleAssignLegacyShiftUnit = async (shift) => {
             {isOpen ? <Plus className="w-3.5 h-3.5" /> : getInitials(validName)}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium leading-snug text-slate-900 dark:text-white truncate">{isOpen ? 'Sem profissional' : formatFullName(validName)}</div>
+            <div className="text-sm font-medium leading-snug text-slate-900 dark:text-white truncate">{isOpen ? (isExtraVacancy(shift) ? 'Vaga extra' : 'Sem profissional') : formatFullName(validName)}</div>
             <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
               {realSpec}{!selectedSectorObj && sectorMap[String(shift.sector_id)]?.name ? ` · ${sectorMap[String(shift.sector_id)].name}` : ''}
             </div>
@@ -1965,10 +2031,11 @@ const handleAssignLegacyShiftUnit = async (shift) => {
               <DropdownMenuItem onClick={() => setActiveTab('dia')} className="cursor-pointer"><Clock className="w-4 h-4 mr-2" /> Plantão do dia</DropdownMenuItem>
               <DropdownMenuItem onClick={openTvMode} className="cursor-pointer"><MonitorPlay className="w-4 h-4 mr-2" /> Modo TV</DropdownMenuItem>
               <DropdownMenuItem onClick={handlePrintMonthlySchedule} className="cursor-pointer"><Printer className="w-4 h-4 mr-2" /> Imprimir o mês</DropdownMenuItem>
-              {isManager && isCurrentSectorPublished && (
+              {isManager && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleUnpublishSector} className="cursor-pointer text-rose-600"><History className="w-4 h-4 mr-2" /> Voltar para rascunho</DropdownMenuItem>
+                  {isCurrentSectorPublished && <DropdownMenuItem onClick={handleUnpublishSector} className="cursor-pointer text-rose-600"><History className="w-4 h-4 mr-2" /> Voltar para rascunho</DropdownMenuItem>}
+                  <DropdownMenuItem onClick={handleClearDraftMonth} className="cursor-pointer text-rose-600"><Trash2 className="w-4 h-4 mr-2" /> Excluir escala do mês (rascunho)</DropdownMenuItem>
                 </>
               )}
             </DropdownMenuContent>

@@ -16,7 +16,7 @@ export default {
           ['`Meus plantões`', 'Plantonista', 'Passar um plantão para o Mural ou propor troca a um colega; responder propostas recebidas.'],
           ['`Histórico`', 'Todos', 'Os repasses já efetivados: de quem para quem e quem autorizou.']
         ] } },
-        { atencao: 'Só vão para o Mural as vagas de escala **publicada**. Enquanto a coordenação monta o mês em rascunho, ninguém vê nem assume essas vagas, nem recebe aviso delas. Ao publicar o período na Escala, as vagas abertas aparecem no Mural na hora.' }
+        { atencao: 'Só vão para o Mural as vagas de escala **publicada**. Enquanto a coordenação monta o mês em rascunho, ninguém vê nem assume essas vagas, nem recebe aviso delas. Ao publicar o período na Escala, as vagas abertas aparecem no Mural na hora. **Vagas extras** (folga que a coordenação cria para encaixar alguém) nunca vão para o Mural.' }
       ]
     },
     {

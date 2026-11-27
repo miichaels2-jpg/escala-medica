@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { monthLabel, percentChange, previousRange, professionalFinder, summarizePeriod } from '@/lib/monthSummary';
 import { useAppData } from '@/lib/useAppData';
+import { isExtraVacancy } from '@/lib/sectorTemplates';
+import { isShiftVacant } from '@/lib/shiftLiveStatus';
 
 const brl = value => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value || 0);
 const fmtDay = date => `${date.slice(8, 10)}/${date.slice(5, 7)}`;
@@ -17,18 +19,22 @@ function PublishPreview({ shifts, professionals, sectorId, start, end }) {
   const { company } = useAppData();
   const preview = useMemo(() => {
     if (!sectorId || !start || !end || end < start) return null;
-    const sectorShifts = shifts.filter(s => String(s.sector_id) === String(sectorId));
+    // Vagas extras vazias saem ao publicar: não entram na conta.
+    const allSector = shifts.filter(s => String(s.sector_id) === String(sectorId));
+    const isEmptyExtra = s => isExtraVacancy(s) && isShiftVacant(s);
+    const emptyExtras = allSector.filter(s => isEmptyExtra(s) && s.date >= start && s.date <= end).length;
+    const sectorShifts = allSector.filter(s => !isEmptyExtra(s));
     const getProf = professionalFinder(professionals);
     const cur = summarizePeriod({ shifts: sectorShifts, start, end, getProf, company });
     const [prevStart, prevEnd] = previousRange(start, end);
     const prev = summarizePeriod({ shifts: sectorShifts, start: prevStart, end: prevEnd, getProf, company });
     const wholeMonth = prevStart.slice(8) === '01' && start.slice(8) === '01' && prevStart.slice(0, 7) !== start.slice(0, 7);
     const prevName = wholeMonth ? monthLabel(prevStart.slice(0, 7), { withYear: false }) : `${fmtDay(prevStart)} a ${fmtDay(prevEnd)}`;
-    return { cur, prev, prevName };
+    return { cur, prev, prevName, emptyExtras };
   }, [shifts, professionals, sectorId, start, end, company]);
 
   if (!preview) return null;
-  const { cur, prev, prevName } = preview;
+  const { cur, prev, prevName, emptyExtras } = preview;
   if (!cur.total) {
     return <p className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-3 text-xs text-slate-600 dark:text-slate-300">Nenhum plantão lançado neste setor no período escolhido.</p>;
   }
@@ -50,6 +56,9 @@ function PublishPreview({ shifts, professionals, sectorId, start, end }) {
           </span>
         )}
       </p>
+      {emptyExtras > 0 && (
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">{emptyExtras} vaga(s) extra(s) vazia(s) saem da escala ao publicar.</p>
+      )}
       {(cur.pendingProduction > 0 || cur.missingRate > 0) && (
         <p className="text-[11px] text-slate-500 dark:text-slate-400">
           {cur.pendingProduction > 0 && `${cur.pendingProduction} por produtividade entram só no fechamento. `}
