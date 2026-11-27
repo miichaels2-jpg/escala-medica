@@ -70,6 +70,30 @@ export default {
       ]
     },
     {
+      titulo: 'Minhas preferências',
+      blocos: [
+        { p: 'No cartão **Minhas preferências**, toque em `Informar` (ou `Alterar`) e conte à coordenação como prefere trabalhar:' },
+        { lista: [
+          '**Turno:** `Tanto faz`, `Prefiro diurno` ou `Prefiro noturno`.',
+          '**Dias em que não faço plantão:** toque nos dias da semana (ex.: Dom).',
+          '**Setores em que quero mais plantões:** aparece quando você atende em mais de um setor.'
+        ] },
+        { p: 'Toque em `Salvar preferências`. Quando a coordenação usa o preenchimento automático, você não é escalado nos dias que marcou e tem prioridade nos turnos e setores que prefere. No Mural, as vagas do seu interesse aparecem primeiro em cada dia, com a marca **Do seu interesse**.' },
+        { atencao: 'É uma preferência, não um bloqueio: a coordenação ainda pode te escalar num dia que você marcou, se precisar. Para períodos em que você não pode de jeito nenhum (férias, congresso), use **Minha disponibilidade**.' }
+      ]
+    },
+    {
+      titulo: 'Comunicados da coordenação',
+      blocos: [
+        { p: 'Quando a coordenação publica um comunicado para a sua unidade ou para a equipe de um setor seu, você recebe o aviso no sino (e no celular, se os avisos estiverem ativos), e ele aparece no alto da Minha Escala, em **Comunicados da coordenação**.' },
+        { passos: [
+          'Leia o comunicado.',
+          'Toque em `Li`. A coordenação passa a ver que você leu.',
+          'Os comunicados já lidos ficam guardados em `Ver lidos`.'
+        ] }
+      ]
+    },
+    {
       titulo: 'Próximos plantões',
       blocos: [
         { figura: 'cel-proximos', legenda: 'Lista dos próximos plantões, do mais perto ao mais longe.', pontos: [

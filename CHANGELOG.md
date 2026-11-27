@@ -9,6 +9,17 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.10.2 — 27/11/2026
+
+Preferências do plantonista (item 55) e comunicados por setor com "li" (item 59).
+
+- **Minha Escala › Minhas preferências:** o plantonista informa turno preferido (diurno, noturno ou tanto faz), dias da semana em que não faz plantão e setores em que quer mais plantões.
+  - **Escala:** o `Preencher automaticamente` não escala ninguém no dia que pediu para não fazer e dá prioridade a quem prefere o turno ou o setor. Na lista de quem pode ir (Quadro, Lista e janela do plantão), o dia que a pessoa não faz aparece como aviso; a coordenação ainda pode escalar se precisar.
+  - **Mural e sino:** as vagas do interesse do plantonista aparecem primeiro, com a marca **Do seu interesse**.
+- **Painel › Comunicados:** a coordenação publica um aviso oficial para a equipe de um setor ou de toda a unidade (com várias unidades, escolhe a unidade). Cada profissional recebe no sino e no celular, lê em **Minha Escala › Comunicados da coordenação** e toca em **Li**. O Painel mostra "lido por X de Y", com quem leu e quem falta; a lixeira apaga para todos.
+- Precisa da atualização do banco `20261128120000_preferences_announcements.sql` (libera as preferências na ficha do plantonista e cria as tabelas de comunicados e leituras).
+- Manuais **02 · Painel**, **05 · Escala** e **07 · Minha Escala** atualizados; PDFs regenerados.
+
 ## V0.10.1 — 27/11/2026
 
 "Escalas médicas" sai de todo o sistema: o ScaleMedic serve para todas as especialidades e categorias.

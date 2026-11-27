@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { getProfessionalUnitIds, isProfessionalAuthorizedForSector as isAuthorizedInSectorList } from '@/lib/sectorAccess';
 import { useUnitScope } from '@/lib/unitScope';
+import { avoidedDayMessage, preferenceScore } from '@/lib/preferences';
 import { describeUnavailability, findUnavailability } from '@/lib/availability';
 import { mapDateToMonth } from '@/lib/scheduleCopy';
 import { checkWorkload, getWorkloadRules } from '@/lib/workload';
@@ -647,6 +648,8 @@ const conflict = checkProfessionalConflict(
         const warnings = workloadWarningsFor(prof.id, { id: editingShiftId || 'novo', date: formData.date, start_time: formData.start_time, end_time: formData.end_time }).map(w => w.message);
         // Outra especialidade: o gestor pode escalar, mas confirma ao salvar (V0.9.8).
         if (isOtherSpecialty(prof, formData.target_specialty)) warnings.unshift(`outra especialidade (${prof.specialty || 'sem especialidade'}): pede confirmação`);
+        const avoided = avoidedDayMessage(prof, { date: formData.date });
+        if (avoided) warnings.unshift(avoided);
         available.push(warnings.length ? { ...prof, workloadWarning: warnings.join('; ') } : prof);
       }
     });
@@ -937,10 +940,13 @@ const conflict = checkProfessionalConflict(
           .filter(([rowId, profId]) => profId && String(profId) === String(prof.id) && String(rowId) !== String(shift.id))
           .map(([rowId]) => generatedRowsById[String(rowId)])
           .filter(Boolean);
-        const warnings = workloadWarningsFor(prof.id, shift, draftShifts);
-        return warnings.length ? { ...prof, workloadWarning: warnings.map(w => w.message).join('; ') } : prof;
+        const warnings = workloadWarningsFor(prof.id, shift, draftShifts).map(w => w.message);
+        // Preferência do plantonista (V0.10.2): dia que ele não faz vira aviso.
+        const avoided = avoidedDayMessage(prof, shift);
+        if (avoided) warnings.unshift(avoided);
+        return warnings.length ? { ...prof, workloadWarning: warnings.join('; ') } : prof;
       })
-      .sort((a, b) => Boolean(a.workloadWarning) - Boolean(b.workloadWarning) || String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
+      .sort((a, b) => Boolean(a.workloadWarning) - Boolean(b.workloadWarning) || preferenceScore(b, shift) - preferenceScore(a, shift) || String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'));
   };
 
   const autoFillBulkAllocation = () => {
@@ -948,8 +954,8 @@ const conflict = checkProfessionalConflict(
     const load = {};
     Object.values(draft).forEach(profId => { if (profId) load[profId] = (load[profId] || 0) + 1; });
 
-    // Preenche só as vagas vazias, respeitando setor, especialidade e conflitos de horário,
-    // sempre com quem tem menos plantões neste lote.
+    // Preenche só as vagas vazias, respeitando setor, especialidade, conflitos de horário e os dias que
+    // cada um não faz; dá prioridade a quem prefere o turno ou o setor e a quem tem menos plantões no lote.
     (generatedAllocationRows || [])
       .slice()
       .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.start_time).localeCompare(String(b.start_time)))
@@ -957,7 +963,7 @@ const conflict = checkProfessionalConflict(
         if (draft[String(row.id)]) return;
         const candidate = getBulkCandidates(row, draft)
           .filter(prof => !prof.workloadWarning)
-          .sort((a, b) => (load[String(a.id)] || 0) - (load[String(b.id)] || 0))[0];
+          .sort((a, b) => ((load[String(a.id)] || 0) - preferenceScore(a, row)) - ((load[String(b.id)] || 0) - preferenceScore(b, row)))[0];
         if (!candidate) return;
         draft[String(row.id)] = String(candidate.id);
         load[String(candidate.id)] = (load[String(candidate.id)] || 0) + 1;

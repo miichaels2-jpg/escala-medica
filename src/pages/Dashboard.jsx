@@ -8,6 +8,7 @@ import EmptyState from '@/components/EmptyState';
 import OnboardingChecklist from '@/components/OnboardingChecklist';
 import MonthTrend from '@/components/MonthTrend';
 import TeamCare from '@/components/TeamCare';
+import AnnouncementsCard from '@/components/AnnouncementsCard';
 import { Minimize2, AlertTriangle, CheckCircle2,
   ArrowRightLeft, DollarSign, Building2,
   Radio, X, Send, CalendarDays
@@ -634,6 +635,8 @@ export default function Painel() {
           }}
         />
       )}
+
+      {isManager && <AnnouncementsCard />}
 
       {isManager && (
         <TeamCare

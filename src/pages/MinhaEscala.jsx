@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppData } from '@/lib/useAppData';
 import AvailabilityCard from '@/components/AvailabilityCard';
+import PreferencesCard from '@/components/PreferencesCard';
+import AnnouncementsInbox from '@/components/AnnouncementsInbox';
 import PrivacyCard from '@/components/PrivacyCard';
 import InvoiceCard from '@/components/InvoiceCard';
 import { buildIcs, googleCalendarUrl, shiftEventInfo } from '@/lib/calendarExport';
@@ -796,6 +798,8 @@ export default function MinhaEscala() {
         </Card>
       </div>
 
+      <AnnouncementsInbox professional={currentProfessional} sectors={allCompanySectors} />
+
       <InvoiceCard
         professional={currentProfessional}
         companyId={companyId}
@@ -806,6 +810,8 @@ export default function MinhaEscala() {
       />
 
       <AvailabilityCard professional={currentProfessional} onSaved={syncGlobalData} />
+
+      <PreferencesCard professional={currentProfessional} sectors={allCompanySectors} onSaved={syncGlobalData} />
 
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 sm:p-6 rounded-3xl shadow-sm space-y-4 sm:space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">

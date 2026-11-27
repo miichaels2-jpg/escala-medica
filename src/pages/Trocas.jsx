@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useAppData } from '@/lib/useAppData';
 import { isShiftPublished } from '@/lib/sharedState';
 import { isExtraVacancy } from '@/lib/sectorTemplates';
+import { isOfInterest, preferenceScore } from '@/lib/preferences';
 import { getProfessionalUnitIds, isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { findUnavailability } from '@/lib/availability';
 import { URGENT_COVER_TAG, getShiftUrgency, withTag } from '@/lib/urgentVacancies';
@@ -291,8 +292,9 @@ export default function Trocas() {
   const canClaim = (shift) => Boolean(myProf?.id) && isVacancyRelevantFor(shift, myProf) &&
     !findUnavailability(myProf, shift.date) && !checkTimeConflict(shift).hasConflict;
 
+  // Vagas do interesse do plantonista (setor ou turno preferido) aparecem primeiro em cada dia (V0.10.2).
   const claimableShifts = useMemo(
-    () => muralShifts.filter(canClaim),
+    () => muralShifts.filter(canClaim).sort((a, b) => (a?.date || '').localeCompare(b?.date || '') || preferenceScore(myProf, b) - preferenceScore(myProf, a)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [muralShifts, myProf, myCompanyShifts]
   );
@@ -688,6 +690,9 @@ Plantão confirmado: ${sectorName}, ${formatDateBR(shift.date)} (${shift.start_t
                                 <span className="inline-flex h-6 items-center gap-1 rounded-full bg-rose-50 dark:bg-rose-500/10 px-2.5 text-xs font-semibold text-rose-700 dark:text-rose-300">
                                   <Clock3 className="w-3.5 h-3.5" /> Urgente · {getShiftUrgency(shift).label}
                                 </span>
+                              )}
+                              {!isManager && claimable && isOfInterest(myProf, shift) && (
+                                <span className="inline-flex h-6 items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 px-2.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">Do seu interesse</span>
                               )}
                               <span className="inline-flex h-6 items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 text-xs font-medium text-slate-700 dark:text-slate-200">
                                 <Stethoscope className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" /> {realSpecialty}

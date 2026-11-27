@@ -59,6 +59,19 @@ export default {
       ]
     },
     {
+      titulo: 'Comunicados para a equipe',
+      blocos: [
+        { p: 'O quadro **Comunicados** serve para avisos oficiais: mudança de rotina, protocolo novo, reunião da equipe.' },
+        { passos: [
+          'Clique em `Novo comunicado`.',
+          'Em **Para quem**, escolha `Toda a equipe da unidade` ou a equipe de um setor (com várias unidades, escolha antes a **Unidade**). O sistema mostra quantos profissionais vão receber.',
+          'Escreva o **Título** e a **Mensagem** e clique em `Publicar`. Cada um recebe o aviso no sino e no celular.'
+        ] },
+        { p: 'Na lista aparece **lido por X de Y**. Clique no comunicado para ver a mensagem, quem **leu** e quem **falta**. A lixeira apaga o comunicado para todos.' },
+        { dica: 'A equipe de um setor é quem está liberado nele (Corpo Clínico, passo 2). Quem não está liberado no setor não recebe o comunicado dele.' }
+      ]
+    },
+    {
       titulo: 'Precisa de você: o que pode aparecer',
       blocos: [
         { tabela: { cab: ['Aviso', 'O que significa', 'Onde resolver'], linhas: [
