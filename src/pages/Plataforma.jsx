@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Check, Copy, Hospital, KeyRound, Loader2, LockOpen, Pencil, Plus, RefreshCw, UserPlus, Users } from 'lucide-react';
 import PlatformPeopleDialog from '@/components/PlatformPeopleDialog';
 import { errorInPortuguese } from '@/lib/errorText';
@@ -20,7 +20,8 @@ const PLANS = [
 const planLabel = id => PLANS.find(p => p.id === id)?.label || id || 'Teste';
 
 const EMPTY_MANAGER = { full_name: '', username: '', email: '', birth_date: '' };
-const EMPTY_COMPANY = { name: '', unit_name: '', plan: 'trial', ...EMPTY_MANAGER };
+// existing_manager_ids (V0.9.5): gestores que já existem e passam a entrar também na empresa nova.
+const EMPTY_COMPANY = { name: '', unit_name: '', plan: 'trial', ...EMPTY_MANAGER, existing_manager_ids: [], create_new_manager: true };
 
 export function registrationLink(code) {
   return `${window.location.origin}/register?empresa=${code}`;
@@ -108,7 +109,19 @@ export default function Plataforma() {
 
   useEffect(() => { load(); }, [load]);
 
-  const openCompany = () => { setForm(EMPTY_COMPANY); setFormError(''); setDialog({ type: 'company' }); };
+  // Gestores já cadastrados (de qualquer empresa), para levar a equipe de gestão para uma empresa nova.
+  const existingManagers = useMemo(() => {
+    const byId = new Map();
+    companies.forEach(c => (c.managers || []).forEach(m => {
+      if (String(m.username).toLowerCase() === 'admin') return;
+      const entry = byId.get(m.id) || { ...m, companies: [] };
+      entry.companies.push(c.name);
+      byId.set(m.id, entry);
+    }));
+    return [...byId.values()].sort((a, b) => String(a.full_name).localeCompare(String(b.full_name), 'pt-BR'));
+  }, [companies]);
+
+  const openCompany = () => { setForm({ ...EMPTY_COMPANY, create_new_manager: existingManagers.length === 0 }); setFormError(''); setDialog({ type: 'company' }); };
   const openManager = company => { setForm({ ...EMPTY_MANAGER }); setFormError(''); setDialog({ type: 'manager', company }); };
   const openUnit = company => { setForm({ ...EMPTY_COMPANY, unit_name: '' }); setFormError(''); setDialog({ type: 'unit', company }); };
 
@@ -137,7 +150,9 @@ export default function Plataforma() {
   const submit = async e => {
     e.preventDefault();
     setFormError('');
-    if (dialog.type !== 'unit' && (!form.full_name.trim() || !form.username.trim())) return setFormError('Informe o nome e o usuário do gestor.');
+    const needsNewManager = dialog.type === 'manager' || (dialog.type === 'company' && form.create_new_manager);
+    if (needsNewManager && (!form.full_name.trim() || !form.username.trim())) return setFormError('Informe o nome e o usuário do gestor.');
+    if (dialog.type === 'company' && !form.create_new_manager && !form.existing_manager_ids.length) return setFormError('Escolha pelo menos um gestor ou crie um gestor novo.');
     setSaving(true);
     try {
       if (dialog.type === 'unit') {
@@ -155,13 +170,30 @@ export default function Plataforma() {
           p_name: form.name.trim(), p_unit_name: form.unit_name.trim(), p_plan: form.plan
         });
         if (rpcError) throw rpcError;
-        try {
-          const manager = await createManager(company.id, form);
-          setResult({ companyName: company.name, manager, code: company.registration_code });
-        } catch (managerError) {
-          // A empresa já existe: o gestor pode ser criado depois pelo botão "Adicionar gestor".
-          setResult({ companyName: company.name, code: company.registration_code, managerError: managerError.message });
+        // Gestores que já existem: o mesmo login passa a abrir a empresa nova, como gestor de todos os hospitais.
+        const linkedManagers = [];
+        const linkErrors = [];
+        for (const id of form.existing_manager_ids) {
+          const m = existingManagers.find(x => x.id === id);
+          if (!m) continue;
+          const { error: linkError } = await supabase.rpc('platform_create_manager', {
+            p_company_id: company.id, p_full_name: m.full_name, p_username: m.username, p_email: '',
+            p_password: generateProvisionalPassword(), p_link_existing: true
+          });
+          if (linkError) linkErrors.push(`${m.full_name}: ${errorInPortuguese(linkError.message)}`);
+          else linkedManagers.push(m);
         }
+        let manager = null;
+        let managerError = linkErrors.length ? `Não foi possível liberar: ${linkErrors.join('; ')}.` : '';
+        if (form.create_new_manager) {
+          try {
+            manager = await createManager(company.id, form);
+          } catch (newManagerError) {
+            // A empresa já existe: o gestor pode ser criado depois pelo botão "Adicionar gestor".
+            managerError = [managerError, newManagerError.message].filter(Boolean).join(' ');
+          }
+        }
+        setResult({ companyName: company.name, manager, linkedManagers, code: company.registration_code, managerError });
       } else {
         const manager = await createManager(dialog.company.id, form);
         setResult({ companyName: dialog.company.name, manager, code: dialog.company.registration_code });
@@ -223,6 +255,7 @@ export default function Plataforma() {
   const credentialsText = r => [
     `ScaleMedic — ${r.companyName}`,
     `Endereço: ${window.location.origin}`,
+    r.linkedManagers?.length && `Gestores com o mesmo login de sempre: ${r.linkedManagers.map(m => m.username).join(', ')} (ao entrar, escolham o estabelecimento)`,
     r.manager && `Usuário: ${r.manager.username}`,
     r.manager && (r.manager.linked
       ? 'Senha: a mesma que você já usa. Ao entrar, escolha o estabelecimento (dá para trocar no topo da tela).'
@@ -416,8 +449,35 @@ export default function Plataforma() {
                 <p className="text-[11px] text-slate-500">Os gestores gerais da empresa passam a ver este hospital no mesmo login. CNPJ, endereço e logo o gestor completa em Configurações.</p>
               </div>
             )}
-            {dialog?.type === 'company' && <h3 className="text-xs font-semibold text-slate-500">Primeiro gestor</h3>}
-            {dialog?.type !== 'unit' && <ManagerFields value={form} onChange={next => setForm({ ...form, ...next })} />}
+            {dialog?.type === 'company' && existingManagers.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-semibold text-slate-500">Gestores que já usam o ScaleMedic</h3>
+                <p className="text-[11px] text-slate-500">Marque quem também vai gerir esta empresa: entram com o mesmo usuário e a mesma senha e escolhem o estabelecimento ao entrar.</p>
+                <ul className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
+                  {existingManagers.map(m => {
+                    const on = form.existing_manager_ids.includes(m.id);
+                    return (
+                      <li key={m.id}>
+                        <label className="flex items-center gap-3 px-3 py-2 cursor-pointer">
+                          <input type="checkbox" checked={on} className="h-4 w-4 accent-sky-600"
+                            onChange={() => setForm({ ...form, existing_manager_ids: on ? form.existing_manager_ids.filter(x => x !== m.id) : [...form.existing_manager_ids, m.id] })} />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium truncate">{m.full_name}</span>
+                            <span className="block text-[11px] text-slate-500 truncate">{m.username} · {m.companies.join(', ')}</span>
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                  <input type="checkbox" checked={form.create_new_manager} onChange={e => setForm({ ...form, create_new_manager: e.target.checked })} className="h-4 w-4 accent-sky-600" />
+                  Criar também um gestor novo
+                </label>
+              </div>
+            )}
+            {dialog?.type === 'company' && form.create_new_manager && <h3 className="text-xs font-semibold text-slate-500">{existingManagers.length ? 'Gestor novo' : 'Primeiro gestor'}</h3>}
+            {(dialog?.type === 'manager' || (dialog?.type === 'company' && form.create_new_manager)) && <ManagerFields value={form} onChange={next => setForm({ ...form, ...next })} />}
             {formError && <p role="alert" className="text-sm text-rose-600">{formError}</p>}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialog(null)} disabled={saving}>Cancelar</Button>
@@ -432,7 +492,7 @@ export default function Plataforma() {
       <Dialog open={Boolean(result)} onOpenChange={open => { if (!open) setResult(null); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{result?.isReset ? 'Senha redefinida' : result?.manager ? 'Acesso criado' : 'Empresa criada'}</DialogTitle>
+            <DialogTitle>{result?.isReset ? 'Senha redefinida' : result?.manager && !result?.linkedManagers ? 'Acesso criado' : 'Empresa criada'}</DialogTitle>
           </DialogHeader>
           {result && (
             <div className="space-y-3 text-sm">
@@ -449,6 +509,9 @@ export default function Plataforma() {
               {result.manager?.linked && <p className="text-xs text-slate-500">Este usuário já existia em outra empresa. Agora o mesmo login abre as duas: ao entrar, ele escolhe o estabelecimento, e pode trocar no topo da tela sem sair.</p>}
               {result.manager && !result.manager.linked && <p className="text-xs text-slate-500">{result.manager.isBirthDefault ? 'Senha padrão: data de nascimento + inicial do nome. ' : ''}O sistema obriga a troca no primeiro login. Esta senha não fica visível depois: copie agora.</p>}
               {result.manager?.emailNotice && <p className="text-xs text-slate-600 dark:text-slate-300">{result.manager.emailNotice}</p>}
+              {result.linkedManagers?.length > 0 && (
+                <p className="text-xs text-slate-600 dark:text-slate-300"><b>Mesmo login liberado nesta empresa:</b> {result.linkedManagers.map(m => `${m.full_name} (${m.username})`).join(', ')}. Ao entrar, escolhem o estabelecimento; a senha continua a mesma.</p>
+              )}
               <div className="flex justify-end"><CopyButton text={credentialsText(result)} label="Copiar dados para enviar" /></div>
             </div>
           )}

@@ -9,6 +9,12 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.9.5 — 27/11/2026
+
+Nova empresa com a equipe de gestão que já existe.
+
+- **Plataforma › Nova empresa:** lista os gestores que já usam o ScaleMedic (com o usuário e as empresas em que entram). Os marcados passam a entrar também na empresa nova, com o mesmo usuário e a mesma senha, como gestores de todos os hospitais dela; ao entrar, escolhem o estabelecimento. **Criar também um gestor novo** fica opcional. O resultado mostra quem foi liberado e entra no texto "Copiar dados para enviar".
+
 ## V0.9.4 — 27/11/2026
 
 Acesso por e-mail no Corpo Clínico, um por um ou em lote.
