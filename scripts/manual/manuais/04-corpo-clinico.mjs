@@ -26,7 +26,7 @@ export default {
           '`Novo profissional`: cadastro feito pela coordenação, em 3 passos.',
           '`Convidar equipe`: link de credenciamento para mandar à equipe.',
           '`Importar planilha`: cadastro em massa, com a planilha que o hospital já tem. Se preferir, `Baixar modelo Excel` traz uma planilha pronta para preencher.',
-          '`Editar`: abre o cadastro do profissional. Ao lado, `Desativar` e o botão do WhatsApp, que abre uma conversa com ele.'
+          '`Editar`: abre o cadastro do profissional. Ao lado, `Desativar` e o **envelope**, que manda o acesso ao sistema por e-mail (apagado quando o cadastro não tem e-mail).'
         ] },
         { p: 'Cada linha mostra a categoria, a situação, a matrícula, especialidade, conselho, validade da credencial, hospitais, regime de pagamento, telefone e quantos setores ele pode cobrir.' }
       ]
@@ -92,7 +92,7 @@ export default {
           'Clique em `Convidar equipe` e `Copiar` o **link**. Mande pelo grupo de WhatsApp da equipe ou por e-mail. Quem abrir pela tela de entrada usa o **código do hospital**.',
           'Cada profissional preenche a própria ficha (Manual 1, seção 4). As fichas chegam na aba `Pendentes`.',
           'Em `Pendentes`, abra a ficha com `Editar`, confira os dados, complete o passo 2 (perfil, hospitais e setores) e o passo 3 (valores), mude o **Status Cadastral** para `Ativo` e salve.',
-          'Com e-mail no cadastro, o usuário e a senha do primeiro acesso chegam por e-mail. Sem e-mail, passe à pessoa os dados que aparecem na mensagem ao salvar. O botão do WhatsApp manda o endereço do sistema, mas não leva usuário nem senha.',
+          'Com e-mail no cadastro, o usuário e a senha do primeiro acesso chegam por e-mail. Sem e-mail, passe à pessoa os dados que aparecem na mensagem ao salvar. O envelope da linha manda o acesso de novo a qualquer momento (veja a seção 8).',
           'Ficha que não deve ser aprovada: `Recusar`. Os dados enviados são apagados de vez (por causa da LGPD); se a pessoa quiser, preenche de novo.'
         ] }
       ]
@@ -124,7 +124,7 @@ export default {
           '**Editar:** `Editar` na linha do profissional abre o mesmo cadastro em 3 passos, e dá para ir direto ao passo que precisa.',
           '**Desativar:** `Desativar` tira a pessoa das escalas novas e bloqueia o acesso, mas guarda o histórico. Ela vai para a aba `Inativos`, onde `Ativar` traz de volta.',
           '**Nova senha:** quem esqueceu a senha precisa de uma nova provisória. Em `Editar`, passo 2, clique em `Senha (Data Nasc)` ou `Gerar Aleatória` e salve. Com e-mail no cadastro, a senha nova vai por e-mail; sem e-mail, envie ao profissional. No próximo acesso ele cria a senha pessoal. Quem tem e-mail também pode trocar sozinho, em `Esqueceu a senha?` na tela de entrada.',
-          '**WhatsApp:** o botão verde da linha abre uma conversa com o profissional.'
+          '**Acesso por e-mail:** o **envelope** da linha manda o acesso para o profissional. Para vários de uma vez, use `Enviar acesso por e-mail`, acima da lista: aparecem os profissionais mostrados (quem tem e-mail já vem marcado), com `Marcar todos` e `Desmarcar`. Quem **ainda não entrou** no sistema recebe usuário e uma **senha provisória nova** (a da data de nascimento, quando o cadastro tem a data); quem **já criou a própria senha** recebe só o endereço e o usuário, sem mudar a senha, com a dica de usar `Esqueceu a senha?`. Quem não tem login aparece no resumo: abra o cadastro e salve para criar.'
         ] }
       ]
     }

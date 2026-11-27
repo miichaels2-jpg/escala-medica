@@ -16,12 +16,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   Users, UserPlus, Search, CheckCircle2, DollarSign, Edit3, KeyRound, Send, RefreshCw,
-  MessageSquare, Shield, UserCog, Eye, EyeOff, HeartPulse, Plus, Landmark, Building2,
+  Mail, Shield, UserCog, Eye, EyeOff, HeartPulse, Plus, Landmark, Building2,
   Power, Trash2, Settings, Save, Lock, Hospital, List, LayoutGrid, FileSpreadsheet,
   Download, Upload, Check, ChevronRight
 } from 'lucide-react';
 import { saveRow } from '@/lib/saveRow';
-import { sendAccessEmail } from '@/lib/accessEmail';
+import { sendAccessEmail, sendAccessToProfessional } from '@/lib/accessEmail';
+import { isRealEmail } from '@/lib/passwordRecovery';
+import AccessEmailDialog from '@/components/AccessEmailDialog';
 import EmptyState from '@/components/EmptyState';
 import { safeNumber } from '@/lib/format';
 import { parseCsv, prepareProfessionalRow } from '@/lib/professionalImport';
@@ -99,6 +101,8 @@ export default function CorpoClinico() {
 
   const [activeTab, setActiveTab] = useState('ativos');
   const [inviteOpen, setInviteOpen] = useState(false); 
+  const [accessEmailOpen, setAccessEmailOpen] = useState(false);
+  const [sendingAccessId, setSendingAccessId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('todas');
   const [viewMode, setViewMode] = useState('list');
@@ -395,14 +399,17 @@ export default function CorpoClinico() {
     window.open(`https://wa.me/${phoneWithDDI}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
   };
 
-  const handleOpenProfessionalWhatsApp = (prof) => {
-    const phone = normalizeWhatsAppPhone(prof.phone);
-    if (!phone) {
-      alert('Telefone inválido. Cadastre um número brasileiro com DDD no perfil do profissional.');
-      return;
-    }
-    const message = `Olá, ${prof.name || 'profissional'}! Estou entrando em contato pela equipe do ScaleMedic.`;
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+  // Envelope da linha (V0.9.4, no lugar do WhatsApp): manda o acesso por e-mail a um profissional.
+  const handleSendAccessOne = async (prof) => {
+    if (!confirm(`Enviar o acesso ao ScaleMedic para ${prof.name} (${prof.email})?
+
+Se ainda não entrou no sistema, recebe uma senha provisória nova; se já criou a própria senha, recebe só o endereço e o usuário.`)) return;
+    setSendingAccessId(prof.id);
+    const r = await sendAccessToProfessional(prof);
+    setSendingAccessId(null);
+    if (r.status === 'enviado') alert(`Acesso enviado para ${r.email}${r.firstAccess ? ', com senha provisória nova' : ''}.`);
+    else if (r.status === 'sem_login') alert(`${prof.name} ainda não tem login no sistema. Abra o cadastro e salve para criar o acesso.`);
+    else alert(`O e-mail não foi enviado${r.reason ? ` (${r.reason})` : ''}.`);
   };
 
   const handleDownloadImportTemplate = async () => {
@@ -831,6 +838,7 @@ export default function CorpoClinico() {
 
       {isManager && <PrivacyRequestsBanner />}
       <InviteTeamDialog open={inviteOpen} onOpenChange={setInviteOpen} code={company?.registration_code} />
+      <AccessEmailDialog open={accessEmailOpen} onOpenChange={setAccessEmailOpen} professionals={sortedFilteredList} />
 
       <input ref={importInputRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={handleImportFile} />
 
@@ -846,6 +854,11 @@ export default function CorpoClinico() {
             <div className="relative w-full sm:w-72"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><Input placeholder="Nome, CPF, conselho, e-mail..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 h-9 text-xs" /></div>
           </div>
           <div className="flex items-center justify-between sm:justify-end gap-2">
+            {isManager && sortedFilteredList.length > 0 && (
+              <Button type="button" variant="outline" size="sm" onClick={() => setAccessEmailOpen(true)} className="h-9 rounded-xl text-xs font-semibold gap-1.5 cursor-pointer">
+                <Mail className="w-4 h-4 text-sky-600" /> Enviar acesso por e-mail
+              </Button>
+            )}
             <span className="text-[11px] font-medium text-slate-500">{sortedFilteredList.length} profissional(is)</span>
             <div className="inline-flex rounded-xl border border-slate-200 dark:border-slate-700 p-1 bg-slate-50 dark:bg-slate-950" role="group" aria-label="Modo de visualização">
               <button type="button" onClick={() => setViewMode('list')} aria-label="Visualizar em lista" aria-pressed={viewMode === 'list'} className={`h-8 w-9 grid place-items-center rounded-lg cursor-pointer ${viewMode === 'list' ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-white dark:hover:bg-slate-800'}`}>
@@ -936,9 +949,12 @@ export default function CorpoClinico() {
                         <Trash2 className="w-3.5 h-3.5" /> Recusar
                       </Button>
                     )}
-                    {prof.phone && (
-                      <Button size="sm" variant="outline" onClick={() => handleOpenProfessionalWhatsApp(prof)} aria-label={`Abrir WhatsApp de ${prof.name}`} title="Enviar mensagem pelo WhatsApp" className="h-9 px-3 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50 cursor-pointer">
-                        <MessageSquare className="w-4 h-4" />
+                    {isManager && (
+                      <Button size="sm" variant="outline" disabled={!isRealEmail(prof.email) || sendingAccessId === prof.id} onClick={() => handleSendAccessOne(prof)}
+                        aria-label={`Enviar acesso por e-mail para ${prof.name}`}
+                        title={isRealEmail(prof.email) ? 'Enviar acesso por e-mail' : 'Sem e-mail no cadastro: edite o profissional e informe o e-mail'}
+                        className="h-9 px-3 rounded-xl border-sky-300 text-sky-700 hover:bg-sky-50 dark:hover:bg-sky-950/30 cursor-pointer disabled:opacity-40">
+                        {sendingAccessId === prof.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
                       </Button>
                     )}
                   </div>
@@ -1009,9 +1025,12 @@ export default function CorpoClinico() {
                   </Button>
                 )}
 
-                {prof.phone && (
-                  <Button size="sm" variant="outline" onClick={() => handleOpenProfessionalWhatsApp(prof)} aria-label={`Abrir WhatsApp de ${prof.name}`} title="Enviar mensagem pelo WhatsApp" className="h-9 px-3 rounded-xl border-emerald-300 text-emerald-600 hover:bg-emerald-50 cursor-pointer">
-                    <MessageSquare className="w-4 h-4" />
+                {isManager && (
+                  <Button size="sm" variant="outline" disabled={!isRealEmail(prof.email) || sendingAccessId === prof.id} onClick={() => handleSendAccessOne(prof)}
+                    aria-label={`Enviar acesso por e-mail para ${prof.name}`}
+                    title={isRealEmail(prof.email) ? 'Enviar acesso por e-mail' : 'Sem e-mail no cadastro: edite o profissional e informe o e-mail'}
+                    className="h-9 px-3 rounded-xl border-sky-300 text-sky-700 hover:bg-sky-50 dark:hover:bg-sky-950/30 cursor-pointer disabled:opacity-40">
+                    {sendingAccessId === prof.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
                   </Button>
                 )}
               </div>
