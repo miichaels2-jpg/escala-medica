@@ -1,6 +1,6 @@
 # ScaleMedic
 
-Gestão de escalas médicas: plantões, mural de trocas, corpo clínico, faturamento,
+Gestão de escalas de plantão para todas as categorias profissionais: plantões, mural de trocas, corpo clínico, faturamento,
 relatórios/BI e aplicativo instalável no celular (PWA).
 
 Stack: React 18 + Vite + Tailwind, dados no Supabase, publicação na Vercel.

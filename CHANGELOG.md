@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.10.1 — 27/11/2026
+
+"Escalas médicas" sai de todo o sistema: o ScaleMedic serve para todas as especialidades e categorias.
+
+- Título da aba do navegador: **"ScaleMedic • Gestão de Escalas e Plantões"**.
+- Nome do app instalado no celular: **"ScaleMedic • Gestão de Escalas"** (o nome curto na tela inicial continua "ScaleMedic"; quem já instalou vê o nome novo quando o celular atualizar o app).
+- Termos de Uso: "Organização de escalas de plantão e alocação de profissionais".
+- README do projeto atualizado.
+
 ## V0.9.10 — 27/11/2026
 
 E-mails para todos os profissionais.
