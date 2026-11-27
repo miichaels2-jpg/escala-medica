@@ -57,7 +57,7 @@ export default function TermosDeUso() {
               Os dados fornecidos são utilizados de forma exclusiva para o funcionamento do ecossistema hospitalar, incluindo:
             </p>
             <ul className="list-disc pl-5 mt-3 space-y-2">
-              <li>Organização de escalas médicas e alocação de profissionais em unidades hospitalares.</li>
+              <li>Organização de escalas de plantão e alocação de profissionais em unidades hospitalares.</li>
               <li>Comunicação oficial sobre troca de plantões, furos e passagens de turno.</li>
               <li>Geração de relatórios operacionais para auditoria da instituição de saúde.</li>
               <li>Cálculo de produtividade e processamento das informações de repasse financeiro.</li>
