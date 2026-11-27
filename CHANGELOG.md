@@ -9,6 +9,18 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.9.2 — 27/11/2026
+
+Vagas extras, meio expediente completo e escala apagada que some de verdade (pedidos do Lima&Lima).
+
+- **Vagas extras nos turnos padrão:** em Setores (e no "Montar turnos do mês"), cada turno pode ter vagas extras, só nos **dias da semana** escolhidos (ex.: 1 extra na segunda e na terça). Na Escala aparecem como **Vaga extra** (tracejado cinza na grade), não vão para o Mural, e as que ficarem vazias **saem sozinhas ao publicar** (a janela de publicar avisa quantas). Rodar o gerador de novo não duplica.
+- **Meio expediente com quatro valores:** a tabela do setor passa a ter duas linhas, **Plantão inteiro** e **Meio expediente (até 6 h)**, cada uma com semana diurno, semana noturno, fim de semana diurno e fim de semana noturno. Uma tabela salva na V0.9.1 com um valor só de meio expediente continua valendo para as quatro colunas.
+- **Escala apagada some de todas as telas:**
+  - **excluir um setor** agora leva junto a escala dele que ainda não foi publicada (antes, os plantões ficavam no sistema sem setor e apareciam na Minha Escala, no Faturamento e como choque de horário); com escala publicada ou plantões já feitos, o sistema pede para desativar o setor em vez de excluir;
+  - **Escala › Mais › Excluir escala do mês (rascunho):** apaga todos os plantões não publicados do mês (do setor escolhido ou de todos), para montar de novo do zero, com Desfazer por 10 segundos.
+- Lima&Lima: apagados os 200 plantões de dezembro que tinham ficado de um setor excluído (com cópia de segurança).
+- Manuais **03 · Setores**, **05 · Escala** e **06 · Mural** atualizados; PDFs regenerados.
+
 ## V0.9.1 — 26/11/2026
 
 Valores do plantão por setor e retenção padrão (pedido do Lima&Lima).

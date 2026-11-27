@@ -79,13 +79,19 @@ export function getShiftDurationHours(shift) {
 
 // Tabela de valores do setor (V0.9.1): vale para toda a equipe do setor; o valor do cadastro do
 // profissional (unit_rates) é exceção e vence campo a campo. Fica nos dados da empresa, como os turnos padrão.
-export const SECTOR_RATE_FIELDS = [
-  { key: 'semana_dia', label: 'Dia de semana · diurno', own: 'diurno' },
-  { key: 'semana_noite', label: 'Dia de semana · noturno', own: 'noturno' },
-  { key: 'fds_dia', label: 'Fim de semana · diurno', own: 'fds' },
-  { key: 'fds_noite', label: 'Fim de semana · noturno', own: 'fds' },
-  { key: 'meio', label: 'Meio expediente (até 6 h)', own: 'meio' }
+// Meio expediente (até 6 h) tem os mesmos quatro valores do plantão inteiro (V0.9.2); a chave antiga
+// "meio" (um valor só, V0.9.1) ainda vale como reserva para os quatro.
+export const RATE_COLUMNS = [
+  { key: 'semana_dia', label: 'Semana · diurno' },
+  { key: 'semana_noite', label: 'Semana · noturno' },
+  { key: 'fds_dia', label: 'Fim de semana · diurno' },
+  { key: 'fds_noite', label: 'Fim de semana · noturno' }
 ];
+export const SECTOR_RATE_FIELDS = [
+  ...RATE_COLUMNS.map(c => ({ key: c.key, label: c.label })),
+  ...RATE_COLUMNS.map(c => ({ key: `meio_${c.key}`, label: `Meio expediente · ${c.label.toLowerCase()}` }))
+];
+const READ_RATE_KEYS = [...SECTOR_RATE_FIELDS.map(f => f.key), 'meio'];
 export const HALF_SHIFT_MAX_HOURS = 6;
 
 const hasValue = value => value !== '' && value !== null && value !== undefined && Number.isFinite(safeFinancialNumber(value, NaN));
@@ -93,7 +99,7 @@ const hasValue = value => value !== '' && value !== null && value !== undefined 
 export function getSectorRates(company, sectorId) {
   const raw = company?.data?.sector_rates?.[String(sectorId ?? '')];
   if (!raw || typeof raw !== 'object') return {};
-  return Object.fromEntries(SECTOR_RATE_FIELDS.filter(f => hasValue(raw[f.key])).map(f => [f.key, safeFinancialNumber(raw[f.key])]));
+  return Object.fromEntries(READ_RATE_KEYS.filter(key => hasValue(raw[key])).map(key => [key, safeFinancialNumber(raw[key])]));
 }
 
 // Dados da empresa com a tabela do setor trocada (tabela vazia remove o setor).
@@ -156,10 +162,6 @@ export function getShiftCostEstimate(professional, shift, company) {
     const sectorRates = getSectorRates(company, shift.sector_id);
     const pick = (...values) => values.find(hasValue);
     const hours = getShiftDurationHours(shift);
-    if (hours > 0 && hours <= HALF_SHIFT_MAX_HOURS) {
-      const half = pick(rates.meio, sectorRates.meio);
-      if (half !== undefined) return { amount: safeFinancialNumber(half), missingRate: false };
-    }
     const date = String(shift.date || '').split('T')[0];
     const shiftDate = date ? new Date(`${date}T12:00:00`) : null;
     const isWeekend = shiftDate && !Number.isNaN(shiftDate.getTime()) &&
@@ -167,6 +169,11 @@ export function getShiftCostEstimate(professional, shift, company) {
     const startTime = String(shift.start_time || '07:00').padStart(5, '0');
     const isNight = normalizeFinancialText(shift.shift_type) === 'noturno' ||
       startTime >= '18:00' || startTime < '06:00';
+    const column = `${isWeekend ? 'fds' : 'semana'}_${isNight ? 'noite' : 'dia'}`;
+    if (hours > 0 && hours <= HALF_SHIFT_MAX_HOURS) {
+      const half = pick(rates.meio, sectorRates[`meio_${column}`], sectorRates.meio);
+      if (half !== undefined) return { amount: safeFinancialNumber(half), missingRate: false };
+    }
     const rate = isWeekend
       ? pick(rates.fds, isNight ? sectorRates.fds_noite : sectorRates.fds_dia)
       : pick(isNight ? rates.noturno : rates.diurno, isNight ? sectorRates.semana_noite : sectorRates.semana_dia);

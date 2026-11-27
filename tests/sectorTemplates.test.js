@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getSectorTemplates, withSectorTemplates, templateSummary, vacanciesPerDay, templatesToSlots, sanitizeTemplates } from '../src/lib/sectorTemplates.js';
+import { getSectorTemplates, withSectorTemplates, templateSummary, vacanciesPerDay, templatesToSlots, sanitizeTemplates, extraDaysLabel, isExtraVacancy } from '../src/lib/sectorTemplates.js';
 
 const uti = [
   { specialty: 'Medicina Intensiva', start_time: '19:00', end_time: '07:00', quantity: 1 },
@@ -29,4 +29,16 @@ test('resumo, vagas por dia e slots do gerador', () => {
   const slots = templatesToSlots(uti);
   assert.equal(slots[0].shift_type, 'diurno');
   assert.equal(slots[1].shift_type, 'noturno');
+});
+
+test('vagas extras: só com quantidade e dias da semana; resumo mostra os dias', () => {
+  const [t] = sanitizeTemplates([{ specialty: 'Clínica', start_time: '07:00', end_time: '19:00', quantity: 2, extra_quantity: '1', extra_weekdays: [2, 1, 1, 9] }]);
+  assert.equal(t.extra_quantity, 1);
+  assert.deepEqual(t.extra_weekdays, [1, 2]);
+  assert.equal(templateSummary([t]), '2 × 07–19 (+1 extra seg, ter)');
+  const [semDias] = sanitizeTemplates([{ specialty: 'Clínica', start_time: '07:00', end_time: '19:00', quantity: 2, extra_quantity: 3, extra_weekdays: [] }]);
+  assert.equal(semDias.extra_quantity, 0);
+  assert.equal(extraDaysLabel([1, 2, 3, 4, 5]), 'seg a sex');
+  assert.equal(isExtraVacancy({ notes: '[ESP:X] [VAGA_EXTRA]' }), true);
+  assert.equal(isExtraVacancy({ notes: '[ESP:X]' }), false);
 });

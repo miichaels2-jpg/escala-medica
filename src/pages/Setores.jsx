@@ -4,9 +4,10 @@ import { useAppData } from '@/lib/useAppData';
 import { supabase } from '@/lib/supabase';
 import { isProfessionalAuthorizedForSector } from '@/lib/sectorAccess';
 import { isShiftVacant } from '@/lib/shiftLiveStatus';
-import { getSectorTemplates, templateSummary, vacanciesPerDay, withSectorTemplates } from '@/lib/sectorTemplates';
-import { SECTOR_RATE_FIELDS, getSectorRates, withSectorRates } from '@/lib/financialCalculations';
-import { formatCurrency } from '@/lib/format';
+import { WEEKDAY_INITIALS, getSectorTemplates, templateSummary, vacanciesPerDay, withSectorTemplates } from '@/lib/sectorTemplates';
+import { RATE_COLUMNS, getSectorRates, withSectorRates } from '@/lib/financialCalculations';
+import { formatCurrency, getLocalDateString } from '@/lib/format';
+import { isShiftPublished } from '@/lib/sharedState';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import PageHero from '@/components/PageHero';
@@ -22,10 +23,10 @@ import {
 } from 'lucide-react';
 
 const MONTHS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-const newTurn = (specialty = '') => ({ key: `t_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, specialty, start_time: '07:00', end_time: '19:00', quantity: 1 });
+const newTurn = (specialty = '') => ({ key: `t_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, specialty, start_time: '07:00', end_time: '19:00', quantity: 1, extra_quantity: 0, extra_weekdays: [] });
 
 export default function Setores() {
-  const { sectors = [], shifts = [], professionals = [], company, selectedUnitId, syncGlobalData, user, isManager } = useAppData();
+  const { sectors = [], shifts = [], professionals = [], company, selectedUnitId, syncGlobalData, user, isManager, getPublishedRanges } = useAppData();
   const navigate = useNavigate();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,7 +85,11 @@ export default function Setores() {
     const saved = sector ? getSectorTemplates(company, sector.id) : [];
     setTurns(saved.map(t => ({ ...newTurn(), ...t })));
     const savedRates = sector ? getSectorRates(company, sector.id) : {};
-    setRates(Object.fromEntries(Object.entries(savedRates).map(([k, v]) => [k, String(v)])));
+    const form = Object.fromEntries(Object.entries(savedRates).map(([k, v]) => [k, String(v)]));
+    // Tabela da V0.9.1 tinha um valor só de meio expediente: vira o valor das quatro colunas.
+    if (form.meio !== undefined) RATE_COLUMNS.forEach(c => { if (form[`meio_${c.key}`] === undefined) form[`meio_${c.key}`] = form.meio; });
+    delete form.meio;
+    setRates(form);
     setModalOpen(true);
   };
 
@@ -102,6 +107,10 @@ export default function Setores() {
     e.preventDefault();
     if (!formData.name.trim()) {
       alert('O nome do setor é obrigatório.');
+      return;
+    }
+    if (turns.some(t => (parseInt(t.extra_quantity, 10) || 0) > 0 && !(t.extra_weekdays || []).length)) {
+      alert('Escolha em quais dias da semana entram as vagas extras (ou deixe as extras em 0).');
       return;
     }
     if (turns.some(t => !String(t.specialty || '').trim())) {
@@ -153,13 +162,38 @@ export default function Setores() {
     }
   };
 
+  // Excluir o setor leva junto a escala dele (V0.9.2): antes, os plantões ficavam no sistema sem setor.
+  // Com escala publicada ou plantão já feito, o setor só pode ser desativado, para guardar o histórico.
   const handleDelete = async (id, name) => {
-    if (!confirm(`Tem certeza que deseja excluir permanentemente o setor "${name}"? Esta ação pode afetar escalas vinculadas.`)) {
-      return;
-    }
     try {
+      const { data: rows, error: readError } = await supabase.from('shifts').select('id, date, unit_id, sector_id, professional_id, status').eq('sector_id', id);
+      if (readError) throw readError;
+      const today = getLocalDateString();
+      const list = rows || [];
+      const published = list.filter(s => isShiftPublished(s, getPublishedRanges, selectedUnitId)).length;
+      const done = list.filter(s => s.professional_id && String(s.date).slice(0, 10) < today).length;
+      if (published || done) {
+        alert(`O setor "${name}" tem ${published ? `${published} plantão(ões) de escala publicada` : ''}${published && done ? ' e ' : ''}${done ? `${done} plantão(ões) já feito(s)` : ''}.
+
+Para não perder o histórico (Faturamento, Minha Escala, relatórios), desative o setor em vez de excluir: Editar › Situação › Inativo.`);
+        return;
+      }
+      const withProf = list.filter(s => s.professional_id).length;
+      if (!confirm(`Excluir o setor "${name}"?${list.length ? `
+
+Também saem os ${list.length} plantão(ões) da escala dele, que ainda não foi publicada${withProf ? ` (${withProf} com profissional)` : ''}.` : ''}
+
+Não dá para desfazer.`)) return;
+      if (list.length) {
+        const { error: shiftsError } = await supabase.from('shifts').delete().eq('sector_id', id);
+        if (shiftsError) throw shiftsError;
+      }
       const { error } = await supabase.from('sectors').delete().eq('id', id);
       if (error) throw error;
+      const { data: row } = await supabase.from('companies').select('data').eq('id', company.id).single();
+      if (row?.data) {
+        await supabase.from('companies').update({ data: withSectorRates(withSectorTemplates(row.data, id, []), id, {}) }).eq('id', company.id);
+      }
       await syncGlobalData();
     } catch (error) {
       alert('Erro ao excluir: ' + error.message);
@@ -212,7 +246,7 @@ export default function Setores() {
             const isInactive = sector.active === false;
             const templates = getSectorTemplates(company, sector.id);
             const sectorRates = getSectorRates(company, sector.id);
-            const rateSummary = [['semana_dia', 'Dia'], ['semana_noite', 'Noite'], ['fds_dia', 'FDS dia'], ['fds_noite', 'FDS noite'], ['meio', 'Meio']]
+            const rateSummary = [['semana_dia', 'Dia'], ['semana_noite', 'Noite'], ['fds_dia', 'FDS dia'], ['fds_noite', 'FDS noite'], ['meio_semana_dia', 'Meio dia'], ['meio_semana_noite', 'Meio noite'], ['meio_fds_dia', 'Meio FDS dia'], ['meio_fds_noite', 'Meio FDS noite'], ['meio', 'Meio']]
               .filter(([key]) => sectorRates[key] !== undefined).map(([key, label]) => `${label} ${formatCurrency(sectorRates[key])}`);
             const st = sectorStats[sector.id] || { team: 0, shifts: 0, vacancies: 0 };
 
@@ -319,7 +353,7 @@ export default function Setores() {
             <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
               <div>
                 <p className="text-sm font-semibold text-slate-900 dark:text-white">Turnos padrão</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Os horários fixos de todo dia. Na Escala, “Montar turnos do mês” já abre com eles.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Os horários fixos de todo dia. Na Escala, “Montar turnos do mês” já abre com eles. <b>Vagas extras</b> entram só nos dias da semana escolhidos, para encaixar alguém a mais; as que ficarem vazias saem quando a escala é publicada.</p>
               </div>
 
               {turns.map(turn => (
@@ -343,6 +377,25 @@ export default function Setores() {
                   <Button type="button" variant="ghost" onClick={() => setTurns(list => list.filter(t => t.key !== turn.key))} aria-label="Remover turno" className="h-9 w-9 p-0 text-slate-400 hover:text-rose-600 rounded-xl cursor-pointer">
                     <Trash2 className="w-4 h-4" />
                   </Button>
+                  <div className="col-span-2 sm:col-span-5 flex flex-wrap items-center gap-2 pt-1">
+                    <Label className="text-[11px] text-slate-500">Vagas extras</Label>
+                    <Input type="number" min="0" max="50" value={turn.extra_quantity ?? 0} onChange={e => updateTurn(turn.key, 'extra_quantity', e.target.value)} aria-label="Vagas extras" className="h-8 w-16 text-xs text-center bg-white dark:bg-slate-950" />
+                    {(parseInt(turn.extra_quantity, 10) || 0) > 0 && (
+                      <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Dias das vagas extras">
+                        <span className="text-[11px] text-slate-500 mr-0.5">nos dias</span>
+                        {[1, 2, 3, 4, 5, 6, 0].map(day => {
+                          const on = (turn.extra_weekdays || []).includes(day);
+                          return (
+                            <button key={day} type="button" aria-pressed={on}
+                              onClick={() => updateTurn(turn.key, 'extra_weekdays', on ? turn.extra_weekdays.filter(d => d !== day) : [...(turn.extra_weekdays || []), day])}
+                              className={`h-7 min-w-9 px-2 rounded-lg text-[11px] font-semibold border cursor-pointer ${on ? 'bg-sky-600 border-sky-600 text-white' : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                              {WEEKDAY_INITIALS[day]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
 
@@ -354,21 +407,27 @@ export default function Setores() {
             <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
               <div>
                 <p className="text-sm font-semibold text-slate-900 dark:text-white">Valores do plantão</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Quanto se paga por plantão neste setor, para toda a equipe. Quem tem valor próprio no cadastro (Corpo Clínico) recebe o dele. Noturno é o plantão que começa a partir das 18h; meio expediente, o de até 6 horas.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Quanto se paga por plantão neste setor, para toda a equipe. Quem tem valor próprio no cadastro (Corpo Clínico) recebe o dele. Noturno é o plantão que começa a partir das 18h; fim de semana, sábado e domingo; meio expediente, o plantão de até 6 horas.</p>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {SECTOR_RATE_FIELDS.map(field => (
-                  <label key={field.key} className={`flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 py-2 ${field.key === 'meio' ? 'sm:col-span-2' : ''}`}>
-                    <span className="text-xs text-slate-600 dark:text-slate-300">{field.label}</span>
-                    <span className="flex items-center gap-1 text-xs text-slate-500">R$
-                      <Input type="number" min="0" step="0.01" inputMode="decimal" value={rates[field.key] ?? ''} placeholder="—"
-                        onChange={e => setRates(r => ({ ...r, [field.key]: e.target.value }))}
-                        className="h-9 w-28 text-right text-sm bg-white dark:bg-slate-950" />
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">Deixe em branco o que não se aplica. Sem valor de meio expediente, o plantão curto segue a tabela normal.</p>
+              {[{ prefix: '', title: 'Plantão inteiro' }, { prefix: 'meio_', title: 'Meio expediente (até 6 h)' }].map(row => (
+                <div key={row.title} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{row.title}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {RATE_COLUMNS.map(col => {
+                      const key = `${row.prefix}${col.key}`;
+                      return (
+                        <label key={key} className="space-y-1">
+                          <span className="block text-[11px] text-slate-500">{col.label}</span>
+                          <Input type="number" min="0" step="0.01" inputMode="decimal" value={rates[key] ?? ''} placeholder="R$ —"
+                            onChange={e => setRates(r => ({ ...r, [key]: e.target.value }))}
+                            className="h-9 text-right text-sm bg-white dark:bg-slate-950" />
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">Deixe em branco o que não se aplica. Sem valor de meio expediente, o plantão curto segue a tabela do plantão inteiro.</p>
             </div>
 
             <DialogFooter className="pt-4 flex flex-col-reverse sm:flex-row sm:justify-end border-t border-slate-100 dark:border-slate-800 gap-2">

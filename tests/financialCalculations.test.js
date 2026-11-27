@@ -171,3 +171,17 @@ test('withSectorRates guarda só números e remove a tabela vazia', () => {
   assert.deepEqual(withSectorRates(data, 'sec-1', {}).sector_rates, {});
   assert.deepEqual(getSectorRates({ data }, 'sec-1'), { semana_dia: 800 });
 });
+
+test('meio expediente tem dia/noite de semana e de fim de semana; chave antiga "meio" fica de reserva', () => {
+  const company = { data: { sector_rates: {
+    novo: { semana_dia: 800, meio_semana_dia: 400, meio_semana_noite: 500, meio_fds_dia: 600, meio_fds_noite: 700 },
+    antigo: { semana_dia: 800, meio: 450 }
+  } } };
+  const prof = { data: { remuneration_type: 'plantao' } };
+  const half = (sector, date, start, end) => getShiftCostEstimate(prof, { unit_id: 'u', sector_id: sector, date, start_time: start, end_time: end }, company).amount;
+  assert.equal(half('novo', '2026-12-02', '07:00', '13:00'), 400);
+  assert.equal(half('novo', '2026-12-02', '19:00', '01:00'), 500);
+  assert.equal(half('novo', '2026-12-05', '07:00', '13:00'), 600);
+  assert.equal(half('novo', '2026-12-05', '19:00', '01:00'), 700);
+  assert.equal(half('antigo', '2026-12-05', '19:00', '01:00'), 450);
+});

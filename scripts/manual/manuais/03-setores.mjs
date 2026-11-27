@@ -35,15 +35,16 @@ export default {
           'Em **Nome do setor**, escreva o nome como a equipe conhece (ex.: UTI Adulto). Deixe a **Situação** como `Ativo`.',
           { texto: 'Em **Turnos padrão**, clique em `Adicionar turno` e preencha: **Especialidade** de quem cobre o turno, horário de **Entrada** e **Saída** e o número de **Vagas** por dia. Repita para cada turno do dia (dia e noite, por exemplo).', figura: 'setor-editar', legenda: 'Setor UTI Adulto com dois turnos padrão: 2 vagas de dia e 1 de noite.' },
           'Turno que vira o dia (ex.: 19:00 às 07:00) é normal: o sistema entende que termina na manhã seguinte.',
+          '**Vagas extras** (opcional): logo abaixo de cada turno, informe quantas vagas a mais você quer e toque nos **dias da semana** em que elas entram (ex.: 1 extra só na segunda e na terça). Servem para encaixar alguém além da equipe fixa. Na Escala elas aparecem como **Vaga extra**, não vão para o Mural, e as que ficarem vazias saem sozinhas quando a escala é publicada.',
           'Clique em `Salvar setor`. O cartão passa a mostrar o resumo dos turnos.'
         ] },
         { h: 'Valores do plantão' },
-        { p: 'No mesmo cadastro, em **Valores do plantão**, informe quanto se paga por plantão neste setor. A tabela vale para toda a equipe do setor, e o Faturamento usa esses valores para calcular quanto cada um recebe.' },
+        { p: 'No mesmo cadastro, em **Valores do plantão**, informe quanto se paga por plantão neste setor, numa tabela com duas linhas (**Plantão inteiro** e **Meio expediente**) e quatro colunas. A tabela vale para toda a equipe do setor, e o Faturamento usa esses valores para calcular quanto cada um recebe.' },
         { tabela: { cab: ['Campo', 'Quando vale'], linhas: [
           ['Dia de semana · diurno', 'Segunda a sexta, plantão que começa antes das 18h.'],
           ['Dia de semana · noturno', 'Segunda a sexta, plantão que começa a partir das 18h (ou antes das 6h).'],
           ['Fim de semana · diurno e noturno', 'Sábado e domingo, com a mesma regra de horário.'],
-          ['Meio expediente (até 6 h)', 'Plantão de até 6 horas (ex.: 15:00 às 21:00), em qualquer dia. Em branco, o plantão curto segue a tabela normal.']
+          ['Meio expediente (até 6 h)', 'Plantão de até 6 horas (ex.: 15:00 às 21:00). Tem as mesmas quatro colunas do plantão inteiro: semana diurno e noturno, fim de semana diurno e noturno. Em branco, o plantão curto segue a tabela do plantão inteiro.']
         ] } },
         { dica: 'Quem tem um valor diferente do resto da equipe recebe pelo **valor próprio** do cadastro dele (Corpo Clínico, passo 3). O valor próprio vence só nos campos preenchidos; o que estiver em branco vem da tabela do setor.' },
         { atencao: 'Todo turno precisa de especialidade. Se esquecer, o sistema avisa “Escolha a especialidade de cada turno (ou remova o turno)”. A especialidade define quem pode assumir a vaga: o Mural só mostra a vaga para profissionais da mesma especialidade.' }
@@ -67,7 +68,7 @@ export default {
         { lista: [
           '**Editar:** clique em `Editar` no cartão, mude o que precisar e `Salvar setor`. Mudar os turnos padrão não altera plantões já criados; vale para os próximos meses montados.',
           '**Desativar:** em `Editar`, mude a **Situação** para `Inativo`. O setor deixa de aparecer para montar escalas, mas o histórico continua guardado. É o recomendado para setores que fecharam.',
-          '**Excluir:** a lixeira do cartão apaga o setor de vez, depois de confirmar. Use só para setores criados por engano: excluir pode afetar escalas ligadas a ele.'
+          '**Excluir:** a lixeira do cartão apaga o setor de vez, junto com a escala dele que ainda não foi publicada (a confirmação diz quantos plantões saem). Se o setor já tem escala publicada ou plantões feitos, o sistema não deixa excluir, para guardar o histórico: desative o setor.'
         ] },
         { h: 'Quem pode trabalhar no setor' },
         { p: 'O número de **profissionais autorizados** vem do cadastro de cada profissional (Corpo Clínico, passo **Acesso**), onde a coordenação marca os hospitais e setores em que ele pode ser escalado. Quem não está autorizado não aparece para ser escalado no setor nem vê as vagas dele no Mural.' }

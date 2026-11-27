@@ -1,5 +1,6 @@
 // Gerador do mês ("Montar escala"): setor, período e turnos.
 import { ArrowRight, Check, CheckCircle2, ChevronRight, Clock, Plus, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { WEEKDAY_INITIALS } from '@/lib/sectorTemplates';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -72,7 +73,7 @@ export default function GeneratorDialog({ generatorConfig, generatorFromTemplate
 
               <div className="space-y-2">
                 {generatorConfig.slots.map((slot) => (
-                  <div key={slot.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl relative group">
+                  <div key={slot.id} className="flex flex-wrap items-center gap-2 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl relative group">
                     <div className="w-full sm:w-auto flex-1 min-w-0 space-y-1">
                       <Label className="text-xs text-slate-500 font-medium">Especialidade</Label>
                       <SpecialtyPicker
@@ -94,6 +95,25 @@ export default function GeneratorDialog({ generatorConfig, generatorFromTemplate
                     <div className="w-20 shrink-0 space-y-1">
                       <Label className="text-xs text-slate-500 font-medium">Vagas (Qtd)</Label>
                       <Input type="number" min="1" value={slot.quantity} onChange={e => handleUpdateSlot(slot.id, 'quantity', e.target.value)} className="h-9 text-xs font-semibold text-sky-700 dark:text-sky-400 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-center" required />
+                    </div>
+                    <div className="order-last basis-full flex flex-wrap items-center gap-2">
+                      <Label className="text-xs text-slate-500 font-medium">Vagas extras</Label>
+                      <Input type="number" min="0" max="50" value={slot.extra_quantity ?? 0} onChange={e => handleUpdateSlot(slot.id, 'extra_quantity', e.target.value)} aria-label="Vagas extras" className="h-8 w-16 text-xs text-center bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800" />
+                      {(parseInt(slot.extra_quantity, 10) || 0) > 0 && (
+                        <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Dias das vagas extras">
+                          <span className="text-[11px] text-slate-500 mr-0.5">nos dias</span>
+                          {[1, 2, 3, 4, 5, 6, 0].map(day => {
+                            const on = (slot.extra_weekdays || []).includes(day);
+                            return (
+                              <button key={day} type="button" aria-pressed={on}
+                                onClick={() => handleUpdateSlot(slot.id, 'extra_weekdays', on ? slot.extra_weekdays.filter(d => d !== day) : [...(slot.extra_weekdays || []), day])}
+                                className={`h-7 min-w-9 px-2 rounded-lg text-[11px] font-semibold border cursor-pointer ${on ? 'bg-sky-600 border-sky-600 text-white' : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                                {WEEKDAY_INITIALS[day]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                     {generatorConfig.slots.length > 1 && (
                       <div className="w-full sm:w-auto mt-2 sm:mt-0 flex justify-end">
@@ -120,7 +140,7 @@ export default function GeneratorDialog({ generatorConfig, generatorFromTemplate
             <div className="p-4 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900/50 rounded-2xl flex items-start gap-3">
               <CheckCircle2 className="w-5 h-5 text-sky-500 shrink-0 mt-0.5" />
               <p className="text-xs text-sky-800 dark:text-sky-200 leading-relaxed">
-                A cada data gerada, o sistema cria exatamente a quantidade configurada por horário. Serão <b>{Math.ceil((parseInt(generatorConfig.duration_days) || 0) / (parseInt(generatorConfig.interval_days) || 1))}</b> dia(s) de grade e <b>{(generatorConfig.slots.reduce((acc, slot) => acc + (parseInt(slot.quantity) || 0), 0)) * Math.ceil((parseInt(generatorConfig.duration_days) || 0) / (parseInt(generatorConfig.interval_days) || 1))}</b> vagas no total. Nada é gravado agora: no próximo passo você escolhe os profissionais e só então salva ou publica.
+                A cada data gerada, o sistema cria exatamente a quantidade configurada por horário, mais as vagas extras nos dias da semana escolhidos. Serão <b>{Math.ceil((parseInt(generatorConfig.duration_days) || 0) / (parseInt(generatorConfig.interval_days) || 1))}</b> dia(s) de grade e <b>{(generatorConfig.slots.reduce((acc, slot) => acc + (parseInt(slot.quantity) || 0), 0)) * Math.ceil((parseInt(generatorConfig.duration_days) || 0) / (parseInt(generatorConfig.interval_days) || 1))}</b> vagas no total. Nada é gravado agora: no próximo passo você escolhe os profissionais e só então salva ou publica.
               </p>
             </div>
 
