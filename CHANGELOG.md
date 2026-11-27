@@ -9,6 +9,13 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.9.9 — 27/11/2026
+
+Sem WhatsApp no cadastro.
+
+- **Corpo Clínico, passo 2 (Acesso):** saiu o botão "Enviar link de acesso via WhatsApp". No lugar, um aviso diz se o acesso vai por e-mail ao salvar (com e-mail no cadastro) ou se é preciso passar usuário e senha à pessoa (sem e-mail).
+- Manual **04 · Corpo Clínico** atualizado; PDFs regenerados.
+
 ## V0.9.8 — 27/11/2026
 
 Especialidade: só a coordenação escala fora dela.

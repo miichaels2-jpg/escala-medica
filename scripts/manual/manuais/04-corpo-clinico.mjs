@@ -59,7 +59,7 @@ export default {
         ] },
         { figura: 'cadastro-2b', legenda: 'Fim do passo 2: o acesso ao sistema.', pontos: [
           '`Senha (Data Nasc)` gera a senha do primeiro acesso: data de nascimento (DDMMAAAA) + inicial do nome em minúscula. `Gerar Aleatória` cria uma senha qualquer. Se você não gerar, o sistema usa a da data de nascimento ao salvar.',
-          '`Enviar link de acesso via WhatsApp` abre o WhatsApp com a mensagem pronta e o endereço do sistema. Por segurança, a mensagem **não leva usuário nem senha**: passe esses dados à pessoa à parte.'
+          'Logo abaixo, o aviso diz se o acesso vai por e-mail: com e-mail no cadastro, o profissional recebe sozinho ao salvar (o usuário e, se a senha for nova, a senha provisória). Sem e-mail, passe usuário e senha à pessoa.'
         ] },
         { p: 'O **Usuário** (login) é sugerido a partir do nome, sem acentos (ex.: `ana.rocha`). Pode ser trocado.' }
       ]
