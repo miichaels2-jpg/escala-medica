@@ -9,6 +9,16 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.9.4 — 27/11/2026
+
+Acesso por e-mail no Corpo Clínico, um por um ou em lote.
+
+- **Envelope na linha do profissional**, no lugar do botão do WhatsApp: manda o acesso ao sistema por e-mail. Apagado quando o cadastro não tem e-mail.
+- **Enviar acesso por e-mail**, acima da lista: escolhe entre os profissionais mostrados (quem tem e-mail já vem marcado; `Marcar todos` e `Desmarcar`), envia um por um com o andamento e mostra o resumo (enviados, sem login, falhas).
+- Quem **ainda não entrou** no sistema recebe usuário e **senha provisória nova** (data de nascimento + inicial, quando o cadastro tem a data). Quem **já criou a própria senha** recebe só o endereço e o usuário, sem mudar a senha, com a dica do "Esqueceu a senha?".
+- Função `send-access-email` com o modelo novo "lembrete" (sem senha): **precisa publicar de novo a função no Supabase**.
+- Manual **04 · Corpo Clínico** atualizado; PDFs regenerados.
+
 ## V0.9.3 — 27/11/2026
 
 Vaga extra fica na escala.
