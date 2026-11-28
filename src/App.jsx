@@ -37,6 +37,7 @@ const Treinamento = lazyPage(() => import('@/pages/Treinamento'));
 const Historico = lazyPage(() => import('@/pages/Historico'));
 const Avisos = lazyPage(() => import('@/pages/Avisos'));
 const Demonstracao = lazyPage(() => import('@/pages/Demonstracao'));
+const Versoes = lazyPage(() => import('@/pages/Versoes'));
 
 const PageLoading = () => (
   <div className="flex items-center justify-center py-24">
@@ -96,6 +97,7 @@ const AuthenticatedApp = () => {
             <Route path="/planejamento" element={<Planejamento />} /> {/* TEMPORÁRIO */}
             <Route path="/plataforma" element={<Plataforma />} />
             <Route path="/treinamento" element={<Treinamento />} />
+            <Route path="/versoes" element={<Versoes />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
           </Route>
         </Route>
