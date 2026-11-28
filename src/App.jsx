@@ -36,6 +36,7 @@ const Plataforma = lazyPage(() => import('@/pages/Plataforma'));
 const Treinamento = lazyPage(() => import('@/pages/Treinamento'));
 const Historico = lazyPage(() => import('@/pages/Historico'));
 const Avisos = lazyPage(() => import('@/pages/Avisos'));
+const Demonstracao = lazyPage(() => import('@/pages/Demonstracao'));
 
 const PageLoading = () => (
   <div className="flex items-center justify-center py-24">
@@ -76,6 +77,7 @@ const AuthenticatedApp = () => {
         <Route path="/register" element={<Register />} />
         <Route path="/termos-de-uso" element={<TermosDeUso />} />
         <Route path="/redefinir-senha" element={<RedefinirSenha />} />
+        <Route path="/demonstracao" element={<Demonstracao />} />
 
         <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/" replace />} />}>
           <Route element={<ContractGuard><AppLayout /></ContractGuard>}>

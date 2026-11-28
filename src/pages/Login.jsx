@@ -60,6 +60,16 @@ export default function Login() {
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotSending, setForgotSending] = useState(false);
   const { isInstalled } = usePwaInstall();
+  // Vindo da demonstração (V0.10.8): preenche o acesso criado e entra sozinho, uma vez.
+  const formRef = useRef(null);
+  useEffect(() => {
+    let creds = null;
+    try { creds = JSON.parse(window.sessionStorage.getItem('sm_demo_login') || 'null'); window.sessionStorage.removeItem('sm_demo_login'); } catch { /* sem armazenamento */ }
+    if (!creds?.u || !creds?.p) return;
+    setLoginId(creds.u);
+    setPassword(creds.p);
+    setTimeout(() => formRef.current?.requestSubmit(), 300);
+  }, []);
 
   useEffect(() => {
     try {
@@ -365,7 +375,7 @@ export default function Login() {
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-5">
+        <form ref={formRef} onSubmit={handleLogin} className="space-y-5">
           <div className="space-y-2">
             <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Usuário ou E-mail</Label>
             <Input 
@@ -432,6 +442,10 @@ export default function Login() {
           <p className="text-xs text-slate-500 font-medium">
             Novo na plataforma? {' '}
             <Link to="/register" className="font-semibold text-sky-600 hover:text-sky-500 transition-colors">Solicite seu credenciamento</Link>
+          </p>
+          <p className="mt-2 text-xs text-slate-500 font-medium">
+            Quer conhecer? {' '}
+            <Link to="/demonstracao" className="font-semibold text-sky-600 hover:text-sky-500 transition-colors">Experimente uma demonstração</Link>
           </p>
         </div>
         {/* ========================================================= */}

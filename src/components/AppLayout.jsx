@@ -588,6 +588,10 @@ export default function AppLayout({ children }) {
 
         <InstallAppBanner onOpenGuide={() => setInstallGuideOpen(true)} />
 
+        {company?.plan === 'demo' && (()=>{ const days = Math.max(0, Math.ceil((new Date(company?.data?.demo_expires_at || Date.now()) - Date.now()) / 86400000)); return (
+          <div className="shrink-0 bg-amber-50 dark:bg-amber-500/10 border-b border-amber-200 dark:border-amber-500/30 px-4 py-1.5 text-center text-xs text-amber-900 dark:text-amber-200 print:hidden">
+            <b>Demonstração</b> · dados fictícios · tudo é apagado {days > 1 ? `em ${days} dias` : days === 1 ? 'amanhã' : 'hoje'}. Gostou? Fale com o ScaleMedic para usar no seu hospital.
+          </div>); })()}
         <main className="flex-1 overflow-y-auto pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-0">
           <LayoutErrorBoundary key={location.pathname}>
             {children || (
