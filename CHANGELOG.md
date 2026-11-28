@@ -9,6 +9,15 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.10.9 — 27/11/2026
+
+Tela Versões (cartas de versão para os clientes).
+
+- **Versões** (menu, só o dono da plataforma): guarda as cartas de versão, uma por ciclo do número do meio (a partir do ciclo 0.11). Cada carta mostra o título, o período, os destaques e o PDF.
+- **Envelope em cada carta:** abre a lista dos gestores com e-mail cadastrado, separados por empresa (`Marcar todos` / `Desmarcar`), e envia um e-mail formal ("Prezado(a)…, apresentamos a Carta de Versão X do ScaleMedic…") com as principais novidades e o PDF em anexo. Demonstrações ficam de fora.
+- Função nova `send-release-letter` (só o dono pode enviar): **precisa ser publicada no Supabase**.
+- Treinamento: o subtítulo mostrava "VV0.10.8"; corrigido.
+
 ## V0.10.8 — 27/11/2026
 
 Demonstração que se monta sozinha (item 64).

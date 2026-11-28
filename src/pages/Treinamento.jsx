@@ -53,7 +53,7 @@ export default function Treinamento() {
     <div className="min-h-full bg-slate-100 dark:bg-slate-950 p-4 md:p-8 space-y-6 text-slate-900 dark:text-slate-100">
       <PageHero
         title="Material de treinamento"
-        subtitle={catalog ? `Manuais em PDF de cada tela, com passo a passo e fotos · versão V${catalog.versao}, atualizados em ${catalog.atualizado}.` : 'Manuais em PDF de cada tela, com passo a passo e fotos.'}
+        subtitle={catalog ? `Manuais em PDF de cada tela, com passo a passo e fotos · versão V${String(catalog.versao).replace(/^V/i, '')}, atualizados em ${catalog.atualizado}.` : 'Manuais em PDF de cada tela, com passo a passo e fotos.'}
       />
       {error && <p className="text-sm text-rose-600">{error}</p>}
       {catalog && (
