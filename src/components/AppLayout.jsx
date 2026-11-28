@@ -248,9 +248,10 @@ export default function AppLayout({ children }) {
   const professionalSeesAllUnits = isFieldProfessional && selectableUnits.length > 1;
   // No Painel, o gestor com várias unidades escolhe o escopo nos cartões da própria tela.
   const managerDashboardScope = !isFieldProfessional && selectableUnits.length > 1 && (location.pathname === '/dashboard' || location.pathname === '/');
-  const showUnitSelector = !managerDashboardScope && (!professionalSeesAllUnits || location.pathname.startsWith('/escalas'));
+  // V0.10.12: o seletor de unidade aparece também no Painel (antes só nos cartões da tela).
+  const showUnitSelector = !professionalSeesAllUnits || location.pathname.startsWith('/escalas');
   // Telas que sabem mostrar todas as unidades juntas oferecem essa opção no seletor.
-  const screenSupportsAllUnits = !isFieldProfessional && selectableUnits.length > 1 && ['/trocas', '/historico', '/corpo-clinico', '/relatorios', '/setores', '/escalas'].includes(location.pathname);
+  const screenSupportsAllUnits = !isFieldProfessional && selectableUnits.length > 1 && ['/dashboard', '/', '/trocas', '/historico', '/corpo-clinico', '/relatorios', '/setores', '/escalas'].includes(location.pathname);
   const headerUnitValue = screenSupportsAllUnits && allUnitsView ? 'todas' : selectedUnitId;
   // Nome mostrado no menu e no topo: segue a escolha global ("Todas" só nas telas que mostram tudo junto).
   const currentHospitalName = (managerDashboardScope || screenSupportsAllUnits) && allUnitsView

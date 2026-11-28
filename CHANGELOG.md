@@ -9,6 +9,12 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.10.12 — 27/11/2026
+
+Seletor de unidade no Painel.
+
+- Quem administra mais de uma unidade agora vê o seletor **Unidade** no topo também no Painel (com "Todas as unidades"), igual às outras telas. Antes, no Painel, a troca ficava só nos cartões "Suas unidades".
+
 ## V0.10.11 — 27/11/2026
 
 Correção: telas que não abriam depois de uma versão nova.
