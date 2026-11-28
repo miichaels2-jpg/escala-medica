@@ -9,6 +9,16 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.10.8 — 27/11/2026
+
+Demonstração que se monta sozinha (item 64).
+
+- Página pública **/demonstracao** (link "Experimente uma demonstração" na tela de entrada): com nome e e-mail, o sistema monta na hora um hospital fictício com 3 setores (turnos padrão e valores), 12 profissionais fictícios e a escala do mês publicada, com algumas vagas abertas. Mostra dois acessos prontos, **coordenação** e **plantonista**, e o botão entra direto.
+- No app, uma faixa no topo avisa que é demonstração e em quantos dias será apagada. O servidor apaga as demonstrações vencidas todo dia (7 dias de validade).
+- Limites contra abuso: uma demonstração por e-mail a cada 24 h e no máximo 20 por hora no total. Os contatos ficam guardados para o dono da plataforma.
+- Precisa da atualização do banco `20261128130000_self_service_demo.sql`.
+- Manual **01 · Primeiro acesso e entrada** atualizado; PDFs regenerados.
+
 ## V0.10.7 — 27/11/2026
 
 Mural: o plantonista não fica sabendo de vagas de outra especialidade.

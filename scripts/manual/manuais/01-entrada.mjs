@@ -30,6 +30,7 @@ export default {
           '**Instalar o app no celular:** mostra como colocar o ScaleMedic na tela inicial do celular.',
           '**Solicite seu credenciamento:** para quem ainda não tem cadastro (veja a seção 4).'
         ] },
+        { p: 'Abaixo do credenciamento, **Experimente uma demonstração** é para quem ainda não usa o ScaleMedic: com nome e e-mail, o sistema monta na hora um hospital fictício (setores, equipe e escala do mês) com um acesso de coordenação e um de plantonista. A demonstração mostra uma faixa no topo e é apagada em 7 dias.' },
         { p: 'O link `Esqueceu a senha?`, acima do campo de senha, manda para o seu e-mail um link para criar uma senha nova (veja a seção 5).' }
       ]
     },
