@@ -9,6 +9,13 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.10.11 — 27/11/2026
+
+Correção: telas que não abriam depois de uma versão nova.
+
+- Quem estava com o app aberto (ou instalado) quando saía uma versão nova via "Instabilidade no Módulo" ao trocar de tela ("Failed to fetch dynamically imported module"). Três causas corrigidas: o servidor devolvia a página inicial no lugar do arquivo da tela que não existe mais (agora responde "não encontrado" e o app se recarrega); o modo aplicativo podia guardar essa página como se fosse o arquivo (cache renovado e só guarda arquivos de verdade); e a recarga automática só funcionava uma vez por sessão (agora vale sempre, com intervalo de segurança).
+- Tela Versões: a lista volta a mostrar o nome da empresa como cadastrado; o ajuste de maiúsculas e as unidades ficam só no e-mail da carta.
+
 ## V0.10.10 — 27/11/2026
 
 Nomes bem escritos nos e-mails.
