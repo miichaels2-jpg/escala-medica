@@ -17,11 +17,35 @@ const reply = (body: unknown, status = 200) =>
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, ch => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] as string));
 
+
+// Nome de empresa/unidade (mesma regra de src/lib/nameCase.js): tudo em maiúsculas vira nome próprio;
+// siglas e nomes que já têm minúsculas ficam como estão.
+const SMALL_WORDS = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'na', 'no', 'nas', 'nos', 'a', 'o', 'para', 'com']);
+const isAcronym = (word: string): boolean => {
+  if (word.includes('/')) return word.split('/').every(isAcronym);
+  const letters = word.replace(/[^A-Za-zÀ-ÿ]/g, '');
+  if (!letters || /\d/.test(word) || letters.length <= 3) return true;
+  return (letters.match(/[aeiouáéíóúâêôãõà]/gi) || []).length <= 1;
+};
+// Primeiro nome: TUDO EM MAIÚSCULAS vira Maiúscula só na primeira letra.
+const firstNameCase = (value: unknown): string => { const w = String(value || '').trim().split(/\s+/)[0] || ''; return /[a-zà-ÿ]/.test(w) ? w : w.charAt(0) + w.slice(1).toLocaleLowerCase('pt-BR'); };
+const nameCase = (value: unknown): string => {
+  const text = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!text || /[a-zà-ÿ]/.test(text) || !text.includes(' ')) return text;
+  return text.split(' ').map((word, i) => {
+    const lower = word.toLocaleLowerCase('pt-BR');
+    if (SMALL_WORDS.has(lower)) return i > 0 ? lower : lower.charAt(0).toLocaleUpperCase('pt-BR') + lower.slice(1);
+    if (isAcronym(word)) return word;
+    return lower.replace(/(^|[-/&(])(\p{L})/gu, (_m, sep, ch) => sep + ch.toLocaleUpperCase('pt-BR'));
+  }).join(' ');
+};
+
 type Letter = { versao: string; titulo?: string; periodo?: string; arquivo: string; destaques?: string[] };
-type Recipient = { email: string; name?: string; company?: string };
+type Recipient = { email: string; name?: string; company?: string; units?: string[] };
+const joinNames = (names: string[] = []) => { const l = names.map(nameCase).filter(Boolean); return l.length <= 1 ? (l[0] || '') : `${l.slice(0, -1).join(', ')} e ${l[l.length - 1]}`; };
 
 function letterEmail(letter: Letter, to: Recipient) {
-  const first = String(to.name || '').trim().split(/\s+/)[0];
+  const first = firstNameCase(to.name);
   const highlights = (letter.destaques || []).slice(0, 8);
   const subject = `Carta de Versão ${letter.versao} do ScaleMedic`;
   const html = `<div style="margin:0;padding:24px 12px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
@@ -31,7 +55,7 @@ function letterEmail(letter: Letter, to: Recipient) {
       <p style="margin:0 0 6px;font-size:12px;font-weight:bold;letter-spacing:.6px;text-transform:uppercase;color:#0284c7">Carta de Versão ${esc(letter.versao)}</p>
       <p style="margin:0 0 18px;font-size:18px;font-weight:bold">${esc(letter.titulo || `Novidades da versão ${letter.versao}`)}</p>
       <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#334155">Prezado(a) ${esc(first || 'gestor(a)')},</p>
-      <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#334155">É com satisfação que apresentamos a <b>Carta de Versão ${esc(letter.versao)}</b> do ScaleMedic${letter.periodo ? `, que reúne as melhorias disponibilizadas ${esc(letter.periodo)}` : ''}${to.company ? ` e já disponíveis para ${esc(to.company)}` : ''}.</p>
+      <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#334155">É com satisfação que apresentamos a <b>Carta de Versão ${esc(letter.versao)}</b> do ScaleMedic${letter.periodo ? `, que reúne as melhorias disponibilizadas ${esc(letter.periodo)}` : ''}${to.company ? ` e já disponíveis para ${esc(nameCase(to.company))}${to.units?.length ? `, ${to.units.length > 1 ? 'nas unidades' : 'na unidade'} ${esc(joinNames(to.units))}` : ''}` : ''}.</p>
       ${highlights.length ? `<p style="margin:0 0 8px;font-size:14px;font-weight:bold;color:#0f172a">Principais novidades</p>
       <ul style="margin:0 0 16px;padding-left:20px;font-size:14px;line-height:1.7;color:#334155">${highlights.map(h => `<li style="margin-bottom:4px">${esc(h)}</li>`).join('')}</ul>` : ''}
       <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#334155">O documento completo, com o detalhamento de cada novidade e orientações de uso, segue <b>em anexo</b>.</p>
@@ -42,7 +66,7 @@ function letterEmail(letter: Letter, to: Recipient) {
     <div style="padding:14px 28px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8">Mensagem enviada pelo ScaleMedic (scalemedic.com.br) aos gestores cadastrados. Não responda este e-mail.</div>
   </div>
 </div>`;
-  const text = `Carta de Versão ${letter.versao} do ScaleMedic\n\nPrezado(a) ${first || 'gestor(a)'},\n\nÉ com satisfação que apresentamos a Carta de Versão ${letter.versao} do ScaleMedic${letter.periodo ? `, que reúne as melhorias disponibilizadas ${letter.periodo}` : ''}.\n${highlights.length ? `\nPrincipais novidades:\n${highlights.map(h => `- ${h}`).join('\n')}\n` : ''}\nO documento completo segue em anexo.\n\nAtenciosamente,\nEquipe ScaleMedic`;
+  const text = `Carta de Versão ${letter.versao} do ScaleMedic\n\nPrezado(a) ${first || 'gestor(a)'},\n\nÉ com satisfação que apresentamos a Carta de Versão ${letter.versao} do ScaleMedic${letter.periodo ? `, que reúne as melhorias disponibilizadas ${letter.periodo}` : ''}${to.company ? ` e já disponíveis para ${nameCase(to.company)}${to.units?.length ? `, ${to.units.length > 1 ? 'nas unidades' : 'na unidade'} ${joinNames(to.units)}` : ''}` : ''}.\n${highlights.length ? `\nPrincipais novidades:\n${highlights.map(h => `- ${h}`).join('\n')}\n` : ''}\nO documento completo segue em anexo.\n\nAtenciosamente,\nEquipe ScaleMedic`;
   return { subject, html, text };
 }
 

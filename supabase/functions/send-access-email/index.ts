@@ -10,6 +10,29 @@ const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const APP_URL = 'https://scalemedic.com.br';
 const FROM = 'ScaleMedic <naoresponda@scalemedic.com.br>';
 
+
+// Nome de empresa/unidade (mesma regra de src/lib/nameCase.js): tudo em maiúsculas vira nome próprio;
+// siglas e nomes que já têm minúsculas ficam como estão.
+const SMALL_WORDS = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'na', 'no', 'nas', 'nos', 'a', 'o', 'para', 'com']);
+const isAcronym = (word: string): boolean => {
+  if (word.includes('/')) return word.split('/').every(isAcronym);
+  const letters = word.replace(/[^A-Za-zÀ-ÿ]/g, '');
+  if (!letters || /\d/.test(word) || letters.length <= 3) return true;
+  return (letters.match(/[aeiouáéíóúâêôãõà]/gi) || []).length <= 1;
+};
+// Primeiro nome: TUDO EM MAIÚSCULAS vira Maiúscula só na primeira letra.
+const firstNameCase = (value: unknown): string => { const w = String(value || '').trim().split(/\s+/)[0] || ''; return /[a-zà-ÿ]/.test(w) ? w : w.charAt(0) + w.slice(1).toLocaleLowerCase('pt-BR'); };
+const nameCase = (value: unknown): string => {
+  const text = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!text || /[a-zà-ÿ]/.test(text) || !text.includes(' ')) return text;
+  return text.split(' ').map((word, i) => {
+    const lower = word.toLocaleLowerCase('pt-BR');
+    if (SMALL_WORDS.has(lower)) return i > 0 ? lower : lower.charAt(0).toLocaleUpperCase('pt-BR') + lower.slice(1);
+    if (isAcronym(word)) return word;
+    return lower.replace(/(^|[-/&(])(\p{L})/gu, (_m, sep, ch) => sep + ch.toLocaleUpperCase('pt-BR'));
+  }).join(' ');
+};
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -22,10 +45,10 @@ const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, ch => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] as string));
 
 function accessEmail(target: { full_name?: string; username: string; company_name?: string }, password: string, reason: string) {
-  const first = String(target.full_name || '').trim().split(/\s+/)[0] || 'Olá';
+  const first = firstNameCase(target.full_name) || 'Olá';
   const isReminder = reason === 'lembrete';
   const isNew = reason !== 'nova_senha';
-  const company = target.company_name ? ` da ${esc(target.company_name)}` : '';
+  const company = target.company_name ? ` da ${esc(nameCase(target.company_name))}` : '';
   const subject = isReminder ? 'Seu acesso ao ScaleMedic' : isNew ? 'Seu acesso ao ScaleMedic' : 'Sua nova senha provisória do ScaleMedic';
   const intro = isReminder
     ? `A coordenação${company} enviou os seus dados de acesso ao ScaleMedic, o sistema das escalas de plantão:`
