@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { FileText, Loader2, Mail, ScrollText } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { isRealEmail } from '@/lib/passwordRecovery';
+import { joinNames, nameCase } from '@/lib/nameCase';
 import PageHero from '@/components/PageHero';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -28,7 +29,7 @@ function SendDialog({ letter, onClose }) {
 
   const recipients = useMemo(() => {
     const seen = new Set();
-    return companies.flatMap(c => c.managers.filter(m => selected.has(`${c.id}|${m.id}`)).map(m => ({ email: String(m.email).toLowerCase(), name: m.full_name, company: c.name })))
+    return companies.flatMap(c => c.managers.filter(m => selected.has(`${c.id}|${m.id}`)).map(m => ({ email: String(m.email).toLowerCase(), name: m.full_name, company: nameCase(c.name), units: (c.units || []).map(u => nameCase(u.name)).filter(Boolean) })))
       .filter(r => (seen.has(r.email) ? false : seen.add(r.email)));
   }, [companies, selected]);
 
@@ -64,7 +65,7 @@ function SendDialog({ letter, onClose }) {
             {companies.length === 0 && <p className="text-sm text-slate-500">Nenhum gestor com e-mail cadastrado.</p>}
             {companies.map(c => (
               <div key={c.id} className="rounded-xl border border-slate-200 dark:border-slate-800">
-                <p className="px-3 pt-2 text-xs font-semibold text-slate-500">{c.name}</p>
+                <p className="px-3 pt-2 text-xs font-semibold text-slate-500">{nameCase(c.name)}{c.units?.length ? <span className="font-normal"> · {joinNames(c.units.map(u => u.name))}</span> : null}</p>
                 <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                   {c.managers.map(m => (
                     <li key={m.id}>

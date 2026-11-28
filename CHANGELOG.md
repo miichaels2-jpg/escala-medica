@@ -9,6 +9,14 @@
   (menu lateral, menu do celular e tela de Login). A regra está em `src/lib/version.js`.
 - Cada versão publicada recebe uma tag git `vX.Y.Z` e uma entrada neste arquivo.
 
+## V0.10.10 — 27/11/2026
+
+Nomes bem escritos nos e-mails.
+
+- **Carta de versão:** o e-mail de cada gestor cita a empresa e as unidades que ela administra ("já disponíveis para Base de Homologação, nas unidades Hospital de Homologação e Hospital de Homologação 2.0"). A tela Versões mostra as unidades ao lado de cada empresa.
+- **Maiúsculas e minúsculas:** nome cadastrado todo em maiúsculas ("BASE DE HOMOLOGAÇÃO") sai como nome próprio ("Base de Homologação"); siglas (UPA, UTI/UCI, HMDAS, HIMA) e nomes que já têm minúsculas ("Lima&Lima", "MedTec") ficam como estão. O primeiro nome da pessoa também ("MARIANA" → "Mariana"). Vale para a carta de versão e para o e-mail de acesso. Regra em `src/lib/nameCase.js`, com testes.
+- **Precisa publicar de novo** as funções `send-access-email` e `send-release-letter` no Supabase.
+
 ## V0.10.9 — 27/11/2026
 
 Tela Versões (cartas de versão para os clientes).
